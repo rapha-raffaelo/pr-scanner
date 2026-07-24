@@ -18,7 +18,6 @@ from unittest.mock import patch
 
 import pytest
 
-from newspulse import analyzer as az
 from newspulse.analyzer import (
     BACKEND_CLAUDE_API,
     BACKEND_CLAUDE_CODE,
