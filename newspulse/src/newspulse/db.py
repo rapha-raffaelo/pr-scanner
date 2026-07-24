@@ -15,15 +15,16 @@ from sqlalchemy.orm import Session, sessionmaker
 from .config import database_url
 
 
-@event.listens_for(Engine, "connect")
 def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
     """SQLite ships with foreign-key enforcement off by default; turn it on for
     every connection so the FKs and ON DELETE CASCADE in the models actually bite.
-    The guard keeps this a no-op for any non-SQLite backend."""
-    if dbapi_connection.__class__.__module__.startswith("sqlite3"):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+
+    Attached only to NewsPulse's own SQLite engines (see ``make_engine``), never
+    to the global ``Engine`` class, so importing this module has no process-wide
+    side effect on other SQLAlchemy engines in the same interpreter."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 def make_engine(url: str | None = None) -> Engine:
@@ -36,7 +37,11 @@ def make_engine(url: str | None = None) -> Engine:
         # is SQLite-specific, so only pass it for SQLite URLs (other DBAPIs raise
         # TypeError on an unknown connect arg).
         kwargs["connect_args"] = {"check_same_thread": False}
-    return create_engine(resolved_url, **kwargs)
+    engine = create_engine(resolved_url, **kwargs)
+    if resolved_url.startswith("sqlite"):
+        # Register the PRAGMA on this specific engine only.
+        event.listen(engine, "connect", _enable_sqlite_foreign_keys)
+    return engine
 
 
 _engine: Engine | None = None

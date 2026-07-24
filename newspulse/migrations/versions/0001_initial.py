@@ -30,6 +30,9 @@ _CATEGORY_VALUES = (
 )
 _RUN_STATUS_VALUES = ("ok", "partial", "failed")
 _DEFAULT_COUNTRY = "DE"
+# DB-level DEFAULT for the JSON array columns, mirroring newspulse.models so a raw
+# INSERT that omits them can't violate NOT NULL. "[]" is valid, empty JSON.
+_EMPTY_JSON_ARRAY = "[]"
 
 
 def upgrade() -> None:
@@ -37,7 +40,9 @@ def upgrade() -> None:
         "clients",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("aliases", sa.JSON(), nullable=False),
+        sa.Column(
+            "aliases", sa.JSON(), nullable=False, server_default=_EMPTY_JSON_ARRAY
+        ),
         sa.Column("industry", sa.String(length=255), nullable=True),
         sa.Column(
             "country",
@@ -45,9 +50,15 @@ def upgrade() -> None:
             nullable=False,
             server_default=_DEFAULT_COUNTRY,
         ),
-        sa.Column("keywords", sa.JSON(), nullable=False),
-        sa.Column("alert_topics", sa.JSON(), nullable=False),
-        sa.Column("active", sa.Boolean(), nullable=False),
+        sa.Column(
+            "keywords", sa.JSON(), nullable=False, server_default=_EMPTY_JSON_ARRAY
+        ),
+        sa.Column(
+            "alert_topics", sa.JSON(), nullable=False, server_default=_EMPTY_JSON_ARRAY
+        ),
+        sa.Column(
+            "active", sa.Boolean(), nullable=False, server_default=sa.text("1")
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
 
@@ -79,7 +90,9 @@ def upgrade() -> None:
         ),
         sa.Column("relevance_score", sa.Integer(), nullable=False),
         sa.Column("importance_score", sa.Integer(), nullable=False),
-        sa.Column("is_alert", sa.Boolean(), nullable=False),
+        sa.Column(
+            "is_alert", sa.Boolean(), nullable=False, server_default=sa.text("0")
+        ),
         sa.Column("reasoning", sa.Text(), nullable=True),
         sa.Column("analyzed_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
@@ -112,8 +125,12 @@ def upgrade() -> None:
             sa.Enum(*_RUN_STATUS_VALUES, name="runstatus", create_constraint=True),
             nullable=False,
         ),
-        sa.Column("articles_found", sa.Integer(), nullable=False),
-        sa.Column("errors", sa.JSON(), nullable=False),
+        sa.Column(
+            "articles_found", sa.Integer(), nullable=False, server_default=sa.text("0")
+        ),
+        sa.Column(
+            "errors", sa.JSON(), nullable=False, server_default=_EMPTY_JSON_ARRAY
+        ),
     )
 
     op.create_table(

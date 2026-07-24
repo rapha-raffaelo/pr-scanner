@@ -97,9 +97,42 @@ def test_client_defaults_active_and_empty_arrays(session):
     assert loaded.aliases == []
     assert loaded.keywords == []
     assert loaded.alert_topics == []
-    # created_at is populated by the model's default (SQLite does not round-trip
-    # the tzinfo, but the value is stored).
+    # created_at is populated by the model's default; UTCDateTime re-attaches UTC
+    # on read so it comes back tz-aware (see the round-trip test below).
     assert loaded.created_at is not None
+    assert loaded.created_at.tzinfo is not None
+
+
+def test_published_at_survives_store_read_and_compare(session):
+    """Regression: datetimes go in tz-aware and must come back tz-aware so a
+    later ``published_at >= cutoff`` comparison against a fresh _utcnow() cannot
+    raise TypeError. SQLite discards tzinfo on write; UTCDateTime re-attaches it."""
+    from newspulse.models import _utcnow
+
+    stored_at = dt.datetime(2026, 7, 24, 8, 0, tzinfo=dt.UTC)
+    session.add(_make_article(published_at=stored_at))
+    session.commit()
+    session.expire_all()
+
+    art = session.query(Article).one()
+    assert art.published_at.tzinfo is not None
+    assert art.published_at == stored_at
+    # The comparison that previously crashed with naive-vs-aware TypeError.
+    cutoff = _utcnow() - dt.timedelta(days=1)
+    assert art.published_at >= cutoff
+
+
+def test_naive_datetime_reads_back_as_utc_aware(session):
+    """A naive datetime written to a UTCDateTime column is assumed UTC and reads
+    back tz-aware, so downstream comparisons never mix naive and aware values."""
+    naive = dt.datetime(2026, 7, 1, 12, 0)  # no tzinfo
+    session.add(_make_article(published_at=naive))
+    session.commit()
+    session.expire_all()
+
+    art = session.query(Article).one()
+    assert art.published_at.tzinfo is not None
+    assert art.published_at == naive.replace(tzinfo=dt.UTC)
 
 
 def test_analysis_stores_category_enum_by_value(session):

@@ -60,6 +60,13 @@ def _env_path(name: str, default: Path) -> Path:
 
 
 # --- Resolved settings ---------------------------------------------------------
+#
+# These resolve ONCE, at import time, from the environment and ``Path.cwd()``.
+# Consequences:
+#  * An env-var override (e.g. ``NEWSPULSE_DATABASE_PATH``) must be set *before*
+#    this module is first imported — mutating the env afterwards has no effect.
+#  * Tests that need a different database must monkeypatch ``config.DATABASE_PATH``
+#    directly (not the env var), since re-import won't happen within a process.
 
 DATABASE_PATH: Path = _env_path(_ENV_DATABASE_PATH, Path.cwd() / _DEFAULT_DB_FILENAME)
 ALERT_THRESHOLD: int = _env_int(_ENV_ALERT_THRESHOLD, _DEFAULT_ALERT_THRESHOLD)

@@ -28,6 +28,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import JSON
@@ -38,6 +39,7 @@ from sqlalchemy.orm import (
     mapped_column,
     relationship,
 )
+from sqlalchemy.types import TypeDecorator
 
 # Country stored on every client so the schema supports future countries without
 # a migration to add the column. Germany-only for the POC.
@@ -47,6 +49,12 @@ DEFAULT_COUNTRY = "DE"
 # bad analyzer response can never persist an out-of-range value.
 SCORE_MIN = 0
 SCORE_MAX = 10
+
+# DB-level DEFAULT for the JSON array columns. The ORM default (``default=list``)
+# only fires for inserts that go through SQLAlchemy; this makes the empty array a
+# schema guarantee so a raw ``INSERT`` that omits the column can't violate NOT
+# NULL. "[]" is valid JSON that SQLite stores verbatim.
+_EMPTY_JSON_ARRAY = "[]"
 
 
 class Category(StrEnum):
@@ -76,6 +84,43 @@ def _utcnow() -> dt.datetime:
     return dt.datetime.now(dt.UTC)
 
 
+class UTCDateTime(TypeDecorator):
+    """A ``DateTime(timezone=True)`` that always hands back a tz-aware UTC value.
+
+    SQLite has no native datetime type: it discards ``tzinfo`` on write, so a
+    value stored as tz-aware ``dt.datetime.now(dt.UTC)`` reads back *naive*. That
+    breaks the very next feature — any ``published_at >= cutoff`` comparison
+    against a fresh ``_utcnow()`` raises ``TypeError: can't compare offset-naive
+    and offset-aware datetimes``. This decorator normalizes both directions:
+    everything is stored as UTC, and every read re-attaches ``dt.UTC`` so the
+    application never sees a naive datetime. ``impl`` stays exactly
+    ``DateTime(timezone=True)`` so the schema Alembic emits is unchanged.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(
+        self, value: dt.datetime | None, dialect: object
+    ) -> dt.datetime | None:
+        if value is None:
+            return None
+        # A naive value is assumed to already be UTC; an aware one is converted.
+        if value.tzinfo is None:
+            return value.replace(tzinfo=dt.UTC)
+        return value.astimezone(dt.UTC)
+
+    def process_result_value(
+        self, value: dt.datetime | None, dialect: object
+    ) -> dt.datetime | None:
+        if value is None:
+            return None
+        # SQLite drops tzinfo on write; re-attach UTC so reads are always aware.
+        if value.tzinfo is None:
+            return value.replace(tzinfo=dt.UTC)
+        return value.astimezone(dt.UTC)
+
+
 class Base(DeclarativeBase):
     # Map Python list[str] array-ish fields onto SQLite JSON columns.
     type_annotation_map = {
@@ -91,7 +136,10 @@ class Client(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     aliases: Mapped[list[str]] = mapped_column(
-        MutableList.as_mutable(JSON), default=list, nullable=False
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
     )
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Required, defaults to DE (both Python-side and in the DB) so existing rows
@@ -100,14 +148,22 @@ class Client(Base):
         String(2), nullable=False, default=DEFAULT_COUNTRY, server_default=DEFAULT_COUNTRY
     )
     keywords: Mapped[list[str]] = mapped_column(
-        MutableList.as_mutable(JSON), default=list, nullable=False
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
     )
     alert_topics: Mapped[list[str]] = mapped_column(
-        MutableList.as_mutable(JSON), default=list, nullable=False
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
     )
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("1")
+    )
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow
+        UTCDateTime(), nullable=False, default=_utcnow
     )
 
     analyses: Mapped[list["Analysis"]] = relationship(
@@ -129,9 +185,9 @@ class Article(Base):
     # UNIQUE so re-ingesting the same link never creates a duplicate row.
     url: Mapped[str] = mapped_column(String(2048), nullable=False, unique=True)
     source: Mapped[str] = mapped_column(String(255), nullable=False)
-    published_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    published_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
     fetched_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow
+        UTCDateTime(), nullable=False, default=_utcnow
     )
     # The feed-provided snippet only. This is the *only* body-ish text stored.
     summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -176,12 +232,14 @@ class Analysis(Base):
     )
     relevance_score: Mapped[int] = mapped_column(Integer, nullable=False)
     importance_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    is_alert: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_alert: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
     # Claude's reasoning is kept on every analysis so a later "why was this
     # flagged?" has an answer and the alert threshold can be tuned.
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     analyzed_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow
+        UTCDateTime(), nullable=False, default=_utcnow
     )
 
     article: Mapped["Article"] = relationship(back_populates="analyses")
@@ -208,9 +266,9 @@ class Run(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     started_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow
+        UTCDateTime(), nullable=False, default=_utcnow
     )
-    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     status: Mapped[RunStatus] = mapped_column(
         SAEnum(
             RunStatus,
@@ -220,10 +278,15 @@ class Run(Base):
         nullable=False,
         default=RunStatus.OK,
     )
-    articles_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    articles_found: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
     # Per-feed / per-batch error messages collected during the sweep.
     errors: Mapped[list[str]] = mapped_column(
-        MutableList.as_mutable(JSON), default=list, nullable=False
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
     )
 
 
