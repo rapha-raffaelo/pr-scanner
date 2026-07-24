@@ -28,6 +28,11 @@ _DEFAULT_ALERT_THRESHOLD = 7
 # client daily call well inside interactive territory on a Claude subscription.
 _DEFAULT_BATCH_SIZE = 20
 
+# Wall-clock ceiling (seconds) for a single `claude -p` subprocess call. A batch
+# of ~20 short items is comfortably interactive; 120s leaves headroom for a cold
+# CLI start without ever letting one hung call stall the whole daily sweep.
+_DEFAULT_ANALYZER_TIMEOUT = 120
+
 # Analyzer backend id. The subscription subprocess backend is the default; the
 # metered API backend is opt-in (see PRD: subscription-first).
 _DEFAULT_ANALYZER_BACKEND = "claude_code"
@@ -36,6 +41,7 @@ _DEFAULT_ANALYZER_BACKEND = "claude_code"
 _ENV_DATABASE_PATH = "NEWSPULSE_DATABASE_PATH"
 _ENV_ALERT_THRESHOLD = "NEWSPULSE_ALERT_THRESHOLD"
 _ENV_BATCH_SIZE = "NEWSPULSE_BATCH_SIZE"
+_ENV_ANALYZER_TIMEOUT = "NEWSPULSE_ANALYZER_TIMEOUT"
 _ENV_ANALYZER_BACKEND = "NEWSPULSE_ANALYZER_BACKEND"
 
 
@@ -71,6 +77,7 @@ def _env_path(name: str, default: Path) -> Path:
 DATABASE_PATH: Path = _env_path(_ENV_DATABASE_PATH, Path.cwd() / _DEFAULT_DB_FILENAME)
 ALERT_THRESHOLD: int = _env_int(_ENV_ALERT_THRESHOLD, _DEFAULT_ALERT_THRESHOLD)
 BATCH_SIZE: int = _env_int(_ENV_BATCH_SIZE, _DEFAULT_BATCH_SIZE)
+ANALYZER_TIMEOUT: int = _env_int(_ENV_ANALYZER_TIMEOUT, _DEFAULT_ANALYZER_TIMEOUT)
 ANALYZER_BACKEND: str = os.environ.get(_ENV_ANALYZER_BACKEND, _DEFAULT_ANALYZER_BACKEND)
 
 
