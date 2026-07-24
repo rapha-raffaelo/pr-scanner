@@ -28,10 +28,10 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import JSON
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -90,15 +90,21 @@ class Client(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    aliases: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    aliases: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON), default=list, nullable=False
+    )
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Required, defaults to DE (both Python-side and in the DB) so existing rows
     # and inserts that omit it always carry a country.
     country: Mapped[str] = mapped_column(
         String(2), nullable=False, default=DEFAULT_COUNTRY, server_default=DEFAULT_COUNTRY
     )
-    keywords: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
-    alert_topics: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    keywords: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON), default=list, nullable=False
+    )
+    alert_topics: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON), default=list, nullable=False
+    )
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
@@ -151,12 +157,21 @@ class Analysis(Base):
     article_id: Mapped[int] = mapped_column(
         ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
     )
+    # Indexed on its own: the composite UNIQUE (article_id, client_id) can't serve
+    # a client_id-only filter (leftmost-prefix rule), and "all analyses for a
+    # client" is the primary dashboard access pattern.
     client_id: Mapped[int] = mapped_column(
-        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[Category] = mapped_column(
-        SAEnum(Category, values_callable=lambda enum: [m.value for m in enum]),
+        SAEnum(
+            Category,
+            values_callable=lambda enum: [m.value for m in enum],
+            # Emit a DB-level CHECK (category IN (...)) so a raw INSERT can't store
+            # a value outside the closed set — consistent with the score CHECKs.
+            create_constraint=True,
+        ),
         nullable=False,
     )
     relevance_score: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -197,13 +212,19 @@ class Run(Base):
     )
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[RunStatus] = mapped_column(
-        SAEnum(RunStatus, values_callable=lambda enum: [m.value for m in enum]),
+        SAEnum(
+            RunStatus,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+        ),
         nullable=False,
         default=RunStatus.OK,
     )
     articles_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Per-feed / per-batch error messages collected during the sweep.
-    errors: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    errors: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON), default=list, nullable=False
+    )
 
 
 class Setting(Base):

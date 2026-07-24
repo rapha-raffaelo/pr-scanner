@@ -8,8 +8,11 @@ here rather than hard-coding paths, thresholds, or batch sizes.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 # --- Named-constant defaults (the "why" lives next to each) --------------------
 
@@ -45,6 +48,9 @@ def _env_int(name: str, default: int) -> int:
     try:
         return int(raw)
     except ValueError:
+        # Don't crash on a typo, but make the fallback visible so the operator
+        # can tell their override didn't take effect.
+        _log.warning("Invalid %s=%r, falling back to default %d", name, raw, default)
         return default
 
 
@@ -63,4 +69,6 @@ ANALYZER_BACKEND: str = os.environ.get(_ENV_ANALYZER_BACKEND, _DEFAULT_ANALYZER_
 
 def database_url() -> str:
     """SQLAlchemy URL for the configured SQLite database file."""
-    return f"sqlite:///{DATABASE_PATH}"
+    # as_posix() keeps forward slashes on every platform; a Windows path with
+    # backslashes would otherwise corrupt the URL.
+    return f"sqlite:///{DATABASE_PATH.as_posix()}"

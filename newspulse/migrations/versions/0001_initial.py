@@ -74,7 +74,7 @@ def upgrade() -> None:
         sa.Column("summary", sa.Text(), nullable=True),
         sa.Column(
             "category",
-            sa.Enum(*_CATEGORY_VALUES, name="category"),
+            sa.Enum(*_CATEGORY_VALUES, name="category", create_constraint=True),
             nullable=False,
         ),
         sa.Column("relevance_score", sa.Integer(), nullable=False),
@@ -100,6 +100,7 @@ def upgrade() -> None:
             name="ck_analyses_importance_range",
         ),
     )
+    op.create_index("ix_analyses_client_id", "analyses", ["client_id"])
 
     op.create_table(
         "runs",
@@ -108,7 +109,7 @@ def upgrade() -> None:
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "status",
-            sa.Enum(*_RUN_STATUS_VALUES, name="runstatus"),
+            sa.Enum(*_RUN_STATUS_VALUES, name="runstatus", create_constraint=True),
             nullable=False,
         ),
         sa.Column("articles_found", sa.Integer(), nullable=False),
@@ -125,6 +126,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("settings")
     op.drop_table("runs")
+    op.drop_index("ix_analyses_client_id", table_name="analyses")
     op.drop_table("analyses")
     op.drop_index("ix_articles_title_hash", table_name="articles")
     op.drop_table("articles")

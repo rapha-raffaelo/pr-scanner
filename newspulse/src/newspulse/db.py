@@ -6,6 +6,9 @@ opens connections and hands out sessions against a schema that migrations own.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -25,12 +28,15 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
 
 def make_engine(url: str | None = None) -> Engine:
     """Create an engine for ``url`` (default: the configured SQLite database)."""
-    return create_engine(
-        url or database_url(),
+    resolved_url = url or database_url()
+    kwargs: dict[str, object] = {}
+    if resolved_url.startswith("sqlite"):
         # SQLite guards each connection against cross-thread use; the web app and
-        # job may hand a connection across threads, so relax that check.
-        connect_args={"check_same_thread": False},
-    )
+        # job may hand a connection across threads, so relax that check. This kwarg
+        # is SQLite-specific, so only pass it for SQLite URLs (other DBAPIs raise
+        # TypeError on an unknown connect arg).
+        kwargs["connect_args"] = {"check_same_thread": False}
+    return create_engine(resolved_url, **kwargs)
 
 
 _engine: Engine | None = None
@@ -49,6 +55,18 @@ def session_factory(engine: Engine | None = None) -> sessionmaker[Session]:
     return sessionmaker(bind=engine or get_engine(), expire_on_commit=False)
 
 
-def get_session() -> Session:
-    """Open a new session against the process-wide engine."""
-    return session_factory()()
+@contextmanager
+def get_session() -> Iterator[Session]:
+    """Open a managed session against the process-wide engine.
+
+    Used as a context manager so the connection is returned to the pool
+    deterministically at scope exit rather than leaking until GC::
+
+        with get_session() as session:
+            ...
+    """
+    session = session_factory()()
+    try:
+        yield session
+    finally:
+        session.close()
