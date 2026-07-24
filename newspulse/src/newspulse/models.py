@@ -219,6 +219,13 @@ class Analysis(Base):
     client_id: Mapped[int] = mapped_column(
         ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # The analyzer's primary relevance judgment (schemas.Analysis.is_relevant).
+    # Recomputed/returned in code and stored so the DB can answer "was this article
+    # relevant to this client?" without re-running analysis. Defaults false so a
+    # raw INSERT that omits it is a safe non-relevant row.
+    is_relevant: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[Category] = mapped_column(
         SAEnum(

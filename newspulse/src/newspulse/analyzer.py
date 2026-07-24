@@ -36,7 +36,7 @@ from pydantic import ValidationError
 
 from . import config
 from .models import Article, Category, Client
-from .schemas import Analysis, BatchVerdict
+from .schemas import Analysis, ArticleVerdict, BatchVerdict
 
 _log = logging.getLogger(__name__)
 
@@ -210,7 +210,7 @@ class _BaseClaudeAnalyzer:
         Requires exactly one verdict per candidate id; a mismatch is a schema
         failure (ParseError) so the batch retries rather than persisting a partial
         or misaligned result."""
-        by_id: dict[int, object] = {}
+        by_id: dict[int, ArticleVerdict] = {}
         for verdict in batch.verdicts:
             if verdict.id in by_id:
                 raise ParseError(f"duplicate verdict id {verdict.id}")

@@ -17,13 +17,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .models import SCORE_MAX as _SCORE_MAX
+from .models import SCORE_MIN as _SCORE_MIN
 from .models import Category
 
-# Scores share the model's fixed 0..10 scale (see models.SCORE_MIN/SCORE_MAX).
-# Duplicated as literals here only inside the Field bounds; kept in sync with the
-# DB CHECK constraint by the round-trip validation tests.
-_SCORE_MIN = 0
-_SCORE_MAX = 10
+# Scores share the model's fixed 0..10 scale. Imported straight from
+# newspulse.models — the same SCORE_MIN/SCORE_MAX the DB CHECK constraint is built
+# from — so the Pydantic Field bounds and the DB range can never silently diverge.
 
 
 class ArticleVerdict(BaseModel):
