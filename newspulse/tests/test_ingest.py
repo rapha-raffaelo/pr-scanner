@@ -17,6 +17,7 @@ raising", which is what lets a caller's loop continue.
 from __future__ import annotations
 
 import datetime as dt
+import http.client
 import logging
 import socket
 import urllib.error
@@ -95,6 +96,41 @@ def test_fetch_feed_defaults_source_to_channel_title(fixture_bytes, monkeypatch)
     assert items[0].source == "Beispiel Wirtschaft"
 
 
+def test_fetch_feed_excludes_item_published_exactly_at_since(fixture_bytes, monkeypatch):
+    """"newer than since" is exclusive: an item published exactly at ``since`` is
+    dropped so an incremental sweep never re-ingests the boundary item."""
+    _patch_fetch(monkeypatch, fixture_bytes)
+
+    # Equal to the first fixture item's publication time (09:00 +0200 → 07:00 UTC).
+    boundary = dt.datetime(2026, 7, 24, 7, 0, tzinfo=dt.UTC)
+
+    items = ingest.fetch_feed(_FEED_URL, since=boundary, source="Beispiel")
+
+    assert not any(item.published_at == boundary for item in items)
+    assert "Beispiel AG kündigt neues Elektromodell an" not in [i.title for i in items]
+
+
+def test_fetch_feed_uses_atom_content_when_summary_missing(monkeypatch):
+    """An Atom entry with <content> but no <summary> still has feed-provided text;
+    it is captured from content rather than lost as None."""
+    atom = (
+        b'<?xml version="1.0" encoding="utf-8"?>'
+        b'<feed xmlns="http://www.w3.org/2005/Atom">'
+        b"<title>Heise Atom</title><language>de</language>"
+        b"<entry><title>Nur Content, keine Summary</title>"
+        b'<link href="https://heise.example.de/artikel"/>'
+        b"<updated>2026-07-24T09:00:00Z</updated>"
+        b'<content type="html">Der vom Feed gelieferte Teasertext.</content>'
+        b"</entry></feed>"
+    )
+    _patch_fetch(monkeypatch, atom)
+
+    items = ingest.fetch_feed(_FEED_URL, since=_SINCE)
+
+    assert len(items) == 1
+    assert items[0].summary == "Der vom Feed gelieferte Teasertext."
+
+
 # --- fetch_feed: the no-second-request guarantee -------------------------------
 
 
@@ -164,6 +200,37 @@ def test_fetch_feed_does_not_raise_on_failure(monkeypatch):
 
     # Must not raise.
     assert ingest.fetch_feed(_FEED_URL, since=_SINCE) == []
+
+
+def test_fetch_feed_returns_empty_and_warns_on_incomplete_read(monkeypatch, caplog):
+    """A truncated response (connection closed mid-body) raises
+    ``http.client.IncompleteRead``, which is not a URLError/OSError. It must still
+    be isolated to [] + WARNING rather than aborting the sweep."""
+    def _raise_incomplete(url, timeout):
+        raise http.client.IncompleteRead(b"partial")
+
+    monkeypatch.setattr(ingest, "_fetch_raw", _raise_incomplete)
+
+    with caplog.at_level(logging.WARNING, logger="newspulse.ingest"):
+        items = ingest.fetch_feed(_FEED_URL, since=_SINCE)
+
+    assert items == []
+    assert "could not be fetched" in caplog.text
+
+
+def test_fetch_feed_normalizes_naive_since_without_raising(fixture_bytes, monkeypatch):
+    """A naive ``since`` (the Python default) must not raise a naive/aware
+    TypeError; it is read as UTC and yields the same items as a tz-aware value."""
+    _patch_fetch(monkeypatch, fixture_bytes)
+
+    naive_since = dt.datetime(2026, 7, 1, 0, 0)  # no tzinfo
+
+    items = ingest.fetch_feed(_FEED_URL, since=naive_since, source="Beispiel")
+
+    assert [item.title for item in items] == [
+        "Beispiel AG kündigt neues Elektromodell an",
+        "Muster GmbH meldet Rekordgewinn im zweiten Quartal",
+    ]
 
 
 # --- fetch_feed: dateless-item fallback ----------------------------------------
