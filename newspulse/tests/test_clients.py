@@ -141,9 +141,9 @@ def test_reimport_matches_name_case_insensitively_and_trimmed(session):
 def test_import_missing_name_column_raises_clear_error(session, tmp_path):
     """A sheet with no name column (mapped to an absent header) is rejected."""
     bad = tmp_path / "no_name.xlsx"
-    pd.DataFrame(
-        [{"Branche": "Automotive", "Land": "DE"}]
-    ).to_excel(bad, index=False, engine="openpyxl")
+    pd.DataFrame([{"Branche": "Automotive", "Land": "DE"}]).to_excel(
+        bad, index=False, engine="openpyxl"
+    )
 
     mapping = {"Firmenname": "name", "Branche": "industry"}
     with pytest.raises(ImportValidationError, match="Firmenname"):

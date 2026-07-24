@@ -211,9 +211,7 @@ def import_clients(
         stmt = select(Client).where(
             func.lower(func.trim(Client.name)).in_(list(wanted))
         )
-        by_name = {
-            _normalize_name(c.name): c for c in session.scalars(stmt).all()
-        }
+        by_name = {_normalize_name(c.name): c for c in session.scalars(stmt).all()}
 
     result = ImportResult()
     for parsed in rows:
@@ -300,12 +298,12 @@ def list_clients(session: Session, *, include_inactive: bool = False) -> list[Cl
 
 
 __all__ = [
-    "ImportValidationError",
     "ImportResult",
-    "preview_import",
-    "import_clients",
+    "ImportValidationError",
     "create_client",
-    "update_client",
     "deactivate_client",
+    "import_clients",
     "list_clients",
+    "preview_import",
+    "update_client",
 ]
