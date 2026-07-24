@@ -94,7 +94,7 @@ def test_claude_code_invocation_shape_is_subprocess_only():
     """The subscription backend invokes `claude -p "<prompt>" --output-format json`
     as a subprocess under a timeout — nothing else."""
     article = make_article(0)
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(_cli_stdout([_verdict(0)]))
         ClaudeCodeAnalyzer().analyze(make_client(), [article])
 
@@ -114,7 +114,7 @@ def test_claude_code_never_contacts_an_anthropic_endpoint():
     """The subscription backend contacts no API endpoint and never imports the
     metered SDK: it passes no api.anthropic.com URL and touches no HTTP client."""
     sys.modules.pop("anthropic", None)
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(_cli_stdout([_verdict(0)]))
         ClaudeCodeAnalyzer().analyze(make_client(), [make_article(0)])
 
@@ -137,7 +137,7 @@ def test_happy_path_returns_one_analysis_per_article():
         _verdict(0, category="krise", relevance_score=9, importance_score=3),
         _verdict(1, category="finanzen", relevance_score=7, importance_score=2),
     ]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(_cli_stdout(verdicts))
         results = ClaudeCodeAnalyzer(alert_threshold=7).analyze(make_client(alert_topics=[]), articles)
 
@@ -159,7 +159,7 @@ def test_reasoning_is_stored_on_every_analysis():
         _verdict(0, reasoning="Weil A."),
         _verdict(1, reasoning="Weil B."),
     ]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(_cli_stdout(verdicts))
         results = ClaudeCodeAnalyzer().analyze(make_client(alert_topics=[]), articles)
 
@@ -172,7 +172,7 @@ def test_reasoning_is_stored_on_every_analysis():
 def test_retry_then_succeed_calls_cli_twice_and_returns_analyses(caplog):
     """A first parse failure is retried once; the second, valid response wins."""
     articles = [make_article(0)]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.side_effect = [
             _completed("this is not json at all"),
             _completed(_cli_stdout([_verdict(0)])),
@@ -191,7 +191,7 @@ def test_retry_then_succeed_calls_cli_twice_and_returns_analyses(caplog):
 def test_give_up_after_second_failure_logs_error_and_yields_nothing(caplog):
     """Two parse failures -> ERROR logged, empty result, no exception (run continues)."""
     articles = [make_article(0), make_article(1)]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.side_effect = [
             _completed("garbage one"),
             _completed("garbage two"),
@@ -209,7 +209,7 @@ def test_schema_violation_is_treated_as_a_parse_failure():
     """An out-of-range score fails pydantic validation -> retry, then give up."""
     articles = [make_article(0)]
     bad = [_verdict(0, importance_score=99)]  # outside 0..10
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(_cli_stdout(bad))
         results = ClaudeCodeAnalyzer().analyze(make_client(), articles)
 
@@ -220,7 +220,7 @@ def test_schema_violation_is_treated_as_a_parse_failure():
 def test_missing_verdict_for_an_article_is_a_parse_failure():
     """One verdict for two articles is a schema mismatch -> no analyses."""
     articles = [make_article(0), make_article(1)]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(_cli_stdout([_verdict(0)]))
         results = ClaudeCodeAnalyzer().analyze(make_client(), articles)
 
@@ -234,7 +234,7 @@ def test_missing_verdict_for_an_article_is_a_parse_failure():
 def test_non_zero_exit_is_a_batch_failure(caplog):
     """A non-zero `claude` exit is logged and drops the batch; run continues."""
     articles = [make_article(0)]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(stdout="", returncode=1, stderr="not logged in")
         with caplog.at_level(logging.ERROR):
             results = ClaudeCodeAnalyzer().analyze(make_client(), articles)
@@ -247,7 +247,7 @@ def test_non_zero_exit_is_a_batch_failure(caplog):
 def test_timeout_is_a_batch_failure():
     """A subprocess timeout is a batch failure, not a crash."""
     articles = [make_article(0)]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.side_effect = subprocess.TimeoutExpired(cmd=["claude"], timeout=120)
         results = ClaudeCodeAnalyzer(timeout=120).analyze(make_client(), articles)
 
@@ -257,7 +257,7 @@ def test_timeout_is_a_batch_failure():
 
 def test_missing_claude_cli_is_a_batch_failure():
     articles = [make_article(0)]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.side_effect = FileNotFoundError("claude")
         results = ClaudeCodeAnalyzer().analyze(make_client(), articles)
 
@@ -272,7 +272,7 @@ def test_is_alert_true_when_importance_meets_threshold_even_if_model_says_false(
     model's own is_alert (which here is deliberately False)."""
     articles = [make_article(0)]
     verdicts = [_verdict(0, importance_score=8, is_alert=False)]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(_cli_stdout(verdicts))
         results = ClaudeCodeAnalyzer(alert_threshold=7).analyze(make_client(alert_topics=[]), articles)
 
@@ -284,7 +284,7 @@ def test_is_alert_true_when_article_hits_an_alert_topic_below_threshold():
     articles = [make_article(0, title="Beispiel AG kündigt großen Rückruf an", summary_text="")]
     verdicts = [_verdict(0, importance_score=2, is_alert=False)]
     client = make_client(alert_topics=["Rückruf"])
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(_cli_stdout(verdicts))
         results = ClaudeCodeAnalyzer(alert_threshold=7).analyze(client, articles)
 
@@ -296,7 +296,7 @@ def test_model_is_alert_true_is_not_trusted_when_code_says_no():
     articles = [make_article(0, title="Unaufgeregte Meldung", summary_text="nichts Dringendes")]
     verdicts = [_verdict(0, importance_score=1, is_alert=True)]
     client = make_client(alert_topics=["Rückruf"])
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(_cli_stdout(verdicts))
         results = ClaudeCodeAnalyzer(alert_threshold=7).analyze(client, articles)
 
@@ -309,7 +309,7 @@ def test_model_is_alert_true_is_not_trusted_when_code_says_no():
 def test_articles_are_split_into_batches_of_the_configured_size():
     """More than batch_size articles => multiple CLI calls, one per chunk."""
     articles = [make_article(i) for i in range(3)]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.side_effect = [
             _completed(_cli_stdout([_verdict(0), _verdict(1)])),  # chunk of 2
             _completed(_cli_stdout([_verdict(0)])),  # chunk of 1
@@ -321,7 +321,7 @@ def test_articles_are_split_into_batches_of_the_configured_size():
 
 
 def test_empty_article_list_makes_no_call():
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         results = ClaudeCodeAnalyzer().analyze(make_client(), [])
     assert results == []
     run.assert_not_called()
@@ -330,7 +330,7 @@ def test_empty_article_list_makes_no_call():
 def test_a_failing_batch_does_not_sink_the_other_batches():
     """One bad chunk drops only its own articles; the good chunk still returns."""
     articles = [make_article(i) for i in range(3)]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.side_effect = [
             _completed(_cli_stdout([_verdict(0), _verdict(1)])),  # chunk 1 ok
             _completed("garbage"),  # chunk 2 attempt 1
@@ -373,7 +373,7 @@ def test_markdown_fenced_json_is_parsed():
     articles = [make_article(0)]
     inner = "```json\n" + json.dumps([_verdict(0)]) + "\n```"
     stdout = json.dumps({"type": "result", "is_error": False, "result": inner})
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(stdout)
         results = ClaudeCodeAnalyzer().analyze(make_client(alert_topics=[]), articles)
 
@@ -383,7 +383,7 @@ def test_markdown_fenced_json_is_parsed():
 def test_cli_error_envelope_is_a_batch_failure():
     """An is_error envelope from the CLI is a backend failure (retry, then drop)."""
     articles = [make_article(0)]
-    with patch("newspulse.analyzer.subprocess.run") as run:
+    with patch.object(subprocess, "run") as run:
         run.return_value = _completed(_cli_stdout([_verdict(0)], is_error=True))
         results = ClaudeCodeAnalyzer().analyze(make_client(), articles)
 

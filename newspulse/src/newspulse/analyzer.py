@@ -106,12 +106,19 @@ def _chunks(items: Sequence[Article], size: int) -> list[Sequence[Article]]:
 def _matches_alert_topic(article: Article, alert_topics: Sequence[str]) -> bool:
     """True if any of the client's alert_topics appears in the article text.
 
-    Computed in code (case-insensitive substring over title + feed summary) so
-    the alert decision is deterministic and auditable — it does not trust the
-    model's own is_alert guess. Only feed-provided text is searched; no body is
-    fetched or stored (no-scrape rule)."""
-    haystack = f"{article.title or ''} {article.summary_text or ''}".lower()
-    return any(topic.strip() and topic.lower() in haystack for topic in alert_topics)
+    Computed in code (caseless substring over title + feed summary) so the alert
+    decision is deterministic and auditable — it does not trust the model's own
+    is_alert guess. Only feed-provided text is searched; no body is fetched or
+    stored (no-scrape rule). Topics are stripped and casefolded before matching:
+    casefold (not lower) folds German casing such as ß correctly, and stripping
+    the topic keeps a whitespace-padded config entry (' Rückruf ') matchable —
+    the guard and the containment check use the same normalized value."""
+    haystack = f"{article.title or ''} {article.summary_text or ''}".casefold()
+    for topic in alert_topics:
+        needle = topic.strip().casefold()
+        if needle and needle in haystack:
+            return True
+    return False
 
 
 class _BaseClaudeAnalyzer:
@@ -244,7 +251,15 @@ class _BaseClaudeAnalyzer:
     def _compute_is_alert(self, article: Article, client: Client, importance_score: int) -> bool:
         """Alert iff the article hits a client alert_topic OR importance clears the
         configured threshold. Recomputed in code from the returned score/topics,
-        never copied from the model's own is_alert flag, so it stays tunable."""
+        never copied from the model's own is_alert flag, so it stays tunable.
+
+        Deliberately independent of the model's is_relevant judgment. alert_topics
+        are operator-chosen, high-stakes keywords (e.g. "Rückruf", "Insolvenz")
+        where a missed alert costs more than a rare name-coincidence false positive,
+        so a topic hit fires even when the model marked the article non-relevant.
+        This is the AC's definition verbatim (is_alert = OR of the two code-computed
+        conditions); gating it on relevance would reintroduce exactly the model
+        trust the code path exists to remove."""
         if importance_score >= self.alert_threshold:
             return True
         return _matches_alert_topic(article, getattr(client, "alert_topics", []) or [])
@@ -277,6 +292,7 @@ class ClaudeCodeAnalyzer(_BaseClaudeAnalyzer):
                 text=True,
                 timeout=self.timeout,
                 check=False,
+                shell=False,  # explicit: the prompt is an argv element, never a shell command
             )
         except subprocess.TimeoutExpired as exc:
             raise BackendError(f"claude -p timed out after {self.timeout}s") from exc
