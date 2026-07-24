@@ -25,8 +25,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from zipfile import BadZipFile
 
 import pandas as pd
+from openpyxl.utils.exceptions import InvalidFileException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -57,7 +59,10 @@ _ARRAY_DELIMITER = re.compile(r"[;,]")
 # indexes it as 0 — so a human-facing row number is the DataFrame index plus this.
 _HEADER_OFFSET = 2
 
-_SUPPORTED_SUFFIXES = frozenset({".csv", ".xlsx", ".xls"})
+# Only the modern Excel container (.xlsx, read via openpyxl) and .csv are
+# supported. The pre-2007 .xls format needs the ``xlrd`` engine, which is not a
+# declared dependency, so advertising it would surface a raw pandas error.
+_SUPPORTED_SUFFIXES = frozenset({".csv", ".xlsx"})
 
 
 class ImportValidationError(ValueError):
@@ -87,11 +92,14 @@ def _split_delimited(cell: str) -> list[str]:
 
 
 def _read_dataframe(path: Path) -> pd.DataFrame:
-    """Read an ``.xlsx``/``.xls``/``.csv`` into an all-string DataFrame.
+    """Read an ``.xlsx``/``.csv`` into an all-string DataFrame.
 
-    Empty cells become ``""`` (not NaN) so downstream trimming and splitting never
-    trip over a float, and header whitespace is stripped so a mapping key matches a
-    column that was typed with a trailing space.
+    ``keep_default_na=False`` keeps literal strings like ``"NA"`` or ``"null"``
+    intact (a client legitimately named "NA" must survive), and empty cells become
+    ``""`` (not NaN) so downstream trimming and splitting never trip over a float.
+    Header whitespace is stripped so a mapping key matches a column that was typed
+    with a trailing space. Any low-level pandas/openpyxl read failure is re-raised
+    as ``ImportValidationError`` so callers only ever see the one contract error.
     """
     suffix = path.suffix.lower()
     if suffix not in _SUPPORTED_SUFFIXES:
@@ -99,10 +107,17 @@ def _read_dataframe(path: Path) -> pd.DataFrame:
             f"Unsupported file type {suffix!r}; expected one of "
             f"{sorted(_SUPPORTED_SUFFIXES)}"
         )
-    if suffix == ".csv":
-        frame = pd.read_csv(path, dtype=str, keep_default_na=False)
-    else:
-        frame = pd.read_excel(path, dtype=str).fillna("")
+    try:
+        if suffix == ".csv":
+            frame = pd.read_csv(path, dtype=str, keep_default_na=False)
+        else:
+            frame = pd.read_excel(path, dtype=str, keep_default_na=False).fillna("")
+    except FileNotFoundError as exc:
+        raise ImportValidationError(f"File not found: {path}") from exc
+    except (ValueError, OSError, BadZipFile, InvalidFileException) as exc:
+        # ParserError/EmptyDataError subclass ValueError; a corrupt or mislabelled
+        # workbook raises BadZipFile/InvalidFileException.
+        raise ImportValidationError(f"Could not read {path.name}: {exc}") from exc
     frame.columns = [str(col).strip() for col in frame.columns]
     return frame
 
@@ -149,6 +164,9 @@ def preview_import(path: str | Path, mapping: dict[str, str]) -> list[dict]:
     Reads and validates exactly as ``import_clients`` does but writes nothing, so
     the UI can show the parsed rows (and surface a validation error) before commit.
     """
+    # Strip mapping keys the same way the sheet headers are stripped, so a source
+    # column typed with stray whitespace still lines up with its column.
+    mapping = {source.strip(): target for source, target in mapping.items()}
     frame = _read_dataframe(Path(path))
     _validate_mapping(mapping, list(frame.columns))
     return [
@@ -183,11 +201,19 @@ def import_clients(
     """
     rows = preview_import(path, mapping)
 
-    # One lookup builds the match index over all existing clients; new rows are
-    # added to it as they are created so an intra-sheet duplicate also collapses.
-    by_name: dict[str, Client] = {
-        _normalize_name(c.name): c for c in session.scalars(select(Client)).all()
-    }
+    # Build the match index by querying only the names this sheet actually
+    # references (case-insensitive, trimmed) rather than loading the whole table;
+    # new rows are added to it as they are created so an intra-sheet duplicate also
+    # collapses onto one client.
+    wanted = {_normalize_name(parsed["name"]) for parsed in rows}
+    by_name: dict[str, Client] = {}
+    if wanted:
+        stmt = select(Client).where(
+            func.lower(func.trim(Client.name)).in_(list(wanted))
+        )
+        by_name = {
+            _normalize_name(c.name): c for c in session.scalars(stmt).all()
+        }
 
     result = ImportResult()
     for parsed in rows:
@@ -239,13 +265,14 @@ def create_client(
 
 def update_client(session: Session, client_id: int, **fields) -> Client:
     """Update the given fields on a client. Raises ``LookupError`` if it does not
-    exist and ``ImportValidationError`` on an unknown field name."""
+    exist and ``ValueError`` on an unknown field name. (``ImportValidationError`` is
+    scoped to the import pipeline; a CRUD field error is a distinct concern.)"""
     client = session.get(Client, client_id)
     if client is None:
         raise LookupError(f"No client with id {client_id}")
     unknown = set(fields) - _IMPORTABLE_FIELDS - {"active"}
     if unknown:
-        raise ImportValidationError(f"Unknown client field(s): {sorted(unknown)}")
+        raise ValueError(f"Unknown client field(s): {sorted(unknown)}")
     for name, value in fields.items():
         setattr(client, name, value)
     session.commit()

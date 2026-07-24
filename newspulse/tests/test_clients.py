@@ -50,10 +50,6 @@ def session():
         yield sess
 
 
-def _by_name(clients: list[Client], name: str) -> Client:
-    return next(c for c in clients if c.name.strip() == name)
-
-
 # --- Clean import --------------------------------------------------------------
 
 
@@ -217,7 +213,7 @@ def test_update_unknown_client_raises(session):
 
 def test_update_rejects_unknown_field(session):
     client = create_client(session, name="Alt AG")
-    with pytest.raises(ImportValidationError):
+    with pytest.raises(ValueError):
         update_client(session, client.id, bogus="x")
 
 
