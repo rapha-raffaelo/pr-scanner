@@ -192,6 +192,31 @@ def test_fetch_feed_falls_back_to_fetched_at_when_date_missing(monkeypatch, capl
     assert any(record.levelno == logging.DEBUG for record in caplog.records)
 
 
+def test_fetch_feed_falls_back_to_fetched_at_when_date_unparseable(monkeypatch, caplog):
+    """A present-but-garbage pubDate is treated exactly like a missing one: fall
+    back to fetched_at and log at DEBUG (acceptance: "missing or unparseable")."""
+    unparseable = (
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+        b'<rss version="2.0"><channel><title>T</title><language>de</language>'
+        b"<item><title>Kaputtes Datum</title>"
+        b"<link>https://beispiel.example.de/kaputtes-datum</link>"
+        b"<pubDate>voellig kaputtes datum</pubDate>"
+        b"<description>Unlesbares pubDate.</description></item>"
+        b"</channel></rss>"
+    )
+    _patch_fetch(monkeypatch, unparseable)
+    fetched_at = dt.datetime(2026, 7, 24, 11, 0, tzinfo=dt.UTC)
+
+    with caplog.at_level(logging.DEBUG, logger="newspulse.ingest"):
+        items = ingest.fetch_feed(
+            _FEED_URL, since=_SINCE, source="Beispiel", fetched_at=fetched_at
+        )
+
+    assert len(items) == 1
+    assert items[0].published_at == fetched_at
+    assert any(record.levelno == logging.DEBUG for record in caplog.records)
+
+
 def test_fetch_feed_returns_feeditem_instances(fixture_bytes, monkeypatch):
     _patch_fetch(monkeypatch, fixture_bytes)
 
