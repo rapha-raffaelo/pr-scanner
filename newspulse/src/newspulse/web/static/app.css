@@ -1,0 +1,194 @@
+/* NewsPulse dashboard — Today view (DEC-1 option C: two-pane triage).
+   A narrow left rail of alert cards beside a full ranked feed on the right. */
+
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --border: #e2e5ea;
+  --text: #1c2330;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --alert: #dc2626;
+  --alert-bg: #fef2f2;
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.4;
+}
+
+/* --- Header / last-run status ------------------------------------------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text);
+  text-decoration: none;
+}
+.run-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.run-badge {
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--muted);
+}
+.run-badge--ok { background: #16a34a; }
+.run-badge--partial { background: #d97706; }
+.run-badge--failed { background: var(--alert); }
+.run-status--empty { font-style: italic; }
+
+/* --- Toolbar / date picker ---------------------------------------------- */
+.content { padding: 1.25rem 1.5rem; }
+.today-toolbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.today-toolbar h1 { margin: 0; font-size: 1.5rem; }
+.date-picker { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
+.date-picker input {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+}
+
+/* --- Two-pane triage layout --------------------------------------------- */
+.triage {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .triage { grid-template-columns: 1fr; }
+}
+.rail__title, .feed__title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+}
+
+/* --- Left rail: alert cards --------------------------------------------- */
+.triage__rail {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.alert-card {
+  background: var(--alert-bg);
+  border: 1px solid #fca5a5;
+  border-left: 4px solid var(--alert);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.85rem;
+}
+.alert-card__headline {
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  display: block;
+}
+.alert-card__headline:hover { text-decoration: underline; }
+.alert-card__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+.alert-card__summary { margin: 0.4rem 0 0; font-size: 0.85rem; }
+.rail__empty { color: var(--muted); font-style: italic; }
+
+/* --- Right pane: ranked feed -------------------------------------------- */
+.triage__feed { display: flex; flex-direction: column; gap: 0.6rem; }
+.feed-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+}
+.feed-item--alert { border-left: 4px solid var(--alert); }
+.feed-item__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.feed-item__headline {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+.feed-item__headline:hover { color: var(--accent); text-decoration: underline; }
+.feed-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.feed-item__meta .client { font-weight: 600; color: var(--text); }
+.feed-item__summary { margin: 0.5rem 0 0; font-size: 0.9rem; }
+
+/* --- Tags ---------------------------------------------------------------- */
+.tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  text-transform: lowercase;
+}
+.tag--category { background: #eef2ff; color: #3730a3; }
+.tag--alert {
+  background: var(--alert);
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.importance { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* --- Empty state --------------------------------------------------------- */
+.empty-state {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  text-align: center;
+  color: var(--muted);
+}
