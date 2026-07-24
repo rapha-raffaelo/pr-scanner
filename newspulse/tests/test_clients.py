@@ -135,6 +135,38 @@ def test_reimport_matches_name_case_insensitively_and_trimmed(session):
     assert muster.name.strip() == "Muster GmbH"
 
 
+def test_reimport_with_umlaut_name_updates_not_duplicates(session, tmp_path):
+    """A German name with an uppercase umlaut re-imports onto the existing client.
+    SQLite's lower()/trim() fold only ASCII, so 'Öko AG' would slip a SQL match and
+    duplicate; the dedup is done in Python with a full Unicode casefold."""
+    csv = tmp_path / "umlaut.csv"
+    csv.write_text("Firmenname,Branche\nÖko AG,Energie\n", encoding="utf-8")
+    mapping = {"Firmenname": "name", "Branche": "industry"}
+
+    first = import_clients(csv, mapping, session)
+    second = import_clients(csv, mapping, session)
+
+    assert first.created == 1
+    assert second.created == 0
+    assert second.updated == 1
+    assert session.query(Client).count() == 1
+
+
+def test_import_matches_umlaut_case_variant_of_existing_client(session, tmp_path):
+    """A client created via the CRUD service under an uppercase-umlaut name is
+    matched (not duplicated) when a sheet imports it in a different case — the fold
+    happens in Python, which SQLite's ASCII-only lower() cannot do."""
+    create_client(session, name="Öko AG", industry="Alt")
+
+    csv = tmp_path / "umlaut_variant.csv"
+    csv.write_text("Firmenname,Branche\nöko ag,Neu\n", encoding="utf-8")
+    result = import_clients(csv, {"Firmenname": "name", "Branche": "industry"}, session)
+
+    assert result.created == 0
+    assert result.updated == 1
+    assert session.query(Client).count() == 1
+
+
 # --- Bad sheet: missing name column --------------------------------------------
 
 

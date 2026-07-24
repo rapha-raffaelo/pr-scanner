@@ -29,7 +29,7 @@ from zipfile import BadZipFile
 
 import pandas as pd
 from openpyxl.utils.exceptions import InvalidFileException
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import DEFAULT_COUNTRY, Client
@@ -111,13 +111,18 @@ def _read_dataframe(path: Path) -> pd.DataFrame:
         if suffix == ".csv":
             frame = pd.read_csv(path, dtype=str, keep_default_na=False)
         else:
-            frame = pd.read_excel(path, dtype=str, keep_default_na=False).fillna("")
+            frame = pd.read_excel(path, dtype=str, keep_default_na=False)
     except FileNotFoundError as exc:
         raise ImportValidationError(f"File not found: {path}") from exc
     except (ValueError, OSError, BadZipFile, InvalidFileException) as exc:
         # ParserError/EmptyDataError subclass ValueError; a corrupt or mislabelled
         # workbook raises BadZipFile/InvalidFileException.
         raise ImportValidationError(f"Could not read {path.name}: {exc}") from exc
+    # Coerce NaN to "" for both read paths, not just Excel: a ragged row (fewer
+    # fields than the header) yields NaN even with keep_default_na=False, and
+    # str(float('nan')) is the truthy string 'nan' — which would pass the empty-name
+    # check and store garbage. An explicit "" keeps trimming and splitting safe.
+    frame = frame.fillna("")
     frame.columns = [str(col).strip() for col in frame.columns]
     return frame
 
@@ -142,7 +147,9 @@ def _validate_mapping(mapping: dict[str, str], columns: list[str]) -> None:
         )
 
 
-def _parse_row(row: pd.Series, mapping: dict[str, str], line_number: int) -> dict:
+def _parse_row(
+    row: pd.Series, mapping: dict[str, str], line_number: int
+) -> dict[str, str | list[str]]:
     """Turn one spreadsheet row into a client-field dict, validating name."""
     parsed: dict[str, str | list[str]] = {}
     for source_column, target_field in mapping.items():
@@ -158,7 +165,9 @@ def _parse_row(row: pd.Series, mapping: dict[str, str], line_number: int) -> dic
     return parsed
 
 
-def preview_import(path: str | Path, mapping: dict[str, str]) -> list[dict]:
+def preview_import(
+    path: str | Path, mapping: dict[str, str]
+) -> list[dict[str, str | list[str]]]:
     """Parse and validate a sheet, returning one client-field dict per row.
 
     Reads and validates exactly as ``import_clients`` does but writes nothing, so
@@ -180,7 +189,7 @@ def _normalize_name(name: str) -> str:
     return name.strip().lower()
 
 
-def _assign_fields(client: Client, parsed: dict) -> None:
+def _assign_fields(client: Client, parsed: dict[str, str | list[str]]) -> None:
     """Copy parsed fields onto a client. Array fields overwrite (the sheet is
     authoritative); an empty optional scalar keeps the default/existing value."""
     for target_field, value in parsed.items():
@@ -201,17 +210,22 @@ def import_clients(
     """
     rows = preview_import(path, mapping)
 
-    # Build the match index by querying only the names this sheet actually
-    # references (case-insensitive, trimmed) rather than loading the whole table;
-    # new rows are added to it as they are created so an intra-sheet duplicate also
-    # collapses onto one client.
+    # Build the match index in Python, not SQL. SQLite's built-in lower()/trim()
+    # fold only ASCII, so an uppercase umlaut (Ö/Ä/Ü) — pervasive in German company
+    # names — would not match _normalize_name's full Unicode casefold, and a
+    # re-import of "Öko AG" would create a duplicate instead of updating. The
+    # portfolio is small, so loading candidates and matching them the same way the
+    # wanted set is normalized is both correct and cheap. New rows are added to the
+    # index as they are created so an intra-sheet duplicate also collapses onto one
+    # client.
     wanted = {_normalize_name(parsed["name"]) for parsed in rows}
     by_name: dict[str, Client] = {}
     if wanted:
-        stmt = select(Client).where(
-            func.lower(func.trim(Client.name)).in_(list(wanted))
-        )
-        by_name = {_normalize_name(c.name): c for c in session.scalars(stmt).all()}
+        by_name = {
+            norm: client
+            for client in session.scalars(select(Client)).all()
+            if (norm := _normalize_name(client.name)) in wanted
+        }
 
     result = ImportResult()
     for parsed in rows:
@@ -290,11 +304,15 @@ def deactivate_client(session: Session, client_id: int) -> Client:
 
 def list_clients(session: Session, *, include_inactive: bool = False) -> list[Client]:
     """List clients ordered by name. Active-only by default; pass
-    ``include_inactive=True`` to include soft-deactivated clients."""
-    stmt = select(Client).order_by(func.lower(Client.name))
+    ``include_inactive=True`` to include soft-deactivated clients.
+
+    Ordered in Python with ``str.lower`` rather than SQL ``lower()`` so casing folds
+    consistently for umlaut names (SQLite's ``lower()`` folds only ASCII). Full
+    locale-aware German collation (ä→a, ö→o) is out of scope and would need ICU."""
+    stmt = select(Client)
     if not include_inactive:
         stmt = stmt.where(Client.active.is_(True))
-    return list(session.scalars(stmt).all())
+    return sorted(session.scalars(stmt).all(), key=lambda c: c.name.lower())
 
 
 __all__ = [
