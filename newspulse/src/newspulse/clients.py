@@ -23,6 +23,7 @@ the archive the agent owns is permanent.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from zipfile import BadZipFile
@@ -185,8 +186,15 @@ def preview_import(
 
 
 def _normalize_name(name: str) -> str:
-    """The match key for de-duplication: trimmed and lowercased."""
-    return name.strip().lower()
+    """The match key for de-duplication: trimmed, NFC-normalized, and casefolded.
+
+    ``str.casefold()`` (not ``.lower()``) does a full Unicode fold, so the German
+    ``ß`` folds to ``ss`` and the customary uppercase spelling "GROSSE STRASSE AG"
+    matches "Große Straße AG" instead of duplicating it. NFC first so a decomposed
+    umlaut ("O" + combining diaeresis, e.g. from an odd export) matches its
+    precomposed form rather than slipping the match and duplicating on re-import.
+    """
+    return unicodedata.normalize("NFC", name.strip()).casefold()
 
 
 def _assign_fields(client: Client, parsed: dict[str, str | list[str]]) -> None:
@@ -204,20 +212,23 @@ def import_clients(
     """Import clients from ``path`` using ``mapping``; create new, update existing.
 
     Existing clients are matched by name (case-insensitive, trimmed), so
-    re-importing the same sheet updates in place and never duplicates. A single
-    sheet that lists the same name twice collapses onto one client for the same
-    reason. Nothing is committed until every row parses cleanly.
+    re-importing the same sheet updates in place and never duplicates. A
+    soft-deactivated client that reappears in a sheet is reactivated (import is the
+    primary way the agent adds clients, so re-importing a live portfolio must not
+    leave rows invisible). A single sheet that lists the same name twice collapses
+    onto one client, counted once. Nothing is committed until every row parses
+    cleanly.
     """
     rows = preview_import(path, mapping)
 
     # Build the match index in Python, not SQL. SQLite's built-in lower()/trim()
-    # fold only ASCII, so an uppercase umlaut (Ö/Ä/Ü) — pervasive in German company
-    # names — would not match _normalize_name's full Unicode casefold, and a
-    # re-import of "Öko AG" would create a duplicate instead of updating. The
-    # portfolio is small, so loading candidates and matching them the same way the
-    # wanted set is normalized is both correct and cheap. New rows are added to the
-    # index as they are created so an intra-sheet duplicate also collapses onto one
-    # client.
+    # fold only ASCII, so an uppercase umlaut (Ö/Ä/Ü) or a "ß" — pervasive in German
+    # company names — would not match _normalize_name's full Unicode casefold, and a
+    # re-import of "Öko AG" would create a duplicate instead of updating. All rows
+    # are candidates for a match, including soft-deactivated ones, so a re-import
+    # reactivates rather than duplicates. The portfolio is small, so loading
+    # candidates and matching them the same way the wanted set is normalized is both
+    # correct and cheap.
     wanted = {_normalize_name(parsed["name"]) for parsed in rows}
     by_name: dict[str, Client] = {}
     if wanted:
@@ -227,23 +238,31 @@ def import_clients(
             if (norm := _normalize_name(client.name)) in wanted
         }
 
+    # Track distinct clients touched this import so an intra-sheet duplicate name is
+    # counted (and returned) once, not once per row. ``created_keys`` are the rows
+    # that inserted a new client; everything else touched is an update.
     result = ImportResult()
+    touched: dict[str, Client] = {}
+    created_keys: set[str] = set()
     for parsed in rows:
         key = _normalize_name(parsed["name"])
         existing = by_name.get(key)
         if existing is not None:
+            existing.active = True  # a re-imported client is a live one again
             _assign_fields(existing, parsed)
-            result.updated += 1
-            result.clients.append(existing)
+            touched[key] = existing
         else:
             client = Client(name=parsed["name"])
             _assign_fields(client, parsed)
             session.add(client)
             by_name[key] = client
-            result.created += 1
-            result.clients.append(client)
+            created_keys.add(key)
+            touched[key] = client
 
     session.commit()
+    result.created = len(created_keys)
+    result.updated = len(touched) - len(created_keys)
+    result.clients = list(touched.values())
     return result
 
 
