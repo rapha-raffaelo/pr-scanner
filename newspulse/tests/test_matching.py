@@ -338,3 +338,74 @@ def test_normalize_strips_punctuation_and_whitespace():
     b = matching.normalize_title("beispiel ag rekord")
 
     assert a == b
+
+
+# --- QA regression tests: dedup must never drop a real, distinct story ----------
+
+
+def test_symbol_only_titles_never_collapse():
+    """A title with no alphanumerics normalizes to "" and shares one hash with every
+    other such title. Collapsing on it would drop distinct stories, and a persisted
+    empty hash would black-hole every future symbol-only item. Both must fall back to
+    URL-only dedup."""
+    a = _item("📈", "https://a.de/1", source="A", when=_WHEN)
+    b = _item("⚽", "https://b.de/2", source="B", when=_WHEN)
+
+    kept = matching.deduplicate([a, b])
+    assert {i.link for i in kept} == {"https://a.de/1", "https://b.de/2"}
+
+    # A stored empty-title hash must not suppress a later, distinct symbol-only item.
+    seeded = {matching.title_hash("🔴")}
+    survived = matching.deduplicate(
+        [_item("📷", "https://c.de/3", source="C")], known_title_hashes=seeded
+    )
+    assert [i.link for i in survived] == ["https://c.de/3"]
+
+
+def test_generic_short_headline_from_two_companies_kept_apart():
+    """Two different firms publishing the identical short generic PR headline are not
+    wire duplicates. A too-thin title must not hash-collapse, or one client loses the
+    story entirely."""
+    a = _item(
+        "Quartalszahlen veröffentlicht", "https://a-ag.de/pr", source="A-AG", when=_WHEN
+    )
+    b = _item(
+        "Quartalszahlen veröffentlicht",
+        "https://b-gmbh.de/pr",
+        source="B-GmbH",
+        when=_WHEN + dt.timedelta(hours=1),
+    )
+
+    kept = matching.deduplicate([a, b])
+
+    assert {i.link for i in kept} == {"https://a-ag.de/pr", "https://b-gmbh.de/pr"}
+
+
+def test_middot_and_pipe_rubric_prefix_stays_distinct():
+    """A pipe/middot after a short *rubric* head ("Formel 1 ·", "Liveticker |") is a
+    section label, not an outlet byline; the tail is the real story. Distinct stories
+    sharing only the rubric must not normalize to the same hash."""
+    assert matching.normalize_title(
+        "Formel 1 · Verstappen siegt"
+    ) != matching.normalize_title("Formel 1 · Hamilton crasht")
+    assert matching.normalize_title(
+        "Liveticker | Bayern gewinnt"
+    ) != matching.normalize_title("Liveticker | Dortmund verliert")
+
+
+def test_esszett_client_matches_ss_headline():
+    """Case-folding both sides applies the German ß→ss fold, so a client "Straße"
+    matches a headline rendered "STRASSE" — a recall gap re.IGNORECASE leaves open."""
+    client = FakeClient("Straße")
+    item = _item("STRASSE meldet Zahlen", "https://x.de/ss")
+
+    assert len(matching.match_candidates([item], [client])) == 1
+
+
+def test_multi_word_term_matches_hyphenated_headline():
+    """Recall-first: a multi-word client "Deutsche Bank" also matches a hyphenated
+    "Deutsche-Bank", where the inter-word gap is punctuation, not whitespace."""
+    client = FakeClient("Deutsche Bank")
+    item = _item("Deutsche-Bank stellt neue Strategie vor", "https://x.de/db")
+
+    assert len(matching.match_candidates([item], [client])) == 1

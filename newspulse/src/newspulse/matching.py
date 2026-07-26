@@ -54,10 +54,27 @@ _MAX_SOURCE_SUFFIX_WORDS = 5
 _SOURCE_SEP_RE = re.compile(r"\s+([-–—|·])\s+")
 
 # Of those, only pipe and middot reliably precede an outlet byline — German headlines
-# never use them mid-sentence — so a short tail after one is stripped as a byline on
-# length alone. The dash variants stay source-guarded (see _strip_source_suffix): a
-# false collapse drops a real story, the costlier error, so dedup errs toward keeping.
+# never use them mid-sentence — so a short tail after one *may* be a byline. The dash
+# variants stay source-guarded (see _strip_source_suffix): a false collapse drops a
+# real story, the costlier error, so dedup errs toward keeping.
 _STRONG_BYLINE_SEPS = frozenset("|·")
+
+# The fewest word-tokens a headline needs before dedup treats it as a specific story.
+# Below this it is an empty/symbol-only title, a section rubric ("Formel 1 · …",
+# "Liveticker | …"), or PR boilerplate ("Pressemitteilung", "Quartalszahlen
+# veröffentlicht") that unrelated stories coincidentally share — too little signal to
+# read an exact title match across different URLs as republished wire copy. It gates
+# two decisions: whether a short pipe/middot tail is an outlet byline (vs a rubric
+# whose short *head* is the section label), and whether an exact-title match may
+# hash-collapse at all. Wire copy is a full clause (subject+verb+object ≈ 4 words) and
+# clears it easily; a lower bar would collapse — and silently drop — a real, distinct
+# story, the one dedup error this module cannot recover from.
+_MIN_HEADLINE_WORDS = 4
+
+# Word tokens of a multi-word client term are joined by a run of non-alphanumerics
+# (not whitespace alone) so "Deutsche Bank" still matches a hyphenated "Deutsche-Bank"
+# in a headline — another nudge toward recall (see the module docstring).
+_TERM_TOKEN_GAP = r"[\W_]+"
 
 # Everything that is not a Unicode letter or digit (punctuation, whitespace,
 # underscore) is stripped when normalizing a title, so only the "word content"
@@ -101,7 +118,10 @@ def match_candidates(
     matchers = [(client, _compile_client_matcher(client)) for client in clients]
     candidates: list[Candidate] = []
     for item in items:
-        haystack = _haystack(item)
+        # Case-fold once per item, not per client: this is the ß→ss fold, so a
+        # client "Straße" matches a headline "STRASSE" (the matchers are compiled
+        # from case-folded terms too — see _term_pattern).
+        haystack = _haystack(item).casefold()
         if not haystack.strip():
             continue
         for client, matcher in matchers:
@@ -124,19 +144,22 @@ def _haystack(item: FeedItem) -> str:
 
 
 def _compile_client_matcher(client: Client) -> re.Pattern[str] | None:
-    """Compile a single case-insensitive, word-boundary matcher for a client.
+    """Compile a single case-folded, word-boundary matcher for a client.
 
     All of a client's terms (name + aliases + keywords) become one alternation
     wrapped in ``(?<!\\w) … (?!\\w)`` lookarounds. The lookarounds — rather than
     ``\\b`` — are what reject a substring inside a longer word: a term only
     matches when the characters immediately around it are not word characters, so
-    "Bahn" hits "Die Bahn fährt" but never "Autobahn". Returns ``None`` for a
-    client with no usable terms so the caller can skip it."""
+    "Bahn" hits "Die Bahn fährt" but never "Autobahn". The pattern is built from
+    case-folded terms (and the caller case-folds the haystack), giving full Unicode
+    case-insensitivity including the German ß→ss fold, so "Straße" matches "STRASSE"
+    — a recall gap that ``re.IGNORECASE`` alone would leave open. Returns ``None``
+    for a client with no usable terms so the caller can skip it."""
     terms = _client_terms(client)
     if not terms:
         return None
     alternation = "|".join(_term_pattern(term) for term in terms)
-    return re.compile(rf"(?<!\w)(?:{alternation})(?!\w)", re.IGNORECASE)
+    return re.compile(rf"(?<!\w)(?:{alternation})(?!\w)")
 
 
 def _client_terms(client: Client) -> list[str]:
@@ -161,13 +184,15 @@ def _client_terms(client: Client) -> list[str]:
 
 
 def _term_pattern(term: str) -> str:
-    """Escape a term into a regex fragment, allowing flexible internal whitespace.
+    """Escape a term into a regex fragment, allowing a flexible internal gap.
 
-    A multi-word term ("Deutsche Bank") joins its escaped tokens with ``\\s+`` so
-    it still matches when the feed rendered the gap as a newline or double space —
-    another nudge toward recall. Each token is ``re.escape``-d so punctuation in a
+    A multi-word term ("Deutsche Bank") joins its escaped tokens with
+    ``_TERM_TOKEN_GAP`` (a run of non-alphanumerics) so it still matches when the
+    feed rendered the gap as a newline, double space, or hyphen ("Deutsche-Bank") —
+    another nudge toward recall. The term is case-folded so the matcher shares the
+    ß→ss fold with the haystack. Each token is ``re.escape``-d so punctuation in a
     company name ("E.ON", "1&1") is treated literally, not as regex syntax."""
-    return r"\s+".join(re.escape(token) for token in term.split())
+    return _TERM_TOKEN_GAP.join(re.escape(token) for token in term.casefold().split())
 
 
 # --- Deduplication -------------------------------------------------------------
@@ -193,6 +218,13 @@ def deduplicate(
     first, ties broken by source name (then URL), and the first survivor of each
     URL/hash wins — so a second run over the same feeds keeps exactly the same
     copy and adds nothing new.
+
+    Title-hash collapse is *only* applied to titles specific enough to trust
+    (``>= _MIN_HEADLINE_WORDS`` word-tokens after byline removal). An empty or
+    symbol-only headline, or a short generic label two unrelated firms happen to
+    share, falls back to URL-only dedup — collapsing it would silently drop a
+    real, distinct story before Claude ever reads it, the one dedup error this
+    module cannot recover from.
     """
     seen_urls: set[str] = set(known_urls or ())
     seen_hashes: set[str] = set(known_title_hashes or ())
@@ -201,14 +233,22 @@ def deduplicate(
     dropped = 0
     for item in sorted(items, key=_dedup_sort_key):
         url = _item_url(item)
-        thash = title_hash(_item_title(item), _item_source(item))
-        if (url and url in seen_urls) or thash in seen_hashes:
+        title = _item_title(item)
+        source = _item_source(item)
+        # None => this title is too thin to hash-collapse; dedup it by URL only.
+        thash = (
+            title_hash(title, source)
+            if _significant_word_count(title, source) >= _MIN_HEADLINE_WORDS
+            else None
+        )
+        if (url and url in seen_urls) or (thash is not None and thash in seen_hashes):
             dropped += 1
             continue
         kept.append(item)
         if url:
             seen_urls.add(url)
-        seen_hashes.add(thash)
+        if thash is not None:
+            seen_hashes.add(thash)
 
     if dropped:
         _log.debug("deduplicate: kept %d item(s), dropped %d duplicate(s)", len(kept), dropped)
@@ -233,13 +273,23 @@ def normalize_title(title: str, source: str | None = None) -> str:
 def _strip_source_suffix(title: str, source: str | None) -> str:
     """Drop a trailing outlet byline ("… | Handelsblatt", "… – SPIEGEL ONLINE").
 
-    Splits on the *last* source separator. A pipe/middot separator followed by a
-    short tail is an unambiguous byline and is removed. A dash separator (hyphen,
-    en-dash, em-dash) is ambiguous — the en-dash is the standard German
-    Gedankenstrich used mid-headline ("Mercedes – Absatz bricht ein") — so a dash
-    tail is stripped only when it exactly equals this item's ``source``, never on
-    length alone. Erring toward keeping a duplicate beats collapsing two distinct
-    stories into one and dropping a real article (the costlier dedup error)."""
+    Splits on the *last* source separator and strips the tail only when it is
+    clearly an outlet byline, never part of the story:
+
+    * **Any separator** — strip when the tail's alnum core equals this item's
+      ``source`` (the byline literally is this outlet's name).
+    * **Pipe/middot only** — also strip a short tail (``<= _MAX_SOURCE_SUFFIX_WORDS``)
+      when the *head* is itself a full headline (``>= _MIN_HEADLINE_WORDS``). The
+      head guard rejects a *rubric* prefix ("Formel 1 · Verstappen siegt",
+      "Liveticker | Bayern gewinnt") whose short head is a section label and whose
+      tail is the actual story: stripping there would collapse two distinct stories
+      that share only the rubric.
+
+    A dash separator (hyphen, en-dash, em-dash) is never stripped on length alone —
+    the en-dash is the German Gedankenstrich used mid-headline ("Mercedes – Absatz
+    bricht ein"), so it is removed only via the source-name match above. Erring
+    toward keeping a duplicate beats collapsing two distinct stories into one and
+    dropping a real article (the costlier dedup error)."""
     matches = list(_SOURCE_SEP_RE.finditer(title))
     if not matches:
         return title.strip()
@@ -248,12 +298,26 @@ def _strip_source_suffix(title: str, source: str | None) -> str:
     tail = title[last.end() :].strip()
     if not head:
         return title.strip()
-    sep_char = last.group(1)
-    if sep_char in _STRONG_BYLINE_SEPS and len(tail.split()) <= _MAX_SOURCE_SUFFIX_WORDS:
-        return head
     if source and _alnum(tail) == _alnum(source.strip()):
         return head
+    sep_char = last.group(1)
+    if (
+        sep_char in _STRONG_BYLINE_SEPS
+        and len(tail.split()) <= _MAX_SOURCE_SUFFIX_WORDS
+        and len(head.split()) >= _MIN_HEADLINE_WORDS
+    ):
+        return head
     return title.strip()
+
+
+def _significant_word_count(title: str, source: str | None) -> int:
+    """Count of alphanumeric word-tokens in the byline-stripped title.
+
+    Zero for an empty/symbol-only headline; small for a short generic label. Used
+    by :func:`deduplicate` to decide whether a title carries enough signal to
+    trust an exact cross-URL match as republished wire copy — see the
+    ``_MIN_HEADLINE_WORDS`` rationale."""
+    return len(re.findall(r"\w+", _strip_source_suffix(title, source)))
 
 
 def _alnum(value: str) -> str:
