@@ -4,7 +4,7 @@
 {% macro item_row(item) %}
   <article class="feed-item{% if item.is_alert %} feed-item--alert{% endif %}">
     <div class="feed-item__head">
-      <a class="feed-item__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a>
+      <a class="feed-item__headline" href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a>
       {% if item.is_alert %}<span class="tag tag--alert">Alert</span>{% endif %}
     </div>
     <div class="feed-item__meta">
@@ -50,12 +50,12 @@
     {% if alerts %}
       {% for item in alerts %}
         <div class="alert-card">
-          <a class="alert-card__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a>
+          <a class="alert-card__headline" href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer" title="{{ item.headline }}">{{ item.headline }}</a>
           <div class="alert-card__meta">
             <span class="client">{{ item.client_name }}</span>
             <span class="importance">{{ item.importance }}/10</span>
           </div>
-          {% if item.summary %}<p class="alert-card__summary">{{ item.summary }}</p>{% endif %}
+          {% if item.summary %}<p class="alert-card__summary" title="{{ item.summary }}">{{ item.summary }}</p>{% endif %}
         </div>
       {% endfor %}
     {% else %}
