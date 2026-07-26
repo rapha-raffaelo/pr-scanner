@@ -44,7 +44,8 @@ class TodayItem:
 class RunStatusView:
     """Header last-run status sourced from the latest ``runs`` row."""
 
-    ran_at: dt.datetime | None
+    ran_at: dt.datetime
+    is_running: bool
     status: str
     articles_checked: int
     feed_errors: int
@@ -123,8 +124,12 @@ def _fetch_last_run(session: Session) -> RunStatusView | None:
     ).scalar_one_or_none()
     if run is None:
         return None
+    # Shown in local time so the header matches the article times and day window
+    # (all local); a run with no finished_at is still in progress.
+    ran_at = (run.finished_at or run.started_at).astimezone(_local_tz())
     return RunStatusView(
-        ran_at=run.finished_at or run.started_at,
+        ran_at=ran_at,
+        is_running=run.finished_at is None,
         status=run.status.value,
         articles_checked=run.articles_found,
         feed_errors=len(run.errors),

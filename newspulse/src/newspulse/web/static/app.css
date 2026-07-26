@@ -174,7 +174,17 @@ body {
   border-radius: 999px;
   text-transform: lowercase;
 }
+/* Base category chip; per-category colors below give the closed Category set
+   (models.Category) distinct, scannable hues in the ranked feed. The generic
+   .tag--category is the fallback if a new category is ever added upstream. */
 .tag--category { background: #eef2ff; color: #3730a3; }
+.tag--produkt { background: #ecfdf5; color: #047857; }
+.tag--personalie { background: #eff6ff; color: #1d4ed8; }
+.tag--krise { background: #fef2f2; color: #b91c1c; }
+.tag--regulatorik { background: #fefce8; color: #a16207; }
+.tag--finanzen { background: #f0fdfa; color: #0f766e; }
+.tag--wettbewerb { background: #fff7ed; color: #c2410c; }
+.tag--sonstiges { background: #f3f4f6; color: #4b5563; }
 .tag--alert {
   background: var(--alert);
   color: #fff;

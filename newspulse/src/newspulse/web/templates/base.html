@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}NewsPulse{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
-  <!-- HTMX for server-driven swaps (date picker); no build step, vendored-by-CDN. -->
-  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <!-- HTMX for server-driven swaps (date picker); vendored locally so the app
+       stays fully offline (DEC-3: everything runs on the local machine). -->
+  <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -14,7 +15,7 @@
     <div class="run-status" title="Last daily run">
       {% if last_run %}
         <span class="run-time">
-          {% if last_run.ran_at %}Letzter Lauf: {{ last_run.ran_at.strftime('%d.%m.%Y %H:%M UTC') }}{% else %}Läuft…{% endif %}
+          {% if last_run.is_running %}Läuft…{% else %}Letzter Lauf: {{ last_run.ran_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}
         </span>
         <span class="run-badge run-badge--{{ last_run.status }}">{{ last_run.status }}</span>
         <span class="run-metric">{{ last_run.articles_checked }} Artikel geprüft</span>
