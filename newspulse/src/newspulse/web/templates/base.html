@@ -6,8 +6,12 @@
   <title>{% block title %}NewsPulse{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
   <!-- HTMX for server-driven swaps (date picker); vendored locally so the app
-       stays fully offline (DEC-3: everything runs on the local machine). -->
-  <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
+       stays fully offline (DEC-3: everything runs on the local machine). Loaded
+       synchronously (no defer) so window.htmx is defined before the date input
+       can be changed — otherwise the native onchange fallback could fire a full
+       navigation mid-load and double-fetch. It is a small local file, so the
+       parse-blocking cost is negligible. -->
+  <script src="{{ url_for('static', path='htmx.min.js') }}"></script>
 </head>
 <body>
   <header class="topbar">

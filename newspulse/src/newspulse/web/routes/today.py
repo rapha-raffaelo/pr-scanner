@@ -9,7 +9,10 @@ state rather than an error.
 from __future__ import annotations
 
 import datetime as dt
+import os
 from dataclasses import dataclass
+from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -23,6 +26,53 @@ router = APIRouter()
 
 # The date-picker exchange format; also how a prior day is passed as ?date=.
 _DATE_FORMAT = "%Y-%m-%d"
+
+# Only surface analyses the analyzer judged relevant to the client. A relevance
+# of 0 means "this story does not concern this client" — a row the future
+# analyzer may still persist for a non-matching (article, client) pair — so it
+# must never appear as coverage. Importance ordering is applied on top of this
+# gate. (The analyzer contract is not yet built; this pins the include rule.)
+_MIN_RELEVANCE = 1
+
+# The zoneinfo db stores each zone under a ".../zoneinfo/<Area>/<City>" path;
+# the tail after this marker is the IANA name of an /etc/localtime symlink.
+_ZONEINFO_MARKER = "zoneinfo/"
+
+
+def _resolve_local_zone() -> dt.tzinfo:
+    """Resolve the machine's local zone as a DST-aware ``ZoneInfo``.
+
+    A DST-aware zone is required, not the fixed offset that
+    ``datetime.now().astimezone().tzinfo`` returns: that offset reflects the DST
+    state *right now* and, applied to a day in the other DST regime, shifts the
+    local-day window by the DST delta (±1h), misattributing articles near local
+    midnight. Prefers the ``TZ`` env var, then the ``/etc/localtime`` symlink
+    target; falls back to the current fixed offset (DST-naive) only if neither
+    yields a known zone, so the dashboard never crashes on an exotic host.
+    """
+    tz_name = os.environ.get("TZ")
+    if tz_name:
+        try:
+            return ZoneInfo(tz_name)
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    localtime = Path("/etc/localtime")
+    if localtime.is_symlink():
+        target = str(localtime.readlink())
+        if _ZONEINFO_MARKER in target:
+            try:
+                return ZoneInfo(target.split(_ZONEINFO_MARKER, 1)[1])
+            except (ZoneInfoNotFoundError, ValueError):
+                pass
+    # Last resort: the current fixed offset. astimezone() always yields a
+    # concrete tzinfo; fall back to UTC defensively.
+    return dt.datetime.now().astimezone().tzinfo or dt.UTC
+
+
+# Resolved once at import: the host's zone does not change during a process, and
+# a ZoneInfo (not a frozen offset) is what makes _day_bounds_utc DST-correct for
+# any requested day.
+_LOCAL_ZONE = _resolve_local_zone()
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,10 +102,12 @@ class RunStatusView:
 
 
 def _local_tz() -> dt.tzinfo:
-    """The machine's local timezone — 'today' is the current *local* day."""
-    local = dt.datetime.now().astimezone().tzinfo
-    # astimezone() always yields a concrete tzinfo; fall back to UTC defensively.
-    return local or dt.UTC
+    """The machine's local timezone — 'today' is the current *local* day.
+
+    A single DST-aware zone (resolved once at import), so bounding any requested
+    day uses that day's own offset rather than today's frozen one.
+    """
+    return _LOCAL_ZONE
 
 
 def _parse_day(raw: str | None) -> dt.date:
@@ -93,7 +145,11 @@ def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
         select(Analysis, Article, Client)
         .join(Article, Analysis.article_id == Article.id)
         .join(Client, Analysis.client_id == Client.id)
-        .where(Article.published_at >= start_utc, Article.published_at < end_utc)
+        .where(
+            Article.published_at >= start_utc,
+            Article.published_at < end_utc,
+            Analysis.relevance_score >= _MIN_RELEVANCE,
+        )
         .order_by(
             Analysis.is_alert.desc(),
             Analysis.importance_score.desc(),
