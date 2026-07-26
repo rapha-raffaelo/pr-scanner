@@ -173,7 +173,8 @@
         {% if import_error %}
           <div class="notice notice--error">{{ import_error }}</div>
         {% elif import_rows is not none %}
-          <p class="panel-hint">{{ import_rows | length }} Zeile(n) — noch nicht importiert. Auf „Importieren“ klicken, um zu übernehmen.</p>
+          <p class="panel-hint">{{ import_row_total }} Zeile(n) — noch nicht importiert. Auf „Importieren“ klicken, um zu übernehmen.
+            {% if import_row_total > import_rows | length %}(Vorschau zeigt die ersten {{ import_rows | length }}.){% endif %}</p>
           <table class="data">
             <thead>
               <tr>{% for field in map_fields %}<th>{{ field }}</th>{% endfor %}</tr>

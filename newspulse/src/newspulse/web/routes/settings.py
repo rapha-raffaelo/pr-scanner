@@ -66,6 +66,11 @@ _ACTIVE_FEEDS_KEY = "active_feeds"
 # sweeps without paging the whole (unbounded) runs history into one page.
 _RUN_HISTORY_LIMIT = 10
 
+# Rows rendered in the import preview. A large sheet parses fine, but rendering
+# every row into one HTML table is unbounded; the preview only needs to let the
+# operator eyeball that the mapping is right, so it is capped and the total noted.
+_PREVIEW_ROW_LIMIT = 100
+
 # POST-Redirect-GET status: a successful mutation redirects so a browser refresh
 # re-GETs the page instead of re-submitting the form.
 _SEE_OTHER = 303
@@ -284,19 +289,38 @@ def _parse_client_form(
 def _mapping_from_form(form: FormData) -> dict[str, str]:
     """Build the NP-02 ``{source_column: target_field}`` mapping from ``map_*``
     fields, dropping the ones left blank (an unmapped required ``name`` is then
-    rejected by ``preview_import`` with a clear error)."""
+    rejected by ``preview_import`` with a clear error).
+
+    Raises ``ImportValidationError`` if the operator points two fields at the same
+    source column: the mapping is keyed by source, so the second would silently
+    overwrite the first (e.g. dropping ``name``) and mis-report it as "not mapped".
+    """
     mapping: dict[str, str] = {}
     for field in _MAP_FIELDS:
         source = (form.get(f"map_{field}") or "").strip()
-        if source:
-            mapping[source] = field
+        if not source:
+            continue
+        if source in mapping:
+            raise ImportValidationError(
+                f"Column {source!r} is mapped to two fields "
+                f"({mapping[source]!r} and {field!r}); map each column to one field"
+            )
+        mapping[source] = field
     return mapping
 
 
-def _invert_mapping(mapping: dict[str, str]) -> dict[str, str]:
-    """{source: field} -> {field: source}, to re-fill the mapping inputs after a
-    preview so the operator doesn't retype the mapping to commit."""
-    return {field: source for source, field in mapping.items()}
+def _echoed_map_values(form: FormData) -> dict[str, str]:
+    """The operator's raw ``{field: source}`` entries read straight from the form,
+    to re-fill the mapping inputs after any error so the mapping needn't be retyped.
+
+    Read from the form (not from a successfully-built mapping) so the echo survives
+    a duplicate-source error, where no valid mapping exists to invert.
+    """
+    return {
+        field: source
+        for field in _MAP_FIELDS
+        if (source := (form.get(f"map_{field}") or "").strip())
+    }
 
 
 @contextmanager
@@ -351,6 +375,7 @@ def _page_context(session: Session) -> dict[str, object]:
         "threshold_error": None,
         "import_error": None,
         "import_rows": None,
+        "import_row_total": None,
         "import_success": None,
     }
 
@@ -502,21 +527,29 @@ async def import_preview_route(
     """Parse and validate the uploaded sheet, showing the rows (or an inline NP-02
     validation error) **without** writing anything."""
     form = await request.form()
-    mapping = _mapping_from_form(form)
     filename, data = await _read_upload(form)
+    map_values = _echoed_map_values(form)
     if not data:
         return _render_settings(
-            request, session, import_error="Bitte zuerst eine Datei auswählen."
+            request,
+            session,
+            import_error="Bitte zuerst eine Datei auswählen.",
+            map_values=map_values,
         )
     try:
+        mapping = _mapping_from_form(form)
         with _staged_file(filename, data) as path:
             rows = preview_import(path, mapping)
     except ImportValidationError as exc:
         return _render_settings(
-            request, session, import_error=str(exc), map_values=_invert_mapping(mapping)
+            request, session, import_error=str(exc), map_values=map_values
         )
     return _render_settings(
-        request, session, import_rows=rows, map_values=_invert_mapping(mapping)
+        request,
+        session,
+        import_rows=rows[:_PREVIEW_ROW_LIMIT],
+        import_row_total=len(rows),
+        map_values=map_values,
     )
 
 
@@ -526,18 +559,22 @@ async def import_commit_route(
 ) -> Response:
     """Commit the uploaded sheet through the NP-02 importer (create/update)."""
     form = await request.form()
-    mapping = _mapping_from_form(form)
     filename, data = await _read_upload(form)
+    map_values = _echoed_map_values(form)
     if not data:
         return _render_settings(
-            request, session, import_error="Bitte zuerst eine Datei auswählen."
+            request,
+            session,
+            import_error="Bitte zuerst eine Datei auswählen.",
+            map_values=map_values,
         )
     try:
+        mapping = _mapping_from_form(form)
         with _staged_file(filename, data) as path:
             result = import_clients(path, mapping, session)
     except ImportValidationError as exc:
         return _render_settings(
-            request, session, import_error=str(exc), map_values=_invert_mapping(mapping)
+            request, session, import_error=str(exc), map_values=map_values
         )
     return RedirectResponse(
         f"/settings?imported={result.total}", status_code=_SEE_OTHER
