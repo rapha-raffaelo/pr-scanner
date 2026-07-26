@@ -30,6 +30,20 @@ uv run alembic upgrade head      # create the SQLite database from migrations
 `uv run alembic upgrade head` creates the database at the path configured by
 `NEWSPULSE_DATABASE_PATH` (default: `newspulse.db` in the current directory).
 
+## Run the dashboard
+
+The Today view is served by a small FastAPI app (server-rendered Jinja + HTMX,
+no build step). Start it with either:
+
+```sh
+uv run newspulse-web            # console script
+uv run python -m newspulse.web  # equivalent module form
+```
+
+Then open <http://127.0.0.1:8000/>. The bind address defaults to loopback
+because this is a single-user local tool; override with `NEWSPULSE_WEB_HOST` /
+`NEWSPULSE_WEB_PORT` if needed.
+
 ## Configuration
 
 All tunables load from environment variables with sane defaults (see
@@ -41,6 +55,8 @@ All tunables load from environment variables with sane defaults (see
 | `NEWSPULSE_ALERT_THRESHOLD` | `7`            | importance score at/above which an article auto-flags |
 | `NEWSPULSE_BATCH_SIZE`      | `20`           | max articles per analyzer batch call     |
 | `NEWSPULSE_ANALYZER_BACKEND`| `claude_code`  | analyzer backend (`claude_code` or `claude_api`) |
+| `NEWSPULSE_WEB_HOST`        | `127.0.0.1`    | dashboard bind address                   |
+| `NEWSPULSE_WEB_PORT`        | `8000`         | dashboard port                           |
 
 ## Data model
 

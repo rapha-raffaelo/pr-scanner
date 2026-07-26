@@ -32,11 +32,19 @@ _DEFAULT_BATCH_SIZE = 20
 # metered API backend is opt-in (see PRD: subscription-first).
 _DEFAULT_ANALYZER_BACKEND = "claude_code"
 
+# Dashboard bind address. Loopback by default because this is a single-user local
+# tool (DEC-3), not a shared service — nothing should be exposed on the network
+# unless the operator opts in via NEWSPULSE_WEB_HOST.
+_DEFAULT_WEB_HOST = "127.0.0.1"
+_DEFAULT_WEB_PORT = 8000
+
 # Env var names, kept in one place so callers never spell them by hand.
 _ENV_DATABASE_PATH = "NEWSPULSE_DATABASE_PATH"
 _ENV_ALERT_THRESHOLD = "NEWSPULSE_ALERT_THRESHOLD"
 _ENV_BATCH_SIZE = "NEWSPULSE_BATCH_SIZE"
 _ENV_ANALYZER_BACKEND = "NEWSPULSE_ANALYZER_BACKEND"
+_ENV_WEB_HOST = "NEWSPULSE_WEB_HOST"
+_ENV_WEB_PORT = "NEWSPULSE_WEB_PORT"
 
 
 def _env_int(name: str, default: int) -> int:
@@ -72,6 +80,8 @@ DATABASE_PATH: Path = _env_path(_ENV_DATABASE_PATH, Path.cwd() / _DEFAULT_DB_FIL
 ALERT_THRESHOLD: int = _env_int(_ENV_ALERT_THRESHOLD, _DEFAULT_ALERT_THRESHOLD)
 BATCH_SIZE: int = _env_int(_ENV_BATCH_SIZE, _DEFAULT_BATCH_SIZE)
 ANALYZER_BACKEND: str = os.environ.get(_ENV_ANALYZER_BACKEND, _DEFAULT_ANALYZER_BACKEND)
+WEB_HOST: str = os.environ.get(_ENV_WEB_HOST, _DEFAULT_WEB_HOST)
+WEB_PORT: int = _env_int(_ENV_WEB_PORT, _DEFAULT_WEB_PORT)
 
 
 def database_url() -> str:

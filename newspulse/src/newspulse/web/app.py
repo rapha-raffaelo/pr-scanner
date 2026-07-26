@@ -54,4 +54,18 @@ def create_app() -> FastAPI:
     return app
 
 
-__all__ = ["create_app", "get_db", "templates"]
+def main() -> None:
+    """Console entry point: start the dashboard with uvicorn (``newspulse-web``).
+
+    uvicorn is imported here, not at module top, so importing this module for the
+    route tests (which drive the app through Starlette's in-process TestClient)
+    never requires an ASGI server to be installed.
+    """
+    import uvicorn
+
+    from .. import config
+
+    uvicorn.run(create_app(), host=config.WEB_HOST, port=config.WEB_PORT)
+
+
+__all__ = ["create_app", "get_db", "main", "templates"]
