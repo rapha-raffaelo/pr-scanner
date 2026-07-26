@@ -24,6 +24,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from newspulse import config
+from newspulse.feeds import load_feeds
 from newspulse.models import (
     Analysis,
     Article,
@@ -34,7 +35,6 @@ from newspulse.models import (
     RunStatus,
     Setting,
 )
-from newspulse.feeds import load_feeds
 from newspulse.web.app import create_app, get_db
 from newspulse.web.routes.settings import get_active_feed_names, set_active_feed_names
 
@@ -218,6 +218,23 @@ def test_reactivating_a_client_flips_active_back(factory, client):
         assert session.get(Client, client_id).active is True
 
 
+def test_reactivate_into_duplicate_name_shows_inline_error(factory, client):
+    """Reactivating into a name a live client already holds is refused inline, so an
+    operator cannot create two active same-name clients that would break import
+    dedup (the QA-reported bypass through the reactivate route)."""
+    client.post("/settings/clients", data={"name": "Alpha AG"}, follow_redirects=True)
+    with factory() as session:
+        first_id = session.query(Client).filter_by(name="Alpha AG").one().id
+    client.post(f"/settings/clients/{first_id}/deactivate", follow_redirects=True)
+    client.post("/settings/clients", data={"name": "Alpha AG"}, follow_redirects=True)
+
+    resp = client.post(f"/settings/clients/{first_id}/reactivate")
+    assert resp.status_code == 200
+    assert "already exists" in resp.text
+    with factory() as session:
+        assert session.query(Client).filter_by(name="Alpha AG", active=True).count() == 1
+
+
 # --- Alert threshold -----------------------------------------------------------
 
 
@@ -328,6 +345,22 @@ def test_import_preview_shows_parsed_rows_without_committing(factory, client):
     )
     assert resp.status_code == 200
     assert "Beispiel AG" in resp.text
+    with factory() as session:
+        assert session.query(Client).count() == 0
+
+
+def test_import_preview_rejects_two_fields_mapped_to_one_column(factory, client):
+    """Mapping two fields to the same source column is an inline error, not a silent
+    drop of the earlier field (which would mis-report 'name' as unmapped)."""
+    csv_bytes = b"Firma,Land\nAlpha AG,DE\n"
+    resp = client.post(
+        "/settings/import/preview",
+        data={"map_name": "Firma", "map_industry": "Firma"},
+        files={"file": ("clients.csv", csv_bytes, "text/csv")},
+    )
+    assert resp.status_code == 200
+    assert "Firma" in resp.text
+    assert "map each column" in resp.text
     with factory() as session:
         assert session.query(Client).count() == 0
 
