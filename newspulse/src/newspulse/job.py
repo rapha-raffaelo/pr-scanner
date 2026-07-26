@@ -49,7 +49,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config
+from . import config, notify
 from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
 from .feeds import Feed, load_feeds
@@ -500,25 +500,44 @@ def _finalize_run(
     status: RunStatus,
     articles_found: int,
     errors: Sequence[str],
-) -> None:
-    """Write the ``runs`` row for this sweep in a clean transaction.
+) -> Run:
+    """Write the ``runs`` row for this sweep in a clean transaction and return it.
 
     The leading rollback clears any half-open transaction left by a mid-sweep crash
     (a no-op on the happy path, where every prior stage already committed) so the run
     record itself always persists — the one row that must exist even when the sweep
-    failed.
+    failed. The committed row is returned so the caller can hand it to the post-run
+    notification (:func:`_notify`).
     """
     session.rollback()
-    session.add(
-        Run(
-            started_at=started,
-            finished_at=finished,
-            status=status,
-            articles_found=articles_found,
-            errors=list(errors),
-        )
+    run = Run(
+        started_at=started,
+        finished_at=finished,
+        status=status,
+        articles_found=articles_found,
+        errors=list(errors),
     )
+    session.add(run)
     session.commit()
+    return run
+
+
+def _notify(session: Session, run: Run) -> None:
+    """Deliver the post-run alert notification; a failure here never fails the run.
+
+    Called only after the ``runs`` row (and every article/analysis) is committed, so
+    the sweep's data is already safe. :func:`newspulse.notify.notify_after_run` reads
+    only and is non-raising by contract, but this wraps it in the same fault boundary
+    the rest of the sweep uses — a broken notifier or an unexpected read error is
+    logged at ERROR and swallowed, never rolling back a run that already succeeded.
+    """
+    try:
+        notify.notify_after_run(session, run)
+    except Exception as exc:  # noqa: BLE001 — notification must never fail the run
+        _log.error(
+            "post-run notification failed: %s; run data already persisted, not rolled back",
+            exc,
+        )
 
 
 # --- Orchestration -------------------------------------------------------------
@@ -655,7 +674,7 @@ def _run_real(
         errors.append(f"run aborted: {exc}")
         status = RunStatus.FAILED
         session.rollback()
-    _finalize_run(session, started, now_fn(), status, new_articles, errors)
+    run = _finalize_run(session, started, now_fn(), status, new_articles, errors)
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d error(s)",
         status.value,
@@ -663,6 +682,10 @@ def _run_real(
         analyses_written,
         len(errors),
     )
+    # The run's data is committed; deliver any fired-alert notification now. This is
+    # the wiring for AC #1 ("after a run, if any alerts fired, a notification ... is
+    # delivered") — read-only and fault-isolated, so it can't roll the sweep back.
+    _notify(session, run)
     return RunReport(
         status=status,
         feeds_total=len(feeds),
