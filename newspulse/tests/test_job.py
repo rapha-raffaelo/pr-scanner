@@ -227,6 +227,54 @@ def test_second_run_analyzer_is_not_asked_to_re_analyze(session):
     assert second_analyzer.calls == []
 
 
+def test_failed_analysis_batch_is_retried_on_a_later_run(session):
+    """A transient analyzer outage stores the article but no analysis; the next run
+    (analyzer healthy) re-analyses the stored story instead of dropping it forever."""
+    _add_client(session, "Alpha AG")
+    feeds = [Feed(name="f", url="u")]
+    items = {"u": [_item("Alpha AG launcht neues Produkt", "https://x/a")]}
+
+    class _Boom:
+        def analyze(self, client, articles):
+            raise RuntimeError("transient analyzer outage")
+
+    first = job.run(session, analyzer=_Boom(), feeds=feeds, fetch=_fetch_from(items), now=lambda: _NOW)
+    assert first.status is RunStatus.PARTIAL
+    assert _count(session, Article) == 1
+    assert _count(session, Analysis) == 0  # outage: stored, not yet analysed
+
+    good = _FakeAnalyzer()
+    job.run(session, analyzer=good, feeds=feeds, fetch=_fetch_from(items), now=lambda: _NOW)
+
+    assert good.calls != []  # the stored-but-un-analysed article is re-analysed
+    assert _count(session, Article) == 1  # still one article (idempotent)
+    assert _count(session, Analysis) == 1
+
+
+def test_collapsed_duplicate_still_analyses_a_distinct_client_match(session):
+    """Two outlets run the same wire headline but each teaser names a *different*
+    client. Dedup collapses them to one stored article; the client matched only via the
+    dropped copy must still get an analysis against the stored story."""
+    _add_client(session, "Alpha AG")
+    _add_client(session, "Beta AG")
+    feeds = [Feed(name="f", url="u")]
+    items = {
+        "u": [
+            _item("Grosse Fusion erschuettert den Markt", "https://a/1", source="AAA", summary="Alpha AG expandiert."),
+            _item("Grosse Fusion erschuettert den Markt", "https://b/2", source="BBB", summary="Beta AG meldet Rekord."),
+        ]
+    }
+    analyzer = _FakeAnalyzer()
+
+    job.run(session, analyzer=analyzer, feeds=feeds, fetch=_fetch_from(items), now=lambda: _NOW)
+
+    assert _count(session, Article) == 1  # collapsed to a single stored article
+    analysed_client_ids = {client_id for client_id, _ in analyzer.calls}
+    all_client_ids = {c.id for c in session.scalars(select(Client)).all()}
+    assert analysed_client_ids == all_client_ids  # both Alpha AND Beta got analysed
+    assert _count(session, Analysis) == 2
+
+
 # --- Fault isolation -----------------------------------------------------------
 
 
@@ -404,6 +452,32 @@ def test_dry_run_reports_counts_but_writes_nothing(session):
     assert _count(session, Article) == 0
     assert _count(session, Analysis) == 0
     assert _count(session, Run) == 0  # a dry run writes no runs row
+
+
+def test_dry_run_survives_an_unexpected_error_and_reports_failed(session, monkeypatch):
+    """An unexpected error inside a dry run is caught and reported as ``failed``, never
+    raised as a raw traceback to the CLI. A dry run writes no runs row, so the report
+    is the only record — it must still come back cleanly."""
+    _add_client(session, "Alpha AG")
+
+    def boom(_session):
+        raise RuntimeError("db exploded")
+
+    monkeypatch.setattr(job, "_load_known", boom)
+
+    report = job.run(
+        session,
+        analyzer=_FakeAnalyzer(),
+        feeds=[Feed(name="f", url="u")],
+        fetch=_fetch_from({"u": [_item("Alpha AG News", "https://f/a")]}),
+        dry_run=True,
+        now=lambda: _NOW,
+    )
+
+    assert report.status is RunStatus.FAILED
+    assert report.dry_run is True
+    assert any("db exploded" in message for message in report.errors)
+    assert _count(session, Run) == 0  # a dry run still writes no runs row
 
 
 # --- Logging setup -------------------------------------------------------------

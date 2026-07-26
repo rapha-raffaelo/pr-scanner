@@ -10,15 +10,21 @@ Three properties are load-bearing, and each has a test:
 
 * **Idempotent.** Running twice on the same day adds zero duplicate articles or
   analyses. Re-fetched items are dropped by :func:`~newspulse.matching.deduplicate`
-  (seeded with the stored URLs and title hashes), and the DB's UNIQUE(articles.url)
-  plus UNIQUE(article_id, client_id) are the backstop. A second run over the same
-  feeds stores nothing new.
+  (seeded with the stored URLs and title hashes) so no article is stored twice, and
+  every candidate pair is resolved to its stored article and analysed only if it has
+  no Analysis yet — so the DB's UNIQUE(articles.url) and UNIQUE(article_id, client_id)
+  are genuine backstops, not dead weight. A second run over the same feeds stores
+  nothing new.
 
-* **Fault-isolated / resumable.** A failing feed, a failing match, or a failing
-  analysis batch is logged to the run's ``errors`` and skipped — one failure never
-  aborts the whole sweep. Each client's analyses commit in their own transaction,
-  so a later client's failure can never roll back an earlier client's stored work,
-  and the articles are committed before any analysis runs.
+* **Fault-isolated / resumable / self-healing.** A failing feed, a failing match, or
+  a failing analysis batch is logged to the run's ``errors`` and skipped — one failure
+  never aborts the whole sweep. Each client's analyses commit in their own transaction,
+  so a later client's failure can never roll back an earlier client's stored work, and
+  the articles are committed before any analysis runs. Crucially, a story left stored
+  but un-analysed by a transient outage is *not* lost: because analysis targets are
+  resolved from the stored archive (not just this run's fresh inserts), a later run
+  re-analyses it — whether it is still in the feed (resolved from the re-fetched
+  candidate) or has since dropped out (recovered by the bounded backfill re-match).
 
 * **Bounded first run.** "Since the last run" is the last OK run's start time; the
   very first run (no prior OK run) looks back a fixed window (:data:`_FIRST_RUN_LOOKBACK`)
@@ -48,7 +54,13 @@ from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
 from .feeds import Feed, load_feeds
 from .ingest import FeedItem, fetch_feed
-from .matching import Candidate, deduplicate, match_candidates, title_hash
+from .matching import (
+    Candidate,
+    dedup_title_hash,
+    deduplicate,
+    match_candidates,
+    title_hash,
+)
 from .models import Analysis, Article, Client, Run, RunStatus
 from .schemas import Analysis as AnalysisSchema
 
@@ -60,6 +72,14 @@ _log = logging.getLogger(__name__)
 # this far. Without it, day one would fetch every item every feed still lists with
 # no lower bound; a week keeps day one to recent coverage without an unbounded pull.
 _FIRST_RUN_LOOKBACK = dt.timedelta(days=7)
+
+# How far back the self-healing backfill re-examines stored articles for a missing
+# analysis. A transient analyzer outage leaves an article stored but un-analysed; the
+# next run re-matches every article fetched within this window and analyses any
+# (article, client) pair still lacking a verdict, so coverage self-heals even after
+# the story has dropped out of its feed. Bounded (a week) so the pass stays O(recent),
+# never O(whole archive), as the history grows to thousands of articles (DEC-3).
+_BACKFILL_WINDOW = dt.timedelta(days=7)
 
 # Rotating-log knobs. The whole point of the file is week-three survivability, so
 # it must never grow without bound or silently truncate: rotate at 5 MB and keep 5
@@ -275,31 +295,148 @@ def _persist_articles(
     return articles
 
 
-def _group_by_client(
-    candidates: Sequence[Candidate], article_by_url: dict[str, Article]
-) -> list[tuple[Client, list[Article]]]:
-    """Resolve surviving candidate pairs into per-client persisted-article lists.
+def _link(item: FeedItem | Article) -> str:
+    """The item's link (``link`` on a FeedItem, ``url`` on a stored Article)."""
+    return (getattr(item, "url", None) or getattr(item, "link", None) or "").strip()
 
-    A candidate whose item was dropped by dedup — already stored from an earlier run,
-    or collapsed into a kept near-duplicate — has no entry in ``article_by_url`` and
-    is skipped. This is exactly what makes a re-run add nothing: on the second run
-    every re-fetched item is already stored, so every candidate resolves to ``None``.
-    A client that matches the same article twice is deduped to a single pair.
+
+def _articles_by_url(session: Session, urls: set[str]) -> dict[str, Article]:
+    """Stored articles keyed by URL, for the URLs among this run's candidates."""
+    if not urls:
+        return {}
+    rows = session.scalars(select(Article).where(Article.url.in_(urls))).all()
+    return {article.url: article for article in rows}
+
+
+def _articles_by_hash(session: Session, hashes: set[str]) -> dict[str, Article]:
+    """Stored articles keyed by title hash, for the collapse-hashes among candidates.
+
+    Dedup + UNIQUE(url) keep at most one stored article per significant title hash, so
+    this is a 1:1 map used to resolve a collapsed near-duplicate copy to the article it
+    was folded into."""
+    if not hashes:
+        return {}
+    rows = session.scalars(select(Article).where(Article.title_hash.in_(hashes))).all()
+    return {article.title_hash: article for article in rows}
+
+
+def _existing_analysis_pairs(
+    session: Session, article_ids: set[int]
+) -> set[tuple[int, int]]:
+    """The (article_id, client_id) pairs already carrying an analysis.
+
+    Reads the UNIQUE(article_id, client_id) space so re-analysis is idempotent: a pair
+    already present is skipped, making that constraint the real idempotency backstop
+    rather than dead weight."""
+    if not article_ids:
+        return set()
+    rows = session.execute(
+        select(Analysis.article_id, Analysis.client_id).where(
+            Analysis.article_id.in_(article_ids)
+        )
+    ).all()
+    return {(row.article_id, row.client_id) for row in rows}
+
+
+def _resolve_articles(
+    session: Session, candidates: Sequence[Candidate]
+) -> dict[int, Article]:
+    """Map each candidate item (by object identity) to the stored Article it concerns.
+
+    Resolves by URL first, then by collapse title-hash so a near-duplicate copy that
+    dedup folded into a *different* kept article still resolves to the stored story —
+    the copy carrying a distinct client match (its matching text lives only on the
+    dropped copy, never in the DB) is what would otherwise lose coverage. Because the
+    lookup hits the whole archive, a story already stored from an earlier run (e.g. one
+    whose analysis failed) resolves too, so it can be re-analysed rather than dropped.
     """
+    urls = {u for item, _ in candidates if (u := _link(item))}
+    hashes = {h for item, _ in candidates if (h := dedup_title_hash(item.title, item.source)) is not None}
+    by_url = _articles_by_url(session, urls)
+    by_hash = _articles_by_hash(session, hashes)
+    resolved: dict[int, Article] = {}
+    for item, _ in candidates:
+        article = by_url.get(_link(item))
+        if article is None:
+            thash = dedup_title_hash(item.title, item.source)
+            article = by_hash.get(thash) if thash is not None else None
+        if article is not None:
+            resolved[id(item)] = article
+    return resolved
+
+
+def _candidate_pairs(
+    session: Session, candidates: Sequence[Candidate]
+) -> list[tuple[Article, Client]]:
+    """This run's candidate pairs, each resolved to its stored Article."""
+    resolved = _resolve_articles(session, candidates)
+    pairs: list[tuple[Article, Client]] = []
+    for item, client in candidates:
+        article = resolved.get(id(item))
+        if article is not None:
+            pairs.append((article, client))
+    return pairs
+
+
+def _backfill_pairs(
+    session: Session, clients: Sequence[Client], started: dt.datetime
+) -> list[tuple[Article, Client]]:
+    """Re-match recently stored articles against the active clients (self-healing pass).
+
+    A transient analyzer outage leaves an article stored with no analysis; if the story
+    then drops out of its feed, this run's fetch never surfaces it again. Re-matching
+    the articles fetched within :data:`_BACKFILL_WINDOW` recovers those pairs so a later
+    run analyses them once the analyzer is healthy again. Bounded by the window so the
+    scan stays proportional to recent history, not the whole archive."""
+    cutoff = started - _BACKFILL_WINDOW
+    articles = session.scalars(
+        select(Article).where(Article.fetched_at >= cutoff)
+    ).all()
+    if not articles:
+        return []
+    return [(candidate.item, candidate.client) for candidate in match_candidates(articles, clients)]
+
+
+def _group_pairs(
+    session: Session, pairs: Sequence[tuple[Article, Client]]
+) -> list[tuple[Client, list[Article]]]:
+    """Collapse (article, client) pairs into per-client work, dropping analysed ones.
+
+    Deduplicates pairs within this run and drops any that already have an Analysis row,
+    so nothing is analysed twice — the second run of an idempotent sweep resolves every
+    pair but finds them all already analysed and does no work."""
+    article_ids = {article.id for article, _ in pairs}
+    analysed = _existing_analysis_pairs(session, article_ids)
     grouped: dict[int, list[Article]] = {}
     clients_by_id: dict[int, Client] = {}
     seen_pairs: set[tuple[int, int]] = set()
-    for item, client in candidates:
-        article = article_by_url.get(item.link)
-        if article is None:
+    for article, client in pairs:
+        key = (article.id, client.id)
+        if key in seen_pairs or key in analysed:
             continue
-        pair = (article.id, client.id)
-        if pair in seen_pairs:
-            continue
-        seen_pairs.add(pair)
+        seen_pairs.add(key)
         grouped.setdefault(client.id, []).append(article)
         clients_by_id[client.id] = client
     return [(clients_by_id[cid], articles) for cid, articles in grouped.items()]
+
+
+def _analysis_targets(
+    session: Session,
+    candidates: Sequence[Candidate],
+    clients: Sequence[Client],
+    started: dt.datetime,
+) -> list[tuple[Client, list[Article]]]:
+    """Every (client, articles) group that still needs analysis this run.
+
+    Unions two sources so a stored-but-un-analysed story self-heals however it was
+    lost: this run's candidate pairs resolved to their stored Article (recovers a
+    distinct match carried only on a collapsed copy, and re-analyses a still-in-feed
+    story whose analysis failed earlier), plus a backfill re-match of recently stored
+    articles (recovers a story that has since left its feed). Pairs already analysed are
+    dropped, so a re-run adds nothing."""
+    pairs = _candidate_pairs(session, candidates)
+    pairs.extend(_backfill_pairs(session, clients, started))
+    return _group_pairs(session, pairs)
 
 
 def _to_orm_analysis(verdict: AnalysisSchema) -> Analysis:
@@ -433,28 +570,45 @@ def _run_dry(
     started: dt.datetime,
     errors: list[str],
 ) -> RunReport:
-    """The read-only preview: fetch, match, dedup, count. Writes nothing."""
-    items, feeds_ok = _fetch_all(feeds, since, fetch, started, errors)
-    candidates = _match(items, clients, errors)
-    known_urls, known_hashes = _load_known(session)
-    kept = deduplicate(
-        _distinct_items(candidates),
-        known_urls=known_urls,
-        known_title_hashes=known_hashes,
-    )
-    _log.info(
-        "dry-run: %d item(s) fetched, %d candidate(s), %d new article(s) — no writes",
-        len(items),
-        len(candidates),
-        len(kept),
-    )
+    """The read-only preview: fetch, match, dedup, count. Writes nothing.
+
+    Wrapped in the same top-level fault boundary as :func:`_run_real` so an
+    unexpected error (a DB error loading the known set, anything in fetch/match/dedup)
+    is logged and reported as a ``failed`` preview rather than escaping as a raw
+    traceback to the CLI. A dry run writes no ``runs`` row, so the report is the only
+    record of the failure — it must not be lost."""
+    feeds_ok = items_count = candidates_count = new_articles = 0
+    status = RunStatus.OK
+    try:
+        items, feeds_ok = _fetch_all(feeds, since, fetch, started, errors)
+        items_count = len(items)
+        candidates = _match(items, clients, errors)
+        candidates_count = len(candidates)
+        known_urls, known_hashes = _load_known(session)
+        kept = deduplicate(
+            _distinct_items(candidates),
+            known_urls=known_urls,
+            known_title_hashes=known_hashes,
+        )
+        new_articles = len(kept)
+        _log.info(
+            "dry-run: %d item(s) fetched, %d candidate(s), %d new article(s) — no writes",
+            items_count,
+            candidates_count,
+            new_articles,
+        )
+        status = _final_status(errors)
+    except Exception as exc:  # noqa: BLE001 — top-level so a dry-run crash reports cleanly
+        _log.exception("dry-run aborted before completion: %s", exc)
+        errors.append(f"run aborted: {exc}")
+        status = RunStatus.FAILED
     return RunReport(
-        status=_final_status(errors),
+        status=status,
         feeds_total=len(feeds),
         feeds_ok=feeds_ok,
-        items_fetched=len(items),
-        candidates=len(candidates),
-        new_articles=len(kept),
+        items_fetched=items_count,
+        candidates=candidates_count,
+        new_articles=new_articles,
         analyses_written=0,
         errors=list(errors),
         dry_run=True,
@@ -490,9 +644,8 @@ def _run_real(
         )
         articles = _persist_articles(session, kept, started)
         new_articles = len(articles)
-        article_by_url = {article.url: article for article in articles}
         resolved_analyzer = analyzer or get_analyzer()
-        for client, client_articles in _group_by_client(candidates, article_by_url):
+        for client, client_articles in _analysis_targets(session, candidates, clients, started):
             analyses_written += _analyze_and_persist(
                 session, client, client_articles, resolved_analyzer, errors
             )
