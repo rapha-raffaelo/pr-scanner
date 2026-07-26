@@ -336,7 +336,28 @@ def create_client(
     alert_topics: list[str] | None = None,
 ) -> Client:
     """Create and persist a client. List defaults use ``None`` sentinels rather
-    than mutable ``[]`` defaults to avoid a shared-list footgun."""
+    than mutable ``[]`` defaults to avoid a shared-list footgun.
+
+    Raises ``ValueError`` if an active client already exists under the same name
+    (matched the same case-insensitive, Unicode-folded way import matches): two
+    active same-name clients would make an import's by-name dedup ambiguous —
+    updating only one of them — so the CRUD path guards the invariant too."""
+    normalized = _normalize_name(name)
+    duplicate = next(
+        (
+            client
+            for client in session.scalars(
+                select(Client).where(Client.active.is_(True))
+            ).all()
+            if _normalize_name(client.name) == normalized
+        ),
+        None,
+    )
+    if duplicate is not None:
+        raise ValueError(
+            f"An active client named {duplicate.name!r} already exists "
+            f"(id {duplicate.id}); update it instead of creating a duplicate"
+        )
     client = Client(
         name=name,
         aliases=aliases or [],

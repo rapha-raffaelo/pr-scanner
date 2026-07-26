@@ -167,6 +167,51 @@ def test_import_matches_umlaut_case_variant_of_existing_client(session, tmp_path
     assert session.query(Client).count() == 1
 
 
+def test_reimport_folds_eszett_case_variant_without_duplicating(session, tmp_path):
+    """The customary uppercase of a 'ß' name (SS) casefolds to the same key, so
+    'GROSSE STRASSE AG' updates 'Große Straße AG' rather than duplicating it —
+    str.lower() would not fold ß→ss and would create a second client."""
+    first = tmp_path / "a.csv"
+    first.write_text("Firmenname\nGroße Straße AG\n", encoding="utf-8")
+    second = tmp_path / "b.csv"
+    second.write_text("Firmenname\nGROSSE STRASSE AG\n", encoding="utf-8")
+
+    import_clients(first, {"Firmenname": "name"}, session)
+    result = import_clients(second, {"Firmenname": "name"}, session)
+
+    assert result.created == 0
+    assert result.updated == 1
+    assert session.query(Client).count() == 1
+
+
+def test_reimport_reactivates_a_deactivated_client(session, tmp_path):
+    """Re-importing a sheet that still lists a soft-deactivated client makes it live
+    again, instead of silently updating an invisible row."""
+    csv = tmp_path / "p.csv"
+    csv.write_text("Firmenname\nFoo AG\n", encoding="utf-8")
+    import_clients(csv, {"Firmenname": "name"}, session)
+    deactivate_client(session, session.query(Client).one().id)
+
+    import_clients(csv, {"Firmenname": "name"}, session)
+
+    assert [c.name for c in list_clients(session)] == ["Foo AG"]
+
+
+def test_intrasheet_duplicate_name_counted_once(session, tmp_path):
+    """A sheet listing the same name twice collapses onto one client and is counted
+    once — not double-counted across created + updated."""
+    csv = tmp_path / "d.csv"
+    csv.write_text(
+        "Firmenname,Branche\nDup AG,First\nDup AG,Second\n", encoding="utf-8"
+    )
+
+    result = import_clients(csv, {"Firmenname": "name", "Branche": "industry"}, session)
+
+    assert session.query(Client).count() == 1
+    assert result.total == 1
+    assert len(result.clients) == 1
+
+
 # --- Bad sheet: missing name column --------------------------------------------
 
 
@@ -199,6 +244,17 @@ def test_import_row_with_blank_name_names_the_row(tmp_path):
         preview_import(bad, {"Firmenname": "name", "Land": "country"})
 
 
+def test_import_rejects_non_iso_country_naming_the_row(session, tmp_path):
+    """A full country name overflows the String(2) column silently on SQLite; import
+    rejects it with a row-named error instead of polluting the archive."""
+    bad = tmp_path / "land.csv"
+    bad.write_text("Firmenname,Land\nBar AG,Deutschland\n", encoding="utf-8")
+
+    with pytest.raises(ImportValidationError, match="Row 2"):
+        import_clients(bad, {"Firmenname": "name", "Land": "country"}, session)
+    assert session.query(Client).count() == 0
+
+
 # --- CSV path ------------------------------------------------------------------
 
 
@@ -214,6 +270,17 @@ def test_import_reads_csv(session, tmp_path):
 
     delta = session.query(Client).filter(Client.name == "Delta AG").one()
     assert delta.aliases == ["Delta", "Delta Gruppe"]
+
+
+def test_import_reads_cp1252_encoded_csv(session, tmp_path):
+    """A cp1252/latin-1 CSV (a common German Excel export) imports via the encoding
+    fallback instead of failing with a UnicodeDecodeError."""
+    csv = tmp_path / "cp1252.csv"
+    csv.write_bytes("Firmenname\nMünchen AG\n".encode("cp1252"))
+
+    import_clients(csv, {"Firmenname": "name"}, session)
+
+    assert [c.name for c in list_clients(session)] == ["München AG"]
 
 
 # --- CRUD service --------------------------------------------------------------
