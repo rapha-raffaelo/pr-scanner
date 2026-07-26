@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  NewsPulse daily sweep — macOS launchd agent.
+
+  This is a TEMPLATE. The three __TOKENS__ below must be replaced with ABSOLUTE
+  paths before installing (launchd rejects relative paths). See docs/scheduling.md
+  for the exact `sed` substitution and `launchctl` install commands.
+
+    __NEWSPULSE_BIN__  absolute path to the `newspulse` console script
+                       (e.g. /Users/you/newspulse/.venv/bin/newspulse)
+    __NEWSPULSE_DB__   absolute path to the SQLite database file
+    __NEWSPULSE_LOG__  absolute path to a writable log directory
+
+  Runs once per day at 07:00 local time (StartCalendarInterval). If the Mac is
+  asleep at 07:00, launchd runs the job at the next wake — a POC limitation noted
+  in the PRD (a missed day is a gap unless catch-up is added later).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.newspulse.daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__NEWSPULSE_BIN__</string>
+        <string>run</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Don't fire on load/login; only on the daily schedule above. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>NEWSPULSE_DATABASE_PATH</key>
+        <string>__NEWSPULSE_DB__</string>
+        <!-- Desktop is the default local channel; set to "email" (and the
+             NEWSPULSE_SMTP_* vars) or "off" as desired. -->
+        <key>NEWSPULSE_NOTIFY_CHANNEL</key>
+        <string>desktop</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__NEWSPULSE_LOG__/newspulse-daily.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__NEWSPULSE_LOG__/newspulse-daily.err.log</string>
+</dict>
+</plist>
