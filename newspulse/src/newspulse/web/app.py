@@ -81,10 +81,11 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
     # Imported here (not at module top) to avoid a circular import: the route
-    # module imports ``get_db``/``templates`` from this module.
-    from .routes import today
+    # modules import ``get_db``/``templates`` from this module.
+    from .routes import client, today
 
     app.include_router(today.router)
+    app.include_router(client.router)
     return app
 
 
