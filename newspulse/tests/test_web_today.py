@@ -17,7 +17,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from newspulse.models import Analysis, Article, Base, Category, Client, Run, RunStatus
-from newspulse.web.app import create_app, get_db
+from newspulse.web.app import create_app, get_db, safe_url
+from newspulse.web.routes import today
 
 # A fixed reference day so tests never depend on the wall clock. Coverage is
 # seeded at local noon on this day and the page requested via ?date=.
@@ -222,3 +223,64 @@ def test_coverage_from_another_day_is_excluded(factory, client):
     body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
     assert "HEUTE Story" in body
     assert "GESTERN Story" not in body
+
+
+def test_javascript_url_is_not_rendered_into_href(factory, client):
+    """A javascript: feed URL is blanked, never emitted as a clickable href.
+
+    Jinja autoescape does not block dangerous URL schemes, so an attacker-
+    influenced feed URL (``javascript:...``) would otherwise become a script link
+    running in the app's origin. The safe_url filter must strip it.
+    """
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Eta AG", title="XSSHEADLINE",
+            url="javascript:alert(document.domain)//", importance=8, is_alert=True,
+            published_at=_local_noon(_TEST_DAY),
+        )
+        s.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    assert "XSSHEADLINE" in body  # the item still renders
+    assert "javascript:alert" not in body  # the dangerous scheme is gone
+    assert 'href=""' in body  # blanked to an empty href
+
+
+def test_safe_url_blanks_dangerous_schemes_but_keeps_http():
+    """The scheme allow-list passes http(s)/relative and blanks the rest."""
+    assert safe_url("https://ex.de/a") == "https://ex.de/a"
+    assert safe_url("/relative/path") == "/relative/path"
+    assert safe_url("javascript:alert(1)") == ""
+    assert safe_url("data:text/html,<script>1</script>") == ""
+    assert safe_url("java\tscript:alert(1)") == ""  # tab-strip bypass closed
+
+
+def test_zero_relevance_analysis_is_excluded(factory, client):
+    """A relevance_score=0 analysis (non-matching client pair) is not surfaced."""
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Zeta AG", title="NOISE Irrelevant",
+            url="https://ex.de/noise", importance=0, is_alert=False,
+            published_at=_local_noon(_TEST_DAY),
+        )
+        s.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    assert "NOISE Irrelevant" not in body
+    assert "Keine Berichterstattung" in body  # falls through to the empty state
+
+
+def test_local_zone_resolves_dst_aware_not_frozen_offset(monkeypatch):
+    """The resolved local zone honors DST, unlike a single frozen offset.
+
+    The old ``datetime.now().astimezone().tzinfo`` returned a fixed offset, so a
+    day in the other DST regime was bounded with the wrong offset (±1h). A
+    DST-aware zone yields different offsets for winter vs summer days.
+    """
+    monkeypatch.setenv("TZ", "Europe/Berlin")
+    zone = today._resolve_local_zone()
+    winter = dt.datetime(2026, 1, 15, tzinfo=zone).utcoffset()
+    summer = dt.datetime(2026, 7, 15, tzinfo=zone).utcoffset()
+    assert winter == dt.timedelta(hours=1)
+    assert summer == dt.timedelta(hours=2)
+    assert winter != summer  # a frozen offset would make these equal
