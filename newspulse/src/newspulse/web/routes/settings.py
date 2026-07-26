@@ -450,13 +450,21 @@ def deactivate_client_route(
 
 @router.post("/settings/clients/{client_id}/reactivate")
 def reactivate_client_route(
-    client_id: int, session: Session = Depends(get_db)
-) -> RedirectResponse:
-    """Reactivate a soft-deactivated client (an edit that flips ``active`` back)."""
+    client_id: int, request: Request, session: Session = Depends(get_db)
+) -> Response:
+    """Reactivate a soft-deactivated client (an edit that flips ``active`` back).
+
+    Reactivation can violate the "one active client per name" invariant if another
+    active client already holds this name; ``update_client`` rejects that and the
+    conflict is surfaced inline rather than silently creating a duplicate.
+    """
     try:
         update_client(session, client_id, active=True)
     except LookupError:
-        pass
+        # Already gone / bad id: nothing to do, land back on the page.
+        return RedirectResponse("/settings", status_code=_SEE_OTHER)
+    except ValueError as exc:
+        return _render_settings(request, session, client_error=str(exc))
     return RedirectResponse("/settings", status_code=_SEE_OTHER)
 
 

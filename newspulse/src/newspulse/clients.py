@@ -325,6 +325,37 @@ def import_clients(
 # --- CRUD service --------------------------------------------------------------
 
 
+def _find_active_duplicate(
+    session: Session, normalized: str, *, exclude_id: int | None = None
+) -> Client | None:
+    """The active client whose name normalizes to ``normalized`` (case-insensitive,
+    Unicode-folded, matching import's dedup), excluding ``exclude_id``, or ``None``.
+
+    The invariant this enforces: at most one *active* client per normalized name.
+    Two active same-name clients make an import's by-name dedup ambiguous — it would
+    update only one and leave the other a stale orphan — so every write path that
+    can activate a client (create, edit, reactivate) checks it here."""
+    return next(
+        (
+            client
+            for client in session.scalars(
+                select(Client).where(Client.active.is_(True))
+            ).all()
+            if client.id != exclude_id and _normalize_name(client.name) == normalized
+        ),
+        None,
+    )
+
+
+def _duplicate_active_error(duplicate: Client) -> ValueError:
+    """The shared error raised when a write would collide with an active same-name
+    client, phrased so the settings UI can surface it inline."""
+    return ValueError(
+        f"An active client named {duplicate.name!r} already exists "
+        f"(id {duplicate.id}); update it instead of creating a duplicate"
+    )
+
+
 def create_client(
     session: Session,
     *,
@@ -342,22 +373,9 @@ def create_client(
     (matched the same case-insensitive, Unicode-folded way import matches): two
     active same-name clients would make an import's by-name dedup ambiguous —
     updating only one of them — so the CRUD path guards the invariant too."""
-    normalized = _normalize_name(name)
-    duplicate = next(
-        (
-            client
-            for client in session.scalars(
-                select(Client).where(Client.active.is_(True))
-            ).all()
-            if _normalize_name(client.name) == normalized
-        ),
-        None,
-    )
+    duplicate = _find_active_duplicate(session, _normalize_name(name))
     if duplicate is not None:
-        raise ValueError(
-            f"An active client named {duplicate.name!r} already exists "
-            f"(id {duplicate.id}); update it instead of creating a duplicate"
-        )
+        raise _duplicate_active_error(duplicate)
     client = Client(
         name=name,
         aliases=aliases or [],
@@ -373,14 +391,30 @@ def create_client(
 
 def update_client(session: Session, client_id: int, **fields) -> Client:
     """Update the given fields on a client. Raises ``LookupError`` if it does not
-    exist and ``ValueError`` on an unknown field name. (``ImportValidationError`` is
-    scoped to the import pipeline; a CRUD field error is a distinct concern.)"""
+    exist and ``ValueError`` on an unknown field name, an empty ``name``, or an
+    edit/reactivation that would collide with another active same-name client.
+    (``ImportValidationError`` is scoped to the import pipeline; a CRUD field error
+    is a distinct concern.)"""
     client = session.get(Client, client_id)
     if client is None:
         raise LookupError(f"No client with id {client_id}")
     unknown = set(fields) - _IMPORTABLE_FIELDS - {"active"}
     if unknown:
         raise ValueError(f"Unknown client field(s): {sorted(unknown)}")
+    if "name" in fields and not str(fields["name"]).strip():
+        raise ValueError("A client name cannot be empty")
+    # Guard the "at most one active client per normalized name" invariant on the
+    # write paths create_client can't see: an edit that renames onto another active
+    # client, or a reactivation of a name a live client already holds. Compute the
+    # post-update state — an omitted field keeps the client's current value.
+    effective_active = bool(fields.get("active", client.active))
+    effective_name = str(fields.get("name", client.name))
+    if effective_active:
+        duplicate = _find_active_duplicate(
+            session, _normalize_name(effective_name), exclude_id=client.id
+        )
+        if duplicate is not None:
+            raise _duplicate_active_error(duplicate)
     for name, value in fields.items():
         setattr(client, name, value)
     session.commit()
