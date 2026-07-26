@@ -24,7 +24,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
-from newspulse import cli, job
+from newspulse import cli, job, notify
 from newspulse.db import make_engine
 from newspulse.feeds import Feed
 from newspulse.ingest import FeedItem
@@ -503,6 +503,92 @@ def test_setup_logging_attaches_a_rotating_file_handler(tmp_path):
             if handler not in baseline:
                 logger.removeHandler(handler)
                 handler.close()
+
+
+# --- Post-run alert notification (NP-10 wiring) --------------------------------
+
+
+class _AlertingAnalyzer:
+    """Analyzer whose single verdict is a fired alert, to exercise the notify wiring."""
+
+    def analyze(self, client, articles):
+        return [
+            AnalysisSchema(
+                article_id=article.id,
+                client_id=client.id,
+                is_relevant=True,
+                summary=f"{client.name}: {article.title}",
+                category=Category.KRISE,
+                relevance_score=9,
+                importance_score=9,
+                is_alert=True,
+                reasoning="fake reasoning",
+            )
+            for article in articles
+        ]
+
+
+def test_completed_run_with_a_fired_alert_delivers_a_notification(session, monkeypatch):
+    """A completed run that fired an alert invokes the (mocked) delivery channel.
+
+    Exercises the full wiring end to end: run -> persist -> finalize -> notify ->
+    collect_fired_alerts -> notify_alerts -> the (patched) desktop delivery boundary.
+    """
+    _add_client(session, "Alpha AG")
+    feeds = [Feed(name="f", url="https://f.de/rss")]
+    items = {"https://f.de/rss": [_item("Krise bei Alpha AG", "https://f.de/a")]}
+
+    delivered: list = []
+    monkeypatch.setenv("NEWSPULSE_NOTIFY_CHANNEL", "desktop")
+    monkeypatch.setattr(notify, "_send_desktop", lambda summary: delivered.append(summary))
+
+    job.run(
+        session, analyzer=_AlertingAnalyzer(), feeds=feeds, fetch=_fetch_from(items), now=lambda: _NOW
+    )
+
+    assert len(delivered) == 1
+    assert delivered[0].total == 1
+    assert "Alpha AG" in delivered[0].desktop_message
+
+
+def test_completed_run_with_no_alerts_delivers_nothing(session, monkeypatch):
+    """A quiet run (no alerts) sends nothing even on an active channel — no '0 alerts' noise."""
+    _add_client(session, "Alpha AG")
+    feeds = [Feed(name="f", url="https://f.de/rss")]
+    items = {"https://f.de/rss": [_item("Alpha AG News", "https://f.de/a")]}
+
+    delivered: list = []
+    monkeypatch.setenv("NEWSPULSE_NOTIFY_CHANNEL", "desktop")
+    monkeypatch.setattr(notify, "_send_desktop", lambda summary: delivered.append(summary))
+
+    # _FakeAnalyzer produces is_alert=False, so the run fires no alerts.
+    job.run(
+        session, analyzer=_FakeAnalyzer(), feeds=feeds, fetch=_fetch_from(items), now=lambda: _NOW
+    )
+
+    assert delivered == []
+
+
+def test_notification_failure_does_not_fail_the_run(session, monkeypatch):
+    """A raising delivery channel is isolated: the run still records an ok ``runs`` row."""
+    _add_client(session, "Alpha AG")
+    feeds = [Feed(name="f", url="https://f.de/rss")]
+    items = {"https://f.de/rss": [_item("Krise bei Alpha AG", "https://f.de/a")]}
+
+    def boom(_summary):
+        raise RuntimeError("notifier exploded")
+
+    monkeypatch.setenv("NEWSPULSE_NOTIFY_CHANNEL", "desktop")
+    monkeypatch.setattr(notify, "_send_desktop", boom)
+
+    report = job.run(
+        session, analyzer=_AlertingAnalyzer(), feeds=feeds, fetch=_fetch_from(items), now=lambda: _NOW
+    )
+
+    assert report.status is RunStatus.OK  # notification failure never fails the run
+    run_row = session.scalars(select(Run)).one()
+    assert run_row.status is RunStatus.OK
+    assert _count(session, Analysis) == 1  # the alert analysis is still persisted
 
 
 # --- CLI -----------------------------------------------------------------------
