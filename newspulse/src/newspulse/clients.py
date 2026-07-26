@@ -65,6 +65,17 @@ _HEADER_OFFSET = 2
 # declared dependency, so advertising it would surface a raw pandas error.
 _SUPPORTED_SUFFIXES = frozenset({".csv", ".xlsx"})
 
+# A country is stored as an ISO 3166-1 alpha-2 code (the model column is
+# String(2)). SQLite ignores VARCHAR length, so a full name like "Deutschland"
+# would silently persist and only fail on a stricter backend — the import enforces
+# the width instead of trusting the column.
+_COUNTRY_CODE_LEN = 2
+
+# CSV encodings tried in order. German spreadsheets exported to CSV are frequently
+# cp1252/latin-1, not UTF-8; utf-8-sig also transparently strips a BOM. latin-1
+# decodes any byte sequence, so it is the last-resort catch-all.
+_CSV_ENCODINGS = ("utf-8-sig", "cp1252", "latin-1")
+
 
 class ImportValidationError(ValueError):
     """A sheet or mapping is malformed: an unknown/absent column, an unmapped
@@ -92,6 +103,25 @@ def _split_delimited(cell: str) -> list[str]:
     return [part.strip() for part in _ARRAY_DELIMITER.split(cell) if part.strip()]
 
 
+def _read_csv_any_encoding(path: Path) -> pd.DataFrame:
+    """Read a CSV, trying UTF-8 then the cp1252/latin-1 encodings common in German
+    spreadsheet exports, so a non-UTF-8 portfolio doesn't fail with a cryptic
+    ``UnicodeDecodeError``. Non-encoding read errors (e.g. a parser error) are left
+    to propagate to ``_read_dataframe``'s handler."""
+    last_error: UnicodeDecodeError | None = None
+    for encoding in _CSV_ENCODINGS:
+        try:
+            return pd.read_csv(
+                path, dtype=str, keep_default_na=False, encoding=encoding
+            )
+        except UnicodeDecodeError as exc:
+            last_error = exc
+    raise ImportValidationError(
+        f"Could not decode {path.name} as any of {list(_CSV_ENCODINGS)}; "
+        "re-save it as UTF-8"
+    ) from last_error
+
+
 def _read_dataframe(path: Path) -> pd.DataFrame:
     """Read an ``.xlsx``/``.csv`` into an all-string DataFrame.
 
@@ -110,9 +140,14 @@ def _read_dataframe(path: Path) -> pd.DataFrame:
         )
     try:
         if suffix == ".csv":
-            frame = pd.read_csv(path, dtype=str, keep_default_na=False)
+            frame = _read_csv_any_encoding(path)
         else:
             frame = pd.read_excel(path, dtype=str, keep_default_na=False)
+    except ImportValidationError:
+        # An encoding-fallback failure already carries a clear message; don't let
+        # the ValueError handler below (ImportValidationError subclasses it) rewrap
+        # it into the generic "Could not read" text.
+        raise
     except FileNotFoundError as exc:
         raise ImportValidationError(f"File not found: {path}") from exc
     except (ValueError, OSError, BadZipFile, InvalidFileException) as exc:
@@ -148,6 +183,25 @@ def _validate_mapping(mapping: dict[str, str], columns: list[str]) -> None:
         )
 
 
+def _normalize_country(cell: str, line_number: int) -> str:
+    """Normalize a country cell to an uppercase 2-letter ISO code.
+
+    An empty cell stays empty (import then keeps the client's default/existing
+    country). A non-empty value that is not exactly two letters is rejected naming
+    the row, so a full name like "Deutschland" can't silently pollute the
+    ``String(2)`` column on SQLite (which ignores the length) and blow up on a
+    stricter backend."""
+    if not cell:
+        return ""
+    code = cell.upper()
+    if len(code) != _COUNTRY_CODE_LEN or not code.isalpha():
+        raise ImportValidationError(
+            f"Row {line_number}: country {cell!r} is not a 2-letter ISO code "
+            "(e.g. 'DE')"
+        )
+    return code
+
+
 def _parse_row(
     row: pd.Series, mapping: dict[str, str], line_number: int
 ) -> dict[str, str | list[str]]:
@@ -157,6 +211,8 @@ def _parse_row(
         cell = str(row[source_column]).strip()
         if target_field in _ARRAY_FIELDS:
             parsed[target_field] = _split_delimited(cell)
+        elif target_field == "country":
+            parsed[target_field] = _normalize_country(cell, line_number)
         else:
             parsed[target_field] = cell
     if not parsed.get("name"):
