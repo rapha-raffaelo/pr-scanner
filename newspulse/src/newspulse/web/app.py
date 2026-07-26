@@ -82,10 +82,11 @@ def create_app() -> FastAPI:
 
     # Imported here (not at module top) to avoid a circular import: the route
     # modules import ``get_db``/``templates`` from this module.
-    from .routes import client, today
+    from .routes import client, settings, today
 
     app.include_router(today.router)
     app.include_router(client.router)
+    app.include_router(settings.router)
     return app
 
 

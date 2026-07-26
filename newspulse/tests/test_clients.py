@@ -316,6 +316,30 @@ def test_update_rejects_unknown_field(session):
         update_client(session, client.id, bogus="x")
 
 
+def test_reactivate_into_duplicate_active_name_is_rejected(session):
+    """Reactivating a client whose name a live client already holds is rejected, so
+    the "one active client per name" invariant import's dedup relies on holds."""
+    original = create_client(session, name="Alpha AG")
+    deactivate_client(session, original.id)
+    create_client(session, name="Alpha AG")  # a second, now-active Alpha AG
+
+    with pytest.raises(ValueError, match="already exists"):
+        update_client(session, original.id, active=True)
+
+    still_one = [c for c in list_clients(session) if c.name == "Alpha AG"]
+    assert len(still_one) == 1
+
+
+def test_edit_renaming_onto_another_active_name_is_rejected(session):
+    """Editing a client's name onto another active client's name is rejected (same
+    invariant), matched the case-insensitive way import dedups."""
+    create_client(session, name="Alpha AG")
+    beta = create_client(session, name="Beta AG")
+
+    with pytest.raises(ValueError, match="already exists"):
+        update_client(session, beta.id, name="alpha ag")
+
+
 def test_list_clients_excludes_inactive_by_default(session):
     create_client(session, name="Aktiv AG")
     inactive = create_client(session, name="Ruhend AG")
