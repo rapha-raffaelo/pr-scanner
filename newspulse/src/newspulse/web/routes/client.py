@@ -159,12 +159,19 @@ def _archive_conditions(
     if category is not None:
         conditions.append(Analysis.category == category)
     if search:
-        # ILIKE over headline and feed-generated summary. Parameterized (never
-        # interpolated) so a search term can't inject SQL; % wraps make it a
-        # contains-match. SQLite LIKE is case-insensitive for ASCII, enough for
-        # the POC.
-        like = f"%{search}%"
-        conditions.append(or_(Article.title.ilike(like), Analysis.summary.ilike(like)))
+        # ILIKE contains-match over the headline and the analyzer summary (the
+        # displayed summary field — not the feed snippet). Parameterized (never
+        # interpolated) so a term can't inject SQL; LIKE wildcards in the term are
+        # escaped so a literal "%"/"_" matches itself instead of acting as a
+        # wildcard. SQLite LIKE is ASCII case-insensitive, enough for the POC.
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
+        conditions.append(
+            or_(
+                Article.title.ilike(like, escape="\\"),
+                Analysis.summary.ilike(like, escape="\\"),
+            )
+        )
     return conditions
 
 

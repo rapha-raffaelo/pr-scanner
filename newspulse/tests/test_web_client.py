@@ -295,6 +295,42 @@ def test_filters_compose(factory, client):
     assert _headline_count(body) == 1
 
 
+def test_date_range_and_search_filters_compose(factory, client):
+    """A date range and a free-text search combine — only the row inside the
+    range AND matching the term survives, though each filter alone keeps two.
+
+    These two filters touch different tables (published_at on Article, the term
+    on Article.title/Analysis.summary) and the date path uses the DST-aware local
+    bounds, so their composition is worth asserting on its own."""
+    with factory() as s:
+        c = _seed_client(s)
+        _seed_article(
+            s, client_obj=c, title="Sonderwort im Februar",
+            url="https://ex.de/feb-match", published_at=_local_noon(_FEB),
+        )
+        _seed_article(
+            s, client_obj=c, title="Anderes Thema im Februar",
+            url="https://ex.de/feb-nomatch", published_at=_local_noon(_FEB),
+        )
+        _seed_article(
+            s, client_obj=c, title="Sonderwort im Maerz",
+            url="https://ex.de/mar-match", published_at=_local_noon(_MAR),
+        )
+        s.commit()
+        client_id = c.id
+
+    body = client.get(
+        f"/client/{client_id}",
+        params={"date_from": "2026-02-01", "date_to": "2026-02-28", "q": "Sonderwort"},
+    ).text
+
+    # Only the February row matching the term survives the intersection.
+    assert "feb-match" in body
+    assert "feb-nomatch" not in body  # in range, wrong text
+    assert "mar-match" not in body  # matches text, out of range
+    assert _headline_count(body) == 1
+
+
 def test_archive_paginates_at_named_page_size(factory, client):
     """An archive larger than a page renders one page at a time with navigation."""
     overflow = 5  # a handful past a full page, so page two is small and obvious
