@@ -27,8 +27,8 @@ import json
 import os
 import re
 import tempfile
-from contextlib import contextmanager
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -537,9 +537,9 @@ async def import_commit_route(
 
 
 __all__ = [
-    "router",
-    "get_alert_threshold",
-    "set_alert_threshold",
     "get_active_feed_names",
+    "get_alert_threshold",
+    "router",
     "set_active_feed_names",
+    "set_alert_threshold",
 ]

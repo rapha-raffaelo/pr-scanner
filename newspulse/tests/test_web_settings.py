@@ -304,7 +304,7 @@ def test_import_preview_reports_validation_error_without_committing(factory, cli
 
 def test_import_preview_shows_parsed_rows_without_committing(factory, client):
     """A valid sheet previews its parsed rows but commits nothing."""
-    csv_bytes = "Firmenname,Branche\nBeispiel AG,Automotive\n".encode("utf-8")
+    csv_bytes = b"Firmenname,Branche\nBeispiel AG,Automotive\n"
     resp = client.post(
         "/settings/import/preview",
         data={"map_name": "Firmenname", "map_industry": "Branche"},
@@ -318,7 +318,7 @@ def test_import_preview_shows_parsed_rows_without_committing(factory, client):
 
 def test_import_commit_creates_clients(factory, client):
     """Committing the import writes the clients through the NP-02 importer."""
-    csv_bytes = "Firmenname,Branche\nCommit AG,Handel\n".encode("utf-8")
+    csv_bytes = b"Firmenname,Branche\nCommit AG,Handel\n"
     resp = client.post(
         "/settings/import/commit",
         data={"map_name": "Firmenname", "map_industry": "Branche"},
