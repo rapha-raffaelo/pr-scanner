@@ -18,6 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
+newspulse = "newspulse.cli:main"
 newspulse-web = "newspulse.web.app:main"
 
 [dependency-groups]

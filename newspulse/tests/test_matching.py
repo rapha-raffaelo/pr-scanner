@@ -195,6 +195,21 @@ def test_duplicate_url_within_batch_collapses_to_one():
     assert kept[0].link == "https://x.de/dup"
 
 
+def test_linkless_item_is_dropped():
+    """An item with no link can't be stored (articles.url is UNIQUE/NOT NULL) and can't
+    be deduplicated across runs, so it is dropped here rather than sinking the whole
+    persist batch on a url="" collision (which would fail the run and break idempotency)."""
+    a = _item("Eine ganz normale Nachricht ohne Link", "")
+    b = _item("Noch eine andere Nachricht ohne Link", "")
+
+    assert matching.deduplicate([a, b]) == []
+
+    # A distinct linked item alongside a linkless one still survives.
+    linked = _item("Verlinkte Meldung", "https://x.de/ok")
+    kept = matching.deduplicate([a, linked])
+    assert [i.link for i in kept] == ["https://x.de/ok"]
+
+
 def test_distinct_urls_are_both_kept():
     a = _item("Erste ganz andere Meldung", "https://x.de/1")
     b = _item("Zweite ganz andere Meldung", "https://x.de/2")
