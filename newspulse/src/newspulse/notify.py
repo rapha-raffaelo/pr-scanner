@@ -41,29 +41,28 @@ from enum import StrEnum
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .config import (
+    _DEFAULT_SMTP_PORT,
+    _DEFAULT_SMTP_STARTTLS as _DEFAULT_STARTTLS,
+    _ENV_NOTIFY_CHANNEL as _ENV_CHANNEL,
+    _ENV_SMTP_HOST,
+    _ENV_SMTP_PASSWORD,
+    _ENV_SMTP_PORT,
+    _ENV_SMTP_RECIPIENT,
+    _ENV_SMTP_SENDER,
+    _ENV_SMTP_STARTTLS,
+    _ENV_SMTP_USERNAME,
+)
 from .models import Analysis, Article, Client, Run
 
 _log = logging.getLogger(__name__)
 
 # --- Named constants (the "why" lives next to each) ----------------------------
-
-# Env var names, kept in one place so callers never spell them by hand.
-_ENV_CHANNEL = "NEWSPULSE_NOTIFY_CHANNEL"
-_ENV_SMTP_HOST = "NEWSPULSE_SMTP_HOST"
-_ENV_SMTP_PORT = "NEWSPULSE_SMTP_PORT"
-_ENV_SMTP_USERNAME = "NEWSPULSE_SMTP_USERNAME"
-_ENV_SMTP_PASSWORD = "NEWSPULSE_SMTP_PASSWORD"
-_ENV_SMTP_SENDER = "NEWSPULSE_SMTP_SENDER"
-_ENV_SMTP_RECIPIENT = "NEWSPULSE_SMTP_RECIPIENT"
-_ENV_SMTP_STARTTLS = "NEWSPULSE_SMTP_STARTTLS"
-
-# 587 is the standard mail-submission port for STARTTLS; overridable for a relay
-# that listens elsewhere (e.g. 465 with implicit TLS, or a local 25 sink).
-_DEFAULT_SMTP_PORT = 587
-
-# STARTTLS is on by default: sending mail credentials over an unencrypted link is
-# never acceptable, so an operator must opt *out* explicitly for a plaintext relay.
-_DEFAULT_STARTTLS = True
+#
+# The NEWSPULSE_* env-var name spellings and the SMTP port/STARTTLS defaults live in
+# newspulse.config (the single source for every NEWSPULSE_* name; see its module
+# docstring) and are imported above under these local aliases. Only notify-internal
+# knobs remain below.
 
 # Wall-clock ceilings (seconds) for the two delivery boundaries. A desktop notifier
 # is a local subprocess (near-instant); SMTP crosses the network, so it gets more

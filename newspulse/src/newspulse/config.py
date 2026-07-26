@@ -52,6 +52,26 @@ _ENV_ANALYZER_BACKEND = "NEWSPULSE_ANALYZER_BACKEND"
 _ENV_WEB_HOST = "NEWSPULSE_WEB_HOST"
 _ENV_WEB_PORT = "NEWSPULSE_WEB_PORT"
 
+# Notification channel + SMTP env-var names (NP-10). Kept here with the other
+# NEWSPULSE_* names so every env-var spelling has one home; notify.py imports these
+# and resolves them per-call against an injectable env mapping (it never resolves a
+# notify value at import time, so no resolved notify setting lives in this module).
+_ENV_NOTIFY_CHANNEL = "NEWSPULSE_NOTIFY_CHANNEL"
+_ENV_SMTP_HOST = "NEWSPULSE_SMTP_HOST"
+_ENV_SMTP_PORT = "NEWSPULSE_SMTP_PORT"
+_ENV_SMTP_USERNAME = "NEWSPULSE_SMTP_USERNAME"
+_ENV_SMTP_PASSWORD = "NEWSPULSE_SMTP_PASSWORD"
+_ENV_SMTP_SENDER = "NEWSPULSE_SMTP_SENDER"
+_ENV_SMTP_RECIPIENT = "NEWSPULSE_SMTP_RECIPIENT"
+_ENV_SMTP_STARTTLS = "NEWSPULSE_SMTP_STARTTLS"
+
+# 587 is the standard mail-submission port for STARTTLS; overridable for a relay that
+# listens elsewhere (e.g. 465 with implicit TLS, or a local 25 sink).
+_DEFAULT_SMTP_PORT = 587
+# STARTTLS on by default: mail credentials must never cross an unencrypted link, so an
+# operator opts out explicitly for a plaintext relay.
+_DEFAULT_SMTP_STARTTLS = True
+
 
 def _env_int(name: str, default: int) -> int:
     """Read an int from the environment, falling back to ``default`` if unset or
