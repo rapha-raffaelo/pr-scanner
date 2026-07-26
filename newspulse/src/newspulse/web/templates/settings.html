@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen · NewsPulse{% endblock %}
+
+{# Render one preview cell: a list-valued field is joined, a scalar shown as-is. #}
+{% macro cell(value) %}
+  {%- if value is iterable and value is not string -%}
+    {{ value | join(', ') }}
+  {%- else -%}
+    {{ value }}
+  {%- endif -%}
+{% endmacro %}
+
+{% block content %}
+<style>
+  /* Settings-specific layout. Reuses the app-wide CSS custom properties defined
+     in app.css (:root), so this page inherits the dashboard palette without
+     duplicating it. Kept in-page so the settings view owns its own styling. */
+  .settings h1 { margin: 0 0 1.25rem; font-size: 1.5rem; }
+  .settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    align-items: start;
+  }
+  @media (max-width: 860px) { .settings-grid { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.15rem;
+  }
+  .panel--wide { grid-column: 1 / -1; }
+  .panel h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin: 0 0 0.85rem;
+  }
+  .panel label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.15rem; }
+  .panel input[type="text"], .panel input[type="file"], .panel select {
+    width: 100%;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font: inherit;
+    margin-bottom: 0.6rem;
+  }
+  .panel button {
+    font: inherit;
+    font-weight: 600;
+    padding: 0.4rem 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+  }
+  .panel button.secondary { background: var(--surface); color: var(--text); }
+  .panel button.danger { background: var(--surface); color: var(--alert); border-color: #fca5a5; }
+  .notice { border-radius: var(--radius); padding: 0.55rem 0.75rem; margin-bottom: 0.8rem; font-size: 0.85rem; }
+  .notice--error { background: var(--alert-bg); border: 1px solid #fca5a5; color: #b91c1c; }
+  .notice--ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #047857; }
+  .client-row { border-top: 1px solid var(--border); padding: 0.75rem 0; }
+  .client-row:first-of-type { border-top: none; }
+  .client-row--inactive { opacity: 0.65; }
+  .client-row .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .client-row .actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.3rem; }
+  .client-row .inactive-tag { font-size: 0.7rem; color: var(--muted); font-style: italic; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  table.data th, table.data td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.data th { color: var(--muted); font-weight: 600; }
+  .feed-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 1rem; margin-bottom: 0.75rem; }
+  @media (max-width: 620px) { .feed-list { grid-template-columns: 1fr; } }
+  .feed-list label { display: flex; gap: 0.4rem; align-items: baseline; color: var(--text); margin: 0; }
+  .feed-list .feed-industry { color: var(--muted); font-size: 0.72rem; }
+  .import-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem 0.75rem; }
+  @media (max-width: 620px) { .import-fields { grid-template-columns: 1fr; } }
+  .run-errors { margin: 0.25rem 0 0; padding-left: 1rem; color: var(--alert); }
+</style>
+
+<div class="settings">
+  <h1>Einstellungen</h1>
+
+  <div class="settings-grid">
+    <!-- ── Clients: add + edit + deactivate (NP-02 CRUD service) ── -->
+    <section class="panel panel--wide" aria-label="Clients">
+      <h2>Clients</h2>
+      {% if client_error %}
+        <div class="notice notice--error">{{ client_error }}</div>
+      {% endif %}
+
+      <form method="post" action="/settings/clients" class="add-client">
+        <div class="import-fields">
+          <div><label for="new-name">Name*</label><input type="text" id="new-name" name="name" required></div>
+          <div><label for="new-industry">Branche</label><input type="text" id="new-industry" name="industry"></div>
+          <div><label for="new-country">Land</label><input type="text" id="new-country" name="country" value="{{ default_country }}" maxlength="2"></div>
+          <div><label for="new-aliases">Aliasse</label><input type="text" id="new-aliases" name="aliases" placeholder="Komma/Semikolon"></div>
+          <div><label for="new-keywords">Suchbegriffe</label><input type="text" id="new-keywords" name="keywords" placeholder="Komma/Semikolon"></div>
+          <div><label for="new-topics">Alarm-Themen</label><input type="text" id="new-topics" name="alert_topics" placeholder="Komma/Semikolon"></div>
+        </div>
+        <button type="submit">Client hinzufügen</button>
+      </form>
+
+      <div class="client-list">
+        {% for client in clients %}
+          <div class="client-row{% if not client.active %} client-row--inactive{% endif %}">
+            <form method="post" action="/settings/clients/{{ client.id }}">
+              <div class="grid2">
+                <div><label>Name</label><input type="text" name="name" value="{{ client.name }}" required></div>
+                <div><label>Branche</label><input type="text" name="industry" value="{{ client.industry or '' }}"></div>
+                <div><label>Land</label><input type="text" name="country" value="{{ client.country }}" maxlength="2"></div>
+                <div><label>Aliasse</label><input type="text" name="aliases" value="{{ client.aliases | join(', ') }}"></div>
+                <div><label>Suchbegriffe</label><input type="text" name="keywords" value="{{ client.keywords | join(', ') }}"></div>
+                <div><label>Alarm-Themen</label><input type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}"></div>
+              </div>
+              <div class="actions">
+                <button type="submit" class="secondary">Speichern</button>
+                {% if not client.active %}<span class="inactive-tag">inaktiv</span>{% endif %}
+              </div>
+            </form>
+            <div class="actions">
+              {% if client.active %}
+                <form method="post" action="/settings/clients/{{ client.id }}/deactivate">
+                  <button type="submit" class="danger">Deaktivieren</button>
+                </form>
+              {% else %}
+                <form method="post" action="/settings/clients/{{ client.id }}/reactivate">
+                  <button type="submit" class="secondary">Reaktivieren</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+        {% else %}
+          <p class="rail__empty">Noch keine Clients. Über das Formular oder den Import anlegen.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- ── Import: mapping + preview before commit (NP-02 import) ── -->
+    <section class="panel panel--wide" aria-label="Import">
+      <h2>Import (Excel / CSV)</h2>
+      {% if import_success is not none %}
+        <div class="notice notice--ok">{{ import_success }} Client(s) importiert.</div>
+      {% endif %}
+
+      <form id="import-form" method="post" action="/settings/import/commit"
+            enctype="multipart/form-data" hx-encoding="multipart/form-data">
+        <label for="import-file">Datei (.xlsx / .csv)</label>
+        <input type="file" id="import-file" name="file" accept=".csv,.xlsx">
+
+        <p class="panel-hint">Spaltenzuordnung — Spaltenüberschrift je Feld eintragen (Name ist Pflicht):</p>
+        <div class="import-fields">
+          {% for field in map_fields %}
+            <div>
+              <label for="map-{{ field }}">{{ field }}{% if field == 'name' %}*{% endif %}</label>
+              <input type="text" id="map-{{ field }}" name="map_{{ field }}" value="{{ map_values.get(field, '') }}">
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="actions">
+          <button type="button" class="secondary"
+                  hx-post="/settings/import/preview"
+                  hx-target="#import-result"
+                  hx-select="#import-result"
+                  hx-swap="outerHTML">Vorschau</button>
+          <button type="submit">Importieren</button>
+        </div>
+      </form>
+
+      <div id="import-result">
+        {% if import_error %}
+          <div class="notice notice--error">{{ import_error }}</div>
+        {% elif import_rows is not none %}
+          <p class="panel-hint">{{ import_rows | length }} Zeile(n) — noch nicht importiert. Auf „Importieren“ klicken, um zu übernehmen.</p>
+          <table class="data">
+            <thead>
+              <tr>{% for field in map_fields %}<th>{{ field }}</th>{% endfor %}</tr>
+            </thead>
+            <tbody>
+              {% for row in import_rows %}
+                <tr>{% for field in map_fields %}<td>{{ cell(row.get(field, '')) }}</td>{% endfor %}</tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- ── Alert threshold (persists to settings table) ── -->
+    <section class="panel" aria-label="Alarm-Schwellenwert">
+      <h2>Alarm-Schwellenwert</h2>
+      {% if threshold_error %}<div class="notice notice--error">{{ threshold_error }}</div>{% endif %}
+      <p class="panel-hint">Ab dieser Wichtigkeit (0–10) wird ein Artikel als Alarm markiert. Wirkt nur auf künftige Läufe.</p>
+      <form method="post" action="/settings/threshold">
+        <label for="threshold">Schwellenwert</label>
+        <select id="threshold" name="alert_threshold">
+          {% for value in score_range %}
+            <option value="{{ value }}"{% if value == alert_threshold %} selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Speichern</button>
+      </form>
+    </section>
+
+    <!-- ── Active feeds (persists to settings table) ── -->
+    <section class="panel" aria-label="Feeds">
+      <h2>Feeds ({{ feeds | selectattr('active') | list | length }}/{{ feeds | length }} aktiv)</h2>
+      <form method="post" action="/settings/feeds">
+        <div class="feed-list">
+          {% for feed in feeds %}
+            <label title="{{ feed.url }}">
+              <input type="checkbox" name="feed" value="{{ feed.name }}"{% if feed.active %} checked{% endif %}>
+              <span>{{ feed.name }}{% if feed.industry %} <span class="feed-industry">{{ feed.industry }}</span>{% endif %}</span>
+            </label>
+          {% endfor %}
+        </div>
+        <button type="submit">Feeds speichern</button>
+      </form>
+    </section>
+
+    <!-- ── Run history ── -->
+    <section class="panel panel--wide" aria-label="Läufe">
+      <h2>Letzte Läufe</h2>
+      {% if runs %}
+        <table class="data">
+          <thead>
+            <tr><th>Start</th><th>Status</th><th>Artikel</th><th>Fehler</th></tr>
+          </thead>
+          <tbody>
+            {% for run in runs %}
+              <tr>
+                <td>{{ run.started_at.strftime('%d.%m.%Y %H:%M') }}{% if run.is_running %} (läuft…){% endif %}</td>
+                <td><span class="run-badge run-badge--{{ run.status }}">{{ run.status }}</span></td>
+                <td>{{ run.articles_found }}</td>
+                <td>
+                  {% if run.errors %}
+                    {{ run.errors | length }}
+                    <ul class="run-errors">{% for err in run.errors %}<li>{{ err }}</li>{% endfor %}</ul>
+                  {% else %}—{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="rail__empty">Noch kein Lauf.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
