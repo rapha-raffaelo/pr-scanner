@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Today · NewsPulse{% endblock %}
+
+{% macro item_row(item) %}
+  <article class="feed-item{% if item.is_alert %} feed-item--alert{% endif %}">
+    <div class="feed-item__head">
+      <a class="feed-item__headline" href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a>
+      {% if item.is_alert %}<span class="tag tag--alert">Alert</span>{% endif %}
+    </div>
+    <div class="feed-item__meta">
+      <span class="client">{{ item.client_name }}</span>
+      <span class="source">{{ item.source }}</span>
+      <span class="time">{{ item.published_at.strftime('%H:%M') }}</span>
+      <span class="tag tag--category tag--{{ item.category }}">{{ item.category }}</span>
+      <span class="importance" title="Importance score">{{ item.importance }}/10</span>
+    </div>
+    {% if item.summary %}<p class="feed-item__summary">{{ item.summary }}</p>{% endif %}
+  </article>
+{% endmacro %}
+
+{% block content %}
+<div id="today-root">
+<div class="today-toolbar">
+  <h1>Today</h1>
+  <form class="date-picker" method="get" action="/">
+    <label for="date">Tag:</label>
+    {# When HTMX is loaded it handles the change and swaps only #today-root out of
+       the response (hx-select), so the full document is never nested inside body.
+       The onchange native submit is a fallback that fires ONLY when HTMX is absent
+       (no JS / offline), so the two never both navigate. #}
+    <input
+      type="date"
+      id="date"
+      name="date"
+      value="{{ day_iso }}"
+      hx-get="/"
+      hx-trigger="change"
+      hx-target="#today-root"
+      hx-select="#today-root"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      onchange="if (!window.htmx) this.form.requestSubmit()">
+    <noscript><button type="submit">Anzeigen</button></noscript>
+  </form>
+</div>
+
+<div class="triage">
+  <aside class="triage__rail" aria-label="Alerts">
+    <h2 class="rail__title">Alerts</h2>
+    {% if alerts %}
+      {% for item in alerts %}
+        <div class="alert-card">
+          <a class="alert-card__headline" href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer" title="{{ item.headline }}">{{ item.headline }}</a>
+          <div class="alert-card__meta">
+            <span class="client">{{ item.client_name }}</span>
+            <span class="importance">{{ item.importance }}/10</span>
+          </div>
+          {% if item.summary %}<p class="alert-card__summary" title="{{ item.summary }}">{{ item.summary }}</p>{% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="rail__empty">Keine Alerts heute.</p>
+    {% endif %}
+  </aside>
+
+  <section class="triage__feed" aria-label="Coverage">
+    <h2 class="feed__title">Coverage</h2>
+    {% if items %}
+      {% for item in items %}
+        {{ item_row(item) }}
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <p>Keine Berichterstattung für {{ day.strftime('%d.%m.%Y') }}.</p>
+      </div>
+    {% endif %}
+  </section>
+</div>
+</div>
+{% endblock %}

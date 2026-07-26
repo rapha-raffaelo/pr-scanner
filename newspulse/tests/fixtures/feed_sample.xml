@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Beispiel Wirtschaft</title>
+    <link>https://beispiel.example.de/</link>
+    <description>Beispielhafte Wirtschaftsnachrichten zum Testen der Ingestion.</description>
+    <language>de</language>
+    <lastBuildDate>Fri, 24 Jul 2026 09:30:00 +0200</lastBuildDate>
+
+    <item>
+      <title>Beispiel AG kündigt neues Elektromodell an</title>
+      <link>https://beispiel.example.de/wirtschaft/beispiel-ag-elektromodell</link>
+      <description>Der Automobilhersteller Beispiel AG stellt sein erstes vollelektrisches Modell vor.</description>
+      <pubDate>Fri, 24 Jul 2026 09:00:00 +0200</pubDate>
+      <guid>https://beispiel.example.de/wirtschaft/beispiel-ag-elektromodell</guid>
+    </item>
+
+    <item>
+      <title>Muster GmbH meldet Rekordgewinn im zweiten Quartal</title>
+      <link>https://beispiel.example.de/finanzen/muster-gmbh-rekordgewinn</link>
+      <description>Die Muster GmbH steigert ihren Gewinn deutlich gegenüber dem Vorjahr.</description>
+      <pubDate>Thu, 23 Jul 2026 18:30:00 +0200</pubDate>
+      <guid>https://beispiel.example.de/finanzen/muster-gmbh-rekordgewinn</guid>
+    </item>
+
+    <item>
+      <title>Alt AG blickt auf ein schwieriges Jahr zurück</title>
+      <link>https://beispiel.example.de/wirtschaft/alt-ag-rueckblick</link>
+      <description>Ein Rückblick auf die Entwicklung der Alt AG im ersten Halbjahr.</description>
+      <pubDate>Mon, 01 Jun 2026 12:00:00 +0200</pubDate>
+      <guid>https://beispiel.example.de/wirtschaft/alt-ag-rueckblick</guid>
+    </item>
+  </channel>
+</rss>

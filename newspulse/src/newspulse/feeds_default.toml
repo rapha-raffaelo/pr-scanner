@@ -1,0 +1,226 @@
+# NewsPulse curated German feed registry.
+#
+# This file is editable: add, remove, or retag feeds without touching code. Each
+# entry is a `[[feeds]]` table with:
+#   name      (required) — human label, also used as the article `source`
+#   url       (required) — the RSS/Atom feed URL
+#   industry  (optional) — a coarse sector tag for trade-press feeds; omit or
+#                          leave empty for general national outlets
+#
+# Only feed-provided fields are ever ingested (headline, link, date, the feed's
+# own summary). Full article bodies are never fetched or stored
+# (Leistungsschutzrecht) — see ingest.py.
+
+# --- National general news -----------------------------------------------------
+
+[[feeds]]
+name = "Spiegel"
+url = "https://www.spiegel.de/schlagzeilen/tops/index.rss"
+
+[[feeds]]
+name = "Spiegel Wirtschaft"
+url = "https://www.spiegel.de/wirtschaft/index.rss"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "Zeit"
+url = "https://newsfeed.zeit.de/index"
+
+[[feeds]]
+name = "Zeit Wirtschaft"
+url = "https://newsfeed.zeit.de/wirtschaft/index"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "FAZ Aktuell"
+url = "https://www.faz.net/rss/aktuell/"
+
+[[feeds]]
+name = "FAZ Wirtschaft"
+url = "https://www.faz.net/rss/aktuell/wirtschaft/"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "FAZ Finanzen"
+url = "https://www.faz.net/rss/aktuell/finanzen/"
+industry = "finanzen"
+
+[[feeds]]
+name = "Handelsblatt"
+url = "https://www.handelsblatt.com/contentexport/feed/schlagzeilen"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "Handelsblatt Unternehmen"
+url = "https://www.handelsblatt.com/contentexport/feed/unternehmen"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "Handelsblatt Finanzen"
+url = "https://www.handelsblatt.com/contentexport/feed/finanzen"
+industry = "finanzen"
+
+[[feeds]]
+name = "Süddeutsche Zeitung"
+url = "https://rss.sueddeutsche.de/rss/Topthemen"
+
+[[feeds]]
+name = "Süddeutsche Wirtschaft"
+url = "https://rss.sueddeutsche.de/rss/Wirtschaft"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "Welt"
+url = "https://www.welt.de/feeds/latest.rss"
+
+[[feeds]]
+name = "Welt Wirtschaft"
+url = "https://www.welt.de/feeds/section/wirtschaft.rss"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "n-tv"
+url = "https://www.n-tv.de/rss"
+
+[[feeds]]
+name = "n-tv Wirtschaft"
+url = "https://www.n-tv.de/wirtschaft/rss"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "Tagesschau"
+url = "https://www.tagesschau.de/index~rss2.xml"
+
+[[feeds]]
+name = "Tagesschau Wirtschaft"
+url = "https://www.tagesschau.de/wirtschaft/index~rss2.xml"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "FR"
+url = "https://www.fr.de/rssfeed.rdf"
+
+[[feeds]]
+name = "taz"
+url = "https://taz.de/!p4608;rss/"
+
+[[feeds]]
+name = "Focus"
+url = "https://rss.focus.de/fol/XML/rss_folnews.xml"
+
+[[feeds]]
+name = "Stern"
+url = "https://www.stern.de/feed/standard/all/"
+
+[[feeds]]
+name = "RND"
+url = "https://www.rnd.de/arc/outboundfeeds/rss/"
+
+[[feeds]]
+name = "Manager Magazin"
+url = "https://www.manager-magazin.de/news/index.rss"
+industry = "wirtschaft"
+
+# --- Business / finance trade press --------------------------------------------
+
+[[feeds]]
+name = "WirtschaftsWoche"
+url = "https://www.wiwo.de/contentexport/feed/rss/schlagzeilen"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "Börsen-Zeitung"
+url = "https://www.boersen-zeitung.de/rss/news.xml"
+industry = "finanzen"
+
+[[feeds]]
+name = "Finanznachrichten"
+url = "https://www.finanznachrichten.de/rss-aktien-nachrichten"
+industry = "finanzen"
+
+[[feeds]]
+name = "Capital"
+url = "https://www.capital.de/feed"
+industry = "finanzen"
+
+[[feeds]]
+name = "Gründerszene"
+url = "https://www.businessinsider.de/gruenderszene/feed/"
+industry = "startups"
+
+[[feeds]]
+name = "t3n"
+url = "https://t3n.de/rss.xml"
+industry = "tech"
+
+# --- Sector / trade press ------------------------------------------------------
+
+[[feeds]]
+name = "heise online"
+url = "https://www.heise.de/rss/heise-atom.xml"
+industry = "tech"
+
+[[feeds]]
+name = "Golem"
+url = "https://rss.golem.de/rss.php?feed=RSS2.0"
+industry = "tech"
+
+[[feeds]]
+name = "Automobilwoche"
+url = "https://www.automobilwoche.de/rss.xml"
+industry = "automotive"
+
+[[feeds]]
+name = "Automobil Produktion"
+url = "https://www.automobil-produktion.de/feed"
+industry = "automotive"
+
+[[feeds]]
+name = "Pharmazeutische Zeitung"
+url = "https://www.pharmazeutische-zeitung.de/index.php?type=100"
+industry = "pharma"
+
+[[feeds]]
+name = "Ärzteblatt"
+url = "https://www.aerzteblatt.de/rss/news.asp"
+industry = "pharma"
+
+[[feeds]]
+name = "Lebensmittel Zeitung"
+url = "https://www.lebensmittelzeitung.net/rss/news.rss"
+industry = "handel"
+
+[[feeds]]
+name = "Immobilien Zeitung"
+url = "https://www.immobilien-zeitung.de/rss.xml"
+industry = "immobilien"
+
+[[feeds]]
+name = "energate messenger"
+url = "https://www.energate-messenger.de/rss/news/"
+industry = "energie"
+
+[[feeds]]
+name = "Logistik Heute"
+url = "https://www.logistik-heute.de/rss.xml"
+industry = "logistik"
+
+[[feeds]]
+name = "VDI nachrichten"
+url = "https://www.vdi-nachrichten.com/rss/"
+industry = "industrie"
+
+[[feeds]]
+name = "Deutsche Verkehrs-Zeitung"
+url = "https://www.dvz.de/rss.xml"
+industry = "logistik"
+
+[[feeds]]
+name = "Textilwirtschaft"
+url = "https://www.textilwirtschaft.de/rss/news.rss"
+industry = "handel"
+
+[[feeds]]
+name = "Werben & Verkaufen"
+url = "https://www.wuv.de/rss/all"
+industry = "medien"
