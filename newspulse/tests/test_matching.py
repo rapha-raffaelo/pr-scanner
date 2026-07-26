@@ -270,6 +270,32 @@ def test_stored_title_hash_drops_a_later_republish():
     assert kept == []
 
 
+def test_short_en_dash_clause_does_not_collapse_distinct_stories():
+    """An en-dash is the German Gedankenstrich used mid-headline, not just an outlet
+    byline. Two distinct same-company stories separated by a short en-dash clause must
+    stay two articles — collapsing them would drop a real story (the costly dedup
+    error). The byline tail matches neither item's source, so nothing is stripped."""
+    absatz = _item(
+        "Mercedes – Absatz bricht ein",
+        "https://n-tv.de/mercedes-absatz",
+        source="n-tv",
+        when=_WHEN,
+    )
+    chef = _item(
+        "Mercedes – neuer Chef ernannt",
+        "https://welt.de/mercedes-chef",
+        source="Welt",
+        when=_WHEN + dt.timedelta(hours=1),
+    )
+
+    kept = matching.deduplicate([absatz, chef])
+
+    assert {i.link for i in kept} == {
+        "https://n-tv.de/mercedes-absatz",
+        "https://welt.de/mercedes-chef",
+    }
+
+
 def test_deduplicate_is_stable_on_reruns():
     """Feeding the survivors of one dedup pass back through a second pass (seeded
     with what the first pass would have stored) yields nothing new — the

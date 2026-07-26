@@ -41,16 +41,23 @@ _log = logging.getLogger(__name__)
 
 # --- Named constants (the "why" lives next to each) ----------------------------
 
-# Outlet bylines appended to a headline ("… – SPIEGEL ONLINE", "… | Handelsblatt",
-# "… – manager magazin") are short. Capping the stripped tail at 5 words keeps a
-# genuine descriptive dash-clause ("Berlin – die Lage nach der langen Nacht")
-# from being mistaken for a source byline and wrongly collapsed into another story.
+# A byline after an unambiguous separator (pipe/middot — "… | Handelsblatt") is
+# short: an outlet name, not a clause. Capping the stripped tail at 5 words keeps a
+# long trailing phrase after such a separator from being swallowed as if it were a
+# byline. (Dash separators are guarded differently — see _strip_source_suffix.)
 _MAX_SOURCE_SUFFIX_WORDS = 5
 
-# Separators German outlets use to append their name to a headline. The dash
-# variants, pipe, and middot reliably precede an outlet byline; a plain hyphen is
-# ambiguous (also a headline dash) and is handled more conservatively below.
+# Separators German outlets use to append their name to a headline. Pipe and middot
+# are unambiguous byline markers; the dash variants (hyphen, en-dash, em-dash) are
+# ALSO used mid-headline as a real Gedankenstrich ("Mercedes – Absatz bricht ein"),
+# so they are handled conservatively below (stripped only when the tail is the source).
 _SOURCE_SEP_RE = re.compile(r"\s+([-–—|·])\s+")
+
+# Of those, only pipe and middot reliably precede an outlet byline — German headlines
+# never use them mid-sentence — so a short tail after one is stripped as a byline on
+# length alone. The dash variants stay source-guarded (see _strip_source_suffix): a
+# false collapse drops a real story, the costlier error, so dedup errs toward keeping.
+_STRONG_BYLINE_SEPS = frozenset("|·")
 
 # Everything that is not a Unicode letter or digit (punctuation, whitespace,
 # underscore) is stripped when normalizing a title, so only the "word content"
@@ -187,8 +194,8 @@ def deduplicate(
     URL/hash wins — so a second run over the same feeds keeps exactly the same
     copy and adds nothing new.
     """
-    seen_urls: set[str] = {url for url in (known_urls or ())}
-    seen_hashes: set[str] = {h for h in (known_title_hashes or ())}
+    seen_urls: set[str] = set(known_urls or ())
+    seen_hashes: set[str] = set(known_title_hashes or ())
 
     kept: list[FeedItem] = []
     dropped = 0
@@ -224,12 +231,15 @@ def normalize_title(title: str, source: str | None = None) -> str:
 
 
 def _strip_source_suffix(title: str, source: str | None) -> str:
-    """Drop a trailing outlet byline ("… – SPIEGEL ONLINE", "… | Handelsblatt").
+    """Drop a trailing outlet byline ("… | Handelsblatt", "… – SPIEGEL ONLINE").
 
-    Splits on the *last* source separator. A dash/pipe/middot separator followed
-    by a short tail is treated as a byline and removed. A plain hyphen is
-    ambiguous (headlines use " - " as a dash too), so it is only stripped when the
-    tail is exactly this item's ``source`` — never a real dash-clause."""
+    Splits on the *last* source separator. A pipe/middot separator followed by a
+    short tail is an unambiguous byline and is removed. A dash separator (hyphen,
+    en-dash, em-dash) is ambiguous — the en-dash is the standard German
+    Gedankenstrich used mid-headline ("Mercedes – Absatz bricht ein") — so a dash
+    tail is stripped only when it exactly equals this item's ``source``, never on
+    length alone. Erring toward keeping a duplicate beats collapsing two distinct
+    stories into one and dropping a real article (the costlier dedup error)."""
     matches = list(_SOURCE_SEP_RE.finditer(title))
     if not matches:
         return title.strip()
@@ -239,9 +249,9 @@ def _strip_source_suffix(title: str, source: str | None) -> str:
     if not head:
         return title.strip()
     sep_char = last.group(1)
-    if sep_char != "-" and len(tail.split()) <= _MAX_SOURCE_SUFFIX_WORDS:
+    if sep_char in _STRONG_BYLINE_SEPS and len(tail.split()) <= _MAX_SOURCE_SUFFIX_WORDS:
         return head
-    if sep_char == "-" and source and _alnum(tail) == _alnum(source.strip()):
+    if source and _alnum(tail) == _alnum(source.strip()):
         return head
     return title.strip()
 
