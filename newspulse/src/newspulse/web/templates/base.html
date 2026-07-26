@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}NewsPulse{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <!-- HTMX for server-driven swaps (date picker); vendored locally so the app
+       stays fully offline (DEC-3: everything runs on the local machine). Loaded
+       synchronously (no defer) so window.htmx is defined before the date input
+       can be changed — otherwise the native onchange fallback could fire a full
+       navigation mid-load and double-fetch. It is a small local file, so the
+       parse-blocking cost is negligible. -->
+  <script src="{{ url_for('static', path='htmx.min.js') }}"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">NewsPulse</a>
+    <div class="run-status" title="Last daily run">
+      {% if last_run %}
+        <span class="run-time">
+          {% if last_run.is_running %}Läuft…{% else %}Letzter Lauf: {{ last_run.ran_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}
+        </span>
+        <span class="run-badge run-badge--{{ last_run.status }}">{{ last_run.status }}</span>
+        <span class="run-metric">{{ last_run.articles_checked }} Artikel geprüft</span>
+        <span class="run-metric">
+          {% if last_run.feed_errors == 0 %}Feeds ok{% else %}{{ last_run.feed_errors }} Feed-Fehler{% endif %}
+        </span>
+      {% else %}
+        <span class="run-status--empty">Noch kein Lauf</span>
+      {% endif %}
+    </div>
+  </header>
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
