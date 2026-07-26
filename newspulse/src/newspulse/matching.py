@@ -231,27 +231,31 @@ def deduplicate(
 
     kept: list[FeedItem] = []
     dropped = 0
+    linkless = 0
     for item in sorted(items, key=_dedup_sort_key):
         url = _item_url(item)
-        title = _item_title(item)
-        source = _item_source(item)
+        if not url:
+            # No link => no stable identity: the item can't be deduplicated across
+            # runs and can't be stored (articles.url is UNIQUE and NOT NULL), so a
+            # second linkless item would collide on url="" and roll back the whole
+            # persist batch. Drop it here — logged, never silent — rather than let one
+            # dateless/linkless entry sink every other kept article and fail the run.
+            linkless += 1
+            continue
         # None => this title is too thin to hash-collapse; dedup it by URL only.
-        thash = (
-            title_hash(title, source)
-            if _significant_word_count(title, source) >= _MIN_HEADLINE_WORDS
-            else None
-        )
-        if (url and url in seen_urls) or (thash is not None and thash in seen_hashes):
+        thash = dedup_title_hash(_item_title(item), _item_source(item))
+        if url in seen_urls or (thash is not None and thash in seen_hashes):
             dropped += 1
             continue
         kept.append(item)
-        if url:
-            seen_urls.add(url)
+        seen_urls.add(url)
         if thash is not None:
             seen_hashes.add(thash)
 
     if dropped:
         _log.debug("deduplicate: kept %d item(s), dropped %d duplicate(s)", len(kept), dropped)
+    if linkless:
+        _log.warning("deduplicate: dropped %d item(s) with no link (unstorable)", linkless)
     return kept
 
 
@@ -262,6 +266,21 @@ def title_hash(title: str, source: str | None = None) -> str:
     persists this alongside each article so a later run can seed
     ``known_title_hashes`` and recognise an already-stored wire story."""
     return hashlib.sha256(normalize_title(title, source).encode("utf-8")).hexdigest()
+
+
+def dedup_title_hash(title: str, source: str | None = None) -> str | None:
+    """The collapse hash for a title, or ``None`` when it is too thin to trust.
+
+    Returns :func:`title_hash` only when the byline-stripped title carries at least
+    ``_MIN_HEADLINE_WORDS`` word-tokens — the same gate :func:`deduplicate` applies
+    before collapsing an exact cross-URL title match as republished wire copy. Below
+    that bar an exact match is too weak to trust (a symbol-only title, or PR
+    boilerplate two firms share), so identity falls back to URL only. Exposed so the
+    daily job can resolve a collapsed near-duplicate copy back to the stored article
+    it was folded into, using exactly the rule that folded it."""
+    if _significant_word_count(title, source) >= _MIN_HEADLINE_WORDS:
+        return title_hash(title, source)
+    return None
 
 
 def normalize_title(title: str, source: str | None = None) -> str:
@@ -349,6 +368,7 @@ def _item_source(item: FeedItem) -> str:
 
 __all__ = [
     "Candidate",
+    "dedup_title_hash",
     "deduplicate",
     "match_candidates",
     "normalize_title",
