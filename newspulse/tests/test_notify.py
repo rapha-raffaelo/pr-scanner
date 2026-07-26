@@ -112,6 +112,16 @@ def test_build_summary_subject_is_singular_for_one_alert():
     assert summary.subject == "NewsPulse: 1 alert across 1 client"
 
 
+def test_build_summary_desktop_message_is_a_single_line():
+    """A headline carrying newlines/tabs collapses to one line — a raw newline would
+    break the osascript AppleScript string literal the message is embedded in."""
+    summary = build_summary([_alert(headline="Krise\nbei\tAlpha")])
+
+    assert "\n" not in summary.desktop_message
+    assert "\t" not in summary.desktop_message
+    assert "Krise bei Alpha" in summary.desktop_message
+
+
 def test_build_summary_body_lists_client_count_and_top_headline():
     """The body has one bullet per client with its count and top headline."""
     summary = build_summary(

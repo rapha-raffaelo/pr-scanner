@@ -70,6 +70,12 @@ _log = logging.getLogger(__name__)
 _DESKTOP_TIMEOUT = 10
 _SMTP_TIMEOUT = 30
 
+# Seconds to keep the Windows PowerShell balloon process alive after ShowBalloonTip:
+# a NotifyIcon is disposed when the process exits, which cancels an un-rendered
+# balloon, so the process must outlive the render. Kept safely under _DESKTOP_TIMEOUT
+# (the subprocess wall-clock ceiling) so the keep-alive never trips its own timeout.
+_WINDOWS_BALLOON_SECONDS = 4
+
 # Truthy/falsy spellings accepted for boolean env vars, matching common shell idiom.
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 _FALSY = frozenset({"0", "false", "no", "off"})
@@ -333,14 +339,24 @@ def _format_body(groups: Sequence[ClientAlertGroup]) -> str:
     return "\n".join([header, "", *bullets])
 
 
+def _one_line(text: str) -> str:
+    """Collapse every run of whitespace (newlines, tabs) to a single space.
+
+    A desktop notification is a single line, and a raw newline in a feed headline
+    would break the ``osascript`` AppleScript string literal the message is embedded
+    in (AppleScript cannot span a string across a bare newline) — so the compact
+    message is normalized to one physical line before it reaches any channel.
+    """
+    return " ".join(text.split())
+
+
 def _format_desktop_message(groups: Sequence[ClientAlertGroup]) -> str:
     """Compact one-liner for a desktop notification (title carries the counts)."""
     top = groups[0]
     lead = f"{top.client_name} ({top.count}): {top.top_headline}"
     others = len(groups) - 1
-    if others:
-        return f"{lead} +{others} more client(s)"
-    return lead
+    message = f"{lead} +{others} more client(s)" if others else lead
+    return _one_line(message)
 
 
 def build_summary(alerts: Sequence[FiredAlert]) -> AlertSummary | None:
@@ -421,14 +437,19 @@ def _desktop_command(summary: AlertSummary) -> list[str]:
     if sys.platform.startswith("linux"):
         return ["notify-send", summary.subject, summary.desktop_message]
     if sys.platform.startswith("win"):
-        # Best-effort Windows toast via PowerShell balloon; email is the recommended
-        # channel for a headless scheduled task (see docs/scheduling.md).
+        # Best-effort Windows toast via a PowerShell balloon; email is the recommended
+        # channel for a headless scheduled task (see docs/scheduling.md). The process
+        # must outlive ShowBalloonTip — a PowerShell that exits immediately disposes the
+        # NotifyIcon before Windows renders the balloon — so it sleeps briefly, then
+        # disposes explicitly.
         ps = (
             "[reflection.assembly]::LoadWithPartialName('System.Windows.Forms') > $null; "
             "$n = New-Object System.Windows.Forms.NotifyIcon; "
             "$n.Icon = [System.Drawing.SystemIcons]::Information; $n.Visible = $true; "
-            f"$n.ShowBalloonTip(10000, {_powershell_quote(summary.subject)}, "
-            f"{_powershell_quote(summary.desktop_message)}, 'Info')"
+            f"$n.ShowBalloonTip({_WINDOWS_BALLOON_SECONDS * 1000}, "
+            f"{_powershell_quote(summary.subject)}, "
+            f"{_powershell_quote(summary.desktop_message)}, 'Info'); "
+            f"Start-Sleep -Seconds {_WINDOWS_BALLOON_SECONDS}; $n.Dispose()"
         )
         return ["powershell", "-NoProfile", "-Command", ps]
     raise NotifyConfigError(f"no desktop notifier for platform {sys.platform!r}")
