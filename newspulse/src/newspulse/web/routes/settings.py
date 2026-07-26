@@ -60,7 +60,11 @@ router = APIRouter()
 # settings-table keys. Kept here so the read/write helpers and any future consumer
 # name a setting by constant, never by a bare string spread across the package.
 _ALERT_THRESHOLD_KEY = "alert_threshold"
-_ACTIVE_FEEDS_KEY = "active_feeds"
+# Feeds are persisted as the *deactivated* set (a deny-list), not the active set:
+# storing which feeds the operator switched OFF means a feed later added to the
+# registry is active by default — the operator never deselected it — instead of
+# silently dropping off the moment the feed form was saved once.
+_INACTIVE_FEEDS_KEY = "inactive_feeds"
 
 # Recent runs shown in the history table — enough to eyeball a week-plus of daily
 # sweeps without paging the whole (unbounded) runs history into one page.
@@ -136,22 +140,39 @@ def set_alert_threshold(session: Session, value: int) -> None:
 
 
 def get_active_feed_names(session: Session, all_feeds: Iterable) -> set[str]:
-    """The set of feed names currently active. Default (no stored value): all of
-    the registered feeds, so a fresh install sweeps everything until narrowed."""
-    setting = session.get(Setting, _ACTIVE_FEEDS_KEY)
-    default = {feed.name for feed in all_feeds}
+    """The set of feed names currently active: every registered feed minus the ones
+    the operator has explicitly deactivated.
+
+    Storing the *deactivated* set (see ``_INACTIVE_FEEDS_KEY``) means the default —
+    no stored value, or a corrupt one — is "all feeds active", and a feed added to
+    the registry after the last save is active by default rather than silently off.
+    """
+    all_names = {feed.name for feed in all_feeds}
+    setting = session.get(Setting, _INACTIVE_FEEDS_KEY)
     if setting is None or setting.value is None:
-        return default
+        return all_names
     try:
-        names = json.loads(setting.value)
+        inactive = json.loads(setting.value)
     except json.JSONDecodeError:
-        return default
-    return set(names) if isinstance(names, list) else default
+        return all_names
+    if not isinstance(inactive, list):
+        return all_names
+    return all_names - set(inactive)
 
 
-def set_active_feed_names(session: Session, names: Iterable[str]) -> None:
-    """Persist the active feed set as a sorted JSON list (stable, diff-friendly)."""
-    _upsert_setting(session, _ACTIVE_FEEDS_KEY, json.dumps(sorted(set(names))))
+def set_active_feed_names(
+    session: Session, active_names: Iterable[str], all_names: Iterable[str]
+) -> None:
+    """Persist which feeds are active by storing their *complement* — the feeds the
+    operator switched off — as a sorted JSON list (stable, diff-friendly).
+
+    ``active_names`` is intersected with ``all_names`` first so a stale name from an
+    old form can't linger, and the stored deny-list is exactly the registered feeds
+    the operator left unchecked.
+    """
+    known = set(all_names)
+    inactive = sorted(known - (set(active_names) & known))
+    _upsert_setting(session, _INACTIVE_FEEDS_KEY, json.dumps(inactive))
     session.commit()
 
 
@@ -514,9 +535,14 @@ def set_threshold_route(
 async def set_feeds_route(
     request: Request, session: Session = Depends(get_db)
 ) -> RedirectResponse:
-    """Persist the active feed set (the checked ``feed`` boxes) to settings."""
+    """Persist the active feed set (the checked ``feed`` boxes) to settings.
+
+    The full registry is passed so the stored deny-list is the exact complement of
+    what the operator checked, keeping newly-added feeds active by default.
+    """
     form = await request.form()
-    set_active_feed_names(session, form.getlist("feed"))
+    all_names = [feed.name for feed in load_feeds()]
+    set_active_feed_names(session, form.getlist("feed"), all_names)
     return RedirectResponse("/settings", status_code=_SEE_OTHER)
 
 

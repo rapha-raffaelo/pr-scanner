@@ -15,7 +15,7 @@ The three story-mandated behaviors are covered explicitly:
 from __future__ import annotations
 
 import datetime as dt
-import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,10 +34,11 @@ from newspulse.models import (
     RunStatus,
     Setting,
 )
+from newspulse.feeds import load_feeds
 from newspulse.web.app import create_app, get_db
+from newspulse.web.routes.settings import get_active_feed_names, set_active_feed_names
 
 _ALERT_THRESHOLD_KEY = "alert_threshold"
-_ACTIVE_FEEDS_KEY = "active_feeds"
 
 
 @pytest.fixture
@@ -277,10 +278,25 @@ def test_saving_active_feeds_persists_the_checked_subset(factory, client):
     client.post(
         "/settings/feeds", data={"feed": ["Spiegel", "Zeit"]}, follow_redirects=True
     )
+    feeds = load_feeds()
     with factory() as session:
-        stored = session.get(Setting, _ACTIVE_FEEDS_KEY)
-        assert stored is not None
-        assert set(json.loads(stored.value)) == {"Spiegel", "Zeit"}
+        assert get_active_feed_names(session, feeds) == {"Spiegel", "Zeit"}
+
+
+def test_feed_added_after_save_defaults_active(factory):
+    """A feed added to the registry after a save is active by default (deny-list).
+
+    The operator saved with only "A" checked out of {A, B}; a later-registered feed
+    "C" was never deselected, so it must come back active — not silently dropped.
+    """
+    registry_v1 = [SimpleNamespace(name="A"), SimpleNamespace(name="B")]
+    with factory() as session:
+        set_active_feed_names(session, ["A"], [f.name for f in registry_v1])
+
+    registry_v2 = registry_v1 + [SimpleNamespace(name="C")]
+    with factory() as session:
+        active = get_active_feed_names(session, registry_v2)
+    assert active == {"A", "C"}  # B stays off (deselected); C defaults on
 
 
 # --- Import: preview before commit ---------------------------------------------
