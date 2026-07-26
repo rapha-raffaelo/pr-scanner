@@ -275,8 +275,8 @@ def _item_source(item: FeedItem) -> str:
 
 __all__ = [
     "Candidate",
-    "match_candidates",
     "deduplicate",
-    "title_hash",
+    "match_candidates",
     "normalize_title",
+    "title_hash",
 ]
