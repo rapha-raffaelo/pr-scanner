@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import smtplib
 import subprocess
 import sys
@@ -230,8 +231,6 @@ class NotifyConfig:
         only read when the email channel is selected, so a desktop/off setup never
         needs SMTP vars present.
         """
-        import os
-
         resolved = os.environ if env is None else env
         channel = resolve_channel(resolved.get(_ENV_CHANNEL))
         smtp = SmtpConfig.from_env(resolved) if channel is Channel.EMAIL else None
