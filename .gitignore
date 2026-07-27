@@ -1,0 +1,5 @@
+# macOS
+.DS_Store
+
+# Local agent scratch state
+.remy/
