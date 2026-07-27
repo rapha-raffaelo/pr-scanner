@@ -14,25 +14,41 @@
   <script src="{{ url_for('static', path='htmx.min.js') }}"></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="/">NewsPulse</a>
-    <div class="run-status" title="Last daily run">
-      {% if last_run %}
-        <span class="run-time">
-          {% if last_run.is_running %}Läuft…{% else %}Letzter Lauf: {{ last_run.ran_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}
-        </span>
-        <span class="run-badge run-badge--{{ last_run.status }}">{{ last_run.status }}</span>
-        <span class="run-metric">{{ last_run.articles_checked }} Artikel geprüft</span>
-        <span class="run-metric">
-          {% if last_run.feed_errors == 0 %}Feeds ok{% else %}{{ last_run.feed_errors }} Feed-Fehler{% endif %}
-        </span>
-      {% else %}
-        <span class="run-status--empty">Noch kein Lauf</span>
-      {% endif %}
-    </div>
-  </header>
-  <main class="content">
-    {% block content %}{% endblock %}
-  </main>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand"><a href="/">News<span>Pulse</span></a></div>
+      <div class="datemeta">
+        {# The viewed day on Today; the current day on every other page. #}
+        {{ (day if day is defined else header_date) | de_long_date }}<br>
+        {% if last_run %}
+          {% if last_run.is_running %}
+            Lauf läuft…
+          {% else %}
+            Letzter Lauf {{ last_run.ran_at.strftime('%H:%M') }} Uhr
+          {% endif %}
+          <span class="dot">·</span>
+          {% if last_run.feed_errors == 0 %}
+            <span class="runok">Feeds ok</span>
+          {% else %}
+            <span class="runbad">{{ last_run.feed_errors }} Feed-Fehler</span>
+          {% endif %}
+          <span class="dot">·</span> {{ last_run.articles_checked }} Artikel geprüft
+        {% else %}
+          <span class="runempty">Noch kein Lauf</span>
+        {% endif %}
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <a href="/"{% if request.url.path == '/' %} class="active" aria-current="page"{% endif %}>Heute</a>
+      <a href="/clients"{% if request.url.path.startswith('/client') %} class="active" aria-current="page"{% endif %}>Mandanten</a>
+      <a href="/archive"{% if request.url.path.startswith('/archive') %} class="active" aria-current="page"{% endif %}>Archiv</a>
+      <a href="/settings"{% if request.url.path.startswith('/settings') %} class="active" aria-current="page"{% endif %}>Einstellungen</a>
+    </nav>
+
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
 </body>
 </html>

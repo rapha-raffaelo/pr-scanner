@@ -57,6 +57,21 @@ SCORE_MAX = 10
 _EMPTY_JSON_ARRAY = "[]"
 
 
+class TriageState(StrEnum):
+    """Where one piece of coverage stands in the operator's morning workflow.
+
+    Without this the list is identical every time it is opened, so a 25-article
+    day means re-reading yesterday to find what is new. State is per
+    ``(article, client)`` — the same story can be handled for one mandate and
+    still open for another.
+    """
+
+    NEU = "neu"
+    GELESEN = "gelesen"
+    ERLEDIGT = "erledigt"
+    MARKIERT = "markiert"  # flagged to raise with the client
+
+
 class Category(StrEnum):
     """The exact set of story categories. StrEnum so the value ('produkt') is what
     is stored and compared, and the set is closed — no stray string literals."""
@@ -162,6 +177,13 @@ class Client(Base):
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1")
     )
+    # A competitor is monitored exactly like a mandate but never reported *to* —
+    # it exists to answer "how much of the conversation did we own this month".
+    # Modelled as a flag rather than a separate table because everything a
+    # competitor needs (aliases, keywords, matching, archive) is already here.
+    is_competitor: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
     created_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
     )
@@ -195,12 +217,22 @@ class Article(Base):
     # Hash of the normalized title, indexed, so near-duplicate wire copy across
     # outlets collapses to one stored story.
     title_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # The byline, when the feed supplies one. Nullable because most German feeds
+    # omit it — knowing *which journalist* covers a client repeatedly is how a
+    # media list gets built, and it was previously discarded at ingest.
+    author: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     analyses: Mapped[list["Analysis"]] = relationship(
         back_populates="article", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (Index("ix_articles_title_hash", "title_hash"),)
+    __table_args__ = (
+        Index("ix_articles_title_hash", "title_hash"),
+        # Every day-scoped read filters on published_at (Today's local-day
+        # window, the archive date range, the per-client counts), so it carries
+        # the same weight as the dedup hash as the archive grows.
+        Index("ix_articles_published_at", "published_at"),
+    )
 
 
 class Analysis(Base):
@@ -245,6 +277,19 @@ class Analysis(Base):
     # Claude's reasoning is kept on every analysis so a later "why was this
     # flagged?" has an answer and the alert threshold can be tuned.
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Operator workflow state, per (article, client): the same story can be
+    # handled for one mandate and still open for another. Defaults to NEU at the
+    # DB level so a raw INSERT (or an older code path) can never leave it null.
+    triage_state: Mapped[TriageState] = mapped_column(
+        SAEnum(
+            TriageState,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+        ),
+        nullable=False,
+        default=TriageState.NEU,
+        server_default=TriageState.NEU.value,
+    )
     analyzed_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
     )
@@ -306,13 +351,47 @@ class Setting(Base):
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class Advisory(Base):
+    """One generated set of suggested PR actions for a client.
+
+    Kept as a historical record rather than a single overwritten row: what was
+    advised on the day a crisis broke is itself worth being able to look back at,
+    and the newest row is simply the current view. ``suggestions`` holds the
+    validated payload as JSON — the shape belongs to ``schemas.AdvisoryBrief``,
+    so it can evolve without a migration per field.
+    """
+
+    __tablename__ = "advisories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    generated_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    # The window of coverage the advice was based on, so a stale brief is
+    # recognisable as stale rather than silently out of date.
+    covered_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    article_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    situation: Mapped[str] = mapped_column(Text, nullable=False)
+    suggestions: Mapped[list[dict]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+
+
 __all__ = [
     "Base",
     "Category",
     "RunStatus",
+    "TriageState",
     "Client",
     "Article",
     "Analysis",
+    "Advisory",
     "Run",
     "Setting",
     "DEFAULT_COUNTRY",

@@ -375,3 +375,56 @@ def test_zero_relevance_row_is_excluded(factory, client):
 def test_unknown_client_returns_404(client):
     """A client id that does not exist returns 404, not a 500."""
     assert client.get("/client/9999").status_code == 404
+
+
+# --- Mandanten overview (/clients) --------------------------------------------
+
+
+def test_clients_index_lists_portfolio_with_counts(factory, client):
+    """The Mandanten overview lists every client and counts today's coverage
+    separately from the whole archive."""
+    today = dt.datetime.now().astimezone().date()
+    with factory() as s:
+        alpha = _seed_client(s, name="Alpha AG", industry="Chemie")
+        beta = _seed_client(s, name="Beta AG")
+        _seed_article(
+            s, client_obj=alpha, title="Heute A", url="https://ex.de/a-today",
+            published_at=_local_noon(today),
+        )
+        _seed_article(
+            s, client_obj=alpha, title="Alt A", url="https://ex.de/a-old",
+            published_at=_local_noon(_JAN),
+        )
+        _seed_article(
+            s, client_obj=beta, title="Alt B", url="https://ex.de/b-old",
+            published_at=_local_noon(_JAN),
+        )
+        s.commit()
+
+    body = client.get("/clients").text
+
+    assert "Alpha AG" in body
+    assert "Beta AG" in body
+    assert "Chemie" in body
+    # Alpha: 1 today of 2 archived; Beta: 0 today of 1 archived.
+    alpha_card = body.split("Alpha AG", 1)[1].split("Beta AG", 1)[0]
+    assert "<b>1</b> heute" in alpha_card
+    assert "<b>2</b> im Archiv" in alpha_card
+
+
+def test_clients_index_excludes_irrelevant_and_handles_empty(factory, client):
+    """A relevance_score=0 pair is not counted, and no clients renders an empty
+    state rather than an error."""
+    assert "Noch keine Mandanten" in client.get("/clients").text
+
+    with factory() as s:
+        c = _seed_client(s, name="Alpha AG")
+        _seed_article(
+            s, client_obj=c, title="NOISE", url="https://ex.de/noise",
+            published_at=_local_noon(_JAN), relevance=0,
+        )
+        s.commit()
+
+    body = client.get("/clients").text
+    card = body.split("Alpha AG", 1)[1]
+    assert "<b>0</b> im Archiv" in card

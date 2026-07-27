@@ -15,6 +15,8 @@ Two kinds of object live here and it is worth keeping them distinct:
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from .models import SCORE_MAX as _SCORE_MAX
@@ -76,3 +78,42 @@ class Analysis(BaseModel):
 
 
 __all__ = ["ArticleVerdict", "BatchVerdict", "Analysis"]
+
+
+# --- Advisory: suggested PR actions --------------------------------------------
+
+
+class ActionKind(StrEnum):
+    """What sort of move a suggestion is."""
+
+    REAKTIV = "reaktiv"      # respond to something that has happened
+    PROAKTIV = "proaktiv"    # an opening to push a message
+    BEOBACHTEN = "beobachten"  # not yet actionable; watch it
+
+
+class Urgency(StrEnum):
+    """When it needs doing."""
+
+    HEUTE = "heute"
+    DIESE_WOCHE = "diese_woche"
+    LAUFEND = "laufend"
+
+
+class ActionSuggestion(BaseModel):
+    """One suggested PR action, tied to the coverage that prompted it."""
+
+    title: str
+    rationale: str
+    kind: ActionKind
+    urgency: Urgency
+    # Indices into the numbered coverage the prompt supplied. Every suggestion
+    # must point at the stories behind it, so a reader can check the reasoning
+    # instead of taking it on trust.
+    evidence: list[int] = Field(default_factory=list)
+
+
+class AdvisoryBrief(BaseModel):
+    """The model's read of a client's situation plus what it would do about it."""
+
+    situation: str
+    suggestions: list[ActionSuggestion] = Field(default_factory=list)

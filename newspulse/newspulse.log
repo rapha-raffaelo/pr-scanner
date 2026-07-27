@@ -1,0 +1,7 @@
+2026-07-27 20:19:24,849 INFO newspulse.job run start: 1 active client(s), 59 feed(s) (58 registry + 1 client search), since=2026-06-27T18:19:24.821024+00:00 [dry-run]
+2026-07-27 20:19:39,797 INFO newspulse.job dry-run: 2809 item(s) fetched, 99 candidate(s), 96 new article(s) — no writes
+2026-07-27 20:20:00,640 INFO newspulse.job run start: 1 active client(s), 59 feed(s) (58 registry + 1 client search), since=2026-06-27T18:20:00.619800+00:00
+2026-07-27 20:27:11,181 WARNING newspulse.analyzer analysis batch for client 'Zalando' failed (attempt 1/2): response was not valid JSON: Expecting value: line 1 column 1 (char 0); retrying
+2026-07-27 20:28:00,999 INFO newspulse.job run start: 1 active client(s), 59 feed(s) (58 registry + 1 client search), since=2026-06-27T18:28:00.978678+00:00 [dry-run]
+2026-07-27 20:28:18,301 INFO newspulse.job dry-run: 2793 item(s) fetched, 113 candidate(s), 31 new article(s) — no writes
+2026-07-27 20:30:11,753 INFO newspulse.job run done: status=ok, 96 new article(s), 96 analysis(es), 0 error(s)

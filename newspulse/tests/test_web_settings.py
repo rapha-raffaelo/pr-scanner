@@ -413,3 +413,82 @@ def test_run_history_shows_status_articles_and_errors(factory, client):
     assert "partial" in body
     assert "87" in body
     assert "Feed Spiegel timed out" in body
+
+
+# --- Run trigger + backfill ----------------------------------------------------
+
+
+def test_run_trigger_rejects_a_window_not_offered(client):
+    """Only the offered backfill windows are accepted; anything else is refused
+    without starting a sweep."""
+    resp = client.post("/settings/run", data={"since_days": "999"})
+    assert resp.status_code == 200  # re-rendered with an inline error, no redirect
+    assert "Ungültiger Zeitraum" in resp.text
+
+
+def test_run_trigger_rejects_non_numeric_window(client):
+    resp = client.post("/settings/run", data={"since_days": "dreissig"})
+    assert resp.status_code == 200
+    assert "Ungültiger Zeitraum" in resp.text
+
+
+def test_run_trigger_refuses_a_second_concurrent_run(client, monkeypatch):
+    """A sweep already in flight is reported, never queued: two concurrent runs
+    would double-fetch every feed and race on the same articles."""
+    from newspulse.web.routes import settings as settings_routes
+
+    # Hold the guard as an in-flight run would, without starting a real sweep.
+    assert settings_routes._run_guard.acquire(blocking=False)
+    try:
+        resp = client.post("/settings/run", data={"since_days": ""})
+        assert resp.status_code == 200
+        assert "Es läuft bereits ein Lauf" in resp.text
+    finally:
+        settings_routes._run_guard.release()
+
+
+def test_run_trigger_starts_a_sweep_with_the_requested_window(client, monkeypatch):
+    """A valid request starts the sweep off-thread and redirects; the chosen
+    window reaches job.run as an explicit `since`."""
+    import datetime as dt
+
+    from newspulse.web.routes import settings as settings_routes
+
+    captured: dict[str, object] = {}
+
+    def _fake_execute(since_days):
+        captured["since_days"] = since_days
+        settings_routes._run_guard.release()
+
+    class _ImmediateThread:
+        def __init__(self, target, args, daemon=None, name=None):
+            self._target, self._args = target, args
+
+        def start(self):
+            self._target(*self._args)
+
+    monkeypatch.setattr(settings_routes, "_execute_run", _fake_execute)
+    monkeypatch.setattr(settings_routes.threading, "Thread", _ImmediateThread)
+
+    resp = client.post(
+        "/settings/run", data={"since_days": "30"}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/settings?started=30"
+    assert captured["since_days"] == 30
+    # The guard is free again for the next run.
+    assert settings_routes._run_guard.acquire(blocking=False)
+    settings_routes._run_guard.release()
+
+
+def test_lookback_since_matches_the_requested_window():
+    """The CLI's --since-days and the dashboard's control share one definition."""
+    import datetime as dt
+
+    from newspulse import job
+
+    fixed = dt.datetime(2026, 7, 27, 12, 0, tzinfo=dt.UTC)
+    assert job.lookback_since(30, now=lambda: fixed) == fixed - dt.timedelta(days=30)
+    assert job.lookback_since(1, now=lambda: fixed) == fixed - dt.timedelta(days=1)
+    with pytest.raises(ValueError):
+        job.lookback_since(0)

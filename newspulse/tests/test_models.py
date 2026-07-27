@@ -109,7 +109,10 @@ def test_published_at_survives_store_read_and_compare(session):
     raise TypeError. SQLite discards tzinfo on write; UTCDateTime re-attaches it."""
     from newspulse.models import _utcnow
 
-    stored_at = dt.datetime(2026, 7, 24, 8, 0, tzinfo=dt.UTC)
+    # Relative to now, not a fixed calendar date: the assertion below compares
+    # against a rolling `_utcnow() - 1 day` cutoff, so a hardcoded date silently
+    # ages out and turns this into a failure that has nothing to do with tzinfo.
+    stored_at = _utcnow().replace(microsecond=0)
     session.add(_make_article(published_at=stored_at))
     session.commit()
     session.expire_all()

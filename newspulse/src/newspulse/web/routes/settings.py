@@ -24,9 +24,11 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import os
 import re
 import tempfile
+import threading
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -39,7 +41,9 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from ... import config
+from ... import config, job
+from ...analyzer import get_analyzer
+from ...db import get_session
 from ...clients import (
     ImportValidationError,
     create_client,
@@ -50,7 +54,7 @@ from ...clients import (
     update_client,
 )
 from ...feeds import load_feeds
-from ...models import DEFAULT_COUNTRY, SCORE_MAX, SCORE_MIN, Run, Setting
+from ...models import DEFAULT_COUNTRY, SCORE_MAX, SCORE_MIN, Client, Run, Setting
 from ..app import get_db, templates
 
 router = APIRouter()
@@ -78,6 +82,43 @@ _PREVIEW_ROW_LIMIT = 100
 # POST-Redirect-GET status: a successful mutation redirects so a browser refresh
 # re-GETs the page instead of re-submitting the form.
 _SEE_OTHER = 303
+
+_log = logging.getLogger(__name__)
+
+# Backfill windows offered in the dashboard. A sweep only widens which *fetched*
+# items are accepted — a feed still returns only what it currently syndicates —
+# so these are best-effort catch-up windows, not a guarantee of N days of history.
+BACKFILL_DAYS = (10, 15, 30)
+
+# One sweep at a time. A run fetches 40+ feeds and shells out to `claude` per
+# batch; two concurrent runs would double-fetch and race on the same articles.
+# Non-blocking acquire, so a second click is refused immediately rather than
+# queueing another full sweep behind the first.
+_run_guard = threading.Lock()
+
+
+def _execute_run(since_days: int | None) -> None:
+    """Run one sweep on a worker thread; always release the guard.
+
+    A sweep takes minutes (40+ feed fetches plus a `claude` call per batch), far
+    longer than a request should hold a connection open, so the route starts this
+    and returns immediately. It opens its own session: the request-scoped one is
+    closed the moment the response is sent.
+    """
+    try:
+        job.setup_logging()
+        since = job.lookback_since(since_days) if since_days is not None else None
+        with get_session() as session:
+            report = job.run(session, analyzer=get_analyzer(), since=since)
+        _log.info(
+            "dashboard-triggered run finished: status=%s new_articles=%d",
+            report.status.value,
+            report.new_articles,
+        )
+    except Exception:  # noqa: BLE001 — a worker thread must never die silently
+        _log.exception("dashboard-triggered run failed before it could report")
+    finally:
+        _run_guard.release()
 
 # A country is an ISO 3166-1 alpha-2 code (the model column is String(2)); the CRUD
 # form enforces the width the same way the import does, since SQLite ignores it.
@@ -387,6 +428,12 @@ def _page_context(session: Session) -> dict[str, object]:
         "feeds": _fetch_feed_views(session),
         "runs": runs,
         "last_run": _header_from_runs(runs),
+        # The shared header dates every page; this view has no viewed-day of its
+        # own, so it shows today.
+        "header_date": dt.datetime.now().astimezone().date(),
+        "backfill_days": BACKFILL_DAYS,
+        "run_error": None,
+        "run_started": None,
         "alert_threshold": get_alert_threshold(session),
         "score_range": list(range(SCORE_MIN, SCORE_MAX + 1)),
         "default_country": DEFAULT_COUNTRY,
@@ -417,13 +464,75 @@ def _render_settings(
 def settings_view(
     request: Request,
     imported: int | None = None,
+    edit: int | None = None,
+    started: int | None = None,
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
-    """Render the settings page. ``?imported=N`` shows a post-import success note."""
+    """Render the settings page. ``?imported=N`` shows a post-import success note;
+    ``?edit=<client_id>`` opens that one client's row as an edit form.
+
+    Editing is opt-in per row so the portfolio reads as a scannable table: a
+    30-client portfolio is 30 rows to skim, not 180 always-open input boxes.
+    Which row is open lives in the URL, so it survives a reload and the
+    validation-error re-render below without any client-side state.
+    """
     extra: dict[str, object] = {}
     if imported is not None:
         extra["import_success"] = imported
+    if edit is not None:
+        extra["edit_id"] = edit
+    if started is not None:
+        extra["run_started"] = started
     return _render_settings(request, session, **extra)
+
+
+@router.post("/settings/run")
+def trigger_run_route(
+    request: Request,
+    since_days: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Start a sweep from the dashboard — the only way to fetch news without a
+    terminal. ``since_days`` empty means the normal "since the last run" window.
+    """
+    raw = (since_days or "").strip()
+    days: int | None = None
+    if raw:
+        if not raw.isdigit() or int(raw) not in BACKFILL_DAYS:
+            return _render_settings(
+                request, session, run_error=f"Ungültiger Zeitraum: {raw!r}"
+            )
+        days = int(raw)
+
+    # Non-blocking: a run already in flight is reported, not queued.
+    if not _run_guard.acquire(blocking=False):
+        return _render_settings(
+            request, session, run_error="Es läuft bereits ein Lauf."
+        )
+    # daemon=True: a local single-user tool should not refuse to shut down because
+    # a sweep is mid-flight. An interrupted run leaves its `runs` row unfinished,
+    # which the header already renders as "Lauf läuft…".
+    threading.Thread(
+        target=_execute_run, args=(days,), daemon=True, name="newspulse-run"
+    ).start()
+    return RedirectResponse(f"/settings?started={days or 0}", status_code=_SEE_OTHER)
+
+
+@router.post("/settings/clients/{client_id}/competitor")
+def toggle_competitor_route(
+    client_id: int, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Flip a client between mandate and competitor.
+
+    A competitor is monitored identically — matched, analysed, archived — but is
+    excluded from the digest and reported *about* rather than *to*. Toggling is
+    non-destructive: the archive is untouched either way.
+    """
+    client = session.get(Client, client_id)
+    if client is not None:
+        client.is_competitor = not client.is_competitor
+        session.commit()
+    return RedirectResponse("/settings", status_code=_SEE_OTHER)
 
 
 @router.post("/settings/clients")
@@ -477,7 +586,11 @@ def edit_client_route(
         )
         update_client(session, client_id, **fields)
     except (ValueError, LookupError) as exc:
-        return _render_settings(request, session, client_error=str(exc))
+        # Keep this row open so the rejected edit is still on screen to correct,
+        # rather than collapsing back to the read-only row and losing it.
+        return _render_settings(
+            request, session, client_error=str(exc), edit_id=client_id
+        )
     return RedirectResponse("/settings", status_code=_SEE_OTHER)
 
 

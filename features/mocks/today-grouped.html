@@ -1,0 +1,156 @@
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1a1d24; --muted: #6b7280;
+    --line: #e6e8ec; --accent: #4f46e5; --alert: #dc2626; --alertbg: #fef2f2;
+    --warn: #d97706;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 28px 20px 80px; }
+  header.top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+  .brand { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .brand span { color: var(--accent); }
+  .datemeta { color: var(--muted); font-size: 13px; text-align: right; }
+  .runok { color: #16a34a; font-weight: 600; }
+  nav.tabs { display: flex; gap: 4px; margin: 18px 0 22px; border-bottom: 1px solid var(--line); }
+  nav.tabs a { padding: 9px 14px; font-size: 14px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+  nav.tabs a.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+
+  .alertbar {
+    background: var(--alertbg); border: 1px solid #fecaca; border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 26px;
+  }
+  .alertbar h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--alert); margin-bottom: 10px; }
+  .alertrow { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; }
+  .alertrow + .alertrow { border-top: 1px dashed #fbcfcf; }
+  .alertrow .cli { font-weight: 600; font-size: 13px; min-width: 118px; }
+  .alertrow .hl { font-size: 14px; }
+  .alertrow .hl a { color: var(--ink); text-decoration: none; }
+  .alertrow .hl a:hover { text-decoration: underline; }
+
+  .clientblock { margin-bottom: 26px; }
+  .clienthead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .clienthead .name { font-size: 16px; font-weight: 700; }
+  .clienthead .count { font-size: 12px; color: var(--muted); background: #eef0f3; padding: 2px 8px; border-radius: 20px; }
+  .clienthead .rule { flex: 1; height: 1px; background: var(--line); }
+
+  .item {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 13px 15px; margin-bottom: 8px; display: flex; gap: 13px;
+  }
+  .item.alert { border-left: 3px solid var(--alert); }
+  .score {
+    flex: none; width: 34px; height: 34px; border-radius: 8px; background: #eef0fb;
+    color: var(--accent); font-weight: 700; font-size: 15px; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .score.hot { background: #fdecec; color: var(--alert); }
+  .body { flex: 1; min-width: 0; }
+  .body .hl { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+  .body .hl a { color: var(--ink); text-decoration: none; }
+  .body .hl a:hover { text-decoration: underline; }
+  .body .sum { font-size: 13.5px; color: #40454f; margin-bottom: 7px; }
+  .meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+  .t-produkt { background: #e0f2fe; color: #0369a1; }
+  .t-personalie { background: #ede9fe; color: #6d28d9; }
+  .t-krise { background: #fee2e2; color: #b91c1c; }
+  .t-regulatorik { background: #fef3c7; color: #92400e; }
+  .t-finanzen { background: #dcfce7; color: #15803d; }
+  .t-wettbewerb { background: #f3e8ff; color: #7e22ce; }
+  .dot { color: #c7cbd1; }
+  .flag { color: var(--alert); font-weight: 600; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">News<span>Pulse</span></div>
+    <div class="datemeta">
+      Mittwoch, 22. Juli 2026<br>
+      Letzter Lauf 06:14 Uhr · <span class="runok">42 Feeds ok</span> · 137 Artikel geprüft
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <a class="active" href="#">Heute</a>
+    <a href="#">Mandanten</a>
+    <a href="#">Einstellungen</a>
+  </nav>
+
+  <section class="alertbar">
+    <h2>3 Warnungen heute</h2>
+    <div class="alertrow"><div class="cli">Enpal</div><div class="hl"><a href="#">Bundesnetzagentur prüft Vertriebspraktiken bei Solaranbietern</a></div></div>
+    <div class="alertrow"><div class="cli">Delivery Hero</div><div class="hl"><a href="#">EU-Kommission weitet Kartelluntersuchung aus</a></div></div>
+    <div class="alertrow"><div class="cli">TeamViewer</div><div class="hl"><a href="#">Finanzvorstand verlässt das Unternehmen zum Quartalsende</a></div></div>
+  </section>
+
+  <div class="clientblock">
+    <div class="clienthead"><span class="name">Enpal</span><span class="count">4 Artikel</span><span class="rule"></span></div>
+
+    <div class="item alert">
+      <div class="score hot">9</div>
+      <div class="body">
+        <div class="hl"><a href="#">Bundesnetzagentur prüft Vertriebspraktiken bei Solaranbietern</a></div>
+        <div class="sum">Die Behörde untersucht Haustürgeschäfte mehrerer Anbieter; Enpal wird namentlich als Marktführer genannt.</div>
+        <div class="meta"><span class="tag t-regulatorik">Regulatorik</span><span class="dot">·</span>Handelsblatt<span class="dot">·</span>07:52<span class="dot">·</span><span class="flag">Alert: Regulierung</span></div>
+      </div>
+    </div>
+
+    <div class="item">
+      <div class="score">6</div>
+      <div class="body">
+        <div class="hl"><a href="#">Enpal meldet 100.000ste installierte Solaranlage</a></div>
+        <div class="sum">Meilenstein-Meldung des Unternehmens; positive Resonanz in der Fachpresse.</div>
+        <div class="meta"><span class="tag t-produkt">Produkt</span><span class="dot">·</span>pv-magazine<span class="dot">·</span>09:10</div>
+      </div>
+    </div>
+
+    <div class="item">
+      <div class="score">4</div>
+      <div class="body">
+        <div class="hl"><a href="#">Solarbranche wächst trotz gedämpfter Konjunktur</a></div>
+        <div class="sum">Branchenüberblick, Enpal als eines von acht Beispielunternehmen erwähnt.</div>
+        <div class="meta"><span class="tag t-wettbewerb">Wettbewerb</span><span class="dot">·</span>Süddeutsche<span class="dot">·</span>11:03</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="clientblock">
+    <div class="clienthead"><span class="name">TeamViewer</span><span class="count">3 Artikel</span><span class="rule"></span></div>
+
+    <div class="item alert">
+      <div class="score hot">8</div>
+      <div class="body">
+        <div class="hl"><a href="#">Finanzvorstand verlässt das Unternehmen zum Quartalsende</a></div>
+        <div class="sum">CFO-Wechsel überraschend angekündigt; Nachfolge noch offen, Aktie gibt vorbörslich nach.</div>
+        <div class="meta"><span class="tag t-personalie">Personalie</span><span class="dot">·</span>FAZ<span class="dot">·</span>08:20<span class="dot">·</span><span class="flag">Alert: Führungswechsel</span></div>
+      </div>
+    </div>
+
+    <div class="item">
+      <div class="score">5</div>
+      <div class="body">
+        <div class="hl"><a href="#">TeamViewer erweitert Partnerschaft im Industrie-Metaverse</a></div>
+        <div class="sum">Neue Kooperation für AR-Wartungslösungen angekündigt.</div>
+        <div class="meta"><span class="tag t-produkt">Produkt</span><span class="dot">·</span>heise online<span class="dot">·</span>10:41</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="clientblock">
+    <div class="clienthead"><span class="name">Delivery Hero</span><span class="count">2 Artikel</span><span class="rule"></span></div>
+
+    <div class="item alert">
+      <div class="score hot">9</div>
+      <div class="body">
+        <div class="hl"><a href="#">EU-Kommission weitet Kartelluntersuchung aus</a></div>
+        <div class="sum">Brüssel prüft Absprachen im Liefermarkt; Delivery Hero unter den betroffenen Unternehmen.</div>
+        <div class="meta"><span class="tag t-regulatorik">Regulatorik</span><span class="dot">·</span>Reuters<span class="dot">·</span>06:58<span class="dot">·</span><span class="flag">Alert: Regulierung</span></div>
+      </div>
+    </div>
+  </div>
+</div>

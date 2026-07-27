@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Mandanten · NewsPulse{% endblock %}
+
+{% block content %}
+<div class="colhead">Mandanten <span class="n">{{ rows | length }}</span></div>
+
+{% if rows %}
+  <div class="portfolio">
+    {% for row in rows %}
+      <div class="pcard{% if not row.active %} pcard--inactive{% endif %}">
+        <div class="pname"><a href="/client/{{ row.id }}">{{ row.name }}</a></div>
+        <div class="pind">
+          {{ row.industry or 'Ohne Branche' }}{% if not row.active %} · inaktiv{% endif %}
+        </div>
+        <div class="pcounts">
+          <div><b>{{ row.today_count }}</b> heute</div>
+          <div><b>{{ row.total_count }}</b> im Archiv</div>
+        </div>
+        <div class="pactions">
+          <a href="/client/{{ row.id }}/advice">Empfehlungen</a>
+          <a href="/client/{{ row.id }}/export.xlsx">Excel</a>
+        </div>
+        {% if row.alert_topics %}
+          <div class="ptopics">
+            {% for topic in row.alert_topics %}<span class="ptopic">{{ topic }}</span>{% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  {% if voice %}
+    <div class="colhead" style="margin-top:26px">Share of Voice <span class="colhead__note">letzte 30 Tage</span></div>
+    <table class="data sov">
+      <thead><tr><th>Unternehmen</th><th>Rolle</th><th>Meldungen</th><th>Alerts</th><th>Anteil</th></tr></thead>
+      <tbody>
+        {% for v in voice %}
+          <tr>
+            <td class="cell-name"><a href="/client/{{ v.client_id }}">{{ v.name }}</a></td>
+            <td>{{ 'Wettbewerber' if v.is_competitor else 'Mandant' }}</td>
+            <td>{{ v.mentions }}</td>
+            <td>{{ v.alerts }}</td>
+            <td>
+              <span class="sov-bar" style="width: {{ (v.share * 100) | round(0, 'floor') | int }}%"></span>
+              {{ (v.share * 100) | round(1) }}%
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% else %}
+  <div class="empty-state">
+    <p>Noch keine Mandanten. Unter <a href="/settings">Einstellungen</a> anlegen oder importieren.</p>
+  </div>
+{% endif %}
+{% endblock %}

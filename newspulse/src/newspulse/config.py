@@ -24,14 +24,22 @@ _DEFAULT_DB_FILENAME = "newspulse.db"
 # alert even when it matches no explicit alert_topic. 7/10 is "clearly important".
 _DEFAULT_ALERT_THRESHOLD = 7
 
-# Max articles handed to the analyzer in a single batched call. 20 keeps a per
-# client daily call well inside interactive territory on a Claude subscription.
-_DEFAULT_BATCH_SIZE = 20
+# Max articles handed to the analyzer in a single batched call.
+#
+# Was 20, chosen when the curated registry was the only source and a client saw a
+# handful of stories a day. Per-client Google News searches raised that several
+# fold, so batches now run consistently full and were observed timing out against
+# _DEFAULT_ANALYZER_TIMEOUT — and a batch that gives up drops *every* article in
+# it. Halving the batch both shortens each call (so it finishes inside the
+# ceiling) and halves how much coverage one give-up can cost.
+_DEFAULT_BATCH_SIZE = 10
 
-# Wall-clock ceiling (seconds) for a single `claude -p` subprocess call. A batch
-# of ~20 short items is comfortably interactive; 120s leaves headroom for a cold
-# CLI start without ever letting one hung call stall the whole daily sweep.
-_DEFAULT_ANALYZER_TIMEOUT = 120
+# Wall-clock ceiling (seconds) for a single `claude -p` subprocess call. Raised
+# from 120s after observing real batches exceed it: 120 left no headroom for a
+# cold CLI start on top of a full batch, and the cost of overshooting is dropped
+# coverage, while the cost of a longer ceiling is only a slower failure on the
+# rare genuinely-hung call.
+_DEFAULT_ANALYZER_TIMEOUT = 180
 
 # Analyzer backend id. The subscription subprocess backend is the default; the
 # metered API backend is opt-in (see PRD: subscription-first).
@@ -49,6 +57,14 @@ _ENV_ALERT_THRESHOLD = "NEWSPULSE_ALERT_THRESHOLD"
 _ENV_BATCH_SIZE = "NEWSPULSE_BATCH_SIZE"
 _ENV_ANALYZER_TIMEOUT = "NEWSPULSE_ANALYZER_TIMEOUT"
 _ENV_ANALYZER_BACKEND = "NEWSPULSE_ANALYZER_BACKEND"
+_ENV_GOOGLE_NEWS = "NEWSPULSE_GOOGLE_NEWS"
+
+# One Google News search per active client, on top of the registry feeds. On by
+# default: it is where most regional and trade coverage of a client is found,
+# and the registry alone cannot reach it. Set NEWSPULSE_GOOGLE_NEWS=0 to run on
+# the curated registry only — one extra HTTP request per client per run, against
+# an endpoint Google publishes but does not contract to keep stable.
+_DEFAULT_GOOGLE_NEWS = True
 _ENV_WEB_HOST = "NEWSPULSE_WEB_HOST"
 _ENV_WEB_PORT = "NEWSPULSE_WEB_PORT"
 
@@ -93,6 +109,28 @@ def _env_path(name: str, default: Path) -> Path:
     return Path(raw).expanduser() if raw else default
 
 
+_TRUE = frozenset({"1", "true", "yes", "on"})
+_FALSE = frozenset({"0", "false", "no", "off"})
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    """Read a boolean from the environment, falling back on an unrecognized value.
+
+    Same posture as :func:`_env_int`: a typo must not crash startup, but the
+    fallback is logged so a silently-ignored override is visible.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    value = raw.strip().casefold()
+    if value in _TRUE:
+        return True
+    if value in _FALSE:
+        return False
+    _log.warning("Invalid %s=%r, falling back to default %s", name, raw, default)
+    return default
+
+
 # --- Resolved settings ---------------------------------------------------------
 #
 # These resolve ONCE, at import time, from the environment and ``Path.cwd()``.
@@ -109,6 +147,7 @@ ANALYZER_TIMEOUT: int = _env_int(_ENV_ANALYZER_TIMEOUT, _DEFAULT_ANALYZER_TIMEOU
 ANALYZER_BACKEND: str = os.environ.get(_ENV_ANALYZER_BACKEND, _DEFAULT_ANALYZER_BACKEND)
 WEB_HOST: str = os.environ.get(_ENV_WEB_HOST, _DEFAULT_WEB_HOST)
 WEB_PORT: int = _env_int(_ENV_WEB_PORT, _DEFAULT_WEB_PORT)
+GOOGLE_NEWS_ENABLED: bool = _env_bool(_ENV_GOOGLE_NEWS, _DEFAULT_GOOGLE_NEWS)
 
 
 def database_url() -> str:

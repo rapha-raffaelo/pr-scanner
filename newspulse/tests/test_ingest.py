@@ -353,3 +353,79 @@ def test_load_feeds_skips_entries_missing_required_fields(tmp_path, caplog):
 
     assert [feed.name for feed in registry] == ["Gut"]
     assert "missing name or url" in caplog.text
+
+
+# --- Aggregator feeds: per-entry source and echo summaries ----------------------
+
+_AGGREGATOR_RSS = b"""<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <title>"Deutsche Bahn" - Google News</title>
+  <item>
+    <title>Bahnnetz unter Druck - SZ.de</title>
+    <link>https://news.google.com/rss/articles/CBMiABC</link>
+    <source url="https://sz.de">SZ.de</source>
+    <pubDate>Mon, 27 Jul 2026 08:00:00 GMT</pubDate>
+    <description>&lt;a href="https://news.google.com/x"&gt;Bahnnetz unter Druck&lt;/a&gt;&amp;nbsp;&amp;nbsp;SZ.de</description>
+  </item>
+  <item>
+    <title>Streik angekuendigt - Nordkurier</title>
+    <link>https://news.google.com/rss/articles/CBMiDEF</link>
+    <source url="https://nordkurier.de">Nordkurier</source>
+    <pubDate>Mon, 27 Jul 2026 09:00:00 GMT</pubDate>
+    <description>Die Gewerkschaft ruft zu einem zweitaegigen Ausstand auf und nennt konkrete Forderungen.</description>
+  </item>
+</channel></rss>
+"""
+
+_SINCE_AGG = dt.datetime(2026, 7, 26, tzinfo=dt.UTC)
+_FETCHED_AGG = dt.datetime(2026, 7, 27, 12, 0, tzinfo=dt.UTC)
+
+
+def _parse_aggregator(per_entry_source: bool):
+    from newspulse.ingest import _parse_items
+
+    return _parse_items(
+        _AGGREGATOR_RSS,
+        url="https://news.google.com/rss/search?q=x",
+        since=_SINCE_AGG,
+        source="Google News: Deutsche Bahn",
+        fetched_at=_FETCHED_AGG,
+        per_entry_source=per_entry_source,
+    )
+
+
+def test_aggregator_items_are_credited_to_their_real_publisher():
+    """Crediting every entry to the aggregator would put a false byline on each
+    story and collapse dozens of outlets into one name in the archive."""
+    items = _parse_aggregator(per_entry_source=True)
+    assert [i.source for i in items] == ["SZ.de", "Nordkurier"]
+
+
+def test_publisher_feeds_ignore_a_stray_source_element_by_default():
+    """Opt-in only: for an ordinary feed the registry name is the outlet."""
+    items = _parse_aggregator(per_entry_source=False)
+    assert {i.source for i in items} == {"Google News: Deutsche Bahn"}
+
+
+def test_markup_only_summary_that_echoes_the_headline_is_dropped():
+    """Google's description is an <a> wrapper around the headline plus the outlet:
+    it adds nothing, and storing it would show the same sentence twice and spend
+    analyzer tokens re-reading the title."""
+    items = _parse_aggregator(per_entry_source=True)
+    assert items[0].summary is None
+
+
+def test_a_summary_that_actually_adds_text_is_kept():
+    items = _parse_aggregator(per_entry_source=True)
+    assert items[1].summary is not None
+    assert "Gewerkschaft" in items[1].summary
+
+
+def test_summary_markup_and_entities_are_reduced_to_plain_text():
+    """Tags stripped, entities unescaped, and the resulting &nbsp; runs collapsed —
+    the order matters, or \\xa0 survives into the stored text."""
+    from newspulse.ingest import _plain_text
+
+    assert _plain_text("<p>Hallo&nbsp;&nbsp;Welt</p>") == "Hallo Welt"
+    assert _plain_text("<a href='#'></a>") is None
+    assert _plain_text("   ") is None

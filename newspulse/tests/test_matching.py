@@ -424,3 +424,61 @@ def test_multi_word_term_matches_hyphenated_headline():
     item = _item("Deutsche-Bank stellt neue Strategie vor", "https://x.de/db")
 
     assert len(matching.match_candidates([item], [client])) == 1
+
+
+# --- URL canonicalization for dedup -------------------------------------------
+
+
+def test_canonical_url_collapses_referral_spellings_of_one_page():
+    """Tracking params, scheme, www., port, trailing slash and fragment are all
+    referral noise, not article identity."""
+    canonical_url = matching.canonical_url
+
+    target = canonical_url("https://x.de/story")
+    for variant in (
+        "https://x.de/story?utm_source=rss&utm_medium=feed",
+        "http://x.de/story",
+        "https://www.x.de/story",
+        "http://x.de:80/story",
+        "https://x.de:443/story",
+        "https://x.de/story/",
+        "https://x.de/story#top",
+        "https://X.DE/story",
+        "https://x.de/story?ref=newsletter&fbclid=abc",
+    ):
+        assert canonical_url(variant) == target, variant
+
+
+def test_canonical_url_preserves_real_query_params_and_paths():
+    """Identity must not over-collapse: a query id, a path, and a host each
+    distinguish genuinely different articles."""
+    canonical_url = matching.canonical_url
+
+    assert canonical_url("https://x.de/a?id=1") != canonical_url("https://x.de/a?id=2")
+    assert canonical_url("https://x.de/p1") != canonical_url("https://x.de/p2")
+    assert canonical_url("https://a.de/x") != canonical_url("https://b.de/x")
+    # Order of real params is not identity.
+    assert canonical_url("https://x.de/a?b=2&a=1") == canonical_url("https://x.de/a?a=1&b=2")
+    # A non-URL has no identity to normalize; it compares as itself.
+    assert canonical_url("notaurl") == "notaurl"
+    assert canonical_url("") == ""
+
+
+def test_deduplicate_collapses_tracking_variant_of_a_thin_title():
+    """The title-hash gate skips short headlines, so URL identity is the only
+    axis left — it must survive a tracking parameter."""
+    items = [
+        _item("Siemens Rückruf", "https://x.de/c"),
+        _item("Siemens Rückruf", "https://x.de/c?utm_source=rss"),
+    ]
+    assert len(matching.deduplicate(items)) == 1
+
+
+def test_deduplicate_matches_stored_url_against_tracking_variant():
+    """known_urls arrives as raw stored URLs; a re-fetch carrying a tracking
+    parameter must still be recognised as already stored."""
+    kept = matching.deduplicate(
+        [_item("Siemens Rückruf", "https://x.de/h?utm_medium=rss")],
+        known_urls={"https://www.x.de/h"},
+    )
+    assert kept == []

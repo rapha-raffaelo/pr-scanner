@@ -8,6 +8,7 @@ for the process-wide engine at import time.
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 import urllib.parse
 from collections.abc import Iterator
@@ -55,12 +56,52 @@ def safe_url(value: str | None) -> str:
     return value
 
 
+# German day/month names, spelled out here rather than via ``locale``: a de_DE
+# locale is not installed on every host (and is absent from most containers), and
+# setlocale is process-global, so a missing locale would silently fall back to
+# English dates in a German-language UI.
+_DE_WEEKDAYS = (
+    "Montag",
+    "Dienstag",
+    "Mittwoch",
+    "Donnerstag",
+    "Freitag",
+    "Samstag",
+    "Sonntag",
+)
+_DE_MONTHS = (
+    "Januar",
+    "Februar",
+    "März",
+    "April",
+    "Mai",
+    "Juni",
+    "Juli",
+    "August",
+    "September",
+    "Oktober",
+    "November",
+    "Dezember",
+)
+
+
+def de_long_date(value: dt.date | dt.datetime) -> str:
+    """Format a date the way the header shows it: ``Mittwoch, 22. Juli 2026``."""
+    return (
+        f"{_DE_WEEKDAYS[value.weekday()]}, {value.day}. "
+        f"{_DE_MONTHS[value.month - 1]} {value.year}"
+    )
+
+
 # One Jinja environment for the whole app, shared with the route modules via the
 # app instance (see ``create_app``). Kept module-level so it is built once.
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 # Scheme allow-list filter used by every template that renders a feed URL into an
 # href (see safe_url); registered here so all templates share one definition.
 templates.env.filters["safe_url"] = safe_url
+# The shared header renders a long German date on every page; registering it here
+# keeps one definition for all templates.
+templates.env.filters["de_long_date"] = de_long_date
 
 
 def get_db() -> Iterator[Session]:
@@ -82,11 +123,14 @@ def create_app() -> FastAPI:
 
     # Imported here (not at module top) to avoid a circular import: the route
     # modules import ``get_db``/``templates`` from this module.
-    from .routes import client, settings, today
+    from .routes import advisory, archive, client, settings, today, triage
 
     app.include_router(today.router)
     app.include_router(client.router)
+    app.include_router(archive.router)
     app.include_router(settings.router)
+    app.include_router(advisory.router)
+    app.include_router(triage.router)
     return app
 
 

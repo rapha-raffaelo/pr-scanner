@@ -20,6 +20,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...models import Analysis, Article, Client, Run
+from ...outlets import tier_for
+from ...stories import cluster
 from ..app import get_db, templates
 
 router = APIRouter()
@@ -79,6 +81,11 @@ _LOCAL_ZONE = _resolve_local_zone()
 class TodayItem:
     """One rendered coverage row (one article as it concerns one client)."""
 
+    # The analysis row this came from: triage state is per (article, client), so
+    # a workflow action targets the analysis, not the article.
+    analysis_id: int
+    triage_state: str
+    author: str | None
     headline: str
     url: str
     source: str
@@ -136,8 +143,18 @@ def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
     """Coverage for ``day`` ordered for triage: alerts first, then importance desc.
 
     Ordering is ``is_alert`` desc so alerts surface above non-alerts (also shown
-    in the left rail), then ``importance_score`` desc, with ``published_at`` desc
-    as a stable tiebreak.
+    in the left rail), then importance desc, with ``published_at`` desc as a
+    stable tiebreak.
+
+    Outlet tier (:mod:`newspulse.outlets`) breaks ties *within* an importance
+    score, so among several 7/10 stories the FAZ piece sits above an automated
+    share-price item. It only ever reorders: the displayed score stays the
+    model's own, and no story is hidden or demoted out of view — weighting the
+    score itself was measured on real coverage and lost genuine stories.
+
+    Ranking is finished in Python rather than SQL because tier is a lookup over
+    an editable table, not a column; a day's coverage is small enough that
+    sorting it in memory costs less than denormalising it into the schema.
     """
     tz = _local_tz()
     start_utc, end_utc = _day_bounds_utc(day)
@@ -156,8 +173,11 @@ def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
             Article.published_at.desc(),
         )
     )
-    return [
+    items = [
         TodayItem(
+            analysis_id=analysis.id,
+            triage_state=analysis.triage_state.value,
+            author=article.author,
             headline=article.title,
             url=article.url,
             source=article.source,
@@ -171,6 +191,15 @@ def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
         )
         for analysis, article, client in session.execute(stmt).all()
     ]
+    # The SQL ORDER BY already settled alerts-first, importance, and the
+    # published_at tiebreak. Re-sort to slot tier in *below* importance — a lower
+    # tier number is the better outlet, so it is negated to sort descending with
+    # the rest. Python's sort is stable, so the published_at tiebreak survives.
+    items.sort(
+        key=lambda item: (item.is_alert, item.importance, -tier_for(item.source)),
+        reverse=True,
+    )
+    return items
 
 
 def _fetch_last_run(session: Session) -> RunStatusView | None:
@@ -196,12 +225,38 @@ def _fetch_last_run(session: Session) -> RunStatusView | None:
 def today_view(
     request: Request,
     date: str | None = None,
+    category: str | None = None,
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
-    """Render the Today view for the current local day (or ``?date=``)."""
+    """Render the Today view for the current local day (or ``?date=``).
+
+    ``?category=`` narrows the day to one category. Filtering happens after the
+    day is fetched, so the category dropdown can offer exactly the categories
+    *this day* actually contains rather than the whole enum — an option that
+    would return nothing is worse than no option.
+    """
     day = _parse_day(date)
-    items = _fetch_items(session, day)
-    alerts = [item for item in items if item.is_alert]
+    all_items = _fetch_items(session, day)
+    # Ordered by the day's own ranking, so the dropdown lists the busiest
+    # categories in the order the reader already sees them.
+    present = list(dict.fromkeys(item.category for item in all_items))
+
+    selected = (category or "").strip()
+    if selected not in present:
+        # An unknown or stale category degrades to "no filter" rather than an
+        # empty page a reader cannot explain.
+        selected = ""
+    items = [i for i in all_items if i.category == selected] if selected else all_items
+
+    # Group the day's coverage into stories so one syndicated event occupies one
+    # slot carrying its pickup count, rather than crowding the rail with copies.
+    # Clustered after filtering, so a story's pickup count reflects what the
+    # reader is actually looking at.
+    stories = cluster(items)
+    # A story is an alert if *any* copy of it fired: the alert may have been
+    # computed on a copy that is not the lead.
+    alerts = [s for s in stories if any(m.is_alert for m in s.members)]
+
     return templates.TemplateResponse(
         request,
         "today.html",
@@ -209,7 +264,11 @@ def today_view(
             "day": day,
             "day_iso": day.strftime(_DATE_FORMAT),
             "items": items,
+            "stories": stories,
             "alerts": alerts,
+            "categories": present,
+            "selected_category": selected,
+            "hidden_count": len(all_items) - len(items),
             "last_run": _fetch_last_run(session),
         },
     )

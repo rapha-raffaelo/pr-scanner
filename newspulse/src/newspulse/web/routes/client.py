@@ -15,12 +15,15 @@ import datetime as dt
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
 
 from ...models import Analysis, Article, Category, Client
+from ...reporting import client_workbook, share_of_voice
 from ..app import get_db, templates
 
 # Reuse the Today route's shared, tested chrome/zone helpers rather than
@@ -30,6 +33,10 @@ from ..app import get_db, templates
 from .today import _day_bounds_utc, _fetch_last_run, _local_tz
 
 router = APIRouter()
+
+_XLSX_MEDIA_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
 # Archive rows per page. History can grow to thousands of rows across years, so
 # the list is paginated rather than rendered all at once; 50 fills a screen with
@@ -133,23 +140,27 @@ def _profile(client: Client) -> ClientProfile:
 
 
 def _archive_conditions(
-    client_id: int,
+    client_id: int | None,
     date_from: dt.date | None,
     date_to: dt.date | None,
     source: str,
     category: Category | None,
     search: str,
 ) -> list[ColumnElement[bool]]:
-    """WHERE clauses for this client's archive with the active filters applied.
+    """WHERE clauses for an archive query with the active filters applied.
 
     Every filter is an independent AND term, so any combination composes; each is
     added only when its value is present, and the date bounds reuse the Today
     route's DST-aware local-day math (from-day start .. to-day end, exclusive).
+
+    ``client_id`` of ``None`` spans the whole portfolio — what the cross-client
+    Archiv view needs — instead of scoping to one client's detail page.
     """
     conditions: list[ColumnElement[bool]] = [
-        Analysis.client_id == client_id,
         Analysis.relevance_score >= _MIN_RELEVANCE,
     ]
+    if client_id is not None:
+        conditions.append(Analysis.client_id == client_id)
     if date_from is not None:
         conditions.append(Article.published_at >= _day_bounds_utc(date_from)[0])
     if date_to is not None:
@@ -268,6 +279,99 @@ def _paginate(
     )
 
 
+@router.get("/client/{client_id}/export.xlsx")
+def client_export(
+    client_id: int, days: int = 30, session: Session = Depends(get_db)
+) -> Response:
+    """Download this client's coverage as an .xlsx — the agency's deliverable.
+
+    Streamed from memory rather than a temp file: a month of coverage is small,
+    and nothing about the report needs to survive the request.
+    """
+    client = session.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    payload = client_workbook(session, client, days=days)
+    stamp = dt.datetime.now(_local_tz()).strftime("%Y-%m-%d")
+    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", client.name).strip("_") or "mandant"
+    return Response(
+        content=payload,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="newspulse_{safe_name}_{stamp}.xlsx"'
+            )
+        },
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class PortfolioRow:
+    """One client as the Mandanten overview lists it."""
+
+    id: int
+    name: str
+    industry: str | None
+    alert_topics: list[str]
+    active: bool
+    today_count: int
+    total_count: int
+
+
+@router.get("/clients", response_class=HTMLResponse)
+def clients_index(
+    request: Request, session: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Mandanten: the whole portfolio at a glance, each row a way into its archive.
+
+    Counts are aggregated in two grouped queries rather than per client, so the
+    page stays one round trip regardless of portfolio size.
+    """
+    day = dt.datetime.now(_local_tz()).date()
+    start, end = _day_bounds_utc(day)
+
+    relevant = Analysis.relevance_score >= _MIN_RELEVANCE
+    totals = dict(
+        session.execute(
+            select(Analysis.client_id, func.count())
+            .where(relevant)
+            .group_by(Analysis.client_id)
+        ).all()
+    )
+    today_counts = dict(
+        session.execute(
+            select(Analysis.client_id, func.count())
+            .join(Article, Article.id == Analysis.article_id)
+            .where(relevant, Article.published_at >= start, Article.published_at < end)
+            .group_by(Analysis.client_id)
+        ).all()
+    )
+
+    clients = session.scalars(select(Client).order_by(Client.name)).all()
+    rows = [
+        PortfolioRow(
+            id=c.id,
+            name=c.name,
+            industry=c.industry,
+            alert_topics=list(c.alert_topics),
+            active=c.active,
+            today_count=today_counts.get(c.id, 0),
+            total_count=totals.get(c.id, 0),
+        )
+        for c in clients
+    ]
+    return templates.TemplateResponse(
+        request,
+        "clients.html",
+        {
+            "rows": rows,
+            "voice": share_of_voice(session, days=30),
+            "last_run": _fetch_last_run(session),
+            "header_date": day,
+        },
+    )
+
+
 @router.get("/client/{client_id}", response_class=HTMLResponse)
 def client_detail(
     request: Request,
@@ -324,5 +428,8 @@ def client_detail(
                 client_id, filters, current_page, total_pages, total
             ),
             "last_run": _fetch_last_run(session),
+            # The shared header dates every page; the archive view spans many
+            # days, so it shows today.
+            "header_date": dt.datetime.now(_local_tz()).date(),
         },
     )

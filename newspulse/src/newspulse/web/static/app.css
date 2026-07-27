@@ -1,204 +1,382 @@
-/* NewsPulse dashboard — Today view (DEC-1 option C: two-pane triage).
-   A narrow left rail of alert cards beside a full ranked feed on the right. */
+/* NewsPulse dashboard (DEC-1 option C: two-pane triage), built to the locked
+   `today-triage` mock: a narrow left rail of alert cards beside a full ranked
+   feed on the right. Palette, spacing and type scale below are the mock's. */
 
 :root {
-  --bg: #f5f6f8;
-  --surface: #ffffff;
-  --border: #e2e5ea;
-  --text: #1c2330;
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --ink: #1a1d24;
   --muted: #6b7280;
-  --accent: #2563eb;
+  --line: #e6e8ec;
+  --accent: #4f46e5;
   --alert: #dc2626;
-  --alert-bg: #fef2f2;
-  --radius: 8px;
+  --alertbg: #fef2f2;
+  --radius: 10px;
+
+  /* Aliases under the pre-mock names. The settings and client-detail views
+     style themselves in-page against these; pointing them at the mock's values
+     re-skins those pages with the rest of the app instead of stranding them on
+     the old palette. */
+  --surface: var(--card);
+  --border: var(--line);
+  --text: var(--ink);
+  --alert-bg: var(--alertbg);
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: var(--text);
   background: var(--bg);
-  line-height: 1.4;
+  color: var(--ink);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* --- Header / last-run status ------------------------------------------- */
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1.5rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
-.brand {
-  font-weight: 700;
-  font-size: 1.1rem;
-  color: var(--text);
-  text-decoration: none;
-}
-.run-status {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  font-size: 0.82rem;
-  color: var(--muted);
-  flex-wrap: wrap;
-}
-.run-badge {
-  text-transform: uppercase;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  color: #fff;
-  background: var(--muted);
-}
-.run-badge--ok { background: #16a34a; }
-.run-badge--partial { background: #d97706; }
-.run-badge--failed { background: var(--alert); }
-.run-status--empty { font-style: italic; }
+.wrap { max-width: 1140px; margin: 0 auto; padding: 28px 20px 80px; }
 
-/* --- Toolbar / date picker ---------------------------------------------- */
-.content { padding: 1.25rem 1.5rem; }
-.today-toolbar {
+/* --- Header ------------------------------------------------------------- */
+header.top {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 8px;
 }
-.today-toolbar h1 { margin: 0; font-size: 1.5rem; }
-.date-picker { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
-.date-picker input {
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font: inherit;
+.brand { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.brand a { color: var(--ink); text-decoration: none; }
+.brand span { color: var(--accent); }
+.datemeta { color: var(--muted); font-size: 13px; text-align: right; }
+.runok { color: #16a34a; font-weight: 600; }
+.runbad { color: var(--alert); font-weight: 600; }
+.runempty { font-style: italic; }
+
+/* --- Tabs --------------------------------------------------------------- */
+nav.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 18px 0 22px;
+  border-bottom: 1px solid var(--line);
+}
+nav.tabs a {
+  padding: 9px 14px;
+  font-size: 14px;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+nav.tabs a:hover { color: var(--ink); }
+nav.tabs a.active {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
 }
 
 /* --- Two-pane triage layout --------------------------------------------- */
-.triage {
+.cols {
   display: grid;
-  grid-template-columns: minmax(240px, 320px) 1fr;
-  gap: 1.25rem;
+  grid-template-columns: 340px 1fr;
+  gap: 22px;
   align-items: start;
 }
-@media (max-width: 720px) {
-  .triage { grid-template-columns: 1fr; }
-}
-.rail__title, .feed__title {
-  font-size: 0.8rem;
+@media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
+
+.colhead {
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--muted);
-  margin: 0 0 0.75rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+.colhead .n {
+  font-size: 11px;
+  background: #eef0f3;
+  color: #374151;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.alertcol .colhead { color: var(--alert); }
+.alertcol .colhead .n { background: #fee2e2; color: #b91c1c; }
 
 /* --- Left rail: alert cards --------------------------------------------- */
-.triage__rail {
-  position: sticky;
-  top: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-.alert-card {
-  background: var(--alert-bg);
-  border: 1px solid #fca5a5;
-  border-left: 4px solid var(--alert);
+.acard {
+  background: var(--alertbg);
+  border: 1px solid #fecaca;
+  border-left: 3px solid var(--alert);
   border-radius: var(--radius);
-  padding: 0.75rem 0.85rem;
+  padding: 13px 14px;
+  margin-bottom: 10px;
 }
-.alert-card__headline {
-  font-weight: 600;
-  color: var(--text);
-  text-decoration: none;
-  display: block;
-}
-.alert-card__headline:hover { text-decoration: underline; }
-.alert-card__meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-size: 0.78rem;
-  color: var(--muted);
-  margin-top: 0.35rem;
-}
-.alert-card__summary { margin: 0.4rem 0 0; font-size: 0.85rem; }
-.rail__empty { color: var(--muted); font-style: italic; }
-
-/* --- Right pane: ranked feed -------------------------------------------- */
-.triage__feed { display: flex; flex-direction: column; gap: 0.6rem; }
-.feed-item {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.85rem 1rem;
-}
-.feed-item--alert { border-left: 4px solid var(--alert); }
-.feed-item__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.feed-item__headline {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text);
-  text-decoration: none;
-}
-.feed-item__headline:hover { color: var(--accent); text-decoration: underline; }
-.feed-item__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 0.4rem;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-.feed-item__meta .client { font-weight: 600; color: var(--text); }
-.feed-item__summary { margin: 0.5rem 0 0; font-size: 0.9rem; }
-
-/* --- Tags ---------------------------------------------------------------- */
-.tag {
-  display: inline-block;
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  text-transform: lowercase;
-}
-/* Base category chip; per-category colors below give the closed Category set
-   (models.Category) distinct, scannable hues in the ranked feed. The generic
-   .tag--category is the fallback if a new category is ever added upstream. */
-.tag--category { background: #eef2ff; color: #3730a3; }
-.tag--produkt { background: #ecfdf5; color: #047857; }
-.tag--personalie { background: #eff6ff; color: #1d4ed8; }
-.tag--krise { background: #fef2f2; color: #b91c1c; }
-.tag--regulatorik { background: #fefce8; color: #a16207; }
-.tag--finanzen { background: #f0fdfa; color: #0f766e; }
-.tag--wettbewerb { background: #fff7ed; color: #c2410c; }
-.tag--sonstiges { background: #f3f4f6; color: #4b5563; }
-.tag--alert {
-  background: var(--alert);
-  color: #fff;
+.acard .cli {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--alert);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  margin-bottom: 5px;
 }
-.importance { font-variant-numeric: tabular-nums; font-weight: 600; }
+.acard .hl { font-size: 14.5px; font-weight: 600; margin-bottom: 4px; }
+.acard .hl a { color: var(--ink); text-decoration: none; }
+.acard .hl a:hover { text-decoration: underline; }
+.acard .sum { font-size: 13px; color: #52290f; margin-bottom: 7px; }
+.acard .meta {
+  font-size: 11.5px;
+  color: #9a3412;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+/* --- Right pane: ranked feed -------------------------------------------- */
+.item {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  display: flex;
+  gap: 12px;
+}
+.score {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #eef0fb;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* An alert keeps its identity in the ranked feed too: the rail is the "act now"
+   shortlist, but someone scanning the full feed must still see which rows fired. */
+.item--alert { border-color: #fecaca; }
+.item--alert .score { background: #fee2e2; color: #b91c1c; }
+.body { flex: 1; min-width: 0; }
+.toprow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 3px;
+  flex-wrap: wrap;
+}
+.clichip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 6px;
+  background: #eef0f3;
+  color: #374151;
+}
+.clichip a { color: inherit; text-decoration: none; }
+.clichip a:hover { text-decoration: underline; }
+.hl { font-size: 14.5px; font-weight: 600; margin-bottom: 2px; }
+.hl a { color: var(--ink); text-decoration: none; }
+.hl a:hover { text-decoration: underline; }
+.sum { font-size: 13px; color: #40454f; margin-bottom: 6px; }
+.meta { font-size: 12px; color: var(--muted); }
+.dot { color: #c7cbd1; }
+
+/* --- Category tags ------------------------------------------------------- */
+.tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+/* The mock names four; the remaining models.Category members follow its logic —
+   a distinct, low-saturation hue per category so the set stays scannable. */
+.t-produkt { background: #e0f2fe; color: #0369a1; }
+.t-personalie { background: #ede9fe; color: #6d28d9; }
+.t-wettbewerb { background: #f3e8ff; color: #7e22ce; }
+.t-finanzen { background: #dcfce7; color: #15803d; }
+.t-krise { background: #fee2e2; color: #b91c1c; }
+.t-regulatorik { background: #fef3c7; color: #a16207; }
+.t-sonstiges { background: #eef0f3; color: #4b5563; }
+
+/* --- Toolbar / date picker ---------------------------------------------- */
+.today-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.date-picker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.date-picker input,
+.date-picker select {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--card);
+  color: var(--ink);
+}
+.filter-note { font-size: 12px; color: var(--muted); font-style: italic; }
+
+/* --- Syndication / pickup count ------------------------------------------ */
+.colhead__note { font-size: 11px; font-weight: 400; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.pickup {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: #eef0fb;
+  color: var(--accent);
+}
+.pickup-list { display: inline; }
+.pickup-list > summary {
+  display: inline;
+  cursor: pointer;
+  color: var(--accent);
+  list-style: none;
+}
+.pickup-list > summary::-webkit-details-marker { display: none; }
+.pickup-list > summary::before { content: "· "; color: #c7cbd1; }
+.pickup-list > summary:hover { text-decoration: underline; }
+.pickup-list ul { margin: 6px 0 0; padding-left: 16px; }
+.pickup-list li { font-size: 12px; color: var(--muted); }
+.pickup-list a { color: var(--muted); }
+.pickup-list a:hover { color: var(--accent); }
+
+/* --- Mandanten (portfolio overview) -------------------------------------- */
+.portfolio { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.pcard {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 13px 14px;
+}
+.pcard--inactive { opacity: 0.6; }
+.pcard .pname { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.pcard .pname a { color: var(--ink); text-decoration: none; }
+.pcard .pname a:hover { color: var(--accent); text-decoration: underline; }
+.pcard .pind { font-size: 12px; color: var(--muted); margin-bottom: 9px; }
+.pcard .pcounts { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+.pcard .pcounts b { color: var(--ink); font-size: 15px; font-weight: 700; display: block; }
+.pcard .ptopics { margin-top: 9px; display: flex; gap: 5px; flex-wrap: wrap; }
+.ptopic { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 20px; background: var(--alertbg); color: #b91c1c; }
+
+/* --- Client detail / archive (NP-08) ------------------------------------- */
+/* This view keeps its own row markup (`.feed-item*`), so it gets its own rules
+   here — restyled into the mock's language rather than left on the old palette. */
+.client-profile { margin-bottom: 18px; }
+.client-profile h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
+.profile-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.profile-meta div { display: flex; flex-direction: column; }
+.profile-meta dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+.profile-meta dd { font-size: 13px; }
+
+.archive-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.filter-field { display: flex; flex-direction: column; gap: 3px; }
+.filter-field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+.filter-field input, .filter-field select {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--card);
+  color: var(--ink);
+}
+.filter-field--search { flex: 1; min-width: 180px; }
+.filter-field--search input { width: 100%; }
+.filter-reset { font-size: 13px; color: var(--accent); text-decoration: none; padding-bottom: 6px; }
+.filter-reset:hover { text-decoration: underline; }
+.archive-count { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.archive-rows { display: flex; flex-direction: column; gap: 8px; }
+
+.feed-item {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.feed-item--alert { border-color: #fecaca; }
+.feed-item__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
+.feed-item__headline { font-size: 14.5px; font-weight: 600; color: var(--ink); text-decoration: none; }
+.feed-item__headline:hover { text-decoration: underline; }
+.feed-item__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; font-size: 12px; color: var(--muted); }
+.feed-item__summary { font-size: 13px; color: #40454f; margin-top: 5px; }
+.importance { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); }
+
+/* The archive names its category chips `tag--<category>`; same hues as the
+   Today feed's `t-<category>` so one story reads identically in both views. */
+.tag--produkt { background: #e0f2fe; color: #0369a1; }
+.tag--personalie { background: #ede9fe; color: #6d28d9; }
+.tag--wettbewerb { background: #f3e8ff; color: #7e22ce; }
+.tag--finanzen { background: #dcfce7; color: #15803d; }
+.tag--krise { background: #fee2e2; color: #b91c1c; }
+.tag--regulatorik { background: #fef3c7; color: #a16207; }
+.tag--sonstiges { background: #eef0f3; color: #4b5563; }
+.tag--alert { background: var(--alert); color: #fff; text-transform: uppercase; letter-spacing: 0.03em; }
+
+.pagination { display: flex; align-items: center; gap: 14px; margin-top: 14px; font-size: 13px; }
+.page-link { color: var(--accent); text-decoration: none; }
+.page-link:hover { text-decoration: underline; }
+.page-link--disabled { color: #c7cbd1; pointer-events: none; }
+.page-indicator { color: var(--muted); }
 
 /* --- Empty state --------------------------------------------------------- */
 .empty-state {
-  background: var(--surface);
-  border: 1px dashed var(--border);
+  background: var(--card);
+  border: 1px dashed var(--line);
   border-radius: var(--radius);
   padding: 2rem;
   text-align: center;
   color: var(--muted);
+  font-size: 13px;
 }
+.rail__empty { color: var(--muted); font-style: italic; font-size: 13px; }
+
+/* --- Triage actions ------------------------------------------------------ */
+.item--done { opacity: 0.55; }
+.triage { display: flex; gap: 6px; margin-top: 8px; }
+.triage form { display: inline; }
+.triage-btn {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+}
+.triage-btn:hover { border-color: var(--accent); color: var(--accent); }
+.triage-btn--on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+/* --- Share of voice, advisor -------------------------------------------- */
+.pactions { margin-top: 9px; display: flex; gap: 12px; font-size: 12px; }
+.pactions a { color: var(--accent); text-decoration: none; }
+.pactions a:hover { text-decoration: underline; }
+table.sov { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.sov th, table.sov td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.sov-bar { display: inline-block; height: 8px; background: var(--accent); border-radius: 4px; vertical-align: middle; margin-right: 6px; min-width: 2px; }
+.advice { border-left: 3px solid var(--accent); }
+.situation { font-size: 14px; }
+.kind-reaktiv { background: #fee2e2; color: #b91c1c; }
+.kind-proaktiv { background: #dcfce7; color: #15803d; }
+.kind-beobachten { background: #eef0f3; color: #4b5563; }
+.urgency-heute { background: #fef3c7; color: #a16207; }
+.urgency-diese_woche { background: #e0f2fe; color: #0369a1; }
+.urgency-laufend { background: #eef0f3; color: #6b7280; }

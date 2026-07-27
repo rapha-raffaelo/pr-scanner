@@ -61,15 +61,71 @@
   .notice { border-radius: var(--radius); padding: 0.55rem 0.75rem; margin-bottom: 0.8rem; font-size: 0.85rem; }
   .notice--error { background: var(--alert-bg); border: 1px solid #fca5a5; color: #b91c1c; }
   .notice--ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #047857; }
-  .client-row { border-top: 1px solid var(--border); padding: 0.75rem 0; }
-  .client-row:first-of-type { border-top: none; }
-  .client-row--inactive { opacity: 0.65; }
-  .client-row .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-  .client-row .actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.3rem; }
-  .client-row .inactive-tag { font-size: 0.7rem; color: var(--muted); font-style: italic; }
   table.data { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
   table.data th, table.data td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
   table.data th { color: var(--muted); font-weight: 600; }
+
+  /* --- Client portfolio table ------------------------------------------- */
+  /* Collapsed add-form: adding is occasional, reading the table is constant. */
+  .add-client-toggle { margin-bottom: 0.9rem; }
+  .add-client-toggle > summary {
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--accent);
+    padding: 0.3rem 0;
+  }
+  .add-client-toggle .add-client { padding-top: 0.6rem; }
+  .table-caption { margin: 0 0 0.4rem; font-size: 0.75rem; color: var(--muted); }
+  /* A wide table must scroll inside its own box, never the page body. The
+     scroll lives on a wrapper, not the table: `display:block` on a <table>
+     collapses its column layout. */
+  .table-scroll { overflow-x: auto; }
+  table.data--clients { white-space: nowrap; }
+  table.data--clients thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    z-index: 1;
+  }
+  table.data--clients td { vertical-align: middle; }
+  .client-tr:hover > td { background: #f9fafb; }
+  .client-tr--inactive > td { color: var(--muted); }
+  .cell-name { font-weight: 600; }
+  .cell-name a { color: var(--text); text-decoration: none; }
+  .cell-name a:hover { color: var(--accent); text-decoration: underline; }
+  .cell-list { color: var(--muted); font-size: 0.78rem; }
+  .col-actions { white-space: nowrap; }
+  .col-actions form { display: inline; }
+  .tag--inactive { background: #f3f4f6; color: var(--muted); margin-left: 0.35rem; }
+  .tag--topic { background: var(--alert-bg); color: #b91c1c; margin-right: 0.25rem; text-transform: none; }
+  /* Row actions read as links, not a row of competing buttons. */
+  .rowlink, .linkbtn {
+    font: inherit;
+    font-size: 0.78rem;
+    background: none;
+    border: none;
+    padding: 0 0.4rem 0 0;
+    color: var(--accent);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .rowlink:hover, .linkbtn:hover { text-decoration: underline; }
+  /* Must out-specify `.panel button` (0,1,1), which would otherwise repaint
+     these as accent-filled buttons with white — i.e. invisible — label text. */
+  .panel .col-actions button.linkbtn {
+    background: none;
+    border: none;
+    padding: 0 0.4rem 0 0;
+    font-weight: 400;
+    color: var(--accent);
+  }
+  .panel .col-actions button.linkbtn--danger { color: var(--alert); }
+  .client-edit-tr > td { background: #f9fafb; white-space: normal; padding: 0.85rem 0.5rem; }
+  .client-edit .actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.3rem; }
   .feed-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 1rem; margin-bottom: 0.75rem; }
   @media (max-width: 620px) { .feed-list { grid-template-columns: 1fr; } }
   .feed-list label { display: flex; gap: 0.4rem; align-items: baseline; color: var(--text); margin: 0; }
@@ -77,12 +133,50 @@
   .import-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem 0.75rem; }
   @media (max-width: 620px) { .import-fields { grid-template-columns: 1fr; } }
   .run-errors { margin: 0.25rem 0 0; padding-left: 1rem; color: var(--alert); }
+  .run-form { display: flex; align-items: flex-end; gap: 0.75rem; margin-bottom: 0.5rem; }
+  .run-form .filter-field { min-width: 260px; }
+  .run-form select { margin-bottom: 0; }
+  .panel-subhead { margin-top: 1.25rem; }
 </style>
 
 <div class="settings">
   <h1>Einstellungen</h1>
 
   <div class="settings-grid">
+    <!-- ── Sweep trigger: the one daily action, so it leads the page ── -->
+    <section class="panel panel--wide" aria-label="Lauf starten">
+      <h2>Lauf starten</h2>
+      {% if run_error %}<div class="notice notice--error">{{ run_error }}</div>{% endif %}
+      {% if run_started is not none %}
+        <div class="notice notice--ok">
+          {% if run_started %}
+            Nachlauf über {{ run_started }} Tage gestartet — läuft im Hintergrund.
+          {% else %}
+            Lauf gestartet — läuft im Hintergrund.
+          {% endif %}
+          Der Status oben rechts aktualisiert sich nach dem Neuladen.
+        </div>
+      {% endif %}
+      <form method="post" action="/settings/run" class="run-form">
+        <div class="filter-field">
+          <label for="since_days">Zeitraum</label>
+          <select id="since_days" name="since_days">
+            <option value="">Seit letztem Lauf (Standard)</option>
+            {% for d in backfill_days %}
+              <option value="{{ d }}">Letzte {{ d }} Tage nachladen</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit">Jetzt aktualisieren</button>
+      </form>
+      <p class="panel-hint">
+        Ein Nachlauf erweitert nur das akzeptierte Zeitfenster — ein Feed liefert
+        weiterhin nur die Einträge, die er aktuell ausspielt (oft wenige Tage).
+        Mehrfaches Ausführen ist unbedenklich: bereits gespeicherte Artikel werden
+        durch die Deduplizierung verworfen.
+      </p>
+    </section>
+
     <!-- ── Clients: add + edit + deactivate (NP-02 CRUD service) ── -->
     <section class="panel panel--wide" aria-label="Clients">
       <h2>Clients</h2>
@@ -90,51 +184,106 @@
         <div class="notice notice--error">{{ client_error }}</div>
       {% endif %}
 
-      <form method="post" action="/settings/clients" class="add-client">
-        <div class="import-fields">
-          <div><label for="new-name">Name*</label><input type="text" id="new-name" name="name" required></div>
-          <div><label for="new-industry">Branche</label><input type="text" id="new-industry" name="industry"></div>
-          <div><label for="new-country">Land</label><input type="text" id="new-country" name="country" value="{{ default_country }}" maxlength="2"></div>
-          <div><label for="new-aliases">Aliasse</label><input type="text" id="new-aliases" name="aliases" placeholder="Komma/Semikolon"></div>
-          <div><label for="new-keywords">Suchbegriffe</label><input type="text" id="new-keywords" name="keywords" placeholder="Komma/Semikolon"></div>
-          <div><label for="new-topics">Alarm-Themen</label><input type="text" id="new-topics" name="alert_topics" placeholder="Komma/Semikolon"></div>
-        </div>
-        <button type="submit">Client hinzufügen</button>
-      </form>
-
-      <div class="client-list">
-        {% for client in clients %}
-          <div class="client-row{% if not client.active %} client-row--inactive{% endif %}">
-            <form method="post" action="/settings/clients/{{ client.id }}">
-              <div class="grid2">
-                <div><label>Name</label><input type="text" name="name" value="{{ client.name }}" required></div>
-                <div><label>Branche</label><input type="text" name="industry" value="{{ client.industry or '' }}"></div>
-                <div><label>Land</label><input type="text" name="country" value="{{ client.country }}" maxlength="2"></div>
-                <div><label>Aliasse</label><input type="text" name="aliases" value="{{ client.aliases | join(', ') }}"></div>
-                <div><label>Suchbegriffe</label><input type="text" name="keywords" value="{{ client.keywords | join(', ') }}"></div>
-                <div><label>Alarm-Themen</label><input type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}"></div>
-              </div>
-              <div class="actions">
-                <button type="submit" class="secondary">Speichern</button>
-                {% if not client.active %}<span class="inactive-tag">inaktiv</span>{% endif %}
-              </div>
-            </form>
-            <div class="actions">
-              {% if client.active %}
-                <form method="post" action="/settings/clients/{{ client.id }}/deactivate">
-                  <button type="submit" class="danger">Deaktivieren</button>
-                </form>
-              {% else %}
-                <form method="post" action="/settings/clients/{{ client.id }}/reactivate">
-                  <button type="submit" class="secondary">Reaktivieren</button>
-                </form>
-              {% endif %}
-            </div>
+      {# Collapsed by default: adding is occasional, reading the portfolio is
+         constant, so the six add-fields must not sit permanently above the table. #}
+      <details class="add-client-toggle"{% if client_error and not edit_id %} open{% endif %}>
+        <summary>+ Client hinzufügen</summary>
+        <form method="post" action="/settings/clients" class="add-client">
+          <div class="import-fields">
+            <div><label for="new-name">Name*</label><input type="text" id="new-name" name="name" required></div>
+            <div><label for="new-industry">Branche</label><input type="text" id="new-industry" name="industry"></div>
+            <div><label for="new-country">Land</label><input type="text" id="new-country" name="country" value="{{ default_country }}" maxlength="2"></div>
+            <div><label for="new-aliases">Aliasse</label><input type="text" id="new-aliases" name="aliases" placeholder="Komma/Semikolon"></div>
+            <div><label for="new-keywords">Suchbegriffe</label><input type="text" id="new-keywords" name="keywords" placeholder="Komma/Semikolon"></div>
+            <div><label for="new-topics">Alarm-Themen</label><input type="text" id="new-topics" name="alert_topics" placeholder="Komma/Semikolon"></div>
           </div>
-        {% else %}
-          <p class="rail__empty">Noch keine Clients. Über das Formular oder den Import anlegen.</p>
-        {% endfor %}
-      </div>
+          <button type="submit">Client hinzufügen</button>
+        </form>
+      </details>
+
+      {% if clients %}
+        <p class="table-caption">{{ clients | selectattr('active') | list | length }} aktiv · {{ clients | length }} gesamt</p>
+        <div class="table-scroll">
+        <table class="data data--clients">
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Branche</th>
+              <th scope="col">Land</th>
+              <th scope="col">Aliasse</th>
+              <th scope="col">Suchbegriffe</th>
+              <th scope="col">Alarm-Themen</th>
+              <th scope="col">Rolle</th>
+              <th scope="col" class="col-actions">Aktionen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for client in clients %}
+              <tr id="client-{{ client.id }}" class="client-tr{% if not client.active %} client-tr--inactive{% endif %}">
+                <td class="cell-name">
+                  <a href="/client/{{ client.id }}">{{ client.name }}</a>
+                  {% if not client.active %}<span class="tag tag--inactive">inaktiv</span>{% endif %}
+                </td>
+                <td>{{ client.industry or '—' }}</td>
+                <td>{{ client.country }}</td>
+                <td class="cell-list">{{ client.aliases | join(', ') or '—' }}</td>
+                <td class="cell-list">{{ client.keywords | join(', ') or '—' }}</td>
+                <td class="cell-list">
+                  {% if client.alert_topics %}
+                    {% for topic in client.alert_topics %}<span class="tag tag--topic">{{ topic }}</span>{% endfor %}
+                  {% else %}—{% endif %}
+                </td>
+                <td>
+                  <form method="post" action="/settings/clients/{{ client.id }}/competitor">
+                    <button type="submit" class="linkbtn" title="Ein Wettbewerber wird beobachtet, aber nie an ihn berichtet">
+                      {{ 'Wettbewerber' if client.is_competitor else 'Mandant' }}
+                    </button>
+                  </form>
+                </td>
+                <td class="col-actions">
+                  {% if edit_id == client.id %}
+                    <a class="rowlink" href="/settings">Schließen</a>
+                  {% else %}
+                    <a class="rowlink" href="/settings?edit={{ client.id }}#client-{{ client.id }}">Bearbeiten</a>
+                  {% endif %}
+                  {% if client.active %}
+                    <form method="post" action="/settings/clients/{{ client.id }}/deactivate">
+                      <button type="submit" class="linkbtn linkbtn--danger">Deaktivieren</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="/settings/clients/{{ client.id }}/reactivate">
+                      <button type="submit" class="linkbtn">Reaktivieren</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% if edit_id == client.id %}
+                <tr class="client-edit-tr">
+                  <td colspan="8">
+                    <form method="post" action="/settings/clients/{{ client.id }}" class="client-edit">
+                      <div class="import-fields">
+                        <div><label for="e-name-{{ client.id }}">Name*</label><input id="e-name-{{ client.id }}" type="text" name="name" value="{{ client.name }}" required></div>
+                        <div><label for="e-industry-{{ client.id }}">Branche</label><input id="e-industry-{{ client.id }}" type="text" name="industry" value="{{ client.industry or '' }}"></div>
+                        <div><label for="e-country-{{ client.id }}">Land</label><input id="e-country-{{ client.id }}" type="text" name="country" value="{{ client.country }}" maxlength="2"></div>
+                        <div><label for="e-aliases-{{ client.id }}">Aliasse</label><input id="e-aliases-{{ client.id }}" type="text" name="aliases" value="{{ client.aliases | join(', ') }}" placeholder="Komma/Semikolon"></div>
+                        <div><label for="e-keywords-{{ client.id }}">Suchbegriffe</label><input id="e-keywords-{{ client.id }}" type="text" name="keywords" value="{{ client.keywords | join(', ') }}" placeholder="Komma/Semikolon"></div>
+                        <div><label for="e-topics-{{ client.id }}">Alarm-Themen</label><input id="e-topics-{{ client.id }}" type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}" placeholder="Komma/Semikolon"></div>
+                      </div>
+                      <div class="actions">
+                        <button type="submit">Speichern</button>
+                        <a class="rowlink" href="/settings">Abbrechen</a>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% else %}
+        <p class="rail__empty">Noch keine Clients. Über das Formular oder den Import anlegen.</p>
+      {% endif %}
     </section>
 
     <!-- ── Import: mapping + preview before commit (NP-02 import) ── -->
