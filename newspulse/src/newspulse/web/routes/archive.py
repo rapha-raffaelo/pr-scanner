@@ -32,6 +32,7 @@ from .client import (
     _parse_category,
     Pagination,
 )
+from ...outlets import tier_for
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -39,6 +40,14 @@ router = APIRouter()
 # A month is exchanged as YYYY-MM: sortable, unambiguous, and the same shape the
 # <select> options carry.
 _MONTH_FORMAT = "%Y-%m"
+
+# Outlet tiers as the filter offers them. The labels say what the tier *means*
+# to a PR reader — "Tier 1" alone is jargon that every agency defines differently.
+_TIER_OPTIONS = (
+    ("1", "Tier 1 — Leitmedien"),
+    ("2", "Tier 2 — Fach- & Regionalpresse"),
+    ("3", "Tier 3 — Finanz-Ticker"),
+)
 
 _DE_MONTHS = (
     "Januar", "Februar", "März", "April", "Mai", "Juni",
@@ -69,6 +78,7 @@ class ArchiveFilters:
     client: str
     month: str
     with_competitors: bool
+    tier: str
     source: str
     category: str
     search: str
@@ -241,6 +251,7 @@ def _page_url(filters: ArchiveFilters, page: int) -> str:
             ("source", filters.source),
             ("category", filters.category),
             ("q", filters.search),
+            ("tier", filters.tier),
             ("with_competitors", "1" if filters.with_competitors else ""),
         )
         if value
@@ -271,6 +282,7 @@ def archive_view(
     source: str | None = None,
     category: str | None = None,
     q: str | None = None,
+    tier: str | None = None,
     with_competitors: bool = False,
     page: int = 1,
     session: Session = Depends(get_db),
@@ -282,6 +294,7 @@ def archive_view(
         source=(source or "").strip(),
         category=(category or "").strip(),
         search=(q or "").strip(),
+        tier=(tier or "").strip(),
         with_competitors=bool(with_competitors),
     )
     conditions = _conditions(
@@ -292,6 +305,18 @@ def archive_view(
         filters.search,
         with_competitors=filters.with_competitors,
     )
+
+    # Tier is a property of the outlet name, not a column, so it filters the
+    # fetched rows rather than the query. Applied to the page's own rows would
+    # break pagination, so the id set is narrowed first.
+    if filters.tier in {"1", "2", "3"}:
+        wanted = int(filters.tier)
+        allowed = [
+            source
+            for source in _available_sources(session)
+            if tier_for(source) == wanted
+        ]
+        conditions.append(Article.source.in_(allowed))
 
     total = _count(session, conditions)
     total_pages = max(1, -(-total // _PAGE_SIZE))  # ceil
@@ -307,6 +332,7 @@ def archive_view(
             "clients": _available_clients(session),
             "months": _available_months(session),
             "sources": _available_sources(session),
+            "tiers": _TIER_OPTIONS,
             "categories": [c.value for c in Category],
             "pagination": _paginate(filters, current_page, total_pages, total),
             "last_run": _fetch_last_run(session),

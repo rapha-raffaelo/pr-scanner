@@ -57,5 +57,116 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+
+  {# The assistant drawer. Available from every page and seeded with what the
+     page is showing, so a question does not have to re-explain its own context.
+     Advisory only: it produces text, it never acts. #}
+  <button class="drawer-open" type="button" data-drawer-open
+          title="Fragen zur Berichterstattung auf dieser Seite">✦ Assistent</button>
+
+  <aside class="drawer" id="assistant-drawer" hidden aria-label="PR-Assistent">
+    <header class="drawer__head">
+      <div>
+        <strong>PR-Assistent</strong>
+        <span class="drawer__ctx" id="drawer-context">{{ assistant_context or 'Portfolio' }}</span>
+      </div>
+      <button type="button" class="drawer__close" data-drawer-close aria-label="Schließen">×</button>
+    </header>
+
+    <div class="drawer__body" id="drawer-body">
+      <p class="drawer__hint">
+        Fragen zur Berichterstattung, die gerade auf dem Schirm ist. Der Assistent
+        sieht Schlagzeilen und Kurzfassungen — nicht die vollständigen Artikel —
+        und entscheidet nichts, er schlägt vor.
+      </p>
+      <div class="drawer__chips">
+        {% for suggestion in assistant_suggestions or [
+             'Was sind heute die drei wichtigsten Punkte?',
+             'Wo müssen wir reagieren, wo besser schweigen?',
+             'Welches Narrativ setzt sich gerade durch?'] %}
+          <button type="button" class="drawer__chip" data-ask="{{ suggestion }}">{{ suggestion }}</button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <form class="drawer__ask" id="drawer-form">
+      <input type="text" id="drawer-input" placeholder="Frage stellen…" autocomplete="off">
+      <button type="submit" id="drawer-send">Fragen</button>
+    </form>
+  </aside>
+
+  <script>
+  (function () {
+    const drawer  = document.getElementById("assistant-drawer");
+    const body    = document.getElementById("drawer-body");
+    const form    = document.getElementById("drawer-form");
+    const input   = document.getElementById("drawer-input");
+    const send    = document.getElementById("drawer-send");
+    // Built server-side so the question inherits the page's own context.
+    const CTX     = {{ assistant_ctx(request) | tojson }};
+    let source    = null;
+
+    const openDrawer  = () => { drawer.hidden = false; input.focus(); };
+    const closeDrawer = () => { drawer.hidden = true; stop(); };
+
+    document.querySelectorAll("[data-drawer-open]").forEach(el => el.onclick = openDrawer);
+    document.querySelectorAll("[data-drawer-close]").forEach(el => el.onclick = closeDrawer);
+    // Escape closes, which is what every drawer everywhere does.
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !drawer.hidden) closeDrawer(); });
+
+    function stop() {
+      // Closing the socket also kills the subprocess server-side, so an
+      // abandoned question does not keep a `claude` process alive.
+      if (source) { source.close(); source = null; }
+      send.disabled = false;
+      send.textContent = "Fragen";
+    }
+
+    function ask(question) {
+      if (!question || send.disabled) return;
+      stop();
+      body.innerHTML = "";
+
+      const q = document.createElement("div");
+      q.className = "drawer__q";
+      q.textContent = question;
+      body.appendChild(q);
+
+      const status = document.createElement("div");
+      status.className = "drawer__status";
+      status.textContent = "startet…";
+      body.appendChild(status);
+
+      const answer = document.createElement("div");
+      answer.className = "drawer__a";
+      body.appendChild(answer);
+
+      send.disabled = true;
+      send.textContent = "…";
+
+      const params = new URLSearchParams({ q: question, ...CTX });
+      source = new EventSource("/api/assistant/stream?" + params.toString());
+
+      source.addEventListener("status", e => { status.textContent = JSON.parse(e.data); });
+      source.addEventListener("text", e => {
+        status.hidden = true;
+        answer.textContent += JSON.parse(e.data);
+        body.scrollTop = body.scrollHeight;
+      });
+      source.addEventListener("done", () => { status.hidden = true; stop(); });
+      source.addEventListener("error", e => {
+        // Both an explicit error event and a dropped connection land here; the
+        // payload is absent for the latter.
+        status.hidden = false;
+        status.className = "drawer__status drawer__status--error";
+        status.textContent = e.data ? JSON.parse(e.data) : "Verbindung unterbrochen.";
+        stop();
+      });
+    }
+
+    form.onsubmit = e => { e.preventDefault(); const v = input.value.trim(); input.value = ""; ask(v); };
+    document.querySelectorAll("[data-ask]").forEach(el => el.onclick = () => ask(el.dataset.ask));
+  })();
+  </script>
 </body>
 </html>

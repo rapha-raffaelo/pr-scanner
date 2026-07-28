@@ -45,6 +45,21 @@ class MapRow:
     total: int
 
     @property
+    def rival_articles(self) -> int:
+        """Everything this outlet wrote about the competition."""
+        return self.total - self.client_articles
+
+    @property
+    def lean(self) -> int:
+        """How one-sided this outlet is: positive means it favours the rivals.
+
+        The sort key of the diverging view — the number the reader is actually
+        looking for is "who writes about them and not us", and that is exactly
+        this difference.
+        """
+        return self.rival_articles - self.client_articles
+
+    @property
     def is_gap(self) -> bool:
         """True when this outlet covers rivals but never the client — a target."""
         return self.client_articles == 0 and self.total >= _MIN_RIVAL_ARTICLES
@@ -57,6 +72,23 @@ class CoverageMap:
     client: str
     companies: tuple[str, ...]
     rows: tuple[MapRow, ...]
+
+    @property
+    def widest(self) -> int:
+        """The largest single-side count, for scaling the diverging bars. Never
+        zero, so the template can divide unconditionally."""
+        return max(
+            (max(r.rival_articles, r.client_articles) for r in self.rows), default=1
+        ) or 1
+
+    @property
+    def leaning(self) -> tuple[MapRow, ...]:
+        """The outlets worth plotting: any with a real imbalance, biggest first.
+
+        A 78-row grid of mostly-empty cells is unreadable — and most of those
+        rows say nothing. This keeps the ones that carry a signal.
+        """
+        return tuple(r for r in self.rows if r.total >= _MIN_RIVAL_ARTICLES)[:24]
 
     @property
     def gaps(self) -> tuple[MapRow, ...]:
@@ -115,8 +147,10 @@ def build(
         )
         for source, counts in by_source.items()
     ]
-    # Gaps first — the actionable rows lead — then by volume within each group.
-    built.sort(key=lambda r: (not r.is_gap, -r.total, r.source))
+    # Sorted by lean: the outlets most tilted towards the competition lead, which
+    # is the order the question "who is missing us" is asked in. Volume breaks
+    # ties so a 14-0 outranks a 2-0.
+    built.sort(key=lambda r: (-r.lean, -r.total, r.source))
     return CoverageMap(
         client=client.name,
         companies=tuple(m.name for m in members),

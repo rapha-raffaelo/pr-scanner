@@ -166,3 +166,42 @@ def test_empty_archive_renders_an_empty_state(client):
     resp = client.get("/archive")
     assert resp.status_code == 200
     assert "Keine Artikel" in resp.text
+
+
+def test_archive_can_be_filtered_to_one_media_tier(client, factory):
+    """A PR reader often wants only the Leitmedien, or only to see how much of a
+    month was automated finance-ticker noise."""
+    with factory() as s:
+        c = Client(name="Alpha AG")
+        s.add(c)
+        s.flush()
+        _seed(s, client_obj=c, title="LEIT Story", url="https://ex.de/1",
+              source="FAZ", day=dt.date(2026, 7, 10), category=Category.KRISE)
+        _seed(s, client_obj=c, title="TICKER Story", url="https://ex.de/2",
+              source="Ad-hoc-news.de", day=dt.date(2026, 7, 11), category=Category.FINANZEN)
+        _seed(s, client_obj=c, title="REGIO Story", url="https://ex.de/3",
+              source="Oberberg-Aktuell", day=dt.date(2026, 7, 12), category=Category.SONSTIGES)
+        s.commit()
+
+    tier1 = client.get("/archive", params={"tier": "1"}).text
+    assert "LEIT Story" in tier1
+    assert "TICKER Story" not in tier1 and "REGIO Story" not in tier1
+
+    tier3 = client.get("/archive", params={"tier": "3"}).text
+    assert "TICKER Story" in tier3
+    assert "LEIT Story" not in tier3
+
+    # Unlisted outlets fall to the neutral middle tier.
+    tier2 = client.get("/archive", params={"tier": "2"}).text
+    assert "REGIO Story" in tier2
+
+
+def test_an_unknown_tier_value_shows_everything(client, factory):
+    with factory() as s:
+        c = Client(name="Alpha AG")
+        s.add(c)
+        s.flush()
+        _seed(s, client_obj=c, title="EINE Story", url="https://ex.de/1",
+              source="FAZ", day=dt.date(2026, 7, 10), category=Category.KRISE)
+        s.commit()
+    assert "EINE Story" in client.get("/archive", params={"tier": "unfug"}).text

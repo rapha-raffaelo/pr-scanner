@@ -119,6 +119,30 @@ def logo_src(value: str | None) -> str:
     return raw if raw.lower().startswith("https://") else ""
 
 
+def assistant_context(request) -> dict:
+    """The drawer's query parameters, derived from the page being viewed.
+
+    Built here rather than in each route so a new page inherits a working
+    assistant automatically, and so the context can never disagree with the URL
+    the reader is actually on.
+    """
+    params: dict[str, str] = {}
+    path = request.url.path
+    if path.startswith("/client/"):
+        segment = path.split("/")[2] if len(path.split("/")) > 2 else ""
+        if segment.isdigit():
+            params["client_id"] = segment
+    if path == "/":
+        day = request.query_params.get("date")
+        if day:
+            params["date"] = day
+    client = request.query_params.get("client")
+    if path == "/" and client and client.isdigit():
+        params["client_id"] = client
+    return params
+
+
+
 # One Jinja environment for the whole app, shared with the route modules via the
 # app instance (see ``create_app``). Kept module-level so it is built once.
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -131,6 +155,9 @@ templates.env.filters["de_long_date"] = de_long_date
 # Client identity: a monogram + stable colour stand in wherever no logo is set,
 # so the portfolio never looks half-configured.
 templates.env.filters["logo_src"] = logo_src
+# The drawer lives in the shared layout, so its context is a global rather than
+# something every route has to remember to pass.
+templates.env.globals["assistant_ctx"] = assistant_context
 templates.env.filters["monogram"] = branding.monogram
 templates.env.filters["brand_colour"] = branding.colour
 
@@ -154,13 +181,14 @@ def create_app() -> FastAPI:
 
     # Imported here (not at module top) to avoid a circular import: the route
     # modules import ``get_db``/``templates`` from this module.
-    from .routes import advisory, archive, client, settings, today, triage
+    from .routes import advisory, archive, assistant, client, settings, today, triage
 
     app.include_router(today.router)
     app.include_router(client.router)
     app.include_router(archive.router)
     app.include_router(settings.router)
     app.include_router(advisory.router)
+    app.include_router(assistant.router)
     app.include_router(triage.router)
     return app
 

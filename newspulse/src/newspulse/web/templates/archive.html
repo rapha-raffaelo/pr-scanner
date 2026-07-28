@@ -62,6 +62,15 @@
     </select>
   </div>
   <div class="filter-field">
+    <label for="tier">Medien-Tier</label>
+    <select id="tier" name="tier">
+      <option value="">Alle Tiers</option>
+      {% for value, label in tiers %}
+        <option value="{{ value }}"{% if value == filters.tier %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
     <label for="category">Kategorie</label>
     <select id="category" name="category">
       <option value="">Alle Kategorien</option>

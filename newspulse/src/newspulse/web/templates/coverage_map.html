@@ -45,9 +45,39 @@
   </div>
 {% endif %}
 
+{# The 78-row grid this replaced was a sparse matrix forced into a dense table:
+   most cells empty, the signal invisible. A diverging bar answers the actual
+   question — who writes about them and not us — by putting the two sides against
+   a shared centre line and sorting by the gap. Only outlets with a real signal
+   are plotted; the rest are a table below. #}
 <div class="colhead" style="margin-top:26px">
-  Alle Medien <span class="n">{{ map.rows | length }}</span>
+  Wer schreibt über wen <span class="n">{{ map.leaning | length }}</span>
+  <span class="colhead__note">Wettbewerb links · {{ map.client }} rechts · nach Ungleichgewicht sortiert</span>
 </div>
+
+<div class="diverge">
+  <div class="diverge__legend">
+    <span class="diverge__key"><i class="dk dk--rival"></i>Wettbewerb</span>
+    <span class="diverge__key"><i class="dk dk--own"></i>{{ map.client }}</span>
+  </div>
+  {% for row in map.leaning %}
+    <div class="drow{% if row.is_gap %} drow--gap{% endif %}">
+      <div class="drow__label" title="{{ row.source }}">{{ row.source }}</div>
+      <div class="drow__left">
+        <span class="dbar dbar--rival" style="width: {{ (row.rival_articles / map.widest * 100) | round(1) }}%"></span>
+        {% if row.rival_articles %}<span class="dnum">{{ row.rival_articles }}</span>{% endif %}
+      </div>
+      <div class="drow__axis"></div>
+      <div class="drow__right">
+        <span class="dbar dbar--own" style="width: {{ (row.client_articles / map.widest * 100) | round(1) }}%"></span>
+        {% if row.client_articles %}<span class="dnum">{{ row.client_articles }}</span>{% else %}<span class="dnum dnum--zero">0</span>{% endif %}
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<details class="fulltable">
+  <summary>Vollständige Tabelle ({{ map.rows | length }} Medien)</summary>
 <div class="table-scroll">
   <table class="data covmap">
     <thead>
@@ -80,3 +110,4 @@
   </table>
 </div>
 {% endblock %}
+</details>
