@@ -215,22 +215,23 @@ _EN: dict[str, str] = {
     "Noch keine Clients. Über das Formular oder den Import anlegen.":
         "No clients yet. Add one with the form or the import.",
     # --- Assistant drawer ----------------------------------------------------
-    "Assistent": "Assistant",
-    "PR-Assistent": "PR assistant",
+    "Captain Comms": "Captain Comms",
+    "Kommunikationsstrategie zur Berichterstattung auf dieser Seite":
+        "Communication strategy for the coverage on this page",
+    "Strategische Einordnung der Berichterstattung, die gerade auf dem Schirm ist. Captain Comms sieht Schlagzeilen und Kurzfassungen — nicht die vollständigen Artikel — und entscheidet nichts, er berät.":
+        "Strategic read of the coverage currently on screen. Captain Comms sees "
+        "headlines and short summaries — not full articles — and decides "
+        "nothing, he advises.",
+    "Welches Narrativ setzt sich gerade durch — und wer treibt es?":
+        "Which narrative is taking hold — and who is driving it?",
+    "Wo müssen wir reagieren, wo ist Schweigen die bessere Strategie?":
+        "Where must we respond, and where is silence the better strategy?",
+    "Welche Botschaft sollten wir diese Woche setzen?":
+        "What message should we set this week?",
+    "Was übersehen wir gerade?": "What are we missing?",
     "Portfolio": "Portfolio",
     "Fragen": "Ask",
     "Frage stellen…": "Ask a question…",
-    "Fragen zur Berichterstattung auf dieser Seite":
-        "Ask about the coverage on this page",
-    "Fragen zur Berichterstattung, die gerade auf dem Schirm ist. Der Assistent sieht Schlagzeilen und Kurzfassungen — nicht die vollständigen Artikel — und entscheidet nichts, er schlägt vor.":
-        "Ask about the coverage currently on screen. The assistant sees headlines "
-        "and short summaries — not full articles — and decides nothing, it suggests.",
-    "Was sind heute die drei wichtigsten Punkte?":
-        "What are today's three most important points?",
-    "Wo müssen wir reagieren, wo besser schweigen?":
-        "Where must we respond, and where is silence better?",
-    "Welches Narrativ setzt sich gerade durch?":
-        "Which narrative is taking hold right now?",
     "Tage": "days",
 }
 

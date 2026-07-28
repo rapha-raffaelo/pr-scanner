@@ -139,3 +139,10 @@ def test_no_german_chrome_survives_on_an_english_page(client, factory):
     body = client.get("/").text
     for leftover in ("Einstellungen", "Aktualisieren", "Warnungen", "Gesamter Tag"):
         assert leftover not in body, leftover
+
+
+def test_captain_comms_is_reachable_from_every_page(client):
+    for path in ("/", "/clients", "/archive", "/settings"):
+        body = client.get(path).text
+        assert "Captain Comms" in body, path
+        assert "captain.svg" in body, path

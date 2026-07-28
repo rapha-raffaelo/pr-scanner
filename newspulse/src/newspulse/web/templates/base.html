@@ -74,28 +74,30 @@
      page is showing, so a question does not have to re-explain its own context.
      Advisory only: it produces text, it never acts. #}
   <button class="drawer-open" type="button" data-drawer-open
-          title="{{ t('Fragen zur Berichterstattung auf dieser Seite') }}">✦ {{ t("Assistent") }}</button>
+          title="{{ t('Kommunikationsstrategie zur Berichterstattung auf dieser Seite') }}"><img src="{{ url_for('static', path='captain.svg') }}" alt="" class="cc-icon">{{ t("Captain Comms") }}</button>
 
-  <aside class="drawer" id="assistant-drawer" hidden aria-label="{{ t('PR-Assistent') }}">
+  <aside class="drawer" id="assistant-drawer" hidden aria-label="{{ t('Captain Comms') }}">
     <header class="drawer__head">
       <div>
-        <strong>{{ t("PR-Assistent") }}</strong>
+        <span class="drawer__title"><img src="{{ url_for('static', path='captain.svg') }}" alt="" class="cc-icon cc-icon--lg"><strong>{{ t("Captain Comms") }}</strong></span>
         <span class="drawer__ctx" id="drawer-context">{{ assistant_context or t('Portfolio') }}</span>
       </div>
       <button type="button" class="drawer__close" data-drawer-close aria-label="{{ t('Schließen') }}">×</button>
     </header>
 
     <div class="drawer__body" id="drawer-body">
-      <p class="drawer__hint">
-        {{ t("Fragen zur Berichterstattung, die gerade auf dem Schirm ist. Der Assistent sieht Schlagzeilen und Kurzfassungen — nicht die vollständigen Artikel — und entscheidet nichts, er schlägt vor.") }}
+      <div class="drawer__intro"><p class="drawer__hint">
+        {{ t("Strategische Einordnung der Berichterstattung, die gerade auf dem Schirm ist. Captain Comms sieht Schlagzeilen und Kurzfassungen — nicht die vollständigen Artikel — und entscheidet nichts, er berät.") }}
       </p>
       <div class="drawer__chips">
         {% for suggestion in assistant_suggestions or [
-             t('Was sind heute die drei wichtigsten Punkte?'),
-             t('Wo müssen wir reagieren, wo besser schweigen?'),
-             t('Welches Narrativ setzt sich gerade durch?')] %}
+             t('Welches Narrativ setzt sich gerade durch — und wer treibt es?'),
+             t('Wo müssen wir reagieren, wo ist Schweigen die bessere Strategie?'),
+             t('Welche Botschaft sollten wir diese Woche setzen?'),
+             t('Was übersehen wir gerade?')] %}
           <button type="button" class="drawer__chip" data-ask="{{ suggestion }}">{{ suggestion }}</button>
         {% endfor %}
+      </div>
       </div>
     </div>
 
@@ -112,8 +114,11 @@
     const form    = document.getElementById("drawer-form");
     const input   = document.getElementById("drawer-input");
     const send    = document.getElementById("drawer-send");
-    // Built server-side so the question inherits the page's own context.
+    // Built server-side so a question inherits the page's own context.
     const CTX     = {{ assistant_ctx(request) | tojson }};
+    // The conversation lives here: `claude -p` is stateless per call, so the
+    // transcript is replayed with each turn to give the model continuity.
+    const history = [];
     let source    = null;
 
     const openDrawer  = () => { drawer.hidden = false; input.focus(); };
@@ -121,52 +126,63 @@
 
     document.querySelectorAll("[data-drawer-open]").forEach(el => el.onclick = openDrawer);
     document.querySelectorAll("[data-drawer-close]").forEach(el => el.onclick = closeDrawer);
-    // Escape closes, which is what every drawer everywhere does.
     document.addEventListener("keydown", e => { if (e.key === "Escape" && !drawer.hidden) closeDrawer(); });
 
     function stop() {
       // Closing the socket also kills the subprocess server-side, so an
-      // abandoned question does not keep a `claude` process alive.
+      // abandoned question never leaves a `claude` process running.
       if (source) { source.close(); source = null; }
       send.disabled = false;
-      send.textContent = "Fragen";
+      input.disabled = false;
+    }
+
+    function bubble(cls, text) {
+      const el = document.createElement("div");
+      el.className = cls;
+      if (text) el.textContent = text;
+      body.appendChild(el);
+      body.scrollTop = body.scrollHeight;
+      return el;
     }
 
     function ask(question) {
       if (!question || send.disabled) return;
       stop();
-      body.innerHTML = "";
+      // The intro only makes sense before the first turn.
+      body.querySelector(".drawer__intro")?.remove();
 
-      const q = document.createElement("div");
-      q.className = "drawer__q";
-      q.textContent = question;
-      body.appendChild(q);
-
-      const status = document.createElement("div");
-      status.className = "drawer__status";
-      status.textContent = "startet…";
-      body.appendChild(status);
-
-      const answer = document.createElement("div");
-      answer.className = "drawer__a";
-      body.appendChild(answer);
+      bubble("drawer__q", question);
+      const status = bubble("drawer__status", "…");
+      const answer = bubble("drawer__a");
 
       send.disabled = true;
-      send.textContent = "…";
+      input.disabled = true;
+      let reply = "";
 
-      const params = new URLSearchParams({ q: question, ...CTX });
+      const params = new URLSearchParams({
+        q: question,
+        history: JSON.stringify(history),
+        ...CTX,
+      });
       source = new EventSource("/api/assistant/stream?" + params.toString());
 
       source.addEventListener("status", e => { status.textContent = JSON.parse(e.data); });
       source.addEventListener("text", e => {
         status.hidden = true;
-        answer.textContent += JSON.parse(e.data);
+        reply += JSON.parse(e.data);
+        answer.textContent = reply;
         body.scrollTop = body.scrollHeight;
       });
-      source.addEventListener("done", () => { status.hidden = true; stop(); });
+      source.addEventListener("done", () => {
+        status.hidden = true;
+        // Recorded only once complete, so a half-streamed answer never becomes
+        // context for the next question.
+        history.push({ role: "user", text: question });
+        history.push({ role: "assistant", text: reply });
+        stop();
+        input.focus();
+      });
       source.addEventListener("error", e => {
-        // Both an explicit error event and a dropped connection land here; the
-        // payload is absent for the latter.
         status.hidden = false;
         status.className = "drawer__status drawer__status--error";
         status.textContent = e.data ? JSON.parse(e.data) : "Verbindung unterbrochen.";

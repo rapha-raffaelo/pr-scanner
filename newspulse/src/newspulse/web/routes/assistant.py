@@ -1,4 +1,4 @@
-"""The assistant drawer: an answer that streams, about what you are looking at.
+"""Captain Comms: a streaming PR-strategy chat over the coverage on screen.
 
 The advisor page answers one fixed question ("what should we do about this
 client") and takes a minute to do it. This is the other half: any question, from
@@ -19,6 +19,7 @@ changes what the tool does next — it produces text a person reads and acts on.
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -42,11 +43,28 @@ _MAX_CONTEXT_ITEMS = 30
 # and the model's useful context budget is spent on coverage, not prose.
 _MAX_QUESTION_CHARS = 500
 
-_SYSTEM_FRAME = """Du bist erfahrener PR-Berater und unterstützt die Beraterin,
-die diesen Mandanten betreut. Antworte knapp, konkret und auf Deutsch. Stütze
-dich ausschließlich auf die unten stehende Berichterstattung; wenn sie die Frage
-nicht hergibt, sage das offen, statt zu spekulieren. Du siehst nur Schlagzeilen
-und Kurzfassungen, nicht die vollständigen Artikel."""
+_SYSTEM_FRAME = """Du bist Captain Comms, ein erfahrener Kommunikationsstratege,
+und berätst die PR-Beraterin, die diesen Mandanten betreut.
+
+Halte dich an diese Regeln:
+
+- Denke strategisch, nicht referierend. Sie kann die Meldungen selbst lesen;
+  dein Beitrag ist die Einordnung: welches Narrativ entsteht, wer es treibt,
+  wohin es läuft, was das für die Positionierung des Mandanten bedeutet.
+- Sei konkret. "Stakeholder einbinden" ist keine Empfehlung. Sag WAS, GEGENÜBER
+  WEM und MIT WELCHER BOTSCHAFT.
+- Empfiehl auch Schweigen, wenn Schweigen richtig ist, und begründe es.
+- Stütze dich ausschließlich auf die unten stehende Berichterstattung. Gibt sie
+  die Frage nicht her, sag das offen, statt zu spekulieren.
+- Du siehst nur Schlagzeilen und Kurzfassungen, nicht die vollständigen Artikel.
+  Formuliere entsprechend vorsichtig über Details.
+- Antworte knapp und auf Deutsch, in ganzen Sätzen, ohne Aufzählungswüsten."""
+
+# Turns of the running conversation replayed back to the model. The CLI is
+# stateless per call, so continuity has to be supplied — capped, because an
+# unbounded transcript would crowd out the coverage that grounds the answer.
+_MAX_HISTORY_TURNS = 6
+_MAX_HISTORY_CHARS = 4_000
 
 
 def _coverage_lines(
@@ -102,18 +120,59 @@ def _coverage_lines(
     return " · ".join(label_parts), "\n".join(lines) or "(keine Berichterstattung)"
 
 
-def _build_prompt(question: str, label: str, coverage: str) -> str:
-    return (
-        f"{_SYSTEM_FRAME}\n\n"
-        f"KONTEXT ({label})\n{coverage}\n\n"
-        f"FRAGE\n{question}"
-    )
+def _parse_history(raw: str | None) -> list[tuple[str, str]]:
+    """The prior turns, as ``(role, text)``. Malformed input yields no history.
+
+    The transcript lives in the browser and is replayed on each turn, because
+    ``claude -p`` is stateless per call. A bad payload must degrade to a
+    one-shot answer rather than failing the request — losing continuity is a
+    smaller harm than losing the answer.
+    """
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    turns = [
+        (str(item.get("role", ""))[:16], str(item.get("text", "")))
+        for item in parsed
+        if isinstance(item, dict) and item.get("text")
+    ]
+    return turns[-_MAX_HISTORY_TURNS * 2 :]
+
+
+def _render_history(turns: list[tuple[str, str]]) -> str:
+    lines: list[str] = []
+    budget = _MAX_HISTORY_CHARS
+    # Newest first while trimming, so the most recent exchange always survives.
+    for role, text in reversed(turns):
+        speaker = "BERATERIN" if role == "user" else "CAPTAIN COMMS"
+        entry = f"{speaker}: {text}"
+        if len(entry) > budget:
+            break
+        budget -= len(entry)
+        lines.append(entry)
+    return "\n\n".join(reversed(lines))
+
+
+def _build_prompt(
+    question: str, label: str, coverage: str, history: list[tuple[str, str]]
+) -> str:
+    parts = [_SYSTEM_FRAME, "", f"KONTEXT ({label})", coverage]
+    if history:
+        parts += ["", "BISHERIGES GESPRÄCH", _render_history(history)]
+    parts += ["", "FRAGE", question]
+    return "\n".join(parts)
 
 
 @router.get("/api/assistant/stream")
 def assistant_stream(
     request: Request,
     q: str = "",
+    history: str | None = None,
     client_id: int | None = None,
     date: str | None = None,
     session: Session = Depends(get_db),
@@ -129,7 +188,8 @@ def assistant_stream(
             session, client_id=client_id, day=_parse_day(date) if date else None
         )
         yield StreamEvent("status", f"Kontext: {label}").to_sse()
-        for event in stream_claude(_build_prompt(question, label, coverage)):
+        prompt = _build_prompt(question, label, coverage, _parse_history(history))
+        for event in stream_claude(prompt):
             yield event.to_sse()
 
     return StreamingResponse(

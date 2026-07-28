@@ -621,3 +621,10 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .langbtn:hover { opacity: 0.85; }
 .langbtn--on { opacity: 1; border-color: var(--line); background: var(--card); }
 .nav-refresh--tight { margin-left: 8px; }
+
+/* --- Captain Comms -------------------------------------------------------- */
+.cc-icon { width: 18px; height: 18px; display: block; }
+.cc-icon--lg { width: 26px; height: 26px; }
+.drawer-open { display: inline-flex; align-items: center; gap: 8px; }
+.drawer__title { display: inline-flex; align-items: center; gap: 8px; }
+.drawer__a:empty { display: none; }
