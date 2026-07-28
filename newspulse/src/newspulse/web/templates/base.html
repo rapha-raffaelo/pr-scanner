@@ -82,7 +82,9 @@
         <img src="{{ url_for('static', path='captain.svg') }}" alt="" class="cc-icon cc-icon--lg">
         <span>
           <strong>{{ t("Captain Comms") }}</strong>
-          <span class="drawer__ctx" id="drawer-context">{% if client is defined and client %}{{ client.name }}{% else %}{{ t('Portfolio') }}{% endif %}</span>
+          <select class="drawer__pick" id="drawer-client" aria-label="{{ t('Mandant') }}">
+            <option value="">{{ t("Alle Mandanten") }}</option>
+          </select>
         </span>
       </span>
       <span class="drawer__acts">
@@ -125,23 +127,33 @@
     const input   = document.getElementById("drawer-input");
     const send    = document.getElementById("drawer-send");
     const CTX     = {{ assistant_ctx(request) | tojson }};
+    const picker  = document.getElementById("drawer-client");
     const AVATAR  = {{ url_for('static', path='captain.svg') | string | tojson }};
 
     // One thread per subject, held in sessionStorage: the conversation survives
     // navigating between Heute, the archive and a client page, but ends with the
     // tab. A PR conversation is about a moment; resuming last week's thread
     // against this week's coverage would be worse than starting fresh.
-    const KEY = "captaincomms:" + (CTX.client_id || "portfolio");
+    //
+    // The key follows the selected mandate, so switching subject loads that
+    // mandate's conversation rather than carrying Zalando's thread into a
+    // question about someone else.
+    const keyFor = id => "captaincomms:" + (id || "portfolio");
     let history = [];
     let source  = null;
 
-    try { history = JSON.parse(sessionStorage.getItem(KEY) || "[]"); } catch (e) { history = []; }
-
+    const load = () => {
+      try { history = JSON.parse(sessionStorage.getItem(keyFor(CTX.client_id)) || "[]"); }
+      catch (e) { history = []; }
+    };
     const persist = () => {
       // A full session can outgrow the quota; the thread is a convenience, so
       // drop it rather than let a storage error break the drawer.
-      try { sessionStorage.setItem(KEY, JSON.stringify(history.slice(-24))); } catch (e) {}
+      try {
+        sessionStorage.setItem(keyFor(CTX.client_id), JSON.stringify(history.slice(-24)));
+      } catch (e) {}
     };
+    load();
 
     function bubble(cls, text) {
       const el = document.createElement("div");
@@ -164,15 +176,46 @@
 
     const textOf = el => el.querySelector(".cc-msg__text") || el;
 
-    function restore() {
-      if (!history.length) return;
-      intro.hidden = true;
+    function render() {
+      body.querySelectorAll(".cc-msg, .cc-status").forEach(n => n.remove());
+      intro.hidden = history.length > 0;
       history.forEach(turn =>
         bubble(turn.role === "user" ? "cc-msg cc-msg--q" : "cc-msg cc-msg--a", turn.text));
+      body.scrollTop = body.scrollHeight;
     }
-    restore();
+    render();
 
-    const openDrawer  = () => { drawer.hidden = false; input.focus(); body.scrollTop = body.scrollHeight; };
+    // The mandate list is fetched once, on first open: the drawer lives in the
+    // shared layout, so passing it through every route would touch each one for
+    // a control none of them owns.
+    let loadedClients = false;
+    async function fillPicker() {
+      if (loadedClients) return;
+      loadedClients = true;
+      try {
+        const res = await fetch("/api/assistant/clients");
+        (await res.json()).forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = String(c.id);
+          opt.textContent = c.name;
+          picker.appendChild(opt);
+        });
+        // The page wins by default: opening the drawer on a client page should
+        // already be about that client.
+        picker.value = CTX.client_id ? String(CTX.client_id) : "";
+      } catch (e) { loadedClients = false; }
+    }
+
+    picker.onchange = () => {
+      stop();
+      const chosen = picker.value;
+      if (chosen) { CTX.client_id = chosen; } else { delete CTX.client_id; }
+      load();
+      render();
+      input.focus();
+    };
+
+    const openDrawer  = () => { drawer.hidden = false; fillPicker(); input.focus(); body.scrollTop = body.scrollHeight; };
     const closeDrawer = () => { drawer.hidden = true; stop(); };
 
     document.querySelectorAll("[data-drawer-open]").forEach(el => el.onclick = openDrawer);
@@ -181,8 +224,7 @@
       stop();
       history = [];
       persist();
-      body.querySelectorAll(".cc-msg, .cc-status").forEach(n => n.remove());
-      intro.hidden = false;
+      render();
       input.focus();
     });
     document.addEventListener("keydown", e => { if (e.key === "Escape" && !drawer.hidden) closeDrawer(); });
@@ -242,6 +284,8 @@
         stop();
       });
     }
+
+    if (!drawer.hidden) fillPicker();
 
     form.onsubmit = e => { e.preventDefault(); const v = input.value.trim(); input.value = ""; ask(v); };
     document.querySelectorAll("[data-ask]").forEach(el => el.onclick = () => ask(el.dataset.ask));

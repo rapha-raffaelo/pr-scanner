@@ -341,7 +341,6 @@ class PortfolioRow:
     logo_url: str | None
     is_competitor: bool
     logo_url: str | None
-    competitors: tuple
     today_count: int
     total_count: int
 
@@ -385,7 +384,6 @@ def clients_index(
             active=c.active,
             is_competitor=c.is_competitor,
             logo_url=c.logo_url,
-            competitors=tuple(c.competitors),
             today_count=today_counts.get(c.id, 0),
             total_count=totals.get(c.id, 0),
         )

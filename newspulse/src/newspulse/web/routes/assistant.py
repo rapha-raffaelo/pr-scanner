@@ -236,6 +236,25 @@ def _build_prompt(
     return "\n".join(parts)
 
 
+@router.get("/api/assistant/clients")
+def assistant_clients(session: Session = Depends(get_db)) -> list[dict]:
+    """The mandates Captain Comms can be pointed at.
+
+    Fetched by the drawer rather than passed into every template: the drawer
+    lives in the shared layout, so threading a client list through every route
+    would touch each one to serve a control that belongs to none of them.
+
+    Competitors are excluded — you do not ask for recommendations for a company
+    you do not represent.
+    """
+    rows = session.scalars(
+        select(Client)
+        .where(Client.is_competitor.is_(False), Client.active.is_(True))
+        .order_by(Client.name)
+    ).all()
+    return [{"id": c.id, "name": c.name} for c in rows]
+
+
 @router.get("/api/assistant/stream")
 def assistant_stream(
     request: Request,

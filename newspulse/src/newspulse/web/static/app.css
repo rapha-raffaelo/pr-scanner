@@ -365,9 +365,6 @@ nav.tabs a.active {
 .triage-btn--on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 
 /* --- Share of voice, advisor -------------------------------------------- */
-.pactions { margin-top: 9px; display: flex; gap: 12px; font-size: 12px; }
-.pactions a { color: var(--accent); text-decoration: none; }
-.pactions a:hover { text-decoration: underline; }
 table.sov { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.sov th, table.sov td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
 table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
@@ -514,18 +511,6 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .panel table .rolebtn--mandate { background: #eef0fb; color: var(--accent); }
 .panel table .rolebtn--rival { background: #f3f4f6; color: #4b5563; }
 .panel table .rolebtn:hover { outline: 1px solid var(--accent); }
-
-/* --- Competitor badges on a mandate card ---------------------------------- */
-.pcomp { display: flex; align-items: center; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
-.pcomp__label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 2px; }
-.pcomp__logo {
-  width: 22px; height: 22px; border-radius: 6px; object-fit: contain;
-  background: #fff; border: 1px solid var(--line); display: block;
-}
-.pcomp__logo--mono {
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 9px; font-weight: 700; border: none;
-}
 
 /* --- Language toggle ------------------------------------------------------ */
 .langtoggle { display: flex; gap: 2px; margin-left: auto; align-self: center; }
@@ -725,3 +710,10 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .fulltable { margin-top: 18px; }
 .fulltable > summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 6px 0; }
 
+.drawer__pick {
+  margin-top: 3px; font: inherit; font-size: 11.5px;
+  padding: 1px 5px; border-radius: 6px; cursor: pointer;
+  background: rgba(255,255,255,.14); color: #fff;
+  border: 1px solid rgba(255,255,255,.28); max-width: 190px;
+}
+.drawer__pick option { color: var(--ink); }

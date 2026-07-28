@@ -105,3 +105,43 @@ def test_an_unknown_language_falls_back_to_the_german_frame():
     from newspulse.web.routes.assistant import _FRAME_DE
 
     assert _FRAME_DE in _build_prompt("?", "X", "y", [], "fr")
+
+
+# --- Mandate picker ------------------------------------------------------------
+
+
+def test_the_picker_lists_mandates_only(tmp_path):
+    """You do not ask for recommendations for a company you do not represent."""
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from newspulse.models import Base, Client
+    from newspulse.web.app import create_app, get_db
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as s:
+        s.add(Client(name="Alpha AG"))
+        s.add(Client(name="Rivale AG", is_competitor=True))
+        s.add(Client(name="Alt AG", active=False))
+        s.commit()
+
+    app = create_app()
+
+    def _override():
+        session = factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = _override
+    names = [c["name"] for c in TestClient(app).get("/api/assistant/clients").json()]
+    assert names == ["Alpha AG"]
+    assert "Rivale AG" not in names   # a benchmark, not a mandate
+    assert "Alt AG" not in names      # deactivated

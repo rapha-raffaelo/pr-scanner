@@ -27,25 +27,6 @@
           <div><b>{{ row.today_count }}</b> {{ t("heute") }}</div>
           <div><b>{{ row.total_count }}</b> {{ t("im Archiv") }}</div>
         </div>
-        {% if row.competitors %}
-          <div class="pcomp">
-            <span class="pcomp__label">{{ t("vs") }}</span>
-            {% for rival in row.competitors %}
-              <a href="/client/{{ rival.id }}" title="{{ rival.name }}">
-                {% if rival.logo_url %}
-                  <img class="pcomp__logo" src="{{ rival.logo_url | logo_src }}" alt="{{ rival.name }}">
-                {% else %}
-                  <span class="pcomp__logo pcomp__logo--mono" style="background: {{ rival.name | brand_colour }}">{{ rival.name | monogram }}</span>
-                {% endif %}
-              </a>
-            {% endfor %}
-          </div>
-        {% endif %}
-        <div class="pactions">
-          <a href="/client/{{ row.id }}/advice">{{ t("Empfehlungen") }}</a>
-          <a href="/client/{{ row.id }}/map">{{ t("Coverage Map") }}</a>
-          <a href="/client/{{ row.id }}/export.xlsx">Excel</a>
-        </div>
         {% if row.alert_topics %}
           <div class="ptopics">
             {% for topic in row.alert_topics %}<span class="ptopic">{{ topic }}</span>{% endfor %}

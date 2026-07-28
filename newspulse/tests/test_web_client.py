@@ -510,3 +510,40 @@ def test_without_competitors_the_panel_explains_rather_than_showing_100_percent(
         a_id = a.id
     body = client.get(f"/client/{a_id}").text
     assert "Noch keine Wettbewerber hinterlegt" in body
+
+
+def test_a_client_card_carries_no_nested_links(factory, client):
+    """The card is one anchor. HTML forbids nesting anchors, so a link inside it
+    silently closes the card early and the rest of the content escapes it —
+    which is exactly how the layout broke."""
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        b = _seed_client(s, name="Beta AG")
+        s.flush()
+        a.competitors.append(b)
+        s.commit()
+
+    body = client.get("/clients").text
+    card_start = body.index('class="pcard')
+    card_end = body.index("</a>", card_start)
+    card = body[card_start:card_end]
+    assert "<a " not in card
+    # Competitors and the exports live in the deep dive, not on the card.
+    assert "/export.xlsx" not in card
+    assert "Beta AG" not in card
+
+
+def test_the_deep_dive_is_where_competitors_and_exports_live(factory, client):
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        b = _seed_client(s, name="Beta AG")
+        s.flush()
+        a.competitors.append(b)
+        s.commit()
+        a_id = a.id
+
+    body = client.get(f"/client/{a_id}").text
+    assert "Beta AG" in body                      # share of voice
+    assert f"/client/{a_id}/export.xlsx" in body  # tab strip download
+    assert f"/client/{a_id}/advice" in body
+    assert f"/client/{a_id}/map" in body
