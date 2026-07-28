@@ -87,7 +87,7 @@
 
     <div class="drawer__body" id="drawer-body">
       <div class="drawer__intro"><p class="drawer__hint">
-        {{ t("Strategische Einordnung der Berichterstattung, die gerade auf dem Schirm ist. Captain Comms sieht Schlagzeilen und Kurzfassungen — nicht die vollständigen Artikel — und entscheidet nichts, er berät.") }}
+        <em>{{ t("Zahlen sagen mehr als jede Selbstdarstellung.") }}</em><br>{{ t("Strategische Einordnung der Berichterstattung, die gerade auf dem Schirm ist — belegt aus dem Archiv. Captain Comms sieht Schlagzeilen und Kurzfassungen, nicht die vollständigen Artikel, und entscheidet nichts: er berät.") }}
       </p>
       <div class="drawer__chips">
         {% for suggestion in assistant_suggestions or [

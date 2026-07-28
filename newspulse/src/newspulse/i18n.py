@@ -218,10 +218,12 @@ _EN: dict[str, str] = {
     "Captain Comms": "Captain Comms",
     "Kommunikationsstrategie zur Berichterstattung auf dieser Seite":
         "Communication strategy for the coverage on this page",
-    "Strategische Einordnung der Berichterstattung, die gerade auf dem Schirm ist. Captain Comms sieht Schlagzeilen und Kurzfassungen — nicht die vollständigen Artikel — und entscheidet nichts, er berät.":
-        "Strategic read of the coverage currently on screen. Captain Comms sees "
-        "headlines and short summaries — not full articles — and decides "
-        "nothing, he advises.",
+    "Zahlen sagen mehr als jede Selbstdarstellung.":
+        "Numbers say more than any self-presentation.",
+    "Strategische Einordnung der Berichterstattung, die gerade auf dem Schirm ist — belegt aus dem Archiv. Captain Comms sieht Schlagzeilen und Kurzfassungen, nicht die vollständigen Artikel, und entscheidet nichts: er berät.":
+        "A strategic read of the coverage on screen — evidenced from the archive. "
+        "Captain Comms sees headlines and short summaries, not full articles, and "
+        "decides nothing: he advises.",
     "Welches Narrativ setzt sich gerade durch — und wer treibt es?":
         "Which narrative is taking hold — and who is driving it?",
     "Wo müssen wir reagieren, wo ist Schweigen die bessere Strategie?":
