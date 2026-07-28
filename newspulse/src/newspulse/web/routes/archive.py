@@ -121,7 +121,7 @@ def _month_label(value: str) -> str:
     return f"{_DE_MONTHS[start.month - 1]} {start.year}"
 
 
-def _available_months(session: Session) -> list[MonthOption]:
+def _available_months(session: Session, *, with_competitors: bool) -> list[MonthOption]:
     """Every month the archive actually holds coverage for, newest first.
 
     Computed over the whole archive rather than the current filter, so the
@@ -135,30 +135,52 @@ def _available_months(session: Session) -> list[MonthOption]:
     stamps = session.execute(
         select(Article.published_at)
         .join(Analysis, Analysis.article_id == Article.id)
-        .where(Analysis.relevance_score >= _MIN_RELEVANCE)
+        .where(
+            Analysis.relevance_score >= _MIN_RELEVANCE,
+            Analysis.client_id.in_(_monitored_scope(with_competitors)),
+        )
         .distinct()
     ).scalars().all()
     keys = {stamp.astimezone(tz).strftime(_MONTH_FORMAT) for stamp in stamps}
     return [MonthOption(value=k, label=_month_label(k)) for k in sorted(keys, reverse=True)]
 
 
-def _available_sources(session: Session) -> list[str]:
-    """Distinct publishers across the whole archive, for the filter dropdown."""
+def _available_sources(session: Session, *, with_competitors: bool) -> list[str]:
+    """Distinct publishers within the current scope, for the filter dropdown."""
     return list(
         session.execute(
             select(Article.source)
             .join(Analysis, Analysis.article_id == Article.id)
-            .where(Analysis.relevance_score >= _MIN_RELEVANCE)
+            .where(
+                Analysis.relevance_score >= _MIN_RELEVANCE,
+                Analysis.client_id.in_(_monitored_scope(with_competitors)),
+            )
             .distinct()
             .order_by(Article.source)
         ).scalars().all()
     )
 
 
-def _available_clients(session: Session) -> list[Client]:
-    """Every client, active or not: the archive keeps a deactivated client's
-    history, so it must stay reachable here."""
-    return list(session.scalars(select(Client).order_by(Client.name)).all())
+def _monitored_scope(with_competitors: bool):
+    """The client ids the archive is currently about.
+
+    One definition shared by the rows and every dropdown. Without it a control
+    can offer a company whose results are filtered out — a filter that silently
+    returns nothing, which reads as a bug rather than a setting.
+    """
+    stmt = select(Client.id)
+    if not with_competitors:
+        stmt = stmt.where(Client.is_competitor.is_(False))
+    return stmt
+
+
+def _available_clients(session: Session, *, with_competitors: bool) -> list[Client]:
+    """The selectable clients. Inactive ones stay listed — the archive keeps a
+    deactivated client's history, so it must remain reachable."""
+    stmt = select(Client).order_by(Client.name)
+    if not with_competitors:
+        stmt = stmt.where(Client.is_competitor.is_(False))
+    return list(session.scalars(stmt).all())
 
 
 def _parse_client(raw: str | None) -> int | None:
@@ -313,7 +335,9 @@ def archive_view(
         wanted = int(filters.tier)
         allowed = [
             source
-            for source in _available_sources(session)
+            for source in _available_sources(
+                session, with_competitors=filters.with_competitors
+            )
             if tier_for(source) == wanted
         ]
         conditions.append(Article.source.in_(allowed))
@@ -329,9 +353,9 @@ def archive_view(
         {
             "rows": rows,
             "filters": filters,
-            "clients": _available_clients(session),
-            "months": _available_months(session),
-            "sources": _available_sources(session),
+            "clients": _available_clients(session, with_competitors=filters.with_competitors),
+            "months": _available_months(session, with_competitors=filters.with_competitors),
+            "sources": _available_sources(session, with_competitors=filters.with_competitors),
             "tiers": _TIER_OPTIONS,
             "categories": [c.value for c in Category],
             "pagination": _paginate(filters, current_page, total_pages, total),

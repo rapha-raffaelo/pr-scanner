@@ -131,6 +131,16 @@
   @media (max-width: 620px) { .feed-list { grid-template-columns: 1fr; } }
   .feed-list label { display: flex; gap: 0.4rem; align-items: baseline; color: var(--text); margin: 0; }
   .feed-list .feed-industry { color: var(--muted); font-size: 0.72rem; }
+  .feedgroup { margin-bottom: 0.9rem; }
+  .feedgroup__head { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.35rem; }
+  .feedgroup__name { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .feedgroup__n { font-size: 0.7rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .panel .feedgroup__all {
+    font: inherit; font-size: 0.7rem; font-weight: 600; padding: 1px 8px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: var(--surface); color: var(--accent); cursor: pointer; margin-left: auto;
+  }
+  .panel .feedgroup__all:hover { border-color: var(--accent); }
   .import-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem 0.75rem; }
   @media (max-width: 620px) { .import-fields { grid-template-columns: 1fr; } }
   .run-errors { margin: 0.25rem 0 0; padding-left: 1rem; color: var(--alert); }
@@ -361,16 +371,39 @@
 
     <!-- ── Active feeds (persists to settings table) ── -->
     <section class="panel" aria-label="Feeds">
-      <h2>Feeds ({{ feeds | selectattr('active') | list | length }}/{{ feeds | length }} aktiv)</h2>
+      <h2>{{ t("Feeds") }} ({{ feeds | selectattr('active') | list | length }}/{{ feeds | length }} {{ t("aktiv") }})</h2>
       <form method="post" action="/settings/feeds">
-        <div class="feed-list">
-          {% for feed in feeds %}
-            <label title="{{ feed.url }}">
-              <input type="checkbox" name="feed" value="{{ feed.name }}"{% if feed.active %} checked{% endif %}>
-              <span>{{ feed.name }}{% if feed.industry %} <span class="feed-industry">{{ feed.industry }}</span>{% endif %}</span>
-            </label>
-          {% endfor %}
-        </div>
+        {# Grouped by tier. One flat block of 58 checkboxes cannot answer the
+           question an operator actually has — "are the Leitmedien switched on?" —
+           and the per-group toggle makes "trade press only" a single click. #}
+        {% for label, group in feed_tiers %}
+          <div class="feedgroup">
+            <div class="feedgroup__head">
+              <span class="feedgroup__name">{{ t(label) }}</span>
+              <span class="feedgroup__n">{{ group | selectattr('active') | list | length }}/{{ group | length }}</span>
+              <button type="button" class="feedgroup__all" data-tier-toggle>{{ t("alle") }}</button>
+            </div>
+            <div class="feed-list">
+              {% for feed in group %}
+                <label title="{{ feed.url }}">
+                  <input type="checkbox" name="feed" value="{{ feed.name }}"{% if feed.active %} checked{% endif %}>
+                  <span>{{ feed.name }}{% if feed.industry %} <span class="feed-industry">{{ feed.industry }}</span>{% endif %}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+        {# Toggles every box in its own group. The individual checkboxes still
+           work without JS, so this is a shortcut and never the only way in. #}
+        <script>
+          document.querySelectorAll("[data-tier-toggle]").forEach(btn => {
+            btn.onclick = () => {
+              const boxes = btn.closest(".feedgroup").querySelectorAll("input[type=checkbox]");
+              const turnOn = [...boxes].some(b => !b.checked);
+              boxes.forEach(b => { b.checked = turnOn; });
+            };
+          });
+        </script>
         <button type="submit">Feeds speichern</button>
       </form>
     </section>

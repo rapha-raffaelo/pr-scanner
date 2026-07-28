@@ -76,6 +76,16 @@ _EN: dict[str, str] = {
     "positiv": "positive",
     "neutral": "neutral",
     "negativ": "negative",
+    # models.Category members. Stored as German values, so the enum is the key —
+    # translating them at render keeps the database and the analyzer contract
+    # untouched while the interface follows the reader.
+    "produkt": "product",
+    "personalie": "people",
+    "krise": "crisis",
+    "regulatorik": "regulatory",
+    "finanzen": "finance",
+    "wettbewerb": "competition",
+    "sonstiges": "other",
     # --- Clients -------------------------------------------------------------
     "Ohne Branche": "No industry",
     "inaktiv": "inactive",
@@ -85,7 +95,9 @@ _EN: dict[str, str] = {
     "Coverage Map": "Coverage map",
     "Übersicht": "Overview",
     "Gespräch zurücksetzen": "Reset conversation",
-    "Neu": "New",
+    "Refresh": "Refresh",
+    "Feeds speichern": "Save feeds",
+    "alle": "all",
     "Excel": "Excel",
     "Noch keine Mandanten. Unter": "No clients yet. Add or import them under",
     "anlegen oder importieren.": ".",

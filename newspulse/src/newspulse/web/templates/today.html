@@ -12,7 +12,7 @@
     <div class="body">
       <div class="toprow">
         <span class="clichip">{{ item.client_name }}</span>
-        <span class="tag t-{{ item.category }}">{{ item.category | capitalize }}</span>
+        <span class="tag t-{{ item.category }}">{{ t(item.category) | capitalize }}</span>
         {% if item.tonality != 'unbekannt' %}
           <span class="tone tone--{{ item.tonality }}" title="{{ t('Wirkung auf die Reputation des Mandanten') }}">{{ t(item.tonality) | capitalize }}</span>
         {% endif %}
@@ -75,7 +75,7 @@
       onchange="if (!window.htmx) this.form.requestSubmit()">
       <option value="">{{ t("Alle Kategorien") }}{% if categories %} ({{ categories | length }}){% endif %}</option>
       {% for c in categories %}
-        <option value="{{ c }}"{% if c == selected_category %} selected{% endif %}>{{ c | capitalize }}</option>
+        <option value="{{ c }}"{% if c == selected_category %} selected{% endif %}>{{ t(c) | capitalize }}</option>
       {% endfor %}
     </select>
     {% if hidden_count %}
@@ -150,7 +150,7 @@
     {% for story in alerts %}
       {% set item = story.lead %}
       <div class="acard">
-        <div class="cli">{{ item.client_name }} <span>·</span> {{ item.category | capitalize }}</div>
+        <div class="cli">{{ item.client_name }} <span>·</span> {{ t(item.category) | capitalize }}</div>
         <div class="hl"><a href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a></div>
         {% if item.summary %}<div class="sum">{{ item.summary }}</div>{% endif %}
         <div class="meta">

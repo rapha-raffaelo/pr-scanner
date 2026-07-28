@@ -146,3 +146,49 @@ def test_captain_comms_is_reachable_from_every_page(client):
         body = client.get(path).text
         assert "Captain Comms" in body, path
         assert "captain.svg" in body, path
+
+
+def test_category_labels_are_translated_but_the_stored_value_is_not(client, factory):
+    """Categories are German enum members in the database. The interface must
+    show them translated while the option value stays the stored one — a
+    translated value would filter for a category that does not exist."""
+    import datetime as dt
+
+    from newspulse.models import Analysis, Article, Category
+
+    with factory() as s:
+        c = Client(name="Alpha AG")
+        s.add(c)
+        s.flush()
+        when = dt.datetime.now().astimezone()
+        art = Article(
+            title="Eine Meldung", url="https://ex.de/1", source="FAZ",
+            published_at=when, fetched_at=when, summary_text="s",
+            language="de", title_hash="h1",
+        )
+        s.add(art)
+        s.flush()
+        s.add(Analysis(
+            article_id=art.id, client_id=c.id, summary="Zusammenfassung.",
+            category=Category.KRISE, relevance_score=5, importance_score=8,
+            is_alert=False,
+        ))
+        s.commit()
+
+    de = client.get("/").text
+    assert ">Krise</span>" in de
+
+    client.cookies.set(i18n.COOKIE_NAME, "en")
+    en = client.get("/").text
+    assert ">Crisis</span>" in en
+    assert ">Krise</span>" not in en
+    # The filter still submits the stored German value.
+    assert 'value="krise"' in client.get("/archive").text
+
+
+def test_every_category_has_an_english_label():
+    """A new Category member must not silently render as its German value."""
+    from newspulse.models import Category
+
+    for member in Category:
+        assert i18n.translate(member.value, "en") != member.value, member.value

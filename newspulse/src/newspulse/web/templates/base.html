@@ -87,7 +87,7 @@
       </span>
       <span class="drawer__acts">
         <button type="button" class="drawer__reset" data-drawer-reset
-                title="{{ t('Gespräch zurücksetzen') }}">{{ t("Neu") }}</button>
+                title="{{ t('Gespräch zurücksetzen') }}">{{ t("Refresh") }}</button>
         <button type="button" class="drawer__close" data-drawer-close aria-label="{{ t('Schließen') }}">×</button>
       </span>
     </header>
@@ -96,7 +96,6 @@
       {# The empty state carries his thesis, so the first thing read is what he
          is for rather than an input box waiting to be filled. #}
       <div class="drawer__intro" id="drawer-intro">
-        <img src="{{ url_for('static', path='captain.svg') }}" alt="" class="drawer__hero">
         <p class="drawer__motto">{{ t("Zahlen sagen mehr als jede Selbstdarstellung.") }}</p>
         <p class="drawer__hint">{{ t("Strategische Einordnung der Berichterstattung, die gerade auf dem Schirm ist — belegt aus dem Archiv. Captain Comms sieht Schlagzeilen und Kurzfassungen, nicht die vollständigen Artikel, und entscheidet nichts: er berät.") }}</p>
         <div class="drawer__chips">

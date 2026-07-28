@@ -54,6 +54,7 @@ from ...clients import (
     update_client,
 )
 from ...feeds import load_feeds
+from ...outlets import tier_for
 from ...logos import fetch_logo, normalize_website
 from ...models import DEFAULT_COUNTRY, SCORE_MAX, SCORE_MIN, Client, Run, Setting
 from ..app import get_db, templates
@@ -427,6 +428,10 @@ def _page_context(session: Session) -> dict[str, object]:
     return {
         "clients": list_clients(session, include_inactive=True),
         "feeds": _fetch_feed_views(session),
+        # Grouped by tier: 58 checkboxes in one block is a wall, and the
+        # question an operator actually has is "are the Leitmedien on?" — which
+        # a flat list cannot answer at a glance.
+        "feed_tiers": _feeds_by_tier(_fetch_feed_views(session)),
         "runs": runs,
         "last_run": _header_from_runs(runs),
         # The shared header dates every page; this view has no viewed-day of its
@@ -447,6 +452,25 @@ def _page_context(session: Session) -> dict[str, object]:
         "import_row_total": None,
         "import_success": None,
     }
+
+
+# Tier labels for the feed panel, in reading order. Same tiers the archive
+# filter uses, so "Tier 1" means one thing across the app.
+_FEED_TIERS = (
+    (1, "Tier 1 — Leitmedien"),
+    (2, "Tier 2 — Fach- & Regionalpresse"),
+    (3, "Tier 3 — Finanz-Ticker"),
+)
+
+
+def _feeds_by_tier(feeds) -> list[tuple[str, list]]:
+    """``[(label, feeds)]`` for the feed panel, empty tiers omitted."""
+    buckets: dict[int, list] = {tier: [] for tier, _ in _FEED_TIERS}
+    for feed in feeds:
+        buckets.setdefault(tier_for(feed.name), []).append(feed)
+    return [
+        (label, buckets[tier]) for tier, label in _FEED_TIERS if buckets.get(tier)
+    ]
 
 
 def _render_settings(

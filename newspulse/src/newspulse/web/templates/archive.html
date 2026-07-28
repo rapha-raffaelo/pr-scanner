@@ -77,7 +77,7 @@
     <select id="category" name="category">
       <option value="">{{ t("Alle Kategorien") }}</option>
       {% for c in categories %}
-        <option value="{{ c }}"{% if c == filters.category %} selected{% endif %}>{{ c | capitalize }}</option>
+        <option value="{{ c }}"{% if c == filters.category %} selected{% endif %}>{{ t(c) | capitalize }}</option>
       {% endfor %}
     </select>
   </div>

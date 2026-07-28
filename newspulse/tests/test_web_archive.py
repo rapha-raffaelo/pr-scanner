@@ -205,3 +205,37 @@ def test_an_unknown_tier_value_shows_everything(client, factory):
               source="FAZ", day=dt.date(2026, 7, 10), category=Category.KRISE)
         s.commit()
     assert "EINE Story" in client.get("/archive", params={"tier": "unfug"}).text
+
+
+def test_a_competitor_is_not_offered_in_the_client_filter(client, factory):
+    """A dropdown that offers a company whose results are filtered out is a
+    filter that silently returns nothing — which reads as a bug, not a setting."""
+    with factory() as s:
+        s.add(Client(name="Alpha AG"))
+        s.add(Client(name="Rivale AG", is_competitor=True))
+        s.commit()
+
+    body = client.get("/archive").text
+    assert "Alpha AG" in body
+    assert "Rivale AG" not in body
+
+    # Opting in widens every control, not just the rows.
+    widened = client.get("/archive", params={"with_competitors": "1"}).text
+    assert "Rivale AG" in widened
+
+
+def test_publisher_options_follow_the_same_scope(client, factory):
+    with factory() as s:
+        mandate = Client(name="Alpha AG")
+        rival = Client(name="Rivale AG", is_competitor=True)
+        s.add_all([mandate, rival])
+        s.flush()
+        _seed(s, client_obj=mandate, title="A", url="https://ex.de/a",
+              source="Mandantenblatt", day=dt.date(2026, 7, 10), category=Category.KRISE)
+        _seed(s, client_obj=rival, title="B", url="https://ex.de/b",
+              source="Nurwettbewerb", day=dt.date(2026, 7, 11), category=Category.KRISE)
+        s.commit()
+
+    body = client.get("/archive").text
+    assert "Mandantenblatt" in body
+    assert "Nurwettbewerb" not in body
