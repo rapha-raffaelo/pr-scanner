@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .. import branding
+from .. import branding, i18n
 from ..db import get_session
 
 # The web package ships its own templates/ and static/ next to this module, so
@@ -119,6 +119,22 @@ def logo_src(value: str | None) -> str:
     return raw if raw.lower().startswith("https://") else ""
 
 
+def request_language(request) -> str:
+    """The reader's interface language, from the cookie set by the toggle."""
+    return i18n.normalize(request.cookies.get(i18n.COOKIE_NAME))
+
+
+def translator(request):
+    """``t(text)`` bound to this request's language, for the templates.
+
+    A callable rather than a filter so a template reads ``t("Heute")`` — the
+    German source string is right there, which keeps the markup legible without
+    a second file to consult.
+    """
+    language = request_language(request)
+    return lambda text: i18n.translate(text, language)
+
+
 def assistant_context(request) -> dict:
     """The drawer's query parameters, derived from the page being viewed.
 
@@ -158,6 +174,9 @@ templates.env.filters["logo_src"] = logo_src
 # The drawer lives in the shared layout, so its context is a global rather than
 # something every route has to remember to pass.
 templates.env.globals["assistant_ctx"] = assistant_context
+templates.env.globals["translator"] = translator
+templates.env.globals["request_language"] = request_language
+templates.env.globals["LANGUAGES"] = i18n.LANGUAGES
 templates.env.filters["monogram"] = branding.monogram
 templates.env.filters["brand_colour"] = branding.colour
 
@@ -181,7 +200,9 @@ def create_app() -> FastAPI:
 
     # Imported here (not at module top) to avoid a circular import: the route
     # modules import ``get_db``/``templates`` from this module.
-    from .routes import advisory, archive, assistant, client, settings, today, triage
+    from .routes import (
+        advisory, archive, assistant, client, language, settings, today, triage,
+    )
 
     app.include_router(today.router)
     app.include_router(client.router)
@@ -189,6 +210,7 @@ def create_app() -> FastAPI:
     app.include_router(settings.router)
     app.include_router(advisory.router)
     app.include_router(assistant.router)
+    app.include_router(language.router)
     app.include_router(triage.router)
     return app
 

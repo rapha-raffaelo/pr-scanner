@@ -10,7 +10,7 @@
     <div class="feed-item__meta">
       <span class="source">{{ row.source }}</span>
       <span class="time">{{ row.published_at.strftime('%d.%m.%Y %H:%M') }}</span>
-      <span class="tag tag--category tag--{{ row.category }}">{{ row.category }}</span>
+      <span class="tag tag--category tag--{{ row.category }}">{{ t(row.category) }}</span>
       <span class="importance" title="Importance score">{{ row.importance }}/10</span>
     </div>
     {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
@@ -18,29 +18,31 @@
 {% endmacro %}
 
 {% block content %}
+{% set t = translator(request) %}
+
 <section class="client-profile">
-  <h1>{{ client.name }}{% if not client.active %} <span class="tag">inaktiv</span>{% endif %}</h1>
+  <h1>{{ client.name }}{% if not client.active %} <span class="tag">{{ t("inaktiv") }}</span>{% endif %}</h1>
   <dl class="profile-meta">
-    {% if client.industry %}<div><dt>Branche</dt><dd>{{ client.industry }}</dd></div>{% endif %}
-    <div><dt>Land</dt><dd>{{ client.country }}</dd></div>
-    {% if client.aliases %}<div><dt>Aliase</dt><dd>{{ client.aliases | join(', ') }}</dd></div>{% endif %}
-    {% if client.keywords %}<div><dt>Keywords</dt><dd>{{ client.keywords | join(', ') }}</dd></div>{% endif %}
-    {% if client.alert_topics %}<div><dt>Alert-Themen</dt><dd>{{ client.alert_topics | join(', ') }}</dd></div>{% endif %}
+    {% if client.industry %}<div><dt>{{ t("Branche") }}</dt><dd>{{ client.industry }}</dd></div>{% endif %}
+    <div><dt>{{ t("Land") }}</dt><dd>{{ client.country }}</dd></div>
+    {% if client.aliases %}<div><dt>{{ t("Aliase") }}</dt><dd>{{ client.aliases | join(', ') }}</dd></div>{% endif %}
+    {% if client.keywords %}<div><dt>{{ t("Keywords") }}</dt><dd>{{ client.keywords | join(', ') }}</dd></div>{% endif %}
+    {% if client.alert_topics %}<div><dt>{{ t("Alert-Themen") }}</dt><dd>{{ client.alert_topics | join(', ') }}</dd></div>{% endif %}
   </dl>
 </section>
 
 {# Share of voice, scoped to this client's own comparison set. A portfolio-wide
    version would average unrelated markets together, which says nothing. #}
 <section class="panel panel--wide sov-panel">
-  <h2>Share of Voice <span class="colhead__note">letzte 30 Tage</span></h2>
+  <h2>Share of Voice <span class="colhead__note">{{ t("letzte 30 Tage") }}</span></h2>
   {% if voice | length > 1 %}
     <table class="data sov">
-      <thead><tr><th>Unternehmen</th><th>Rolle</th><th>Meldungen</th><th>Alerts</th><th>Anteil</th><th></th></tr></thead>
+      <thead><tr><th>{{ t("Unternehmen") }}</th><th>{{ t("Rolle") }}</th><th>{{ t("Meldungen") }}</th><th>{{ t("Alerts") }}</th><th>{{ t("Anteil") }}</th><th></th></tr></thead>
       <tbody>
         {% for v in voice %}
           <tr>
             <td class="cell-name"><a href="/client/{{ v.client_id }}">{{ v.name }}</a></td>
-            <td>{{ 'Wettbewerber' if v.is_competitor else 'Mandant' }}</td>
+            <td>{{ t('Wettbewerber') if v.is_competitor else t('Mandant') }}</td>
             <td>{{ v.mentions }}</td>
             <td>{{ v.alerts }}</td>
             <td>
@@ -50,7 +52,7 @@
             <td>
               {% if v.is_competitor %}
                 <form method="post" action="/client/{{ client.id }}/competitors/{{ v.client_id }}/remove">
-                  <button type="submit" class="linkbtn linkbtn--danger">entfernen</button>
+                  <button type="submit" class="linkbtn linkbtn--danger">{{ t("entfernen") }}</button>
                 </form>
               {% endif %}
             </td>
@@ -60,22 +62,21 @@
     </table>
   {% else %}
     <p class="panel-hint">
-      Noch keine Wettbewerber hinterlegt — ohne Vergleichsgruppe ist ein Anteil
-      immer 100 % und damit ohne Aussage.
+      {{ t("Noch keine Wettbewerber hinterlegt — ohne Vergleichsgruppe ist ein Anteil immer 100 % und damit ohne Aussage.") }}
     </p>
   {% endif %}
 
   {% if candidates %}
     <form method="post" action="/client/{{ client.id }}/competitors" class="run-form">
       <div class="filter-field">
-        <label for="competitor_id">Wettbewerber hinzufügen</label>
+        <label for="competitor_id">{{ t("Wettbewerber hinzufügen") }}</label>
         <select id="competitor_id" name="competitor_id">
           {% for c in candidates %}
             <option value="{{ c.id }}">{{ c.name }}</option>
           {% endfor %}
         </select>
       </div>
-      <button type="submit">Hinzufügen</button>
+      <button type="submit">{{ t("Hinzufügen") }}</button>
     </form>
     <p class="panel-hint">
       Ein Wettbewerber ist selbst ein überwachtes Unternehmen — nur so ist seine
@@ -97,34 +98,34 @@
       hx-push-url="true"
       hx-trigger="submit, change delay:200ms, keyup changed delay:400ms from:#q">
   <div class="filter-field">
-    <label for="date_from">Von</label>
+    <label for="date_from">{{ t("Von") }}</label>
     <input type="date" id="date_from" name="date_from" value="{{ filters.date_from }}">
   </div>
   <div class="filter-field">
-    <label for="date_to">Bis</label>
+    <label for="date_to">{{ t("Bis") }}</label>
     <input type="date" id="date_to" name="date_to" value="{{ filters.date_to }}">
   </div>
   <div class="filter-field">
-    <label for="source">Quelle</label>
+    <label for="source">{{ t("Quelle") }}</label>
     <select id="source" name="source">
-      <option value="">Alle Quellen</option>
+      <option value="">{{ t("Alle Quellen") }}</option>
       {% for s in sources %}
         <option value="{{ s }}"{% if s == filters.source %} selected{% endif %}>{{ s }}</option>
       {% endfor %}
     </select>
   </div>
   <div class="filter-field">
-    <label for="category">Kategorie</label>
+    <label for="category">{{ t("Kategorie") }}</label>
     <select id="category" name="category">
-      <option value="">Alle Kategorien</option>
+      <option value="">{{ t("Alle Kategorien") }}</option>
       {% for c in categories %}
         <option value="{{ c }}"{% if c == filters.category %} selected{% endif %}>{{ c }}</option>
       {% endfor %}
     </select>
   </div>
   <div class="filter-field filter-field--search">
-    <label for="q">Suche</label>
-    <input type="search" id="q" name="q" value="{{ filters.search }}" placeholder="Schlagzeile oder Zusammenfassung">
+    <label for="q">{{ t("Suche") }}</label>
+    <input type="search" id="q" name="q" value="{{ filters.search }}" placeholder="{{ t('Schlagzeile oder Zusammenfassung') }}">
   </div>
   {# Reset clears every param back to the unfiltered archive. The list swaps via
      HTMX, but the form inputs live OUTSIDE #archive-list and would otherwise keep
@@ -138,27 +139,27 @@
      hx-select="#archive-list"
      hx-swap="outerHTML"
      hx-push-url="true"
-     onclick="this.closest('form').querySelectorAll('input, select').forEach(el => { el.value = ''; });">Zurücksetzen</a>
-  <noscript><button type="submit">Filtern</button></noscript>
+     onclick="this.closest('form').querySelectorAll('input, select').forEach(el => { el.value = ''; });">{{ t("Zurücksetzen") }}</a>
+  <noscript><button type="submit">{{ t("Filtern") }}</button></noscript>
 </form>
 
 <div id="archive-list">
   {% if rows %}
-    <p class="archive-count">{{ pagination.total_count }} Artikel · Seite {{ pagination.page }}/{{ pagination.total_pages }}</p>
+    <p class="archive-count">{{ pagination.total_count }} {{ t("Artikel") }} · {{ t("Seite") }} {{ pagination.page }}/{{ pagination.total_pages }}</p>
     <div class="archive-rows">
       {% for row in rows %}{{ archive_row(row) }}{% endfor %}
     </div>
     <nav class="pagination" aria-label="Archivseiten">
       {% if pagination.prev_url %}
-        <a class="page-link" href="{{ pagination.prev_url }}" hx-get="{{ pagination.prev_url }}" hx-target="#archive-list" hx-select="#archive-list" hx-swap="outerHTML" hx-push-url="true" rel="prev">← Neuer</a>
+        <a class="page-link" href="{{ pagination.prev_url }}" hx-get="{{ pagination.prev_url }}" hx-target="#archive-list" hx-select="#archive-list" hx-swap="outerHTML" hx-push-url="true" rel="prev">{{ t("← Neuer") }}</a>
       {% else %}
-        <span class="page-link page-link--disabled">← Neuer</span>
+        <span class="page-link page-link--disabled">{{ t("← Neuer") }}</span>
       {% endif %}
-      <span class="page-indicator">Seite {{ pagination.page }} / {{ pagination.total_pages }}</span>
+      <span class="page-indicator">{{ t("Seite") }} {{ pagination.page }} / {{ pagination.total_pages }}</span>
       {% if pagination.next_url %}
-        <a class="page-link" href="{{ pagination.next_url }}" hx-get="{{ pagination.next_url }}" hx-target="#archive-list" hx-select="#archive-list" hx-swap="outerHTML" hx-push-url="true" rel="next">Älter →</a>
+        <a class="page-link" href="{{ pagination.next_url }}" hx-get="{{ pagination.next_url }}" hx-target="#archive-list" hx-select="#archive-list" hx-swap="outerHTML" hx-push-url="true" rel="next">{{ t("Älter →") }}</a>
       {% else %}
-        <span class="page-link page-link--disabled">Älter →</span>
+        <span class="page-link page-link--disabled">{{ t("Älter →") }}</span>
       {% endif %}
     </nav>
   {% else %}

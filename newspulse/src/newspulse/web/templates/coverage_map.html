@@ -1,24 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Coverage Map · {{ map.client }} · NewsPulse{% endblock %}
+{% block title %}{{ translator(request)("Coverage Map") }} · {{ map.client }} · NewsPulse{% endblock %}
 
 {% macro badge(name) %}
   <span class="mono-badge" style="background: {{ name | brand_colour }}" title="{{ name }}">{{ name | monogram }}</span>
 {% endmacro %}
 
 {% block content %}
+{% set t = translator(request) %}
+
 <div class="client-profile">
-  <h1>Coverage Map — {{ map.client }}</h1>
+  <h1>{{ t("Coverage Map") }} — {{ map.client }}</h1>
   <p class="panel-hint">
-    Welches Medium schreibt über wen, letzte {{ days }} Tage. Die Lücken oben sind
-    Publikationen, die regelmäßig über den Wettbewerb berichten und nie über
-    {{ map.client }} — also eine Pitch-Liste, keine Statistik.
+    {{ t("Wer schreibt über wen") }} — {{ days }} {{ t("Tage") }}.
+    {{ t("Die Lücken oben sind Publikationen, die regelmäßig über den Wettbewerb berichten und nie über") }}
+    {{ map.client }} {{ t("also eine Pitch-Liste, keine Statistik.") }}
   </p>
 </div>
 
 {% if map.gaps %}
   <div class="colhead gaps-head">
-    Pitch-Lücken <span class="n">{{ map.gaps | length }}</span>
-    <span class="colhead__note">berichten über Wettbewerber, nie über {{ map.client }}</span>
+    {{ t("Pitch-Lücken") }} <span class="n">{{ map.gaps | length }}</span>
+    <span class="colhead__note">{{ t("berichten über Wettbewerber, nie über") }} {{ map.client }}</span>
   </div>
   <div class="gapgrid">
     {% for row in map.gaps %}
@@ -51,13 +53,13 @@
    a shared centre line and sorting by the gap. Only outlets with a real signal
    are plotted; the rest are a table below. #}
 <div class="colhead" style="margin-top:26px">
-  Wer schreibt über wen <span class="n">{{ map.leaning | length }}</span>
-  <span class="colhead__note">Wettbewerb links · {{ map.client }} rechts · nach Ungleichgewicht sortiert</span>
+  {{ t("Wer schreibt über wen") }} <span class="n">{{ map.leaning | length }}</span>
+  <span class="colhead__note">{{ t("Wettbewerb links") }} · {{ map.client }} {{ t("rechts") }} · {{ t("nach Ungleichgewicht sortiert") }}</span>
 </div>
 
 <div class="diverge">
   <div class="diverge__legend">
-    <span class="diverge__key"><i class="dk dk--rival"></i>Wettbewerb</span>
+    <span class="diverge__key"><i class="dk dk--rival"></i>{{ t("Wettbewerb") }}</span>
     <span class="diverge__key"><i class="dk dk--own"></i>{{ map.client }}</span>
   </div>
   {% for row in map.leaning %}
@@ -77,12 +79,12 @@
 </div>
 
 <details class="fulltable">
-  <summary>Vollständige Tabelle ({{ map.rows | length }} Medien)</summary>
+  <summary>{{ t("Vollständige Tabelle") }} ({{ map.rows | length }} {{ t("Medien") }})</summary>
 <div class="table-scroll">
   <table class="data covmap">
     <thead>
       <tr>
-        <th>Medium</th>
+        <th>{{ t("Medium") }}</th>
         {% for company in map.companies %}
           <th class="covcol">{{ badge(company) }}<span class="covname">{{ company }}</span></th>
         {% endfor %}

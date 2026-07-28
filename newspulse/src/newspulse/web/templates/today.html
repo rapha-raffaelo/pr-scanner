@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Heute · NewsPulse{% endblock %}
+{% block title %}{{ translator(request)("Heute") }} · NewsPulse{% endblock %}
 
 {# One row of the ranked feed: importance badge, client + category, headline,
    summary, source/time. Mirrors the locked today-triage mock's .item. #}
@@ -14,10 +14,10 @@
         <span class="clichip">{{ item.client_name }}</span>
         <span class="tag t-{{ item.category }}">{{ item.category | capitalize }}</span>
         {% if item.tonality != 'unbekannt' %}
-          <span class="tone tone--{{ item.tonality }}" title="Wirkung auf die Reputation des Mandanten">{{ item.tonality | capitalize }}</span>
+          <span class="tone tone--{{ item.tonality }}" title="{{ t('Wirkung auf die Reputation des Mandanten') }}">{{ t(item.tonality) | capitalize }}</span>
         {% endif %}
         {% if story.is_syndicated %}
-          <span class="pickup" title="Diese Meldung erschien bei {{ story.pickup_count }} Outlets">{{ story.pickup_count }}× aufgegriffen</span>
+          <span class="pickup" title="{{ story.pickup_count }}">{{ story.pickup_count }}× {{ t("aufgegriffen") }}</span>
         {% endif %}
       </div>
       <div class="hl"><a href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a></div>
@@ -28,7 +28,7 @@
         <span class="dot">·</span> {{ item.published_at.strftime('%H:%M') }} Uhr
         {% if story.is_syndicated %}
           <details class="pickup-list">
-            <summary>auch bei {{ story.pickup_count - 1 }} weiteren</summary>
+            <summary>{{ t("auch bei") }} {{ story.pickup_count - 1 }} {{ t("weiteren") }}</summary>
             <ul>
               {% for member in story.members if member is not sameas item %}
                 <li><a href="{{ member.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ member.source }}</a> <span class="dot">·</span> {{ member.published_at.strftime('%H:%M') }}</li>
@@ -41,7 +41,7 @@
          so each button both marks and un-marks. redirect_to carries the current
          URL so the day/filter the operator was looking at survives the POST. #}
       <div class="triage">
-        {% for state, label in [('gelesen', 'gelesen'), ('markiert', 'für Mandant'), ('erledigt', 'erledigt')] %}
+        {% for state, label in [('gelesen', t('gelesen')), ('markiert', t('für Mandant')), ('erledigt', t('erledigt'))] %}
           <form method="post" action="/triage/{{ item.analysis_id }}">
             <input type="hidden" name="state" value="{{ state }}">
             <input type="hidden" name="redirect_to" value="{{ request.url.path }}?{{ request.url.query }}">
@@ -54,13 +54,15 @@
 {% endmacro %}
 
 {% block content %}
+{% set t = translator(request) %}
+
 <div id="today-root">
 <div class="today-toolbar">
   {# Category filter and date picker share one form so changing either keeps the
      other's value; the whole toolbar sits inside #today-root so an HTMX swap
      re-renders it with the new day's categories. #}
   <form class="date-picker" method="get" action="/">
-    <label for="category">Kategorie:</label>
+    <label for="category">{{ t("Kategorie") }}:</label>
     <select
       id="category"
       name="category"
@@ -71,15 +73,15 @@
       hx-swap="outerHTML"
       hx-push-url="true"
       onchange="if (!window.htmx) this.form.requestSubmit()">
-      <option value="">Alle Kategorien{% if categories %} ({{ categories | length }}){% endif %}</option>
+      <option value="">{{ t("Alle Kategorien") }}{% if categories %} ({{ categories | length }}){% endif %}</option>
       {% for c in categories %}
         <option value="{{ c }}"{% if c == selected_category %} selected{% endif %}>{{ c | capitalize }}</option>
       {% endfor %}
     </select>
     {% if hidden_count %}
-      <span class="filter-note">{{ hidden_count }} ausgeblendet</span>
+      <span class="filter-note">{{ hidden_count }} {{ t("ausgeblendet") }}</span>
     {% endif %}
-    <label for="date">Tag:</label>
+    <label for="date">{{ t("Tag") }}:</label>
     {# When HTMX is loaded it handles the change and swaps only #today-root out of
        the response (hx-select), so the full document is never nested inside body.
        The onchange native submit is a fallback that fires ONLY when HTMX is absent
@@ -96,7 +98,7 @@
       hx-swap="outerHTML"
       hx-push-url="true"
       onchange="if (!window.htmx) this.form.requestSubmit()">
-    <noscript><button type="submit">Anzeigen</button></noscript>
+    <noscript><button type="submit">{{ t("Anzeigen") }}</button></noscript>
   </form>
 </div>
 
@@ -108,8 +110,8 @@
     {% if clients | length <= card_limit %}
       <a class="cfcard{% if not selected_client %} cfcard--on{% endif %}"
          href="/?date={{ day_iso }}{% if selected_category %}&category={{ selected_category }}{% endif %}">
-        <span class="cfall">Alle</span>
-        <span class="cfname">{{ total_today }} Meldungen</span>
+        <span class="cfall">{{ t("Alle") }}</span>
+        <span class="cfname">{{ total_today }} {{ t("Meldungen") }}</span>
       </a>
       {% for c in clients %}
         <a class="cfcard{% if selected_client == c.id %} cfcard--on{% endif %}"
@@ -127,24 +129,24 @@
       <form class="date-picker" method="get" action="/">
         <input type="hidden" name="date" value="{{ day_iso }}">
         {% if selected_category %}<input type="hidden" name="category" value="{{ selected_category }}">{% endif %}
-        <label for="client">Mandant:</label>
+        <label for="client">{{ t("Mandant") }}:</label>
         <select id="client" name="client" onchange="this.form.requestSubmit()">
-          <option value="">Alle Mandanten ({{ total_today }})</option>
+          <option value="">{{ t("Alle Mandanten") }} ({{ total_today }})</option>
           {% for c in clients %}
             <option value="{{ c.id }}"{% if selected_client == c.id %} selected{% endif %}>
               {{ c.name }}{% if client_counts.get(c.id) %} ({{ client_counts[c.id] }}){% endif %}
             </option>
           {% endfor %}
         </select>
-        <noscript><button type="submit">Filtern</button></noscript>
+        <noscript><button type="submit">{{ t("Filtern") }}</button></noscript>
       </form>
     {% endif %}
   </div>
 {% endif %}
 
 <div class="cols">
-  <aside class="alertcol" aria-label="Warnungen">
-    <div class="colhead">Warnungen <span class="n">{{ alerts | length }}</span></div>
+  <aside class="alertcol" aria-label="{{ t('Warnungen') }}">
+    <div class="colhead">{{ t("Warnungen") }} <span class="n">{{ alerts | length }}</span></div>
     {% for story in alerts %}
       {% set item = story.lead %}
       <div class="acard">
@@ -153,21 +155,21 @@
         {% if item.summary %}<div class="sum">{{ item.summary }}</div>{% endif %}
         <div class="meta">
           {{ item.source }} <span>·</span> {{ item.published_at.strftime('%H:%M') }}
-          {% if story.is_syndicated %}<span>·</span> <strong>{{ story.pickup_count }}× aufgegriffen</strong>{% endif %}
+          {% if story.is_syndicated %}<span>·</span> <strong>{{ story.pickup_count }}× {{ t("aufgegriffen") }}</strong>{% endif %}
         </div>
       </div>
     {% else %}
-      <p class="rail__empty">Keine Warnungen heute.</p>
+      <p class="rail__empty">{{ t("Keine Warnungen heute.") }}</p>
     {% endfor %}
   </aside>
 
-  <main class="feedcol" aria-label="Berichterstattung">
+  <main class="feedcol" aria-label="{{ t('Gesamter Tag') }}">
     {# Counts stories, not articles: a syndicated event is one thing to read.
        The article count is shown alongside when the two differ. #}
     <div class="colhead">
-      Gesamter Tag <span class="n">{{ stories | length }}</span>
+      {{ t("Gesamter Tag") }} <span class="n">{{ stories | length }}</span>
       {% if items | length != stories | length %}
-        <span class="colhead__note">aus {{ items | length }} Artikeln</span>
+        <span class="colhead__note">{{ t("aus") }} {{ items | length }} {{ t("Artikeln") }}</span>
       {% endif %}
     </div>
     {% if items %}
@@ -176,7 +178,7 @@
       {% endfor %}
     {% else %}
       <div class="empty-state">
-        <p>Keine Berichterstattung für {{ day.strftime('%d.%m.%Y') }}.</p>
+        <p>{{ t("Keine Berichterstattung für") }} {{ day.strftime('%d.%m.%Y') }}.</p>
       </div>
     {% endif %}
   </main>

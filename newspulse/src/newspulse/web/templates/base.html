@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="{{ request_language(request) }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,6 +14,8 @@
   <script src="{{ url_for('static', path='htmx.min.js') }}"></script>
 </head>
 <body>
+  {% set t = translator(request) %}
+  {% set lang = request_language(request) %}
   <div class="wrap">
     <header class="top">
       <div class="brand"><a href="/">News<span>Pulse</span></a></div>
@@ -22,34 +24,44 @@
         {{ (day if day is defined else header_date) | de_long_date }}<br>
         {% if last_run %}
           {% if last_run.is_running %}
-            Lauf läuft…
+            {{ t("Lauf läuft…") }}
           {% else %}
-            Letzter Lauf {{ last_run.ran_at.strftime('%H:%M') }} Uhr
+            {{ t("Letzter Lauf") }} {{ last_run.ran_at.strftime('%H:%M') }} {{ t("Uhr") }}
           {% endif %}
           <span class="dot">·</span>
           {% if last_run.feed_errors == 0 %}
-            <span class="runok">Feeds ok</span>
+            <span class="runok">{{ t("Feeds ok") }}</span>
           {% else %}
-            <span class="runbad">{{ last_run.feed_errors }} Feed-Fehler</span>
+            <span class="runbad">{{ last_run.feed_errors }} {{ t("Feed-Fehler") }}</span>
           {% endif %}
-          <span class="dot">·</span> {{ last_run.articles_checked }} Artikel geprüft
+          <span class="dot">·</span> {{ last_run.articles_checked }} {{ t("Artikel geprüft") }}
         {% else %}
-          <span class="runempty">Noch kein Lauf</span>
+          <span class="runempty">{{ t("Noch kein Lauf") }}</span>
         {% endif %}
       </div>
     </header>
 
     <nav class="tabs">
-      <a href="/"{% if request.url.path == '/' %} class="active" aria-current="page"{% endif %}>Heute</a>
-      <a href="/clients"{% if request.url.path.startswith('/client') %} class="active" aria-current="page"{% endif %}>Mandanten</a>
-      <a href="/archive"{% if request.url.path.startswith('/archive') %} class="active" aria-current="page"{% endif %}>Archiv</a>
-      <a href="/settings"{% if request.url.path.startswith('/settings') %} class="active" aria-current="page"{% endif %}>Einstellungen</a>
+      <a href="/"{% if request.url.path == '/' %} class="active" aria-current="page"{% endif %}>{{ t("Heute") }}</a>
+      <a href="/clients"{% if request.url.path.startswith('/client') %} class="active" aria-current="page"{% endif %}>{{ t("Mandanten") }}</a>
+      <a href="/archive"{% if request.url.path.startswith('/archive') %} class="active" aria-current="page"{% endif %}>{{ t("Archiv") }}</a>
+      <a href="/settings"{% if request.url.path.startswith('/settings') %} class="active" aria-current="page"{% endif %}>{{ t("Einstellungen") }}</a>
       {# Fetching news is the one action wanted from any page, so it lives in the
          nav rather than three clicks deep in Einstellungen. redirect_to returns
          the reader to where they clicked instead of bouncing them to Settings. #}
-      <form method="post" action="/settings/run" class="nav-refresh">
+      {# Language toggle. A POST because it writes a cookie, and `next` returns
+         the reader to the page they were on rather than the dashboard root. #}
+      <div class="langtoggle" role="group" aria-label="{{ t('Sprache') }}">
+        {% for code, flag, label in [('de', '🇩🇪', 'Deutsch'), ('en', '🇬🇧', 'English')] %}
+          <form method="post" action="/language/{{ code }}?next={{ request.url.path }}{% if request.url.query %}%3F{{ request.url.query | urlencode }}{% endif %}">
+            <button type="submit" class="langbtn{% if lang == code %} langbtn--on{% endif %}"
+                    title="{{ label }}" aria-pressed="{{ 'true' if lang == code else 'false' }}">{{ flag }}</button>
+          </form>
+        {% endfor %}
+      </div>
+      <form method="post" action="/settings/run" class="nav-refresh nav-refresh--tight">
         <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
-        <button type="submit" title="Feeds jetzt abrufen und analysieren — läuft im Hintergrund">↻ Aktualisieren</button>
+        <button type="submit" title="{{ t('Feeds jetzt abrufen und analysieren — läuft im Hintergrund') }}">{{ t("↻ Aktualisieren") }}</button>
       </form>
     </nav>
 
@@ -62,36 +74,34 @@
      page is showing, so a question does not have to re-explain its own context.
      Advisory only: it produces text, it never acts. #}
   <button class="drawer-open" type="button" data-drawer-open
-          title="Fragen zur Berichterstattung auf dieser Seite">✦ Assistent</button>
+          title="{{ t('Fragen zur Berichterstattung auf dieser Seite') }}">✦ {{ t("Assistent") }}</button>
 
-  <aside class="drawer" id="assistant-drawer" hidden aria-label="PR-Assistent">
+  <aside class="drawer" id="assistant-drawer" hidden aria-label="{{ t('PR-Assistent') }}">
     <header class="drawer__head">
       <div>
-        <strong>PR-Assistent</strong>
-        <span class="drawer__ctx" id="drawer-context">{{ assistant_context or 'Portfolio' }}</span>
+        <strong>{{ t("PR-Assistent") }}</strong>
+        <span class="drawer__ctx" id="drawer-context">{{ assistant_context or t('Portfolio') }}</span>
       </div>
-      <button type="button" class="drawer__close" data-drawer-close aria-label="Schließen">×</button>
+      <button type="button" class="drawer__close" data-drawer-close aria-label="{{ t('Schließen') }}">×</button>
     </header>
 
     <div class="drawer__body" id="drawer-body">
       <p class="drawer__hint">
-        Fragen zur Berichterstattung, die gerade auf dem Schirm ist. Der Assistent
-        sieht Schlagzeilen und Kurzfassungen — nicht die vollständigen Artikel —
-        und entscheidet nichts, er schlägt vor.
+        {{ t("Fragen zur Berichterstattung, die gerade auf dem Schirm ist. Der Assistent sieht Schlagzeilen und Kurzfassungen — nicht die vollständigen Artikel — und entscheidet nichts, er schlägt vor.") }}
       </p>
       <div class="drawer__chips">
         {% for suggestion in assistant_suggestions or [
-             'Was sind heute die drei wichtigsten Punkte?',
-             'Wo müssen wir reagieren, wo besser schweigen?',
-             'Welches Narrativ setzt sich gerade durch?'] %}
+             t('Was sind heute die drei wichtigsten Punkte?'),
+             t('Wo müssen wir reagieren, wo besser schweigen?'),
+             t('Welches Narrativ setzt sich gerade durch?')] %}
           <button type="button" class="drawer__chip" data-ask="{{ suggestion }}">{{ suggestion }}</button>
         {% endfor %}
       </div>
     </div>
 
     <form class="drawer__ask" id="drawer-form">
-      <input type="text" id="drawer-input" placeholder="Frage stellen…" autocomplete="off">
-      <button type="submit" id="drawer-send">Fragen</button>
+      <input type="text" id="drawer-input" placeholder="{{ t('Frage stellen…') }}" autocomplete="off">
+      <button type="submit" id="drawer-send">{{ t("Fragen") }}</button>
     </form>
   </aside>
 

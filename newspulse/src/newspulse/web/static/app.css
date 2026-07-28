@@ -609,3 +609,15 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .dnum--zero { color: var(--alert); font-weight: 700; }
 .fulltable { margin-top: 18px; }
 .fulltable > summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 6px 0; }
+
+/* --- Language toggle ------------------------------------------------------ */
+.langtoggle { display: flex; gap: 2px; margin-left: auto; align-self: center; }
+.langtoggle form { display: inline; }
+.langbtn {
+  font-size: 15px; line-height: 1; padding: 5px 7px;
+  border: 1px solid transparent; border-radius: 8px;
+  background: none; cursor: pointer; opacity: 0.45;
+}
+.langbtn:hover { opacity: 0.85; }
+.langbtn--on { opacity: 1; border-color: var(--line); background: var(--card); }
+.nav-refresh--tight { margin-left: 8px; }

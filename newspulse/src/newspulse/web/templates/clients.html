@@ -1,8 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Mandanten · NewsPulse{% endblock %}
+{% block title %}{{ translator(request)("Mandanten") }} · NewsPulse{% endblock %}
 
 {% block content %}
-<div class="colhead">Mandanten <span class="n">{{ rows | length }}</span></div>
+{% set t = translator(request) %}
+
+<div class="colhead">{{ t("Mandanten") }} <span class="n">{{ rows | length }}</span></div>
 
 {% if rows %}
   <div class="portfolio">
@@ -17,17 +19,17 @@
           <div>
             <div class="pname"><a href="/client/{{ row.id }}">{{ row.name }}</a></div>
             <div class="pind">
-              {{ row.industry or 'Ohne Branche' }}{% if not row.active %} · inaktiv{% endif %}
+              {{ row.industry or t('Ohne Branche') }}{% if not row.active %} · {{ t("inaktiv") }}{% endif %}
             </div>
           </div>
         </div>
         <div class="pcounts">
-          <div><b>{{ row.today_count }}</b> heute</div>
-          <div><b>{{ row.total_count }}</b> im Archiv</div>
+          <div><b>{{ row.today_count }}</b> {{ t("heute") }}</div>
+          <div><b>{{ row.total_count }}</b> {{ t("im Archiv") }}</div>
         </div>
         {% if row.competitors %}
           <div class="pcomp">
-            <span class="pcomp__label">vs</span>
+            <span class="pcomp__label">{{ t("vs") }}</span>
             {% for rival in row.competitors %}
               <a href="/client/{{ rival.id }}" title="{{ rival.name }}">
                 {% if rival.logo_url %}
@@ -40,8 +42,8 @@
           </div>
         {% endif %}
         <div class="pactions">
-          <a href="/client/{{ row.id }}/advice">Empfehlungen</a>
-          <a href="/client/{{ row.id }}/map">Coverage Map</a>
+          <a href="/client/{{ row.id }}/advice">{{ t("Empfehlungen") }}</a>
+          <a href="/client/{{ row.id }}/map">{{ t("Coverage Map") }}</a>
           <a href="/client/{{ row.id }}/export.xlsx">Excel</a>
         </div>
         {% if row.alert_topics %}
@@ -74,7 +76,7 @@
   {% endif %}
 {% else %}
   <div class="empty-state">
-    <p>Noch keine Mandanten. Unter <a href="/settings">Einstellungen</a> anlegen oder importieren.</p>
+    <p>{{ t("Noch keine Mandanten. Unter") }} <a href="/settings">{{ t("Einstellungen") }}</a> {{ t("anlegen oder importieren.") }}</p>
   </div>
 {% endif %}
 {% endblock %}

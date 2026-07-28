@@ -1,0 +1,264 @@
+"""Interface language: German (default) and English.
+
+Keyed on the German string itself rather than on invented ids. Two reasons:
+
+* A missing translation degrades to German, which is a working sentence. A
+  key-based scheme shows ``settings.clients.add`` to the operator instead, which
+  is worse than the wrong language.
+* The templates stay readable. ``t("Lauf starten")`` says what it renders;
+  ``t("run.start")`` requires a second file to understand.
+
+The cost is that editing a German string silently un-translates it. That is an
+acceptable trade for a two-language interface, and the test suite checks that
+every key here is still reachable.
+
+**Scope: chrome only.** Article headlines, summaries and the analyzer's own
+output stay in the language they were written in — they are data, not interface.
+Switching to English does not retranslate a stored German summary, and pretending
+otherwise would be a lie about what the tool did.
+"""
+
+from __future__ import annotations
+
+DEFAULT_LANGUAGE = "de"
+LANGUAGES = ("de", "en")
+
+# The cookie holding the choice. A cookie rather than a setting row: this is a
+# per-reader preference, not configuration of the installation.
+COOKIE_NAME = "newspulse_lang"
+# A year: the choice is stable, and re-asking every session would be noise.
+COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
+# German source string -> English. Ordered roughly by where it appears.
+_EN: dict[str, str] = {
+    # --- Chrome / navigation -------------------------------------------------
+    "Heute": "Today",
+    "Mandanten": "Clients",
+    "Archiv": "Archive",
+    "Einstellungen": "Settings",
+    "↻ Aktualisieren": "↻ Refresh",
+    "Feeds jetzt abrufen und analysieren — läuft im Hintergrund":
+        "Fetch and analyse feeds now — runs in the background",
+    "Letzter Lauf": "Last run",
+    "Lauf läuft…": "Run in progress…",
+    "Uhr": "",
+    "Feeds ok": "Feeds ok",
+    "Feed-Fehler": "feed errors",
+    "Artikel geprüft": "articles checked",
+    "Noch kein Lauf": "No run yet",
+    "Sprache": "Language",
+    # --- Today ---------------------------------------------------------------
+    "Kategorie": "Category",
+    "Alle Kategorien": "All categories",
+    "Tag": "Day",
+    "Anzeigen": "Show",
+    "ausgeblendet": "hidden",
+    "Warnungen": "Alerts",
+    "Keine Warnungen heute.": "No alerts today.",
+    "Gesamter Tag": "Whole day",
+    "aus": "from",
+    "Artikeln": "articles",
+    "Keine Berichterstattung für": "No coverage for",
+    "Alle": "All",
+    "Meldungen": "items",
+    "Mandant": "Client",
+    "Alle Mandanten": "All clients",
+    "Filtern": "Filter",
+    "gelesen": "read",
+    "für Mandant": "for client",
+    "erledigt": "done",
+    "aufgegriffen": "pickups",
+    "auch bei": "also in",
+    "weiteren": "more",
+    "Wichtigkeit": "Importance",
+    "Wirkung auf die Reputation des Mandanten":
+        "Effect on the client's reputation",
+    "positiv": "positive",
+    "neutral": "neutral",
+    "negativ": "negative",
+    # --- Clients -------------------------------------------------------------
+    "Ohne Branche": "No industry",
+    "inaktiv": "inactive",
+    "heute": "today",
+    "im Archiv": "in archive",
+    "Empfehlungen": "Recommendations",
+    "Coverage Map": "Coverage map",
+    "Excel": "Excel",
+    "Noch keine Mandanten. Unter": "No clients yet. Add or import them under",
+    "anlegen oder importieren.": ".",
+    "vs": "vs",
+    # --- Archive -------------------------------------------------------------
+    "Monat": "Month",
+    "Alle Monate": "All months",
+    "Publisher": "Publisher",
+    "Alle Publisher": "All publishers",
+    "Medien-Tier": "Media tier",
+    "Alle Tiers": "All tiers",
+    "Tier 1 — Leitmedien": "Tier 1 — National press",
+    "Tier 2 — Fach- & Regionalpresse": "Tier 2 — Trade & regional",
+    "Tier 3 — Finanz-Ticker": "Tier 3 — Finance tickers",
+    "Suche": "Search",
+    "Schlagzeile oder Zusammenfassung": "Headline or summary",
+    "Zurücksetzen": "Reset",
+    "Artikel": "articles",
+    "Seite": "page",
+    "← Neuer": "← Newer",
+    "Älter →": "Older →",
+    "Keine Artikel für die gewählten Filter.": "No articles for these filters.",
+    # --- Client detail -------------------------------------------------------
+    "Branche": "Industry",
+    "Land": "Country",
+    "Aliase": "Aliases",
+    "Keywords": "Keywords",
+    "Alert-Themen": "Alert topics",
+    "Von": "From",
+    "Bis": "To",
+    "Quelle": "Source",
+    "Alle Quellen": "All sources",
+    "Keine Artikel": "No articles",
+    "letzte 30 Tage": "last 30 days",
+    "Unternehmen": "Company",
+    "Rolle": "Role",
+    "Alerts": "Alerts",
+    "Anteil": "Share",
+    "Wettbewerber": "Competitor",
+    "entfernen": "remove",
+    "Wettbewerber hinzufügen": "Add competitor",
+    "Hinzufügen": "Add",
+    "Noch keine Wettbewerber hinterlegt — ohne Vergleichsgruppe ist ein Anteil immer 100 % und damit ohne Aussage.":
+        "No competitors set — without a comparison group a share is always 100% "
+        "and says nothing.",
+    "Ein Wettbewerber ist selbst ein überwachtes Unternehmen — nur so ist seine Meldungszahl vergleichbar. Unter Einstellungen anlegen und dort als":
+        "A competitor is itself a monitored company — that is what makes its "
+        "count comparable. Create it under Settings and mark it as",
+    "markieren, damit er nicht im Morgen-Digest auftaucht.":
+        "so it stays out of the morning digest.",
+    # --- Coverage map --------------------------------------------------------
+    "Pitch-Lücken": "Pitch gaps",
+    "berichten über Wettbewerber, nie über": "cover competitors, never",
+    "Wer schreibt über wen": "Who writes about whom",
+    "Wettbewerb links": "competitors left",
+    "rechts": "right",
+    "nach Ungleichgewicht sortiert": "sorted by imbalance",
+    "Wettbewerb": "Competitors",
+    "Vollständige Tabelle": "Full table",
+    "Medien": "outlets",
+    "Medium": "Outlet",
+    # --- Advice --------------------------------------------------------------
+    "Zeitraum": "Period",
+    "Letzte 7 Tage": "Last 7 days",
+    "Letzte 30 Tage": "Last 30 days",
+    "Letzte 90 Tage": "Last 90 days",
+    "Neu erzeugen": "Regenerate",
+    "Empfehlungen erzeugen": "Generate recommendations",
+    "im Zeitraum": "in period",
+    "Wird erzeugt — das dauert etwa eine Minute. Seite neu laden.":
+        "Generating — this takes about a minute. Reload the page.",
+    "Lage": "Situation",
+    "Erzeugt am": "Generated",
+    "aus": "from",
+    "Artikeln.": "articles.",
+    "Maßnahmen": "Actions",
+    "Grundlage": "Based on",
+    "Meldung(en)": "item(s)",
+    "Keine Maßnahmen vorgeschlagen — im Zeitraum gab es nichts, das eine Reaktion erfordert.":
+        "No actions proposed — nothing in this period requires a response.",
+    "Noch keine Empfehlungen erzeugt.": "No recommendations generated yet.",
+    "reaktiv": "reactive",
+    "proaktiv": "proactive",
+    "beobachten": "monitor",
+    "heute": "today",
+    "diese woche": "this week",
+    "laufend": "ongoing",
+    # --- Settings ------------------------------------------------------------
+    "Lauf starten": "Start a run",
+    "Seit letztem Lauf (Standard)": "Since last run (default)",
+    "Jetzt aktualisieren": "Refresh now",
+    "Letzte": "Last",
+    "Tage nachladen": "days backfill",
+    "Letzte Läufe": "Recent runs",
+    "Start": "Start",
+    "Status": "Status",
+    "Fehler": "Errors",
+    "Clients": "Clients",
+    "+ Client hinzufügen": "+ Add client",
+    "Name": "Name",
+    "Aliasse": "Aliases",
+    "Suchbegriffe": "Keywords",
+    "Alarm-Themen": "Alert topics",
+    "Website": "Website",
+    "Aktionen": "Actions",
+    "Bearbeiten": "Edit",
+    "Schließen": "Close",
+    "Abbrechen": "Cancel",
+    "Speichern": "Save",
+    "Deaktivieren": "Deactivate",
+    "Reaktivieren": "Reactivate",
+    "aktiv": "active",
+    "gesamt": "total",
+    "Import (Excel / CSV)": "Import (Excel / CSV)",
+    "Vorschau": "Preview",
+    "Vorschau zeigt die ersten": "Preview shows the first",
+    "Vorschläge auf Basis der Berichterstattung der letzten":
+        "Suggestions based on coverage from the last",
+    "Entwurf, keine Entscheidung": "A draft, not a decision",
+    "jede Maßnahme nennt die Meldungen, auf die sie sich stützt, damit die Begründung nachprüfbar bleibt. Die Bewertung stützt sich nur auf Schlagzeilen und Kurzfassungen, nicht auf die vollständigen Artikel.":
+        "every action cites the coverage it rests on, so the reasoning stays "
+        "checkable. The assessment draws only on headlines and short summaries, "
+        "not on full articles.",
+    "Die Lücken oben sind Publikationen, die regelmäßig über den Wettbewerb berichten und nie über":
+        "The gaps above are publications that cover the competition regularly and never",
+    "also eine Pitch-Liste, keine Statistik.": "— a pitch list, not a statistic.",
+    "Importieren": "Import",
+    "Alarm-Schwellenwert": "Alert threshold",
+    "Feeds": "Feeds",
+    "Noch keine Clients. Über das Formular oder den Import anlegen.":
+        "No clients yet. Add one with the form or the import.",
+    # --- Assistant drawer ----------------------------------------------------
+    "Assistent": "Assistant",
+    "PR-Assistent": "PR assistant",
+    "Portfolio": "Portfolio",
+    "Fragen": "Ask",
+    "Frage stellen…": "Ask a question…",
+    "Fragen zur Berichterstattung auf dieser Seite":
+        "Ask about the coverage on this page",
+    "Fragen zur Berichterstattung, die gerade auf dem Schirm ist. Der Assistent sieht Schlagzeilen und Kurzfassungen — nicht die vollständigen Artikel — und entscheidet nichts, er schlägt vor.":
+        "Ask about the coverage currently on screen. The assistant sees headlines "
+        "and short summaries — not full articles — and decides nothing, it suggests.",
+    "Was sind heute die drei wichtigsten Punkte?":
+        "What are today's three most important points?",
+    "Wo müssen wir reagieren, wo besser schweigen?":
+        "Where must we respond, and where is silence better?",
+    "Welches Narrativ setzt sich gerade durch?":
+        "Which narrative is taking hold right now?",
+    "Tage": "days",
+}
+
+_TABLES = {"de": {}, "en": _EN}
+
+
+def normalize(language: str | None) -> str:
+    """A supported language code, defaulting to German."""
+    code = (language or "").strip().lower()[:2]
+    return code if code in LANGUAGES else DEFAULT_LANGUAGE
+
+
+def translate(text: str, language: str | None = None) -> str:
+    """``text`` in ``language``; the German original when untranslated."""
+    return _TABLES[normalize(language)].get(text, text)
+
+
+def known_keys() -> tuple[str, ...]:
+    """Every German string with a translation — what the tests check against."""
+    return tuple(_EN)
+
+
+__all__ = [
+    "COOKIE_MAX_AGE",
+    "COOKIE_NAME",
+    "DEFAULT_LANGUAGE",
+    "LANGUAGES",
+    "known_keys",
+    "normalize",
+    "translate",
+]

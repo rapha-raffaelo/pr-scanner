@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Einstellungen · NewsPulse{% endblock %}
+{% block title %}{{ translator(request)("Einstellungen") }} · NewsPulse{% endblock %}
 
 {# Render one preview cell: a list-valued field is joined, a scalar shown as-is. #}
 {% macro cell(value) %}
@@ -11,6 +11,7 @@
 {% endmacro %}
 
 {% block content %}
+{% set t = translator(request) %}
 <style>
   /* Settings-specific layout. Reuses the app-wide CSS custom properties defined
      in app.css (:root), so this page inherits the dashboard palette without
@@ -140,12 +141,12 @@
 </style>
 
 <div class="settings">
-  <h1>Einstellungen</h1>
+  <h1>{{ t("Einstellungen") }}</h1>
 
   <div class="settings-grid">
     <!-- ── Sweep trigger: the one daily action, so it leads the page ── -->
-    <section class="panel panel--wide" aria-label="Lauf starten">
-      <h2>Lauf starten</h2>
+    <section class="panel panel--wide" aria-label="{{ t('Lauf starten') }}">
+      <h2>{{ t("Lauf starten") }}</h2>
       {% if run_error %}<div class="notice notice--error">{{ run_error }}</div>{% endif %}
       {% if run_started is not none %}
         <div class="notice notice--ok">
@@ -159,15 +160,15 @@
       {% endif %}
       <form method="post" action="/settings/run" class="run-form">
         <div class="filter-field">
-          <label for="since_days">Zeitraum</label>
+          <label for="since_days">{{ t("Zeitraum") }}</label>
           <select id="since_days" name="since_days">
-            <option value="">Seit letztem Lauf (Standard)</option>
+            <option value="">{{ t("Seit letztem Lauf (Standard)") }}</option>
             {% for d in backfill_days %}
-              <option value="{{ d }}">Letzte {{ d }} Tage nachladen</option>
+              <option value="{{ d }}">{{ t("Letzte") }} {{ d }} {{ t("Tage nachladen") }}</option>
             {% endfor %}
           </select>
         </div>
-        <button type="submit">Jetzt aktualisieren</button>
+        <button type="submit">{{ t("Jetzt aktualisieren") }}</button>
       </form>
       <p class="panel-hint">
         Ein Nachlauf erweitert nur das akzeptierte Zeitfenster — ein Feed liefert
@@ -179,7 +180,7 @@
 
     <!-- ── Clients: add + edit + deactivate (NP-02 CRUD service) ── -->
     <section class="panel panel--wide" aria-label="Clients">
-      <h2>Clients</h2>
+      <h2>{{ t("Clients") }}</h2>
       {% if client_error %}
         <div class="notice notice--error">{{ client_error }}</div>
       {% endif %}
@@ -187,35 +188,35 @@
       {# Collapsed by default: adding is occasional, reading the portfolio is
          constant, so the six add-fields must not sit permanently above the table. #}
       <details class="add-client-toggle"{% if client_error and not edit_id %} open{% endif %}>
-        <summary>+ Client hinzufügen</summary>
+        <summary>{{ t("+ Client hinzufügen") }}</summary>
         <form method="post" action="/settings/clients" class="add-client">
           <div class="import-fields">
-            <div><label for="new-name">Name*</label><input type="text" id="new-name" name="name" required></div>
-            <div><label for="new-industry">Branche</label><input type="text" id="new-industry" name="industry"></div>
-            <div><label for="new-country">Land</label><input type="text" id="new-country" name="country" value="{{ default_country }}" maxlength="2"></div>
-            <div><label for="new-aliases">Aliasse</label><input type="text" id="new-aliases" name="aliases" placeholder="Komma/Semikolon"></div>
-            <div><label for="new-keywords">Suchbegriffe</label><input type="text" id="new-keywords" name="keywords" placeholder="Komma/Semikolon"></div>
-            <div><label for="new-topics">Alarm-Themen</label><input type="text" id="new-topics" name="alert_topics" placeholder="Komma/Semikolon"></div>
-            <div><label for="new-website">Website</label><input type="text" id="new-website" name="website" placeholder="zalando.de — für das Logo"></div>
+            <div><label for="new-name">{{ t("Name") }}*</label><input type="text" id="new-name" name="name" required></div>
+            <div><label for="new-industry">{{ t("Branche") }}</label><input type="text" id="new-industry" name="industry"></div>
+            <div><label for="new-country">{{ t("Land") }}</label><input type="text" id="new-country" name="country" value="{{ default_country }}" maxlength="2"></div>
+            <div><label for="new-aliases">{{ t("Aliasse") }}</label><input type="text" id="new-aliases" name="aliases" placeholder="Komma/Semikolon"></div>
+            <div><label for="new-keywords">{{ t("Suchbegriffe") }}</label><input type="text" id="new-keywords" name="keywords" placeholder="Komma/Semikolon"></div>
+            <div><label for="new-topics">{{ t("Alarm-Themen") }}</label><input type="text" id="new-topics" name="alert_topics" placeholder="Komma/Semikolon"></div>
+            <div><label for="new-website">{{ t("Website") }}</label><input type="text" id="new-website" name="website" placeholder="zalando.de — für das Logo"></div>
           </div>
-          <button type="submit">Client hinzufügen</button>
+          <button type="submit">{{ t("+ Client hinzufügen") }}</button>
         </form>
       </details>
 
       {% if clients %}
-        <p class="table-caption">{{ clients | selectattr('active') | list | length }} aktiv · {{ clients | length }} gesamt</p>
+        <p class="table-caption">{{ clients | selectattr('active') | list | length }} {{ t("aktiv") }} · {{ clients | length }} {{ t("gesamt") }}</p>
         <div class="table-scroll">
         <table class="data data--clients">
           <thead>
             <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Rolle</th>
-              <th scope="col">Branche</th>
-              <th scope="col">Land</th>
-              <th scope="col">Aliasse</th>
-              <th scope="col">Suchbegriffe</th>
-              <th scope="col">Alarm-Themen</th>
-              <th scope="col" class="col-actions">Aktionen</th>
+              <th scope="col">{{ t("Name") }}</th>
+              <th scope="col">{{ t("Rolle") }}</th>
+              <th scope="col">{{ t("Branche") }}</th>
+              <th scope="col">{{ t("Land") }}</th>
+              <th scope="col">{{ t("Aliasse") }}</th>
+              <th scope="col">{{ t("Suchbegriffe") }}</th>
+              <th scope="col">{{ t("Alarm-Themen") }}</th>
+              <th scope="col" class="col-actions">{{ t("Aktionen") }}</th>
             </tr>
           </thead>
           <tbody>
@@ -223,7 +224,7 @@
               <tr id="client-{{ client.id }}" class="client-tr{% if not client.active %} client-tr--inactive{% endif %}">
                 <td class="cell-name">
                   <a href="/client/{{ client.id }}">{{ client.name }}</a>
-                  {% if not client.active %}<span class="tag tag--inactive">inaktiv</span>{% endif %}
+                  {% if not client.active %}<span class="tag tag--inactive">{{ t("inaktiv") }}</span>{% endif %}
                 </td>
                 <td>
                   {# One click flips the role. A competitor is monitored the same
@@ -231,7 +232,7 @@
                   <form method="post" action="/settings/clients/{{ client.id }}/competitor">
                     <button type="submit" class="rolebtn {{ 'rolebtn--rival' if client.is_competitor else 'rolebtn--mandate' }}"
                             title="Umschalten — ein Wettbewerber wird beobachtet, aber nie an ihn berichtet">
-                      {{ 'Wettbewerb' if client.is_competitor else 'Mandant' }}
+                      {{ t('Wettbewerb') if client.is_competitor else t('Mandant') }}
                     </button>
                   </form>
                 </td>
@@ -246,17 +247,17 @@
                 </td>
                 <td class="col-actions">
                   {% if edit_id == client.id %}
-                    <a class="rowlink" href="/settings">Schließen</a>
+                    <a class="rowlink" href="/settings">{{ t("Schließen") }}</a>
                   {% else %}
-                    <a class="rowlink" href="/settings?edit={{ client.id }}#client-{{ client.id }}">Bearbeiten</a>
+                    <a class="rowlink" href="/settings?edit={{ client.id }}#client-{{ client.id }}">{{ t("Bearbeiten") }}</a>
                   {% endif %}
                   {% if client.active %}
                     <form method="post" action="/settings/clients/{{ client.id }}/deactivate">
-                      <button type="submit" class="linkbtn linkbtn--danger">Deaktivieren</button>
+                      <button type="submit" class="linkbtn linkbtn--danger">{{ t("Deaktivieren") }}</button>
                     </form>
                   {% else %}
                     <form method="post" action="/settings/clients/{{ client.id }}/reactivate">
-                      <button type="submit" class="linkbtn">Reaktivieren</button>
+                      <button type="submit" class="linkbtn">{{ t("Reaktivieren") }}</button>
                     </form>
                   {% endif %}
                 </td>
@@ -274,8 +275,8 @@
                         <div><label for="e-topics-{{ client.id }}">Alarm-Themen</label><input id="e-topics-{{ client.id }}" type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}" placeholder="Komma/Semikolon"></div>
                       </div>
                       <div class="actions">
-                        <button type="submit">Speichern</button>
-                        <a class="rowlink" href="/settings">Abbrechen</a>
+                        <button type="submit">{{ t("Speichern") }}</button>
+                        <a class="rowlink" href="/settings">{{ t("Abbrechen") }}</a>
                       </div>
                     </form>
                   </td>
@@ -286,13 +287,13 @@
         </table>
         </div>
       {% else %}
-        <p class="rail__empty">Noch keine Clients. Über das Formular oder den Import anlegen.</p>
+        <p class="rail__empty">{{ t("Noch keine Clients. Über das Formular oder den Import anlegen.") }}</p>
       {% endif %}
     </section>
 
     <!-- ── Import: mapping + preview before commit (NP-02 import) ── -->
     <section class="panel panel--wide" aria-label="Import">
-      <h2>Import (Excel / CSV)</h2>
+      <h2>{{ t("Import (Excel / CSV)") }}</h2>
       {% if import_success is not none %}
         <div class="notice notice--ok">{{ import_success }} Client(s) importiert.</div>
       {% endif %}
@@ -317,8 +318,8 @@
                   hx-post="/settings/import/preview"
                   hx-target="#import-result"
                   hx-select="#import-result"
-                  hx-swap="outerHTML">Vorschau</button>
-          <button type="submit">Importieren</button>
+                  hx-swap="outerHTML">{{ t("Vorschau") }}</button>
+          <button type="submit">{{ t("Importieren") }}</button>
         </div>
       </form>
 
@@ -327,7 +328,7 @@
           <div class="notice notice--error">{{ import_error }}</div>
         {% elif import_rows is not none %}
           <p class="panel-hint">{{ import_row_total }} Zeile(n) — noch nicht importiert. Auf „Importieren“ klicken, um zu übernehmen.
-            {% if import_row_total > import_rows | length %}(Vorschau zeigt die ersten {{ import_rows | length }}.){% endif %}</p>
+            {% if import_row_total > import_rows | length %}({{ t("Vorschau zeigt die ersten") }} {{ import_rows | length }}.){% endif %}</p>
           <table class="data">
             <thead>
               <tr>{% for field in map_fields %}<th>{{ field }}</th>{% endfor %}</tr>
@@ -344,7 +345,7 @@
 
     <!-- ── Alert threshold (persists to settings table) ── -->
     <section class="panel" aria-label="Alarm-Schwellenwert">
-      <h2>Alarm-Schwellenwert</h2>
+      <h2>{{ t("Alarm-Schwellenwert") }}</h2>
       {% if threshold_error %}<div class="notice notice--error">{{ threshold_error }}</div>{% endif %}
       <p class="panel-hint">Ab dieser Wichtigkeit (0–10) wird ein Artikel als Alarm markiert. Wirkt nur auf künftige Läufe.</p>
       <form method="post" action="/settings/threshold">
@@ -354,7 +355,7 @@
             <option value="{{ value }}"{% if value == alert_threshold %} selected{% endif %}>{{ value }}</option>
           {% endfor %}
         </select>
-        <button type="submit">Speichern</button>
+        <button type="submit">{{ t("Speichern") }}</button>
       </form>
     </section>
 
@@ -376,11 +377,11 @@
 
     <!-- ── Run history ── -->
     <section class="panel panel--wide" aria-label="Läufe">
-      <h2>Letzte Läufe</h2>
+      <h2>{{ t("Letzte Läufe") }}</h2>
       {% if runs %}
         <table class="data">
           <thead>
-            <tr><th>Start</th><th>Status</th><th>Artikel</th><th>Fehler</th></tr>
+            <tr><th>{{ t("Start") }}</th><th>{{ t("Status") }}</th><th>{{ t("Artikel") }}</th><th>{{ t("Fehler") }}</th></tr>
           </thead>
           <tbody>
             {% for run in runs %}
