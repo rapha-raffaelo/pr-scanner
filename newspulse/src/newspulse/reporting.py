@@ -51,45 +51,59 @@ def _window(days: int, now: dt.datetime | None = None) -> dt.datetime:
 
 
 def share_of_voice(
-    session: Session, *, days: int = 30, now: dt.datetime | None = None
+    session: Session,
+    client: Client,
+    *,
+    days: int = 30,
+    now: dt.datetime | None = None,
 ) -> list[VoiceShare]:
-    """Mentions per monitored company over the last ``days``, mandates and
-    competitors together, ordered by volume.
+    """``client`` and its own competitors by mention volume over ``days``.
 
-    Share is computed over the monitored set only. It is explicitly *not* a
-    claim about the whole German media landscape — it answers "of the coverage
-    this tool watches, how much was ours", which is the question a portfolio
-    review actually asks.
+    Scoped to one client's comparison set, never the whole portfolio: share of
+    voice is a statement about a *market*. Computed across unrelated mandates it
+    would produce a number like "Zalando holds 60% versus Siemens", which is not
+    a fact about anything.
+
+    The client is always included, even at zero mentions — a quiet month is a
+    finding, and dropping the row would make the comparison look like it was
+    never run. Competitors with no coverage appear at zero for the same reason.
     """
     since = _window(days, now)
+    members = [client, *client.competitors]
+    by_id = {member.id: member for member in members}
+
+    counted = dict.fromkeys(by_id, (0, 0))
     rows = session.execute(
         select(
-            Client.id,
-            Client.name,
-            Client.is_competitor,
+            Analysis.client_id,
             func.count(Analysis.id),
             func.sum(func.coalesce(Analysis.is_alert, 0)),
         )
-        .join(Analysis, Analysis.client_id == Client.id)
         .join(Article, Article.id == Analysis.article_id)
         .where(
+            Analysis.client_id.in_(by_id),
             Analysis.relevance_score >= _MIN_RELEVANCE,
             Article.published_at >= since,
         )
-        .group_by(Client.id, Client.name, Client.is_competitor)
+        .group_by(Analysis.client_id)
     ).all()
+    for client_id, mentions, alerts in rows:
+        counted[client_id] = (mentions, int(alerts or 0))
 
-    total = sum(row[3] for row in rows) or 1  # guard the division, not the data
+    total = sum(mentions for mentions, _ in counted.values())
     shares = [
         VoiceShare(
-            client_id=row[0],
-            name=row[1],
-            is_competitor=bool(row[2]),
-            mentions=row[3],
-            alerts=int(row[4] or 0),
-            share=row[3] / total,
+            client_id=member.id,
+            name=member.name,
+            # Relative to the client the comparison is *about*, not the global
+            # flag: a mandate can be someone else's benchmark.
+            is_competitor=member.id != client.id,
+            mentions=counted[member.id][0],
+            alerts=counted[member.id][1],
+            # No coverage at all is 0%, not a division error.
+            share=(counted[member.id][0] / total) if total else 0.0,
         )
-        for row in rows
+        for member in members
     ]
     return sorted(shares, key=lambda v: v.mentions, reverse=True)
 

@@ -428,3 +428,85 @@ def test_clients_index_excludes_irrelevant_and_handles_empty(factory, client):
     body = client.get("/clients").text
     card = body.split("Alpha AG", 1)[1]
     assert "<b>0</b> im Archiv" in card
+
+
+# --- Per-client competitor sets ------------------------------------------------
+
+
+def test_competitor_can_be_linked_and_unlinked_from_the_client_page(factory, client):
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        b = _seed_client(s, name="Beta AG")
+        s.commit()
+        a_id, b_id = a.id, b.id
+
+    client.post(f"/client/{a_id}/competitors", data={"competitor_id": b_id},
+                follow_redirects=False)
+    with factory() as s:
+        assert [c.name for c in s.get(Client, a_id).competitors] == ["Beta AG"]
+
+    client.post(f"/client/{a_id}/competitors/{b_id}/remove", follow_redirects=False)
+    with factory() as s:
+        assert s.get(Client, a_id).competitors == []
+        # Removing a link must not touch the company itself.
+        assert s.get(Client, b_id) is not None
+
+
+def test_linking_is_one_directional(factory, client):
+    """Benchmarking a mandate against a market leader must not add the mandate to
+    the leader's own comparison set."""
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        b = _seed_client(s, name="Beta AG")
+        s.commit()
+        a_id, b_id = a.id, b.id
+
+    client.post(f"/client/{a_id}/competitors", data={"competitor_id": b_id},
+                follow_redirects=False)
+    with factory() as s:
+        assert [c.name for c in s.get(Client, a_id).competitors] == ["Beta AG"]
+        assert s.get(Client, b_id).competitors == []
+
+
+def test_a_client_cannot_be_added_as_its_own_competitor(factory, client):
+    """The schema forbids the self-link; the route must give a no-op, not a 500."""
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        s.commit()
+        a_id = a.id
+
+    resp = client.post(f"/client/{a_id}/competitors", data={"competitor_id": a_id},
+                       follow_redirects=False)
+    assert resp.status_code == 303
+    with factory() as s:
+        assert s.get(Client, a_id).competitors == []
+
+
+def test_share_of_voice_panel_renders_the_comparison(factory, client):
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        b = _seed_client(s, name="Beta AG")
+        s.flush()
+        a.competitors.append(b)
+        _seed_article(s, client_obj=a, title="A story", url="https://ex.de/a",
+                      published_at=_local_noon(dt.date.today()))
+        _seed_article(s, client_obj=b, title="B story", url="https://ex.de/b",
+                      published_at=_local_noon(dt.date.today()))
+        s.commit()
+        a_id = a.id
+
+    body = client.get(f"/client/{a_id}").text
+    assert "Share of Voice" in body
+    assert "Beta AG" in body
+    assert "50.0%" in body
+
+
+def test_without_competitors_the_panel_explains_rather_than_showing_100_percent(
+    factory, client
+):
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        s.commit()
+        a_id = a.id
+    body = client.get(f"/client/{a_id}").text
+    assert "Noch keine Wettbewerber hinterlegt" in body

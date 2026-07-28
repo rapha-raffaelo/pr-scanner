@@ -30,6 +30,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy import Column, Table
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import JSON
 from sqlalchemy.ext.mutable import MutableList
@@ -143,6 +144,43 @@ class Base(DeclarativeBase):
     }
 
 
+# --- Per-client competitor sets -------------------------------------------------
+#
+# A competitor set belongs to a *client*, not to the portfolio: Zalando competes
+# with About You and Otto, Siemens with ABB. A portfolio-wide flag cannot express
+# that, and a share-of-voice number computed across unrelated industries is
+# meaningless — "Zalando vs Siemens" is not a market.
+#
+# Modelled as a relation rather than a JSON list of ids on the client. The other
+# JSON columns here (aliases, keywords, alert_topics) hold *values*; these are
+# *references* to other rows, and a reference the database cannot check is one
+# that will eventually dangle. The FKs cascade, so removing a company removes its
+# links with it.
+#
+# Both directions are stored explicitly rather than inferred, so "X competes with
+# Y" does not silently imply the reverse — an agency may benchmark a mandate
+# against a market leader without wanting the leader's own page to list it.
+client_competitors = Table(
+    "client_competitors",
+    Base.metadata,
+    Column(
+        "client_id",
+        Integer,
+        ForeignKey("clients.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "competitor_id",
+        Integer,
+        ForeignKey("clients.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    # A company is not its own competitor; the check makes that a schema
+    # guarantee rather than something every caller has to remember.
+    CheckConstraint("client_id != competitor_id", name="ck_client_competitors_distinct"),
+)
+
+
 class Client(Base):
     """A tracked portfolio company."""
 
@@ -186,6 +224,17 @@ class Client(Base):
     )
     created_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    # The companies this client is benchmarked against. Each is itself a Client
+    # row, so a competitor is matched, analysed and archived exactly like a
+    # mandate — which is what makes its mention count comparable at all.
+    competitors: Mapped[list["Client"]] = relationship(
+        "Client",
+        secondary=client_competitors,
+        primaryjoin=lambda: Client.id == client_competitors.c.client_id,
+        secondaryjoin=lambda: Client.id == client_competitors.c.competitor_id,
+        lazy="selectin",
     )
 
     analyses: Mapped[list["Analysis"]] = relationship(
@@ -389,6 +438,7 @@ __all__ = [
     "RunStatus",
     "TriageState",
     "Client",
+    "client_competitors",
     "Article",
     "Analysis",
     "Advisory",

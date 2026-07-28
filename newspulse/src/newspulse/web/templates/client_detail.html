@@ -29,6 +29,62 @@
   </dl>
 </section>
 
+{# Share of voice, scoped to this client's own comparison set. A portfolio-wide
+   version would average unrelated markets together, which says nothing. #}
+<section class="panel panel--wide sov-panel">
+  <h2>Share of Voice <span class="colhead__note">letzte 30 Tage</span></h2>
+  {% if voice | length > 1 %}
+    <table class="data sov">
+      <thead><tr><th>Unternehmen</th><th>Rolle</th><th>Meldungen</th><th>Alerts</th><th>Anteil</th><th></th></tr></thead>
+      <tbody>
+        {% for v in voice %}
+          <tr>
+            <td class="cell-name"><a href="/client/{{ v.client_id }}">{{ v.name }}</a></td>
+            <td>{{ 'Wettbewerber' if v.is_competitor else 'Mandant' }}</td>
+            <td>{{ v.mentions }}</td>
+            <td>{{ v.alerts }}</td>
+            <td>
+              <span class="sov-bar" style="width: {{ (v.share * 100) | round(0, 'floor') | int }}%"></span>
+              {{ (v.share * 100) | round(1) }}%
+            </td>
+            <td>
+              {% if v.is_competitor %}
+                <form method="post" action="/client/{{ client.id }}/competitors/{{ v.client_id }}/remove">
+                  <button type="submit" class="linkbtn linkbtn--danger">entfernen</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="panel-hint">
+      Noch keine Wettbewerber hinterlegt — ohne Vergleichsgruppe ist ein Anteil
+      immer 100 % und damit ohne Aussage.
+    </p>
+  {% endif %}
+
+  {% if candidates %}
+    <form method="post" action="/client/{{ client.id }}/competitors" class="run-form">
+      <div class="filter-field">
+        <label for="competitor_id">Wettbewerber hinzufügen</label>
+        <select id="competitor_id" name="competitor_id">
+          {% for c in candidates %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit">Hinzufügen</button>
+    </form>
+    <p class="panel-hint">
+      Ein Wettbewerber ist selbst ein überwachtes Unternehmen — nur so ist seine
+      Meldungszahl vergleichbar. Unter Einstellungen anlegen und dort als
+      <em>Wettbewerber</em> markieren, damit er nicht im Morgen-Digest auftaucht.
+    </p>
+  {% endif %}
+</section>
+
 {# All filters live in one form, so submitting sends every value together and the
    server-side WHERE clauses compose. HTMX swaps only #archive-list (hx-select),
    leaving the form's own values in place; when HTMX is absent the form falls back

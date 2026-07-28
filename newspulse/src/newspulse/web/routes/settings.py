@@ -535,6 +535,42 @@ def toggle_competitor_route(
     return RedirectResponse("/settings", status_code=_SEE_OTHER)
 
 
+@router.post("/client/{client_id}/competitors")
+def add_competitor_route(
+    client_id: int, competitor_id: str = Form(...), session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Add a company to this client's comparison set.
+
+    One-directional on purpose: benchmarking a mandate against a market leader
+    should not put the mandate into the leader's own comparison.
+    """
+    client = session.get(Client, client_id)
+    raw = (competitor_id or "").strip()
+    if client is not None and raw.isdigit():
+        other = session.get(Client, int(raw))
+        # The schema forbids a self-link; refuse it here too so the operator
+        # gets a no-op rather than a 500 from the CHECK constraint.
+        if other is not None and other.id != client.id and other not in client.competitors:
+            client.competitors.append(other)
+            session.commit()
+    return RedirectResponse(f"/client/{client_id}", status_code=_SEE_OTHER)
+
+
+@router.post("/client/{client_id}/competitors/{competitor_id}/remove")
+def remove_competitor_route(
+    client_id: int, competitor_id: int, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Remove a company from this client's comparison set. The company itself and
+    its archive are untouched — only the link is dropped."""
+    client = session.get(Client, client_id)
+    if client is not None:
+        other = session.get(Client, competitor_id)
+        if other is not None and other in client.competitors:
+            client.competitors.remove(other)
+            session.commit()
+    return RedirectResponse(f"/client/{client_id}", status_code=_SEE_OTHER)
+
+
 @router.post("/settings/clients")
 def add_client_route(
     request: Request,

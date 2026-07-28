@@ -380,3 +380,21 @@ table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04e
 .urgency-heute { background: #fef3c7; color: #a16207; }
 .urgency-diese_woche { background: #e0f2fe; color: #0369a1; }
 .urgency-laufend { background: #eef0f3; color: #6b7280; }
+.sov-panel { margin-bottom: 16px; }
+.sov-panel h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 0.85rem; }
+.sov-panel .panel-hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.sov form { display: inline; }
+
+/* Row actions on the client page. The settings view defines these in its own
+   inline <style>; without them here the buttons render as default boxes. */
+.sov .linkbtn {
+  font: inherit;
+  font-size: 12px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+.sov .linkbtn:hover { text-decoration: underline; }
+.sov .linkbtn--danger { color: var(--alert); }

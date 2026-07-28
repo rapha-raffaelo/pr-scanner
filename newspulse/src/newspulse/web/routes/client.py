@@ -365,7 +365,6 @@ def clients_index(
         "clients.html",
         {
             "rows": rows,
-            "voice": share_of_voice(session, days=30),
             "last_run": _fetch_last_run(session),
             "header_date": day,
         },
@@ -427,6 +426,13 @@ def client_detail(
             "pagination": _paginate(
                 client_id, filters, current_page, total_pages, total
             ),
+            "voice": share_of_voice(session, client, days=30),
+            # Every other company, so a competitor can be added from this page.
+            "candidates": [
+                c for c in session.scalars(select(Client).order_by(Client.name)).all()
+                if c.id != client.id and c not in client.competitors
+            ],
+            "competitors": list(client.competitors),
             "last_run": _fetch_last_run(session),
             # The shared header dates every page; the archive view spans many
             # days, so it shows today.
