@@ -80,6 +80,7 @@ class ClientProfile:
     keywords: list[str]
     alert_topics: list[str]
     active: bool
+    logo_url: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +138,7 @@ def _profile(client: Client) -> ClientProfile:
         keywords=list(client.keywords),
         alert_topics=list(client.alert_topics),
         active=client.active,
+        logo_url=client.logo_url,
     )
 
 
@@ -336,6 +338,7 @@ class PortfolioRow:
     industry: str | None
     alert_topics: list[str]
     active: bool
+    logo_url: str | None
     is_competitor: bool
     logo_url: str | None
     competitors: tuple

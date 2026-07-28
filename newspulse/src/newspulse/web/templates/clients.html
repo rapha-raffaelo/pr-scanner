@@ -9,7 +9,7 @@
 {% if rows %}
   <div class="portfolio">
     {% for row in rows %}
-      <div class="pcard{% if not row.active %} pcard--inactive{% endif %}">
+      <a class="pcard pcard--link{% if not row.active %} pcard--inactive{% endif %}" href="/client/{{ row.id }}">
         <div class="phead">
           {% if row.logo_url %}
             <img class="plogo" src="{{ row.logo_url | logo_src }}" alt="{{ row.name }}">
@@ -17,7 +17,7 @@
             <span class="plogo plogo--mono" style="background: {{ row.name | brand_colour }}">{{ row.name | monogram }}</span>
           {% endif %}
           <div>
-            <div class="pname"><a href="/client/{{ row.id }}">{{ row.name }}</a></div>
+            <div class="pname">{{ row.name }}</div>
             <div class="pind">
               {{ row.industry or t('Ohne Branche') }}{% if not row.active %} · {{ t("inaktiv") }}{% endif %}
             </div>
@@ -51,7 +51,7 @@
             {% for topic in row.alert_topics %}<span class="ptopic">{{ topic }}</span>{% endfor %}
           </div>
         {% endif %}
-      </div>
+      </a>
     {% endfor %}
   </div>
   {% if voice %}

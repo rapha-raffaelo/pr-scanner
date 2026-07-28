@@ -7,13 +7,14 @@
 
 {% block content %}
 {% set t = translator(request) %}
+{% set active = 'map' %}
+{% include '_client_tabs.html' %}
 
 <div class="client-profile">
-  <h1>{{ t("Coverage Map") }} — {{ map.client }}</h1>
   <p class="panel-hint">
     {{ t("Wer schreibt über wen") }} — {{ days }} {{ t("Tage") }}.
     {{ t("Die Lücken oben sind Publikationen, die regelmäßig über den Wettbewerb berichten und nie über") }}
-    {{ map.client }} {{ t("also eine Pitch-Liste, keine Statistik.") }}
+    {{ map.client }} — {{ t("also eine Pitch-Liste, keine Statistik.") }}
   </p>
 </div>
 
@@ -111,5 +112,5 @@
     </tbody>
   </table>
 </div>
-{% endblock %}
 </details>
+{% endblock %}

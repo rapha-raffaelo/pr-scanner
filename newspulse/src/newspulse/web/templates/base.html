@@ -76,34 +76,44 @@
   <button class="drawer-open" type="button" data-drawer-open
           title="{{ t('Kommunikationsstrategie zur Berichterstattung auf dieser Seite') }}"><img src="{{ url_for('static', path='captain.svg') }}" alt="" class="cc-icon">{{ t("Captain Comms") }}</button>
 
-  <aside class="drawer" id="assistant-drawer" hidden aria-label="{{ t('Captain Comms') }}">
+  <aside class="drawer" id="assistant-drawer"{% if request.query_params.get("assistant") %}{% else %} hidden{% endif %} aria-label="{{ t('Captain Comms') }}">
     <header class="drawer__head">
-      <div>
-        <span class="drawer__title"><img src="{{ url_for('static', path='captain.svg') }}" alt="" class="cc-icon cc-icon--lg"><strong>{{ t("Captain Comms") }}</strong></span>
-        <span class="drawer__ctx" id="drawer-context">{{ assistant_context or t('Portfolio') }}</span>
-      </div>
-      <button type="button" class="drawer__close" data-drawer-close aria-label="{{ t('Schließen') }}">×</button>
+      <span class="drawer__title">
+        <img src="{{ url_for('static', path='captain.svg') }}" alt="" class="cc-icon cc-icon--lg">
+        <span>
+          <strong>{{ t("Captain Comms") }}</strong>
+          <span class="drawer__ctx" id="drawer-context">{% if client is defined and client %}{{ client.name }}{% else %}{{ t('Portfolio') }}{% endif %}</span>
+        </span>
+      </span>
+      <span class="drawer__acts">
+        <button type="button" class="drawer__reset" data-drawer-reset
+                title="{{ t('Gespräch zurücksetzen') }}">{{ t("Neu") }}</button>
+        <button type="button" class="drawer__close" data-drawer-close aria-label="{{ t('Schließen') }}">×</button>
+      </span>
     </header>
 
     <div class="drawer__body" id="drawer-body">
-      <div class="drawer__intro"><p class="drawer__hint">
-        <em>{{ t("Zahlen sagen mehr als jede Selbstdarstellung.") }}</em><br>{{ t("Strategische Einordnung der Berichterstattung, die gerade auf dem Schirm ist — belegt aus dem Archiv. Captain Comms sieht Schlagzeilen und Kurzfassungen, nicht die vollständigen Artikel, und entscheidet nichts: er berät.") }}
-      </p>
-      <div class="drawer__chips">
-        {% for suggestion in assistant_suggestions or [
-             t('Welches Narrativ setzt sich gerade durch — und wer treibt es?'),
-             t('Wo müssen wir reagieren, wo ist Schweigen die bessere Strategie?'),
-             t('Welche Botschaft sollten wir diese Woche setzen?'),
-             t('Was übersehen wir gerade?')] %}
-          <button type="button" class="drawer__chip" data-ask="{{ suggestion }}">{{ suggestion }}</button>
-        {% endfor %}
-      </div>
+      {# The empty state carries his thesis, so the first thing read is what he
+         is for rather than an input box waiting to be filled. #}
+      <div class="drawer__intro" id="drawer-intro">
+        <img src="{{ url_for('static', path='captain.svg') }}" alt="" class="drawer__hero">
+        <p class="drawer__motto">{{ t("Zahlen sagen mehr als jede Selbstdarstellung.") }}</p>
+        <p class="drawer__hint">{{ t("Strategische Einordnung der Berichterstattung, die gerade auf dem Schirm ist — belegt aus dem Archiv. Captain Comms sieht Schlagzeilen und Kurzfassungen, nicht die vollständigen Artikel, und entscheidet nichts: er berät.") }}</p>
+        <div class="drawer__chips">
+          {% for suggestion in assistant_suggestions or [
+               t('Welches Narrativ setzt sich gerade durch — und wer treibt es?'),
+               t('Wo müssen wir reagieren, wo ist Schweigen die bessere Strategie?'),
+               t('Welche Botschaft sollten wir diese Woche setzen?'),
+               t('Was übersehen wir gerade?')] %}
+            <button type="button" class="drawer__chip" data-ask="{{ suggestion }}">{{ suggestion }}</button>
+          {% endfor %}
+        </div>
       </div>
     </div>
 
     <form class="drawer__ask" id="drawer-form">
       <input type="text" id="drawer-input" placeholder="{{ t('Frage stellen…') }}" autocomplete="off">
-      <button type="submit" id="drawer-send">{{ t("Fragen") }}</button>
+      <button type="submit" id="drawer-send" aria-label="{{ t('Fragen') }}">↑</button>
     </form>
   </aside>
 
@@ -111,21 +121,71 @@
   (function () {
     const drawer  = document.getElementById("assistant-drawer");
     const body    = document.getElementById("drawer-body");
+    const intro   = document.getElementById("drawer-intro");
     const form    = document.getElementById("drawer-form");
     const input   = document.getElementById("drawer-input");
     const send    = document.getElementById("drawer-send");
-    // Built server-side so a question inherits the page's own context.
     const CTX     = {{ assistant_ctx(request) | tojson }};
-    // The conversation lives here: `claude -p` is stateless per call, so the
-    // transcript is replayed with each turn to give the model continuity.
-    const history = [];
-    let source    = null;
+    const AVATAR  = {{ url_for('static', path='captain.svg') | string | tojson }};
 
-    const openDrawer  = () => { drawer.hidden = false; input.focus(); };
+    // One thread per subject, held in sessionStorage: the conversation survives
+    // navigating between Heute, the archive and a client page, but ends with the
+    // tab. A PR conversation is about a moment; resuming last week's thread
+    // against this week's coverage would be worse than starting fresh.
+    const KEY = "captaincomms:" + (CTX.client_id || "portfolio");
+    let history = [];
+    let source  = null;
+
+    try { history = JSON.parse(sessionStorage.getItem(KEY) || "[]"); } catch (e) { history = []; }
+
+    const persist = () => {
+      // A full session can outgrow the quota; the thread is a convenience, so
+      // drop it rather than let a storage error break the drawer.
+      try { sessionStorage.setItem(KEY, JSON.stringify(history.slice(-24))); } catch (e) {}
+    };
+
+    function bubble(cls, text) {
+      const el = document.createElement("div");
+      el.className = cls;
+      if (cls === "cc-msg cc-msg--a") {
+        const av = document.createElement("img");
+        av.src = AVATAR; av.alt = ""; av.className = "cc-msg__avatar";
+        el.appendChild(av);
+        const txt = document.createElement("div");
+        txt.className = "cc-msg__text";
+        if (text) txt.textContent = text;
+        el.appendChild(txt);
+      } else if (text) {
+        el.textContent = text;
+      }
+      body.appendChild(el);
+      body.scrollTop = body.scrollHeight;
+      return el;
+    }
+
+    const textOf = el => el.querySelector(".cc-msg__text") || el;
+
+    function restore() {
+      if (!history.length) return;
+      intro.hidden = true;
+      history.forEach(turn =>
+        bubble(turn.role === "user" ? "cc-msg cc-msg--q" : "cc-msg cc-msg--a", turn.text));
+    }
+    restore();
+
+    const openDrawer  = () => { drawer.hidden = false; input.focus(); body.scrollTop = body.scrollHeight; };
     const closeDrawer = () => { drawer.hidden = true; stop(); };
 
     document.querySelectorAll("[data-drawer-open]").forEach(el => el.onclick = openDrawer);
     document.querySelectorAll("[data-drawer-close]").forEach(el => el.onclick = closeDrawer);
+    document.querySelectorAll("[data-drawer-reset]").forEach(el => el.onclick = () => {
+      stop();
+      history = [];
+      persist();
+      body.querySelectorAll(".cc-msg, .cc-status").forEach(n => n.remove());
+      intro.hidden = false;
+      input.focus();
+    });
     document.addEventListener("keydown", e => { if (e.key === "Escape" && !drawer.hidden) closeDrawer(); });
 
     function stop() {
@@ -136,56 +196,50 @@
       input.disabled = false;
     }
 
-    function bubble(cls, text) {
-      const el = document.createElement("div");
-      el.className = cls;
-      if (text) el.textContent = text;
-      body.appendChild(el);
-      body.scrollTop = body.scrollHeight;
-      return el;
-    }
-
     function ask(question) {
       if (!question || send.disabled) return;
       stop();
-      // The intro only makes sense before the first turn.
-      body.querySelector(".drawer__intro")?.remove();
+      intro.hidden = true;
 
-      bubble("drawer__q", question);
-      const status = bubble("drawer__status", "…");
-      const answer = bubble("drawer__a");
+      bubble("cc-msg cc-msg--q", question);
+      const answer = bubble("cc-msg cc-msg--a");
+      const status = document.createElement("div");
+      status.className = "cc-status";
+      status.innerHTML = '<i></i><i></i><i></i>';
+      textOf(answer).appendChild(status);
 
       send.disabled = true;
       input.disabled = true;
       let reply = "";
 
       const params = new URLSearchParams({
-        q: question,
-        history: JSON.stringify(history),
-        ...CTX,
+        q: question, history: JSON.stringify(history), ...CTX,
       });
       source = new EventSource("/api/assistant/stream?" + params.toString());
 
-      source.addEventListener("status", e => { status.textContent = JSON.parse(e.data); });
+      source.addEventListener("status", e => { status.title = JSON.parse(e.data); });
       source.addEventListener("text", e => {
-        status.hidden = true;
+        status.remove();
         reply += JSON.parse(e.data);
-        answer.textContent = reply;
+        textOf(answer).textContent = reply;
         body.scrollTop = body.scrollHeight;
       });
       source.addEventListener("done", () => {
-        status.hidden = true;
+        status.remove();
         // Recorded only once complete, so a half-streamed answer never becomes
-        // context for the next question.
+        // context for the next question or gets restored as one.
         history.push({ role: "user", text: question });
         history.push({ role: "assistant", text: reply });
+        persist();
         stop();
         input.focus();
       });
       source.addEventListener("error", e => {
-        status.hidden = false;
-        status.className = "drawer__status drawer__status--error";
-        status.textContent = e.data ? JSON.parse(e.data) : {{ t("Verbindung unterbrochen.") | tojson }};
+        status.remove();
+        const err = document.createElement("div");
+        err.className = "cc-err";
+        err.textContent = e.data ? JSON.parse(e.data) : {{ t("Verbindung unterbrochen.") | tojson }};
+        textOf(answer).appendChild(err);
         stop();
       });
     }

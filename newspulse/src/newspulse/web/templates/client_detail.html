@@ -19,9 +19,11 @@
 
 {% block content %}
 {% set t = translator(request) %}
+{% set active = 'overview' %}
+{% include '_client_tabs.html' %}
 
 <section class="client-profile">
-  <h1>{{ client.name }}{% if not client.active %} <span class="tag">{{ t("inaktiv") }}</span>{% endif %}</h1>
+  {% if not client.active %}<p><span class="tag">{{ t("inaktiv") }}</span></p>{% endif %}
   <dl class="profile-meta">
     {% if client.industry %}<div><dt>{{ t("Branche") }}</dt><dd>{{ client.industry }}</dd></div>{% endif %}
     <div><dt>{{ t("Land") }}</dt><dd>{{ client.country }}</dd></div>

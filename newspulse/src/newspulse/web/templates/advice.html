@@ -3,9 +3,11 @@
 
 {% block content %}
 {% set t = translator(request) %}
+{% set active = 'advice' %}
+{% include '_client_tabs.html' %}
 
 <div class="client-profile">
-  <h1>{{ client.name }} — {{ t("Empfehlungen") }}</h1>
+  <h1>{{ t("Empfehlungen") }}</h1>
   <p class="panel-hint">
     {{ t("Vorschläge auf Basis der Berichterstattung der letzten") }} {{ advisory.covered_days if advisory else 30 }} {{ t("Tage") }}.
     <strong>{{ t("Entwurf, keine Entscheidung") }}</strong> — {{ t("jede Maßnahme nennt die Meldungen, auf die sie sich stützt, damit die Begründung nachprüfbar bleibt. Die Bewertung stützt sich nur auf Schlagzeilen und Kurzfassungen, nicht auf die vollständigen Artikel.") }}
