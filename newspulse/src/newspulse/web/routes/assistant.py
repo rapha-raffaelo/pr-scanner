@@ -26,6 +26,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ... import i18n
 from ...models import Analysis, Article, Client
 from ...streaming import StreamEvent, stream_claude
 from ..app import get_db
@@ -49,7 +50,7 @@ _MAX_QUESTION_CHARS = 500
 # evidence half of that, so the persona is not decoration: it is the standard the
 # answers are held to. Vague counsel ("Stakeholder einbinden") is precisely what
 # the character exists to reject.
-_SYSTEM_FRAME = """Du bist Captain Comms, Kommunikationsstratege, und berätst die
+_FRAME_DE = """Du bist Captain Comms, Kommunikationsstratege, und berätst die
 PR-Beraterin, die diesen Mandanten betreut.
 
 Dein Grundsatz: Es gibt zwei Arten von Kommunikation — die, die etwas behauptet,
@@ -74,6 +75,41 @@ Halte dich an diese Regeln:
   Formuliere entsprechend vorsichtig über Details.
 - Antworte knapp und auf Deutsch, in ganzen Sätzen, ohne Aufzählungswüsten."""
 
+# The same character in English. A translation of the *frame*, not of his
+# answers: he reasons in the reader's language from the start, rather than
+# writing German and having it converted, which would flatten the voice.
+#
+# Note the coverage itself stays German — the headlines are German press. He is
+# told so explicitly, because a model handed German source and asked for English
+# output otherwise tends to quote in one and write in the other.
+_FRAME_EN = """You are Captain Comms, a communications strategist, advising the
+PR consultant who runs this account.
+
+Your principle: there are two kinds of communication — the kind that asserts
+something, and the kind that can prove it. Numbers say more than any
+self-presentation. You argue from the coverage, never from instinct.
+
+Rules:
+
+- Evidence every claim. Cite the numbers in front of you — how many items, which
+  outlets, what period. An assessment without evidence is an assertion, and
+  assertions are precisely what you do not supply.
+- Think strategically, do not recapitulate. She can read the items herself; your
+  contribution is the read: which narrative is forming, who is driving it, where
+  it leads, what it means for the client's positioning.
+- Be concrete. "Engage stakeholders" is not a recommendation. Say WHAT, TO WHOM
+  and WITH WHAT MESSAGE.
+- Recommend silence where silence is right, and say why.
+- If the coverage does not support an answer, say so plainly. "Nothing here
+  speaks to that" is a better answer than a guessed one.
+- You see headlines and short summaries only, not full articles. Be
+  correspondingly careful about details.
+- The coverage below is German press and stays in German. Quote a headline as it
+  stands, but write your own analysis in English.
+- Answer concisely, in full sentences, without bullet-point sprawl."""
+
+_FRAMES = {"de": _FRAME_DE, "en": _FRAME_EN}
+
 # Turns of the running conversation replayed back to the model. The CLI is
 # stateless per call, so continuity has to be supplied — capped, because an
 # unbounded transcript would crowd out the coverage that grounds the answer.
@@ -82,7 +118,11 @@ _MAX_HISTORY_CHARS = 4_000
 
 
 def _coverage_lines(
-    session: Session, *, client_id: int | None, day: dt.date | None
+    session: Session,
+    *,
+    client_id: int | None,
+    day: dt.date | None,
+    translate=lambda text: text,
 ) -> tuple[str, str]:
     """``(label, rendered coverage)`` for the page the reader is on.
 
@@ -113,7 +153,7 @@ def _coverage_lines(
         conditions.append(
             Article.published_at >= dt.datetime.now(dt.UTC) - dt.timedelta(days=30)
         )
-        label_parts.append("letzte 30 Tage")
+        label_parts.append(translate("letzte 30 Tage"))
 
     rows = session.execute(
         select(Article, Analysis, Client)
@@ -131,7 +171,7 @@ def _coverage_lines(
         + (f" — {analysis.summary}" if analysis.summary else "")
         for i, (article, analysis, client) in enumerate(rows)
     ]
-    return " · ".join(label_parts), "\n".join(lines) or "(keine Berichterstattung)"
+    return " · ".join(label_parts), "\n".join(lines) or translate("(keine Berichterstattung)")
 
 
 def _parse_history(raw: str | None) -> list[tuple[str, str]]:
@@ -163,7 +203,7 @@ def _render_history(turns: list[tuple[str, str]]) -> str:
     budget = _MAX_HISTORY_CHARS
     # Newest first while trimming, so the most recent exchange always survives.
     for role, text in reversed(turns):
-        speaker = "BERATERIN" if role == "user" else "CAPTAIN COMMS"
+        speaker = "CONSULTANT" if role == "user" else "CAPTAIN COMMS"
         entry = f"{speaker}: {text}"
         if len(entry) > budget:
             break
@@ -172,13 +212,27 @@ def _render_history(turns: list[tuple[str, str]]) -> str:
     return "\n\n".join(reversed(lines))
 
 
+# Section headings, per language. They are part of the prompt the model reads,
+# so they follow the answer language rather than staying German.
+_HEADINGS = {
+    "de": ("KONTEXT", "BISHERIGES GESPRÄCH", "FRAGE"),
+    "en": ("CONTEXT", "CONVERSATION SO FAR", "QUESTION"),
+}
+
+
 def _build_prompt(
-    question: str, label: str, coverage: str, history: list[tuple[str, str]]
+    question: str,
+    label: str,
+    coverage: str,
+    history: list[tuple[str, str]],
+    language: str = "de",
 ) -> str:
-    parts = [_SYSTEM_FRAME, "", f"KONTEXT ({label})", coverage]
+    frame = _FRAMES.get(language, _FRAME_DE)
+    context, conversation, ask = _HEADINGS.get(language, _HEADINGS["de"])
+    parts = [frame, "", f"{context} ({label})", coverage]
     if history:
-        parts += ["", "BISHERIGES GESPRÄCH", _render_history(history)]
-    parts += ["", "FRAGE", question]
+        parts += ["", conversation, _render_history(history)]
+    parts += ["", ask, question]
     return "\n".join(parts)
 
 
@@ -191,19 +245,29 @@ def assistant_stream(
     date: str | None = None,
     session: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Stream an answer to ``q`` about the coverage the reader is looking at."""
+    """Stream an answer to ``q`` about the coverage the reader is looking at.
+
+    The language comes from the same cookie the rest of the interface uses —
+    EventSource sends it automatically on a same-origin request — so Captain
+    Comms switches with the toggle rather than needing his own control.
+    """
     question = (q or "").strip()[:_MAX_QUESTION_CHARS]
+    language = i18n.normalize(request.cookies.get(i18n.COOKIE_NAME))
+    translate = lambda text: i18n.translate(text, language)  # noqa: E731
 
     def _events():
         if not question:
-            yield StreamEvent("error", "Keine Frage gestellt.").to_sse()
+            yield StreamEvent("error", translate("Keine Frage gestellt.")).to_sse()
             return
         label, coverage = _coverage_lines(
-            session, client_id=client_id, day=_parse_day(date) if date else None
+            session, client_id=client_id, day=_parse_day(date) if date else None,
+            translate=translate,
         )
-        yield StreamEvent("status", f"Kontext: {label}").to_sse()
-        prompt = _build_prompt(question, label, coverage, _parse_history(history))
-        for event in stream_claude(prompt):
+        yield StreamEvent("status", f'{translate("Kontext")}: {label}').to_sse()
+        prompt = _build_prompt(
+            question, label, coverage, _parse_history(history), language
+        )
+        for event in stream_claude(prompt, t=translate):
             yield event.to_sse()
 
     return StreamingResponse(

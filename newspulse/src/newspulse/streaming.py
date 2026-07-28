@@ -69,7 +69,9 @@ def _assistant_text(payload: dict) -> str:
     return "".join(parts)
 
 
-def stream_claude(prompt: str, *, timeout: int = _STREAM_TIMEOUT) -> Iterator[StreamEvent]:
+def stream_claude(
+    prompt: str, *, timeout: int = _STREAM_TIMEOUT, t=lambda text: text
+) -> Iterator[StreamEvent]:
     """Run ``claude -p`` and yield events as the answer forms.
 
     Never raises: a failure is an ``error`` event, because the caller is an open
@@ -77,6 +79,11 @@ def stream_claude(prompt: str, *, timeout: int = _STREAM_TIMEOUT) -> Iterator[St
     said. Always terminates with exactly one ``done`` or ``error``, so the
     browser can close the stream rather than waiting on a socket that will never
     speak again.
+
+    ``t`` translates the status and error text. The strings this yields are read
+    inside the drawer, so they follow the reader's language like the rest of the
+    interface; a German "Zeitüberschreitung" in an English drawer is exactly the
+    half-translated result the language work set out to avoid.
     """
     argv = [
         "claude", "-p", prompt,
@@ -96,13 +103,13 @@ def stream_claude(prompt: str, *, timeout: int = _STREAM_TIMEOUT) -> Iterator[St
             shell=False,
         )
     except FileNotFoundError:
-        yield StreamEvent("error", "claude CLI nicht gefunden.")
+        yield StreamEvent("error", t("claude CLI nicht gefunden."))
         return
     except OSError as exc:
-        yield StreamEvent("error", f"Start fehlgeschlagen: {exc}")
+        yield StreamEvent("error", f'{t("Start fehlgeschlagen")}: {exc}')
         return
 
-    yield StreamEvent("status", "verbunden")
+    yield StreamEvent("status", t("verbunden"))
     emitted = ""
     try:
         for line in process.stdout or ():
@@ -118,7 +125,7 @@ def stream_claude(prompt: str, *, timeout: int = _STREAM_TIMEOUT) -> Iterator[St
 
             kind = payload.get("type")
             if kind == "system" and payload.get("subtype") == "init":
-                yield StreamEvent("status", "denkt nach")
+                yield StreamEvent("status", t("denkt nach"))
             elif kind == "assistant":
                 full = _assistant_text(payload)
                 # The transport repeats the whole message; send only what is new.
@@ -132,27 +139,27 @@ def stream_claude(prompt: str, *, timeout: int = _STREAM_TIMEOUT) -> Iterator[St
                     emitted = full
                     yield StreamEvent("text", "\n" + full)
                 if len(emitted) > _MAX_CHARS:
-                    yield StreamEvent("error", "Antwort zu lang, abgebrochen.")
+                    yield StreamEvent("error", t("Antwort zu lang, abgebrochen."))
                     return
             elif kind == "result" or "is_error" in payload:
                 if payload.get("is_error"):
-                    yield StreamEvent("error", str(payload.get("result") or "Fehler"))
+                    yield StreamEvent("error", str(payload.get("result") or t("Fehler")))
                     return
 
         code = process.wait(timeout=timeout)
         if code != 0 and not emitted:
             stderr = (process.stderr.read() if process.stderr else "")[:300]
-            yield StreamEvent("error", f"claude beendet mit {code}: {stderr}".strip())
+            yield StreamEvent("error", f'{t("claude beendet mit")} {code}: {stderr}'.strip())
             return
         if not emitted:
-            yield StreamEvent("error", "Keine Antwort erhalten.")
+            yield StreamEvent("error", t("Keine Antwort erhalten."))
             return
         yield StreamEvent("done", "")
     except subprocess.TimeoutExpired:
-        yield StreamEvent("error", f"Zeitüberschreitung nach {timeout}s.")
+        yield StreamEvent("error", f'{t("Zeitüberschreitung nach")} {timeout}s.')
     except Exception as exc:  # noqa: BLE001 — an open socket must never see a traceback
         _log.exception("streaming failed")
-        yield StreamEvent("error", f"Unerwarteter Fehler: {exc}")
+        yield StreamEvent("error", f'{t("Unerwarteter Fehler")}: {exc}')
     finally:
         # The reader may disconnect mid-answer (closed drawer, navigation). Kill
         # the subprocess rather than leaving a `claude` process running for the

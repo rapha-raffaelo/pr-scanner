@@ -185,7 +185,7 @@
       source.addEventListener("error", e => {
         status.hidden = false;
         status.className = "drawer__status drawer__status--error";
-        status.textContent = e.data ? JSON.parse(e.data) : "Verbindung unterbrochen.";
+        status.textContent = e.data ? JSON.parse(e.data) : {{ t("Verbindung unterbrochen.") | tojson }};
         stop();
       });
     }

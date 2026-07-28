@@ -70,3 +70,38 @@ def test_the_prompt_includes_prior_turns_when_there_are_any():
     )
     assert "BISHERIGES GESPRÄCH" in prompt
     assert "Eine Krise." in prompt
+
+
+# --- Language ------------------------------------------------------------------
+
+
+def test_the_frame_follows_the_reader_s_language():
+    from newspulse.web.routes.assistant import _FRAME_DE, _FRAME_EN
+
+    de = _build_prompt("Was tun?", "Zalando", "[0] Meldung", [], "de")
+    en = _build_prompt("What now?", "Zalando", "[0] Meldung", [], "en")
+    assert _FRAME_DE in de and _FRAME_EN not in de
+    assert _FRAME_EN in en and _FRAME_DE not in en
+
+
+def test_section_headings_follow_the_language_too():
+    """They are part of the prompt the model reads, so leaving them German would
+    quietly pull the answer back towards German."""
+    en = _build_prompt("What now?", "Zalando", "[0] Meldung",
+                       [("user", "Earlier")], "en")
+    assert "CONTEXT (" in en and "QUESTION" in en and "CONVERSATION SO FAR" in en
+    assert "KONTEXT" not in en and "FRAGE" not in en
+
+
+def test_the_english_frame_says_the_coverage_stays_german():
+    """Handed German source and asked for English, a model otherwise tends to
+    quote in one language and write in the other."""
+    from newspulse.web.routes.assistant import _FRAME_EN
+
+    assert "German press" in _FRAME_EN
+
+
+def test_an_unknown_language_falls_back_to_the_german_frame():
+    from newspulse.web.routes.assistant import _FRAME_DE
+
+    assert _FRAME_DE in _build_prompt("?", "X", "y", [], "fr")

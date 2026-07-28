@@ -216,6 +216,21 @@ _EN: dict[str, str] = {
         "No clients yet. Add one with the form or the import.",
     # --- Assistant drawer ----------------------------------------------------
     "Captain Comms": "Captain Comms",
+    # Streaming status and failure text, read inside the drawer.
+    "Kontext": "Context",
+    "verbunden": "connected",
+    "denkt nach": "thinking",
+    "Keine Frage gestellt.": "No question asked.",
+    "(keine Berichterstattung)": "(no coverage)",
+    "claude CLI nicht gefunden.": "claude CLI not found.",
+    "Start fehlgeschlagen": "Could not start",
+    "claude beendet mit": "claude exited with",
+    "Zeitüberschreitung nach": "Timed out after",
+    "Unerwarteter Fehler": "Unexpected error",
+    "Antwort zu lang, abgebrochen.": "Answer too long, stopped.",
+    "Keine Antwort erhalten.": "No answer received.",
+    "Fehler": "Error",
+    "Verbindung unterbrochen.": "Connection lost.",
     "Kommunikationsstrategie zur Berichterstattung auf dieser Seite":
         "Communication strategy for the coverage on this page",
     "Zahlen sagen mehr als jede Selbstdarstellung.":
