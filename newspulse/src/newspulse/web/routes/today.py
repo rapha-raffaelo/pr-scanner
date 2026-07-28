@@ -36,6 +36,11 @@ _DATE_FORMAT = "%Y-%m-%d"
 # gate. (The analyzer contract is not yet built; this pins the include rule.)
 _MIN_RELEVANCE = 1
 
+# Above this many mandates the filter strip becomes a dropdown: a row of cards
+# is faster to hit while you can still take it in at a glance, and unusable once
+# it wraps to three lines.
+_CLIENT_CARD_LIMIT = 10
+
 # The zoneinfo db stores each zone under a ".../zoneinfo/<Area>/<City>" path;
 # the tail after this marker is the IANA name of an /etc/localtime symlink.
 _ZONEINFO_MARKER = "zoneinfo/"
@@ -86,6 +91,7 @@ class TodayItem:
     analysis_id: int
     triage_state: str
     tonality: str
+    client_id: int
     author: str | None
     headline: str
     url: str
@@ -184,6 +190,7 @@ def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
             analysis_id=analysis.id,
             triage_state=analysis.triage_state.value,
             tonality=analysis.tonality.value,
+            client_id=client.id,
             author=article.author,
             headline=article.title,
             url=article.url,
@@ -233,6 +240,7 @@ def today_view(
     request: Request,
     date: str | None = None,
     category: str | None = None,
+    client: int | None = None,
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Render the Today view for the current local day (or ``?date=``).
@@ -244,6 +252,25 @@ def today_view(
     """
     day = _parse_day(date)
     all_items = _fetch_items(session, day)
+
+    # Mandates only, and only those that exist — the filter strip is a way into
+    # the day, not a client manager.
+    mandates = list(
+        session.scalars(
+            select(Client)
+            .where(Client.is_competitor.is_(False), Client.active.is_(True))
+            .order_by(Client.name)
+        ).all()
+    )
+    counts: dict[int, int] = {}
+    for item in all_items:
+        counts[item.client_id] = counts.get(item.client_id, 0) + 1
+
+    # An unknown id shows the whole day rather than an unexplainable empty page,
+    # the same posture as the category filter.
+    selected_client = client if client in {m.id for m in mandates} else None
+    if selected_client is not None:
+        all_items = [i for i in all_items if i.client_id == selected_client]
     # Ordered by the day's own ranking, so the dropdown lists the busiest
     # categories in the order the reader already sees them.
     present = list(dict.fromkeys(item.category for item in all_items))
@@ -273,6 +300,11 @@ def today_view(
             "items": items,
             "stories": stories,
             "alerts": alerts,
+            "clients": mandates,
+            "client_counts": counts,
+            "selected_client": selected_client,
+            "total_today": len(counts) and sum(counts.values()) or 0,
+            "card_limit": _CLIENT_CARD_LIMIT,
             "categories": present,
             "selected_category": selected,
             "hidden_count": len(all_items) - len(items),

@@ -214,6 +214,9 @@ class Client(Base):
         server_default=_EMPTY_JSON_ARRAY,
     )
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # The company's own site, used to fetch its logo once at creation and as the
+    # obvious place to click through from a card.
+    website: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # An optional logo. Stored as a URL rather than a blob: the dashboard is the
     # only consumer, and a client's own CDN logo is always more current than a
     # copy. Empty is the normal case — a generated monogram stands in, so the

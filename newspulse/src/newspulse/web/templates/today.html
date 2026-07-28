@@ -9,7 +9,6 @@
 {% macro item_row(story) %}
   {% set item = story.lead %}
   <div class="item{% if item.is_alert %} item--alert{% endif %}">
-    <div class="score" title="Wichtigkeit {{ item.importance }} von 10">{{ item.importance }}</div>
     <div class="body">
       <div class="toprow">
         <span class="clichip">{{ item.client_name }}</span>
@@ -101,6 +100,48 @@
   </form>
 </div>
 
+{# Which mandate's day to look at. Cards while the portfolio is small enough to
+   scan — an agency knows its clients by sight — and a dropdown once that stops
+   being true. #}
+{% if clients %}
+  <div class="clientfilter">
+    {% if clients | length <= card_limit %}
+      <a class="cfcard{% if not selected_client %} cfcard--on{% endif %}"
+         href="/?date={{ day_iso }}{% if selected_category %}&category={{ selected_category }}{% endif %}">
+        <span class="cfall">Alle</span>
+        <span class="cfname">{{ total_today }} Meldungen</span>
+      </a>
+      {% for c in clients %}
+        <a class="cfcard{% if selected_client == c.id %} cfcard--on{% endif %}"
+           href="/?date={{ day_iso }}&client={{ c.id }}{% if selected_category %}&category={{ selected_category }}{% endif %}">
+          {% if c.logo_url %}
+            <img class="cflogo" src="{{ c.logo_url | logo_src }}" alt="">
+          {% else %}
+            <span class="cflogo cflogo--mono" style="background: {{ c.name | brand_colour }}">{{ c.name | monogram }}</span>
+          {% endif %}
+          <span class="cfname">{{ c.name }}</span>
+          {% if client_counts.get(c.id) %}<span class="cfn">{{ client_counts[c.id] }}</span>{% endif %}
+        </a>
+      {% endfor %}
+    {% else %}
+      <form class="date-picker" method="get" action="/">
+        <input type="hidden" name="date" value="{{ day_iso }}">
+        {% if selected_category %}<input type="hidden" name="category" value="{{ selected_category }}">{% endif %}
+        <label for="client">Mandant:</label>
+        <select id="client" name="client" onchange="this.form.requestSubmit()">
+          <option value="">Alle Mandanten ({{ total_today }})</option>
+          {% for c in clients %}
+            <option value="{{ c.id }}"{% if selected_client == c.id %} selected{% endif %}>
+              {{ c.name }}{% if client_counts.get(c.id) %} ({{ client_counts[c.id] }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+        <noscript><button type="submit">Filtern</button></noscript>
+      </form>
+    {% endif %}
+  </div>
+{% endif %}
+
 <div class="cols">
   <aside class="alertcol" aria-label="Warnungen">
     <div class="colhead">Warnungen <span class="n">{{ alerts | length }}</span></div>
@@ -111,7 +152,7 @@
         <div class="hl"><a href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a></div>
         {% if item.summary %}<div class="sum">{{ item.summary }}</div>{% endif %}
         <div class="meta">
-          {{ item.source }} <span>·</span> {{ item.published_at.strftime('%H:%M') }} <span>·</span> Wichtigkeit {{ item.importance }}
+          {{ item.source }} <span>·</span> {{ item.published_at.strftime('%H:%M') }}
           {% if story.is_syndicated %}<span>·</span> <strong>{{ story.pickup_count }}× aufgegriffen</strong>{% endif %}
         </div>
       </div>
@@ -127,11 +168,6 @@
       Gesamter Tag <span class="n">{{ stories | length }}</span>
       {% if items | length != stories | length %}
         <span class="colhead__note">aus {{ items | length }} Artikeln</span>
-      {% endif %}
-      {% if stories %}
-        <span class="colhead__note score-legend">
-          <span class="score score--legend">7</span> = Wichtigkeit 0–10
-        </span>
       {% endif %}
     </div>
     {% if items %}

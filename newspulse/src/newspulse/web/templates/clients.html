@@ -10,7 +10,7 @@
       <div class="pcard{% if not row.active %} pcard--inactive{% endif %}">
         <div class="phead">
           {% if row.logo_url %}
-            <img class="plogo" src="{{ row.logo_url | safe_url }}" alt="{{ row.name }}">
+            <img class="plogo" src="{{ row.logo_url | logo_src }}" alt="{{ row.name }}">
           {% else %}
             <span class="plogo plogo--mono" style="background: {{ row.name | brand_colour }}">{{ row.name | monogram }}</span>
           {% endif %}
@@ -25,6 +25,20 @@
           <div><b>{{ row.today_count }}</b> heute</div>
           <div><b>{{ row.total_count }}</b> im Archiv</div>
         </div>
+        {% if row.competitors %}
+          <div class="pcomp">
+            <span class="pcomp__label">vs</span>
+            {% for rival in row.competitors %}
+              <a href="/client/{{ rival.id }}" title="{{ rival.name }}">
+                {% if rival.logo_url %}
+                  <img class="pcomp__logo" src="{{ rival.logo_url | logo_src }}" alt="{{ rival.name }}">
+                {% else %}
+                  <span class="pcomp__logo pcomp__logo--mono" style="background: {{ rival.name | brand_colour }}">{{ rival.name | monogram }}</span>
+                {% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
         <div class="pactions">
           <a href="/client/{{ row.id }}/advice">Empfehlungen</a>
           <a href="/client/{{ row.id }}/map">Coverage Map</a>
@@ -57,29 +71,6 @@
         {% endfor %}
       </tbody>
     </table>
-  {% endif %}
-  {% if benchmarks %}
-    <div class="colhead" style="margin-top:26px">
-      Wettbewerber <span class="n">{{ benchmarks | length }}</span>
-      <span class="colhead__note">beobachtet für Share of Voice — nicht in Heute oder im Digest</span>
-    </div>
-    <div class="portfolio">
-      {% for row in benchmarks %}
-        <div class="pcard pcard--benchmark">
-          <div class="phead">
-            <span class="plogo plogo--mono" style="background: {{ row.name | brand_colour }}">{{ row.name | monogram }}</span>
-            <div>
-              <div class="pname"><a href="/client/{{ row.id }}">{{ row.name }}</a></div>
-              <div class="pind">{{ row.industry or 'Ohne Branche' }}</div>
-            </div>
-          </div>
-          <div class="pcounts">
-            <div><b>{{ row.today_count }}</b> heute</div>
-            <div><b>{{ row.total_count }}</b> im Archiv</div>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
   {% endif %}
 {% else %}
   <div class="empty-state">

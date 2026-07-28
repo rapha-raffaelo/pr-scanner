@@ -338,6 +338,7 @@ class PortfolioRow:
     active: bool
     is_competitor: bool
     logo_url: str | None
+    competitors: tuple
     today_count: int
     total_count: int
 
@@ -381,6 +382,7 @@ def clients_index(
             active=c.active,
             is_competitor=c.is_competitor,
             logo_url=c.logo_url,
+            competitors=tuple(c.competitors),
             today_count=today_counts.get(c.id, 0),
             total_count=totals.get(c.id, 0),
         )
@@ -392,8 +394,10 @@ def clients_index(
         {
             # Split rather than flagged: a benchmark is not a mandate, and a
             # single list invites reading a competitor's coverage as work.
+            # Mandates only. A benchmark belongs to the client it is measured
+            # against, not to a list of its own — with several mandates a flat
+            # list mixes unrelated markets into one meaningless roster.
             "rows": [r for r in rows if not r.is_competitor],
-            "benchmarks": [r for r in rows if r.is_competitor],
             "last_run": _fetch_last_run(session),
             "header_date": day,
         },

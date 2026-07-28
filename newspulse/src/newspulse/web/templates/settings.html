@@ -196,6 +196,7 @@
             <div><label for="new-aliases">Aliasse</label><input type="text" id="new-aliases" name="aliases" placeholder="Komma/Semikolon"></div>
             <div><label for="new-keywords">Suchbegriffe</label><input type="text" id="new-keywords" name="keywords" placeholder="Komma/Semikolon"></div>
             <div><label for="new-topics">Alarm-Themen</label><input type="text" id="new-topics" name="alert_topics" placeholder="Komma/Semikolon"></div>
+            <div><label for="new-website">Website</label><input type="text" id="new-website" name="website" placeholder="zalando.de — für das Logo"></div>
           </div>
           <button type="submit">Client hinzufügen</button>
         </form>
@@ -208,12 +209,12 @@
           <thead>
             <tr>
               <th scope="col">Name</th>
+              <th scope="col">Rolle</th>
               <th scope="col">Branche</th>
               <th scope="col">Land</th>
               <th scope="col">Aliasse</th>
               <th scope="col">Suchbegriffe</th>
               <th scope="col">Alarm-Themen</th>
-              <th scope="col">Rolle</th>
               <th scope="col" class="col-actions">Aktionen</th>
             </tr>
           </thead>
@@ -224,6 +225,16 @@
                   <a href="/client/{{ client.id }}">{{ client.name }}</a>
                   {% if not client.active %}<span class="tag tag--inactive">inaktiv</span>{% endif %}
                 </td>
+                <td>
+                  {# One click flips the role. A competitor is monitored the same
+                     way but never reported to, and never appears in Heute. #}
+                  <form method="post" action="/settings/clients/{{ client.id }}/competitor">
+                    <button type="submit" class="rolebtn {{ 'rolebtn--rival' if client.is_competitor else 'rolebtn--mandate' }}"
+                            title="Umschalten — ein Wettbewerber wird beobachtet, aber nie an ihn berichtet">
+                      {{ 'Wettbewerb' if client.is_competitor else 'Mandant' }}
+                    </button>
+                  </form>
+                </td>
                 <td>{{ client.industry or '—' }}</td>
                 <td>{{ client.country }}</td>
                 <td class="cell-list">{{ client.aliases | join(', ') or '—' }}</td>
@@ -232,13 +243,6 @@
                   {% if client.alert_topics %}
                     {% for topic in client.alert_topics %}<span class="tag tag--topic">{{ topic }}</span>{% endfor %}
                   {% else %}—{% endif %}
-                </td>
-                <td>
-                  <form method="post" action="/settings/clients/{{ client.id }}/competitor">
-                    <button type="submit" class="linkbtn" title="Ein Wettbewerber wird beobachtet, aber nie an ihn berichtet">
-                      {{ 'Wettbewerber' if client.is_competitor else 'Mandant' }}
-                    </button>
-                  </form>
                 </td>
                 <td class="col-actions">
                   {% if edit_id == client.id %}

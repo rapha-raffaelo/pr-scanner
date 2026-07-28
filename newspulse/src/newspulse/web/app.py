@@ -94,6 +94,31 @@ def de_long_date(value: dt.date | dt.datetime) -> str:
     )
 
 
+# Image types a stored logo may carry. Deliberately the raster set only: an SVG
+# is executable markup, and inlining one into the page would hand the site it
+# came from script execution in this origin.
+_LOGO_DATA_RE = re.compile(
+    r"^data:image/(png|jpeg|webp|gif|x-icon);base64,[A-Za-z0-9+/=]+$"
+)
+
+
+def logo_src(value: str | None) -> str:
+    """A logo URL safe to put in an ``<img src>``.
+
+    Distinct from :func:`safe_url`, which blanks every non-http scheme — correct
+    for a feed-supplied link, wrong here, because a fetched logo is stored as a
+    ``data:`` URI precisely so the dashboard makes no outbound request. Only the
+    raster ``data:image/*;base64`` shape this app writes is allowed through, plus
+    an ordinary https URL an operator may have pasted.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    if _LOGO_DATA_RE.match(raw):
+        return raw
+    return raw if raw.lower().startswith("https://") else ""
+
+
 # One Jinja environment for the whole app, shared with the route modules via the
 # app instance (see ``create_app``). Kept module-level so it is built once.
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -105,6 +130,7 @@ templates.env.filters["safe_url"] = safe_url
 templates.env.filters["de_long_date"] = de_long_date
 # Client identity: a monogram + stable colour stand in wherever no logo is set,
 # so the portfolio never looks half-configured.
+templates.env.filters["logo_src"] = logo_src
 templates.env.filters["monogram"] = branding.monogram
 templates.env.filters["brand_colour"] = branding.colour
 
@@ -153,4 +179,4 @@ def main() -> None:
     uvicorn.run(create_app(), host=config.WEB_HOST, port=config.WEB_PORT)
 
 
-__all__ = ["create_app", "get_db", "main", "safe_url", "templates"]
+__all__ = ["create_app", "get_db", "logo_src", "main", "safe_url", "templates"]

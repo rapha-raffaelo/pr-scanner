@@ -9,3 +9,6 @@
 2026-07-28 13:16:39,472 INFO newspulse.job dry-run: 2908 item(s) fetched, 233 candidate(s), 147 new article(s) — no writes
 2026-07-28 13:17:06,147 INFO newspulse.job run start: 5 active client(s), 63 feed(s) (58 registry + 5 client search), since=2026-06-28T11:17:06.123747+00:00
 2026-07-28 13:28:40,931 INFO newspulse.job run done: status=ok, 147 new article(s), 164 analysis(es), 0 error(s)
+2026-07-28 14:39:22,735 INFO newspulse.job run start: 5 active client(s), 63 feed(s) (58 registry + 5 client search), since=2026-07-28T11:17:06.135749+00:00
+2026-07-28 14:40:43,554 INFO newspulse.job run done: status=ok, 7 new article(s), 7 analysis(es), 0 error(s)
+2026-07-28 14:40:43,558 INFO newspulse.web.routes.settings dashboard-triggered run finished: status=ok new_articles=7

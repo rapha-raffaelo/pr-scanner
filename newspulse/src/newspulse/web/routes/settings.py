@@ -54,6 +54,7 @@ from ...clients import (
     update_client,
 )
 from ...feeds import load_feeds
+from ...logos import fetch_logo, normalize_website
 from ...models import DEFAULT_COUNTRY, SCORE_MAX, SCORE_MIN, Client, Run, Setting
 from ..app import get_db, templates
 
@@ -542,6 +543,28 @@ def toggle_competitor_route(
     return RedirectResponse("/settings", status_code=_SEE_OTHER)
 
 
+@router.post("/settings/clients/{client_id}/logo")
+def fetch_logo_route(
+    client_id: int, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Fetch this client's logo from its own website and store it locally.
+
+    Runs inline rather than on a thread: it is a single small request with a
+    short timeout, and the operator clicked it expecting a result on the next
+    page. A failure is silent-but-logged — a missing logo is cosmetic, and the
+    monogram already stands in.
+    """
+    client = session.get(Client, client_id)
+    if client is not None and client.website:
+        logo = fetch_logo(client.website)
+        if logo:
+            client.logo_url = logo
+            session.commit()
+        else:
+            _log.info("no usable logo found at %s", client.website)
+    return RedirectResponse("/settings", status_code=_SEE_OTHER)
+
+
 @router.post("/client/{client_id}/competitors")
 def add_competitor_route(
     client_id: int, competitor_id: str = Form(...), session: Session = Depends(get_db)
@@ -587,9 +610,10 @@ def add_client_route(
     country: str = Form(""),
     keywords: str = Form(""),
     alert_topics: str = Form(""),
+    website: str = Form(""),
     session: Session = Depends(get_db),
 ) -> Response:
-    """Add a client through the NP-02 CRUD service."""
+    """Add a client through the NP-02 CRUD service, with its logo if reachable."""
     try:
         fields = _parse_client_form(
             name=name,
@@ -599,7 +623,14 @@ def add_client_route(
             keywords=keywords,
             alert_topics=alert_topics,
         )
-        create_client(session, **fields)
+        created = create_client(session, **fields)
+        site = normalize_website(website)
+        if site:
+            created.website = site
+            # Best-effort and inline: a new client should look finished
+            # immediately, and the monogram covers the case where it fails.
+            created.logo_url = fetch_logo(site)
+            session.commit()
     except ValueError as exc:
         return _render_settings(request, session, client_error=str(exc))
     return RedirectResponse("/settings", status_code=_SEE_OTHER)

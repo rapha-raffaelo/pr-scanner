@@ -481,3 +481,48 @@ table.covmap td.covcell { text-align: center; }
 .covrow--gap > td:first-child { border-left: 3px solid var(--alert); font-weight: 600; }
 table.covmap th:first-child, table.covmap td:first-child { text-align: left; width: 40%; }
 table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
+
+/* --- Client filter strip -------------------------------------------------- */
+.clientfilter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.cfcard {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px 7px 8px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 999px; text-decoration: none; color: var(--ink);
+  font-size: 13px;
+}
+.cfcard:hover { border-color: var(--accent); }
+.cfcard--on { border-color: var(--accent); background: #eef0fb; font-weight: 600; }
+.cflogo { width: 24px; height: 24px; border-radius: 6px; object-fit: contain; background: #fff; flex: none; }
+.cflogo--mono {
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 10px; font-weight: 700;
+}
+.cfall { padding-left: 6px; font-weight: 600; }
+.cfname { white-space: nowrap; }
+.cfn {
+  font-size: 11px; background: #eef0f3; color: #374151;
+  padding: 1px 7px; border-radius: 20px; font-weight: 700;
+}
+.cfcard--on .cfn { background: var(--accent); color: #fff; }
+
+/* --- Role toggle in the client table -------------------------------------- */
+.panel table .rolebtn {
+  font: inherit; font-size: 11px; font-weight: 700;
+  padding: 2px 9px; border-radius: 20px; border: none; cursor: pointer;
+}
+.panel table .rolebtn--mandate { background: #eef0fb; color: var(--accent); }
+.panel table .rolebtn--rival { background: #f3f4f6; color: #4b5563; }
+.panel table .rolebtn:hover { outline: 1px solid var(--accent); }
+
+/* --- Competitor badges on a mandate card ---------------------------------- */
+.pcomp { display: flex; align-items: center; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
+.pcomp__label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 2px; }
+.pcomp__logo {
+  width: 22px; height: 22px; border-radius: 6px; object-fit: contain;
+  background: #fff; border: 1px solid var(--line); display: block;
+}
+.pcomp__logo--mono {
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 9px; font-weight: 700; border: none;
+}
