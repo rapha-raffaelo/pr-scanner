@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
+from pathlib import Path
 from collections.abc import Sequence
 from functools import lru_cache
 from importlib import resources
@@ -243,6 +245,7 @@ class _BaseClaudeAnalyzer:
                     relevance_score=verdict.relevance_score,
                     importance_score=verdict.importance_score,
                     is_alert=is_alert,
+                    tonality=verdict.tonality,
                     reasoning=verdict.reasoning,
                 )
             )
@@ -274,6 +277,22 @@ class _BaseClaudeAnalyzer:
         return _matches_alert_topic(article, getattr(client, "alert_topics", []) or [])
 
 
+def claude_env() -> dict[str, str]:
+    """The environment for a ``claude`` subprocess, selecting the account.
+
+    The CLI reads its credentials from the directory ``CLAUDE_CONFIG_DIR`` names
+    (default ``~/.claude``). Setting it therefore picks *which subscription
+    login* to run under — it never introduces an API key, and there is no
+    billing difference: an unset value simply inherits whatever account the
+    process was started with.
+    """
+    env = dict(os.environ)
+    configured = (config.CLAUDE_CONFIG_DIR or "").strip()
+    if configured:
+        env["CLAUDE_CONFIG_DIR"] = str(Path(configured).expanduser())
+    return env
+
+
 def invoke_claude_cli(prompt: str, *, timeout: float = _SUBPROCESS_TIMEOUT_SECONDS) -> str:
     """Run one ``claude -p`` call and return the model's text.
 
@@ -291,6 +310,7 @@ def invoke_claude_cli(prompt: str, *, timeout: float = _SUBPROCESS_TIMEOUT_SECON
             timeout=timeout,
             check=False,
             shell=False,  # explicit: the prompt is an argv element, never a shell command
+            env=claude_env(),
         )
     except subprocess.TimeoutExpired as exc:
         raise BackendError(f"claude -p timed out after {timeout}s") from exc

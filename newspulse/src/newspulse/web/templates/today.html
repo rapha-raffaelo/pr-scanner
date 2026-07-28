@@ -14,6 +14,9 @@
       <div class="toprow">
         <span class="clichip">{{ item.client_name }}</span>
         <span class="tag t-{{ item.category }}">{{ item.category | capitalize }}</span>
+        {% if item.tonality != 'unbekannt' %}
+          <span class="tone tone--{{ item.tonality }}" title="Wirkung auf die Reputation des Mandanten">{{ item.tonality | capitalize }}</span>
+        {% endif %}
         {% if story.is_syndicated %}
           <span class="pickup" title="Diese Meldung erschien bei {{ story.pickup_count }} Outlets">{{ story.pickup_count }}× aufgegriffen</span>
         {% endif %}

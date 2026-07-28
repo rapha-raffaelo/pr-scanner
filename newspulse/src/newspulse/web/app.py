@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from .. import branding
 from ..db import get_session
 
 # The web package ships its own templates/ and static/ next to this module, so
@@ -102,6 +103,10 @@ templates.env.filters["safe_url"] = safe_url
 # The shared header renders a long German date on every page; registering it here
 # keeps one definition for all templates.
 templates.env.filters["de_long_date"] = de_long_date
+# Client identity: a monogram + stable colour stand in wherever no logo is set,
+# so the portfolio never looks half-configured.
+templates.env.filters["monogram"] = branding.monogram
+templates.env.filters["brand_colour"] = branding.colour
 
 
 def get_db() -> Iterator[Session]:

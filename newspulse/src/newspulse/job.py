@@ -469,6 +469,7 @@ def _to_orm_analysis(verdict: AnalysisSchema) -> Analysis:
         relevance_score=verdict.relevance_score,
         importance_score=verdict.importance_score,
         is_alert=verdict.is_alert,
+        tonality=verdict.tonality,
         reasoning=verdict.reasoning,
     )
 

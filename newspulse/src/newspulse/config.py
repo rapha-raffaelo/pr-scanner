@@ -58,6 +58,17 @@ _ENV_BATCH_SIZE = "NEWSPULSE_BATCH_SIZE"
 _ENV_ANALYZER_TIMEOUT = "NEWSPULSE_ANALYZER_TIMEOUT"
 _ENV_ANALYZER_BACKEND = "NEWSPULSE_ANALYZER_BACKEND"
 _ENV_GOOGLE_NEWS = "NEWSPULSE_GOOGLE_NEWS"
+_ENV_CLAUDE_CONFIG_DIR = "NEWSPULSE_CLAUDE_CONFIG_DIR"
+
+# Which Claude Code account the analyzer runs under. The `claude` CLI keeps its
+# credentials in a config directory (default ~/.claude) and reads whichever one
+# CLAUDE_CONFIG_DIR names. Pointing at a directory therefore selects an account
+# — it is still the subscription login stored there, never an API key, so this
+# changes *whose* subscription is used and never *how* it is billed.
+#
+# Empty means "inherit the environment", i.e. whatever account the process that
+# started NewsPulse was already using.
+_DEFAULT_CLAUDE_CONFIG_DIR = ""
 
 # One Google News search per active client, on top of the registry feeds. On by
 # default: it is where most regional and trade coverage of a client is found,
@@ -148,6 +159,9 @@ ANALYZER_BACKEND: str = os.environ.get(_ENV_ANALYZER_BACKEND, _DEFAULT_ANALYZER_
 WEB_HOST: str = os.environ.get(_ENV_WEB_HOST, _DEFAULT_WEB_HOST)
 WEB_PORT: int = _env_int(_ENV_WEB_PORT, _DEFAULT_WEB_PORT)
 GOOGLE_NEWS_ENABLED: bool = _env_bool(_ENV_GOOGLE_NEWS, _DEFAULT_GOOGLE_NEWS)
+CLAUDE_CONFIG_DIR: str = os.environ.get(
+    _ENV_CLAUDE_CONFIG_DIR, _DEFAULT_CLAUDE_CONFIG_DIR
+)
 
 
 def database_url() -> str:

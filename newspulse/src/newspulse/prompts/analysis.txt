@@ -23,8 +23,14 @@ Jedes Objekt hat exakt diese Felder:
 - "relevance_score": ganze Zahl 0 bis 10, wie eindeutig es um den Mandanten geht
 - "importance_score": ganze Zahl 0 bis 10, wie wichtig die Meldung für den Mandanten ist
 - "is_alert": true/false, ob dies dringend Aufmerksamkeit erfordert
+- "tonality": genau einer dieser Werte: positiv, neutral, negativ — wie die
+  Meldung auf die REPUTATION DES MANDANTEN wirkt, nicht wie neutral der Artikel
+  geschrieben ist. Eine sachlich formulierte Meldung über Stellenabbau,
+  Ermittlungen oder Rückrufe ist negativ. Eine reine Kursmeldung ohne Wertung
+  ist neutral.
 - "reasoning": kurze Begründung deiner Einschätzung (ein bis zwei Sätze)
 
 Beispiel für das Format (nur Struktur, nicht inhaltlich übernehmen):
 [{"id": 0, "is_relevant": true, "summary": "...", "category": "krise",
-  "relevance_score": 9, "importance_score": 8, "is_alert": true, "reasoning": "..."}]
+  "relevance_score": 9, "importance_score": 8, "is_alert": true,
+  "tonality": "negativ", "reasoning": "..."}]

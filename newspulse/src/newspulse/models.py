@@ -73,6 +73,25 @@ class TriageState(StrEnum):
     MARKIERT = "markiert"  # flagged to raise with the client
 
 
+class Tonality(StrEnum):
+    """How a story reads *for the client* — not how neutral the article is.
+
+    The distinction is the whole point. "Zalando schließt Standort: 2.100 Jobs
+    weg" is a neutrally written news report; general sentiment analysis scores it
+    neutral. For the client's comms team it is unambiguously negative — it is the
+    story a defence is built around. Tone here is always from the mandate's
+    perspective.
+
+    UNBEKANNT exists because this field arrived after the archive did: every
+    analysis written before it is honestly unknown rather than falsely neutral.
+    """
+
+    POSITIV = "positiv"
+    NEUTRAL = "neutral"
+    NEGATIV = "negativ"
+    UNBEKANNT = "unbekannt"
+
+
 class Category(StrEnum):
     """The exact set of story categories. StrEnum so the value ('produkt') is what
     is stored and compared, and the set is closed — no stray string literals."""
@@ -195,6 +214,11 @@ class Client(Base):
         server_default=_EMPTY_JSON_ARRAY,
     )
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # An optional logo. Stored as a URL rather than a blob: the dashboard is the
+    # only consumer, and a client's own CDN logo is always more current than a
+    # copy. Empty is the normal case — a generated monogram stands in, so the
+    # portfolio never looks half-configured.
+    logo_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     # Required, defaults to DE (both Python-side and in the DB) so existing rows
     # and inserts that omit it always carry a country.
     country: Mapped[str] = mapped_column(
@@ -329,6 +353,19 @@ class Analysis(Base):
     # Operator workflow state, per (article, client): the same story can be
     # handled for one mandate and still open for another. Defaults to NEU at the
     # DB level so a raw INSERT (or an older code path) can never leave it null.
+    # Judged from the client's perspective; see Tonality. Kept separate from
+    # importance: a 9/10 story can be a triumph or a disaster, and the two
+    # questions need different answers.
+    tonality: Mapped[Tonality] = mapped_column(
+        SAEnum(
+            Tonality,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+        ),
+        nullable=False,
+        default=Tonality.UNBEKANNT,
+        server_default=Tonality.UNBEKANNT.value,
+    )
     triage_state: Mapped[TriageState] = mapped_column(
         SAEnum(
             TriageState,
@@ -436,6 +473,7 @@ __all__ = [
     "Base",
     "Category",
     "RunStatus",
+    "Tonality",
     "TriageState",
     "Client",
     "client_competitors",

@@ -23,6 +23,7 @@ from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
 
 from ...models import Analysis, Article, Category, Client
+from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
 from ..app import get_db, templates
 
@@ -279,6 +280,27 @@ def _paginate(
     )
 
 
+@router.get("/client/{client_id}/map", response_class=HTMLResponse)
+def coverage_map_view(
+    request: Request, client_id: int, days: int = 90, session: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Which outlet writes about whom — and which ones never write about us."""
+    client = session.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return templates.TemplateResponse(
+        request,
+        "coverage_map.html",
+        {
+            "map": coverage_map.build(session, client, days=days),
+            "client": client,
+            "days": days,
+            "last_run": _fetch_last_run(session),
+            "header_date": dt.datetime.now(_local_tz()).date(),
+        },
+    )
+
+
 @router.get("/client/{client_id}/export.xlsx")
 def client_export(
     client_id: int, days: int = 30, session: Session = Depends(get_db)
@@ -315,6 +337,7 @@ class PortfolioRow:
     alert_topics: list[str]
     active: bool
     is_competitor: bool
+    logo_url: str | None
     today_count: int
     total_count: int
 
@@ -357,6 +380,7 @@ def clients_index(
             alert_topics=list(c.alert_topics),
             active=c.active,
             is_competitor=c.is_competitor,
+            logo_url=c.logo_url,
             today_count=today_counts.get(c.id, 0),
             total_count=totals.get(c.id, 0),
         )

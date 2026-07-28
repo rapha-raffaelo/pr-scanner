@@ -85,6 +85,7 @@ class TodayItem:
     # a workflow action targets the analysis, not the article.
     analysis_id: int
     triage_state: str
+    tonality: str
     author: str | None
     headline: str
     url: str
@@ -182,6 +183,7 @@ def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
         TodayItem(
             analysis_id=analysis.id,
             triage_state=analysis.triage_state.value,
+            tonality=analysis.tonality.value,
             author=article.author,
             headline=article.title,
             url=article.url,

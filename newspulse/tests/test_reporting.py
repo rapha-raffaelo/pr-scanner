@@ -175,3 +175,51 @@ def test_workbook_for_an_empty_month_is_still_a_readable_sheet(session):
     session.commit()
     book = load_workbook(io.BytesIO(client_workbook(session, c, days=30)))
     assert [cell.value for cell in book["Berichterstattung"][1]][0] == "Datum"
+
+
+# --- Coverage map --------------------------------------------------------------
+
+
+def test_coverage_map_finds_outlets_that_cover_rivals_but_never_the_client(session):
+    """This is the pitch list: a publication with a standing relationship to the
+    competition and none with us."""
+    from newspulse.coverage_map import build
+
+    mandate = Client(name="Alpha AG")
+    rival = Client(name="Beta AG", is_competitor=True)
+    session.add_all([mandate, rival])
+    session.flush()
+    mandate.competitors.append(rival)
+    _add(session, mandate, "A1", source="Handelsblatt")
+    _add(session, rival, "B1", source="Handelsblatt")
+    _add(session, rival, "B2", source="InStyle")
+    _add(session, rival, "B3", source="InStyle")
+    session.commit()
+
+    gaps = {row.source for row in build(session, mandate, days=90).gaps}
+    assert gaps == {"InStyle"}          # rivals only
+    assert "Handelsblatt" not in gaps   # already covers us
+
+
+def test_a_single_rival_mention_is_not_a_pitch_gap(session):
+    """A one-off mention is not a relationship; pitching at it wastes the contact."""
+    from newspulse.coverage_map import build
+
+    mandate = Client(name="Alpha AG")
+    rival = Client(name="Beta AG", is_competitor=True)
+    session.add_all([mandate, rival])
+    session.flush()
+    mandate.competitors.append(rival)
+    _add(session, rival, "B1", source="Einmalblatt")
+    session.commit()
+
+    assert build(session, mandate, days=90).gaps == ()
+
+
+def test_max_cell_is_never_zero_so_the_view_can_divide_by_it(session):
+    from newspulse.coverage_map import build
+
+    c = Client(name="Leer AG")
+    session.add(c)
+    session.commit()
+    assert build(session, c, days=90).max_cell == 1

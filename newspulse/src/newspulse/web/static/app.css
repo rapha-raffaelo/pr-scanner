@@ -417,3 +417,67 @@ table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04e
 .score-legend { display: inline-flex; align-items: center; gap: 5px; }
 .score--legend { width: 20px; height: 20px; font-size: 11px; border-radius: 6px; }
 .pcard--benchmark { background: #fbfbfc; border-style: dashed; }
+
+/* --- Client identity ------------------------------------------------------ */
+.phead { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.plogo {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.plogo--mono {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  border: none;
+}
+.pcard .pname { margin: 0; }
+
+/* --- Tonality ------------------------------------------------------------- */
+/* A three-step scale, not a heat map: tone is a judgement with three honest
+   values, and a gradient would imply a precision the model does not have. */
+.tone { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; }
+.tone--positiv { background: #dcfce7; color: #15803d; }
+.tone--neutral { background: #eef0f3; color: #4b5563; }
+.tone--negativ { background: #fee2e2; color: #b91c1c; }
+
+/* --- Coverage map --------------------------------------------------------- */
+.mono-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px;
+  color: #fff; font-size: 10px; font-weight: 700; flex: none;
+}
+.gaps-head { color: var(--alert); }
+.gaps-head .n { background: #fee2e2; color: #b91c1c; }
+.gapgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.gapcard {
+  background: var(--card); border: 1px solid #fecaca; border-left: 3px solid var(--alert);
+  border-radius: var(--radius); padding: 13px 14px;
+}
+.gapsource { font-weight: 700; font-size: 14px; margin-bottom: 9px; }
+.gapbars { display: flex; flex-direction: column; gap: 5px; }
+.gapbar { display: flex; align-items: center; gap: 8px; }
+.gapbar__track { flex: 1; height: 8px; background: #eef0f3; border-radius: 4px; overflow: hidden; }
+.gapbar__fill { display: block; height: 100%; border-radius: 4px; }
+.gapbar__n { font-size: 12px; color: var(--muted); min-width: 18px; text-align: right; font-variant-numeric: tabular-nums; }
+.gapbar--missing .gapbar__n { color: var(--alert); font-weight: 700; }
+table.covmap th.covcol { text-align: center; }
+table.covmap .covname { display: block; font-size: 10px; font-weight: 400; color: var(--muted); margin-top: 3px; }
+table.covmap td.covcell { text-align: center; }
+.covdot {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 22px; padding: 0 6px; border-radius: 6px;
+  color: #fff; font-size: 11px; font-weight: 700;
+}
+.covempty { color: #d5d8dd; }
+.covrow--gap > td:first-child { border-left: 3px solid var(--alert); font-weight: 600; }
+table.covmap th:first-child, table.covmap td:first-child { text-align: left; width: 40%; }
+table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
