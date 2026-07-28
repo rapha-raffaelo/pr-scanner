@@ -1,0 +1,36 @@
+# NewsPulse — dashboard + daily sweep in one image.
+#
+# The image carries the Claude Code CLI because analysis and Captain Comms both
+# shell out to it (subscription-first, never an API key baked in). Its
+# credentials are NOT in the image: they live in the config directory mounted at
+# runtime, so the image holds no secret and can be rebuilt freely.
+FROM python:3.11-slim
+
+# curl for the CLI installer and the healthcheck; ca-certificates so the feed
+# fetches can verify TLS at all.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates nodejs npm \
+ && rm -rf /var/lib/apt/lists/*
+
+# The analyzer and the assistant both invoke `claude`; without it the sweep
+# fails per batch and the drawer reports "CLI not found".
+RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
+
+WORKDIR /app
+COPY pyproject.toml uv.lock README.md ./
+COPY src ./src
+COPY migrations ./migrations
+COPY alembic.ini ./
+
+RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
+
+# The database is a single SQLite file and must outlive the container.
+ENV NEWSPULSE_DATABASE_PATH=/data/newspulse.db \
+    NEWSPULSE_WEB_HOST=0.0.0.0 \
+    NEWSPULSE_WEB_PORT=8000 \
+    NEWSPULSE_CLAUDE_CONFIG_DIR=/claude
+VOLUME ["/data", "/claude"]
+EXPOSE 8000
+
+# Migrations run on start so a deploy never serves a schema older than its code.
+CMD ["sh", "-c", "uv run alembic upgrade head && uv run newspulse-web"]

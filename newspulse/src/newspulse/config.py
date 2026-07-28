@@ -59,6 +59,21 @@ _ENV_ANALYZER_TIMEOUT = "NEWSPULSE_ANALYZER_TIMEOUT"
 _ENV_ANALYZER_BACKEND = "NEWSPULSE_ANALYZER_BACKEND"
 _ENV_GOOGLE_NEWS = "NEWSPULSE_GOOGLE_NEWS"
 _ENV_CLAUDE_CONFIG_DIR = "NEWSPULSE_CLAUDE_CONFIG_DIR"
+_ENV_AUTH_USER = "NEWSPULSE_AUTH_USER"
+_ENV_AUTH_PASSWORD = "NEWSPULSE_AUTH_PASSWORD"
+_ENV_BASE_URL = "NEWSPULSE_BASE_URL"
+
+# Dashboard credentials. Empty means no authentication, which is only tolerable
+# on a loopback bind — web.auth refuses to start a network-reachable server
+# without them. Read from the environment and never logged, the same posture as
+# the SMTP password.
+_DEFAULT_AUTH_USER = ""
+_DEFAULT_AUTH_PASSWORD = ""
+
+# The address the dashboard is reachable at, used in links that leave the app
+# (the morning digest). Defaults to the local bind; a deployment must set it or
+# every email points at the recipient's own machine.
+_DEFAULT_BASE_URL = ""
 
 # Which Claude Code account the analyzer runs under. The `claude` CLI keeps its
 # credentials in a config directory (default ~/.claude) and reads whichever one
@@ -162,6 +177,19 @@ GOOGLE_NEWS_ENABLED: bool = _env_bool(_ENV_GOOGLE_NEWS, _DEFAULT_GOOGLE_NEWS)
 CLAUDE_CONFIG_DIR: str = os.environ.get(
     _ENV_CLAUDE_CONFIG_DIR, _DEFAULT_CLAUDE_CONFIG_DIR
 )
+AUTH_USER: str = os.environ.get(_ENV_AUTH_USER, _DEFAULT_AUTH_USER)
+AUTH_PASSWORD: str = os.environ.get(_ENV_AUTH_PASSWORD, _DEFAULT_AUTH_PASSWORD)
+BASE_URL: str = os.environ.get(_ENV_BASE_URL, _DEFAULT_BASE_URL).rstrip("/")
+
+
+def base_url() -> str:
+    """The address links in outgoing mail should point at.
+
+    Falls back to the configured bind, which is right locally and wrong the
+    moment the tool is deployed — hence NEWSPULSE_BASE_URL, and the deployment
+    guide telling you to set it.
+    """
+    return BASE_URL or f"http://{WEB_HOST}:{WEB_PORT}"
 
 
 def database_url() -> str:

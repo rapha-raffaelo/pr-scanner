@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import config
 from .models import Analysis, Article, Client
 from .notify import SmtpConfig, _send_email
 from .schemas import Analysis as _AnalysisSchema  # noqa: F401  (keeps schema import parity)
@@ -116,7 +117,7 @@ def build_digest(
             parts.append(f"{line.client}: {line.stories} Story(s){flag}")
             if line.top_headline:
                 parts.append(f"    {line.top_headline}")
-        parts += ["", "Vollständig: http://127.0.0.1:8000/"]
+        parts += ["", f"Vollständig: {config.base_url()}/"]
         body = "\n".join(parts)
 
     subject = (

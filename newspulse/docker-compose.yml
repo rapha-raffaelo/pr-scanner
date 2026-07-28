@@ -1,0 +1,43 @@
+# One always-on host: the dashboard, plus a nightly sweep.
+#
+# Nothing here terminates TLS. Put Caddy, Traefik or a Cloudflare Tunnel in
+# front — Basic auth over plain HTTP sends the password in clear text on every
+# request, which is worse than no auth because it looks like protection.
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    # Bound to loopback on purpose: the reverse proxy is the only thing that
+    # should reach it, so a misconfigured firewall cannot expose it directly.
+    ports: ["127.0.0.1:8000:8000"]
+    env_file: [.env]
+    volumes:
+      - ./data:/data
+      # The `claude` login, created once with `docker compose run --rm web
+      # claude login`. Read-only: the app never needs to rewrite it.
+      - ./claude:/claude:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/static/app.css"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # The daily sweep as its own container rather than a thread inside the web
+  # process: a crash here must not take the dashboard down with it, and the
+  # exit code is visible to whatever supervises it.
+  sweep:
+    build: .
+    restart: unless-stopped
+    env_file: [.env]
+    volumes:
+      - ./data:/data
+      - ./claude:/claude:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        while true; do
+          # 06:10 local — after the German morning papers publish, before the
+          # first client call.
+          sleep $$(( ($$(date -d 'tomorrow 06:10' +%s 2>/dev/null || date -v+1d -v6H -v10M +%s) - $$(date +%s)) ))
+          uv run newspulse run && uv run newspulse digest || true
+        done

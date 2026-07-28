@@ -3,3 +3,8 @@
 
 # Local agent scratch state
 .remy/
+
+# Deployment secrets and state
+newspulse/.env
+newspulse/claude/
+newspulse/data/

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import branding, i18n
 from ..db import get_session
+from .auth import BasicAuthMiddleware, require_auth_for_public_bind
 
 # The web package ships its own templates/ and static/ next to this module, so
 # resolve them relative to the file rather than the process working directory.
@@ -196,6 +197,9 @@ def get_db() -> Iterator[Session]:
 def create_app() -> FastAPI:
     """Build the FastAPI app: mount static assets and register the routes."""
     app = FastAPI(title="NewsPulse")
+    # Added first so it wraps every route, including the SSE stream and the
+    # static mount's siblings.
+    app.add_middleware(BasicAuthMiddleware)
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
     # Imported here (not at module top) to avoid a circular import: the route
@@ -226,6 +230,9 @@ def main() -> None:
 
     from .. import config
 
+    # Before the socket opens, not after: a public bind with no credentials is
+    # the one mistake that cannot be undone by noticing it later.
+    require_auth_for_public_bind(config.WEB_HOST)
     uvicorn.run(create_app(), host=config.WEB_HOST, port=config.WEB_PORT)
 
 
