@@ -166,6 +166,11 @@ def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
             Article.published_at >= start_utc,
             Article.published_at < end_utc,
             Analysis.relevance_score >= _MIN_RELEVANCE,
+            # Mandates only. A competitor is monitored so its volume can be
+            # compared, not so it lands in the morning triage queue — coverage
+            # of a rival is not work, and mixing the two makes the day look
+            # busier than it is.
+            Client.is_competitor.is_(False),
         )
         .order_by(
             Analysis.is_alert.desc(),

@@ -48,6 +48,24 @@
       </tbody>
     </table>
   {% endif %}
+  {% if benchmarks %}
+    <div class="colhead" style="margin-top:26px">
+      Wettbewerber <span class="n">{{ benchmarks | length }}</span>
+      <span class="colhead__note">beobachtet für Share of Voice — nicht in Heute oder im Digest</span>
+    </div>
+    <div class="portfolio">
+      {% for row in benchmarks %}
+        <div class="pcard pcard--benchmark">
+          <div class="pname"><a href="/client/{{ row.id }}">{{ row.name }}</a></div>
+          <div class="pind">{{ row.industry or 'Ohne Branche' }}</div>
+          <div class="pcounts">
+            <div><b>{{ row.today_count }}</b> heute</div>
+            <div><b>{{ row.total_count }}</b> im Archiv</div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
 {% else %}
   <div class="empty-state">
     <p>Noch keine Mandanten. Unter <a href="/settings">Einstellungen</a> anlegen oder importieren.</p>

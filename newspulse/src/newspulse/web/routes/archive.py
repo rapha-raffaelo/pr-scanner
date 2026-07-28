@@ -68,6 +68,7 @@ class ArchiveFilters:
 
     client: str
     month: str
+    with_competitors: bool
     source: str
     category: str
     search: str
@@ -163,6 +164,7 @@ def _conditions(
     source: str,
     category: Category | None,
     search: str,
+    with_competitors: bool = False,
 ) -> list[ColumnElement[bool]]:
     """The portfolio archive's WHERE clauses.
 
@@ -174,9 +176,18 @@ def _conditions(
     # The shared builder's `date_to` is inclusive of that day, so step back from
     # the exclusive first-of-next-month to the last day of the selected month.
     date_to = bounds[1] - dt.timedelta(days=1) if bounds else None
-    return _archive_conditions(
+    conditions = _archive_conditions(
         client_id, date_from, date_to, source, category, search
     )
+    # Competitor coverage is archived like any other, but it is not the agency's
+    # own work, so it stays out of the default view. Selecting a specific
+    # company overrides this — asking for a competitor by name and being shown
+    # nothing would be indefensible.
+    if not with_competitors and client_id is None:
+        conditions.append(
+            Analysis.client_id.in_(select(Client.id).where(Client.is_competitor.is_(False)))
+        )
+    return conditions
 
 
 def _count(session: Session, conditions: list[ColumnElement[bool]]) -> int:
@@ -230,6 +241,7 @@ def _page_url(filters: ArchiveFilters, page: int) -> str:
             ("source", filters.source),
             ("category", filters.category),
             ("q", filters.search),
+            ("with_competitors", "1" if filters.with_competitors else ""),
         )
         if value
     ]
@@ -259,6 +271,7 @@ def archive_view(
     source: str | None = None,
     category: str | None = None,
     q: str | None = None,
+    with_competitors: bool = False,
     page: int = 1,
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -269,6 +282,7 @@ def archive_view(
         source=(source or "").strip(),
         category=(category or "").strip(),
         search=(q or "").strip(),
+        with_competitors=bool(with_competitors),
     )
     conditions = _conditions(
         _parse_client(filters.client),
@@ -276,6 +290,7 @@ def archive_view(
         filters.source,
         _parse_category(filters.category),
         filters.search,
+        with_competitors=filters.with_competitors,
     )
 
     total = _count(session, conditions)

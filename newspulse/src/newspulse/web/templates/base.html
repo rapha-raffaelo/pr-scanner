@@ -44,6 +44,13 @@
       <a href="/clients"{% if request.url.path.startswith('/client') %} class="active" aria-current="page"{% endif %}>Mandanten</a>
       <a href="/archive"{% if request.url.path.startswith('/archive') %} class="active" aria-current="page"{% endif %}>Archiv</a>
       <a href="/settings"{% if request.url.path.startswith('/settings') %} class="active" aria-current="page"{% endif %}>Einstellungen</a>
+      {# Fetching news is the one action wanted from any page, so it lives in the
+         nav rather than three clicks deep in Einstellungen. redirect_to returns
+         the reader to where they clicked instead of bouncing them to Settings. #}
+      <form method="post" action="/settings/run" class="nav-refresh">
+        <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+        <button type="submit" title="Feeds jetzt abrufen und analysieren — läuft im Hintergrund">↻ Aktualisieren</button>
+      </form>
     </nav>
 
     <main class="content">

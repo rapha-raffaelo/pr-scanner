@@ -439,3 +439,52 @@ def test_distinct_stories_are_not_collapsed_in_the_view(factory, client):
     feed = client.get("/", params={"date": _TEST_DAY.isoformat()}).text.split('class="feedcol"', 1)[1]
     assert feed.count('class="item') == 2
     assert "aufgegriffen" not in feed
+
+
+def test_competitor_coverage_stays_out_of_the_daily_triage(factory, client):
+    """A rival's coverage is monitored for share of voice, not for triage —
+    mixing it in makes the day look busier than the work actually is."""
+    with factory() as s:
+        mandate = _seed_client(s, "Alpha AG")
+        rival = Client(name="Beta AG", is_competitor=True)
+        s.add(rival)
+        s.flush()
+        for owner, title in ((mandate, "MANDANT Story"), (rival, "RIVALE Story")):
+            art = Article(
+                title=title, url=f"https://ex.de/{title}", source="FAZ",
+                published_at=_local_noon(_TEST_DAY), fetched_at=_local_noon(_TEST_DAY),
+                summary_text="s", language="de", title_hash=title[:8],
+            )
+            s.add(art)
+            s.flush()
+            s.add(Analysis(
+                article_id=art.id, client_id=owner.id, summary="Zusammenfassung.",
+                category=Category.PRODUKT, relevance_score=5, importance_score=7,
+                is_alert=False,
+            ))
+        s.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    assert "MANDANT Story" in body
+    assert "RIVALE Story" not in body
+
+
+def test_the_importance_number_is_labelled(factory, client):
+    """A bare digit in a badge explains nothing on first sight."""
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Alpha AG", title="Irgendeine Meldung heute",
+            url="https://ex.de/x", importance=7, is_alert=False,
+            published_at=_local_noon(_TEST_DAY),
+        )
+        s.commit()
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    assert "Wichtigkeit 0–10" in body
+
+
+def test_every_page_offers_a_refresh(client):
+    """Fetching news is wanted from anywhere, not three clicks deep in settings."""
+    for path in ("/", "/clients", "/archive", "/settings"):
+        body = client.get(path).text
+        assert 'action="/settings/run"' in body, path
+        assert "Aktualisieren" in body, path

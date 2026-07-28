@@ -125,6 +125,11 @@
       {% if items | length != stories | length %}
         <span class="colhead__note">aus {{ items | length }} Artikeln</span>
       {% endif %}
+      {% if stories %}
+        <span class="colhead__note score-legend">
+          <span class="score score--legend">7</span> = Wichtigkeit 0–10
+        </span>
+      {% endif %}
     </div>
     {% if items %}
       {% for story in stories %}

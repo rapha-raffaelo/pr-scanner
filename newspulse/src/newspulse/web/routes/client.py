@@ -314,6 +314,7 @@ class PortfolioRow:
     industry: str | None
     alert_topics: list[str]
     active: bool
+    is_competitor: bool
     today_count: int
     total_count: int
 
@@ -355,6 +356,7 @@ def clients_index(
             industry=c.industry,
             alert_topics=list(c.alert_topics),
             active=c.active,
+            is_competitor=c.is_competitor,
             today_count=today_counts.get(c.id, 0),
             total_count=totals.get(c.id, 0),
         )
@@ -364,7 +366,10 @@ def clients_index(
         request,
         "clients.html",
         {
-            "rows": rows,
+            # Split rather than flagged: a benchmark is not a mandate, and a
+            # single list invites reading a competitor's coverage as work.
+            "rows": [r for r in rows if not r.is_competitor],
+            "benchmarks": [r for r in rows if r.is_competitor],
             "last_run": _fetch_last_run(session),
             "header_date": day,
         },

@@ -490,6 +490,7 @@ def settings_view(
 def trigger_run_route(
     request: Request,
     since_days: str = Form(""),
+    redirect_to: str = Form(""),
     session: Session = Depends(get_db),
 ) -> Response:
     """Start a sweep from the dashboard — the only way to fetch news without a
@@ -515,6 +516,12 @@ def trigger_run_route(
     threading.Thread(
         target=_execute_run, args=(days,), daemon=True, name="newspulse-run"
     ).start()
+    # Return to where the click came from — the header button is on every page,
+    # and bouncing the reader to Settings would lose their place. Only ever a
+    # same-app path: the value comes from a form field, so an absolute URL here
+    # would make this an open redirect.
+    if redirect_to.startswith("/"):
+        return RedirectResponse(redirect_to, status_code=_SEE_OTHER)
     return RedirectResponse(f"/settings?started={days or 0}", status_code=_SEE_OTHER)
 
 

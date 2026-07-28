@@ -492,3 +492,43 @@ def test_lookback_since_matches_the_requested_window():
     assert job.lookback_since(1, now=lambda: fixed) == fixed - dt.timedelta(days=1)
     with pytest.raises(ValueError):
         job.lookback_since(0)
+
+
+def test_the_run_button_returns_to_where_it_was_clicked(client, monkeypatch):
+    """The refresh lives in the header on every page; bouncing the reader to
+    Settings would lose their place."""
+    from newspulse.web.routes import settings as settings_routes
+
+    class _Immediate:
+        def __init__(self, target, args, daemon=None, name=None):
+            self._t, self._a = target, args
+
+        def start(self):
+            settings_routes._run_guard.release()
+
+    monkeypatch.setattr(settings_routes.threading, "Thread", _Immediate)
+    resp = client.post(
+        "/settings/run",
+        data={"since_days": "", "redirect_to": "/archive?month=2026-07"},
+        follow_redirects=False,
+    )
+    assert resp.headers["location"] == "/archive?month=2026-07"
+
+
+def test_an_offsite_run_redirect_is_refused(client, monkeypatch):
+    from newspulse.web.routes import settings as settings_routes
+
+    class _Immediate:
+        def __init__(self, target, args, daemon=None, name=None):
+            pass
+
+        def start(self):
+            settings_routes._run_guard.release()
+
+    monkeypatch.setattr(settings_routes.threading, "Thread", _Immediate)
+    resp = client.post(
+        "/settings/run",
+        data={"since_days": "", "redirect_to": "https://evil.example/"},
+        follow_redirects=False,
+    )
+    assert resp.headers["location"].startswith("/settings")
