@@ -40,6 +40,14 @@ redeploys on every push, and keeps a volume across deploys.
 1. **New project → Deploy from GitHub repo.** `railway.json` points it at
    `newspulse/Dockerfile`; no build configuration needed.
 
+   **Leave Root Directory unset.** Railway reads `railway.json` from the
+   repository root and [does not apply Root Directory to
+   it](https://docs.railway.com/deployments/monorepo), so the config would go
+   unread and the build would fall back to auto-detection and fail in seconds.
+   That is why the build context is the repo root and the Dockerfile's `COPY`
+   paths start with `newspulse/` — compose uses the same context, so a build
+   that works locally cannot fail here for a path reason.
+
 2. **Attach a volume at `/data`.** One mount holds both the archive and the
    `claude` login — Railway gives a service one volume, and there is nothing to
    gain from separating two things that are lost together anyway.

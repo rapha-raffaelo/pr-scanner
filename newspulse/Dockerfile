@@ -16,11 +16,15 @@ RUN apt-get update \
 # fails per batch and the drawer reports "CLI not found".
 RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
 
+# Paths below are relative to the *repository root*, not to this file: Railway
+# looks for railway.json at the repo root and cannot be made to look inside a
+# subdirectory, so the repo root is the one build context every route uses —
+# Railway, compose and CI alike. See .dockerignore for what that context excludes.
 WORKDIR /app
-COPY pyproject.toml uv.lock README.md ./
-COPY src ./src
-COPY migrations ./migrations
-COPY alembic.ini ./
+COPY newspulse/pyproject.toml newspulse/uv.lock newspulse/README.md ./
+COPY newspulse/src ./src
+COPY newspulse/migrations ./migrations
+COPY newspulse/alembic.ini ./
 
 RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
 

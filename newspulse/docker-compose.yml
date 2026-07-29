@@ -5,7 +5,12 @@
 # request, which is worse than no auth because it looks like protection.
 services:
   web:
-    build: .
+    # Context is the repository root, matching Railway — the Dockerfile's COPY
+    # paths are written against it, and one context for every route means a
+    # build that works here cannot fail there for a path reason.
+    build: &build
+      context: ..
+      dockerfile: newspulse/Dockerfile
     restart: unless-stopped
     # Bound to loopback on purpose: the reverse proxy is the only thing that
     # should reach it, so a misconfigured firewall cannot expose it directly.
@@ -25,7 +30,7 @@ services:
   # process: a crash here must not take the dashboard down with it, and the
   # exit code is visible to whatever supervises it.
   sweep:
-    build: .
+    build: *build
     restart: unless-stopped
     env_file: [.env]
     volumes:

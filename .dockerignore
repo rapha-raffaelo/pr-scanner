@@ -1,0 +1,31 @@
+# The build context is the repository root (see railway.json / docker-compose.yml),
+# so without this the builder uploads the virtualenv and the local archive —
+# hundreds of megabytes that the image then discards.
+#
+# Anything the Dockerfile COPYs must survive this list: newspulse/pyproject.toml,
+# uv.lock, README.md, alembic.ini, src/ and migrations/.
+
+.git
+.github
+.remy
+.claude
+
+# Rebuilt inside the image by `uv sync`; the host copy is macOS-specific and
+# would be wrong for a Linux container even if it were small.
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+
+# Real client coverage and the `claude` login. These belong in the runtime
+# volume, never baked into an image that gets pushed to a registry.
+**/data
+**/*.db
+**/.env
+
+# Not needed to run the app.
+newspulse/tests
+features
+**/.DS_Store
