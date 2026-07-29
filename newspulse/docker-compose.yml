@@ -10,7 +10,7 @@ services:
     # build that works here cannot fail there for a path reason.
     build: &build
       context: ..
-      dockerfile: newspulse/Dockerfile
+      dockerfile: Dockerfile
     restart: unless-stopped
     # Bound to loopback on purpose: the reverse proxy is the only thing that
     # should reach it, so a misconfigured firewall cannot expose it directly.

@@ -37,16 +37,20 @@ Trade-off: available only while the Mac is awake and the tunnel is running.
 Right when you already have Railway capacity. It builds from the Dockerfile,
 redeploys on every push, and keeps a volume across deploys.
 
-1. **New project → Deploy from GitHub repo.** `railway.json` points it at
-   `newspulse/Dockerfile`; no build configuration needed.
+1. **New project → Deploy from GitHub repo.** No build configuration needed:
+   the `Dockerfile` is at the repository root, where Railway auto-detects it.
 
-   **Leave Root Directory unset.** Railway reads `railway.json` from the
-   repository root and [does not apply Root Directory to
-   it](https://docs.railway.com/deployments/monorepo), so the config would go
-   unread and the build would fall back to auto-detection and fail in seconds.
-   That is why the build context is the repo root and the Dockerfile's `COPY`
-   paths start with `newspulse/` — compose uses the same context, so a build
-   that works locally cannot fail here for a path reason.
+   **Leave Root Directory unset.** It must stay empty for the root `Dockerfile`
+   to be found, and Railway reads `railway.json` from the repository root
+   regardless — it [does not apply Root Directory to that
+   file](https://docs.railway.com/deployments/monorepo), so setting one breaks
+   detection without moving the config to match.
+
+   The Dockerfile sits at the root rather than beside the app so that the build
+   never depends on the config file being read at all: `railway.json` only adds
+   the healthcheck and restart policy. Its `COPY` paths are therefore prefixed
+   with `newspulse/`, and compose builds from the same repo-root context, so a
+   build that works locally cannot fail here for a path reason.
 
 2. **Attach a volume at `/data`.** One mount holds both the archive and the
    `claude` login — Railway gives a service one volume, and there is nothing to

@@ -16,10 +16,12 @@ RUN apt-get update \
 # fails per batch and the drawer reports "CLI not found".
 RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
 
-# Paths below are relative to the *repository root*, not to this file: Railway
-# looks for railway.json at the repo root and cannot be made to look inside a
-# subdirectory, so the repo root is the one build context every route uses —
-# Railway, compose and CI alike. See .dockerignore for what that context excludes.
+# This file lives at the repository root, and the app lives in newspulse/, hence
+# the prefixed COPY paths. It sits here so a PaaS that auto-detects a Dockerfile
+# finds it with no configuration at all: an earlier layout kept it beside the app
+# and depended on railway.json to point at it, which fails silently if the
+# platform doesn't read that file. Building must not depend on config discovery.
+# See .dockerignore for what the repo-root context excludes.
 WORKDIR /app
 COPY newspulse/pyproject.toml newspulse/uv.lock newspulse/README.md ./
 COPY newspulse/src ./src
