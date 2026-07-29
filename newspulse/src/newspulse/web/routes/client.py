@@ -15,12 +15,16 @@ import datetime as dt
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
 
 from ...models import Analysis, Article, Category, Client
+from ... import coverage_map
+from ...reporting import client_workbook, share_of_voice
 from ..app import get_db, templates
 
 # Reuse the Today route's shared, tested chrome/zone helpers rather than
@@ -30,6 +34,10 @@ from ..app import get_db, templates
 from .today import _day_bounds_utc, _fetch_last_run, _local_tz
 
 router = APIRouter()
+
+_XLSX_MEDIA_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
 # Archive rows per page. History can grow to thousands of rows across years, so
 # the list is paginated rather than rendered all at once; 50 fills a screen with
@@ -72,6 +80,7 @@ class ClientProfile:
     keywords: list[str]
     alert_topics: list[str]
     active: bool
+    logo_url: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,27 +138,32 @@ def _profile(client: Client) -> ClientProfile:
         keywords=list(client.keywords),
         alert_topics=list(client.alert_topics),
         active=client.active,
+        logo_url=client.logo_url,
     )
 
 
 def _archive_conditions(
-    client_id: int,
+    client_id: int | None,
     date_from: dt.date | None,
     date_to: dt.date | None,
     source: str,
     category: Category | None,
     search: str,
 ) -> list[ColumnElement[bool]]:
-    """WHERE clauses for this client's archive with the active filters applied.
+    """WHERE clauses for an archive query with the active filters applied.
 
     Every filter is an independent AND term, so any combination composes; each is
     added only when its value is present, and the date bounds reuse the Today
     route's DST-aware local-day math (from-day start .. to-day end, exclusive).
+
+    ``client_id`` of ``None`` spans the whole portfolio — what the cross-client
+    Archiv view needs — instead of scoping to one client's detail page.
     """
     conditions: list[ColumnElement[bool]] = [
-        Analysis.client_id == client_id,
         Analysis.relevance_score >= _MIN_RELEVANCE,
     ]
+    if client_id is not None:
+        conditions.append(Analysis.client_id == client_id)
     if date_from is not None:
         conditions.append(Article.published_at >= _day_bounds_utc(date_from)[0])
     if date_to is not None:
@@ -268,6 +282,129 @@ def _paginate(
     )
 
 
+@router.get("/client/{client_id}/map", response_class=HTMLResponse)
+def coverage_map_view(
+    request: Request, client_id: int, days: int = 90, session: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Which outlet writes about whom — and which ones never write about us."""
+    client = session.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return templates.TemplateResponse(
+        request,
+        "coverage_map.html",
+        {
+            "map": coverage_map.build(session, client, days=days),
+            "client": client,
+            "days": days,
+            "last_run": _fetch_last_run(session),
+            "header_date": dt.datetime.now(_local_tz()).date(),
+        },
+    )
+
+
+@router.get("/client/{client_id}/export.xlsx")
+def client_export(
+    client_id: int, days: int = 30, session: Session = Depends(get_db)
+) -> Response:
+    """Download this client's coverage as an .xlsx — the agency's deliverable.
+
+    Streamed from memory rather than a temp file: a month of coverage is small,
+    and nothing about the report needs to survive the request.
+    """
+    client = session.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    payload = client_workbook(session, client, days=days)
+    stamp = dt.datetime.now(_local_tz()).strftime("%Y-%m-%d")
+    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", client.name).strip("_") or "mandant"
+    return Response(
+        content=payload,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="newspulse_{safe_name}_{stamp}.xlsx"'
+            )
+        },
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class PortfolioRow:
+    """One client as the Mandanten overview lists it."""
+
+    id: int
+    name: str
+    industry: str | None
+    alert_topics: list[str]
+    active: bool
+    logo_url: str | None
+    is_competitor: bool
+    logo_url: str | None
+    today_count: int
+    total_count: int
+
+
+@router.get("/clients", response_class=HTMLResponse)
+def clients_index(
+    request: Request, session: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Mandanten: the whole portfolio at a glance, each row a way into its archive.
+
+    Counts are aggregated in two grouped queries rather than per client, so the
+    page stays one round trip regardless of portfolio size.
+    """
+    day = dt.datetime.now(_local_tz()).date()
+    start, end = _day_bounds_utc(day)
+
+    relevant = Analysis.relevance_score >= _MIN_RELEVANCE
+    totals = dict(
+        session.execute(
+            select(Analysis.client_id, func.count())
+            .where(relevant)
+            .group_by(Analysis.client_id)
+        ).all()
+    )
+    today_counts = dict(
+        session.execute(
+            select(Analysis.client_id, func.count())
+            .join(Article, Article.id == Analysis.article_id)
+            .where(relevant, Article.published_at >= start, Article.published_at < end)
+            .group_by(Analysis.client_id)
+        ).all()
+    )
+
+    clients = session.scalars(select(Client).order_by(Client.name)).all()
+    rows = [
+        PortfolioRow(
+            id=c.id,
+            name=c.name,
+            industry=c.industry,
+            alert_topics=list(c.alert_topics),
+            active=c.active,
+            is_competitor=c.is_competitor,
+            logo_url=c.logo_url,
+            today_count=today_counts.get(c.id, 0),
+            total_count=totals.get(c.id, 0),
+        )
+        for c in clients
+    ]
+    return templates.TemplateResponse(
+        request,
+        "clients.html",
+        {
+            # Split rather than flagged: a benchmark is not a mandate, and a
+            # single list invites reading a competitor's coverage as work.
+            # Mandates only. A benchmark belongs to the client it is measured
+            # against, not to a list of its own — with several mandates a flat
+            # list mixes unrelated markets into one meaningless roster.
+            "rows": [r for r in rows if not r.is_competitor],
+            "last_run": _fetch_last_run(session),
+            "header_date": day,
+        },
+    )
+
+
 @router.get("/client/{client_id}", response_class=HTMLResponse)
 def client_detail(
     request: Request,
@@ -323,6 +460,16 @@ def client_detail(
             "pagination": _paginate(
                 client_id, filters, current_page, total_pages, total
             ),
+            "voice": share_of_voice(session, client, days=30),
+            # Every other company, so a competitor can be added from this page.
+            "candidates": [
+                c for c in session.scalars(select(Client).order_by(Client.name)).all()
+                if c.id != client.id and c not in client.competitors
+            ],
+            "competitors": list(client.competitors),
             "last_run": _fetch_last_run(session),
+            # The shared header dates every page; the archive view spans many
+            # days, so it shows today.
+            "header_date": dt.datetime.now(_local_tz()).date(),
         },
     )

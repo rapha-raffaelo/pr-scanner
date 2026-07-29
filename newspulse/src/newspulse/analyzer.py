@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
+from pathlib import Path
 from collections.abc import Sequence
 from functools import lru_cache
 from importlib import resources
@@ -243,6 +245,7 @@ class _BaseClaudeAnalyzer:
                     relevance_score=verdict.relevance_score,
                     importance_score=verdict.importance_score,
                     is_alert=is_alert,
+                    tonality=verdict.tonality,
                     reasoning=verdict.reasoning,
                 )
             )
@@ -259,10 +262,64 @@ class _BaseClaudeAnalyzer:
         so a topic hit fires even when the model marked the article non-relevant.
         This is the AC's definition verbatim (is_alert = OR of the two code-computed
         conditions); gating it on relevance would reintroduce exactly the model
-        trust the code path exists to remove."""
+        trust the code path exists to remove.
+
+        Compared against the model's *raw* score, deliberately. Weighting it by
+        outlet tier (newspulse.outlets) was measured against a hand-labelled month
+        of real coverage and made this decision strictly worse: financial wires
+        publish genuine corporate news — job cuts, a regulator's reprimand —
+        alongside their ticker filler, so demoting the outlet dropped real stories,
+        while promoting the national dailies lifted their routine share-price
+        pieces in. Tier belongs in the *ranking* of the feed, where nothing is
+        lost, not in a threshold that decides what a human never sees."""
         if importance_score >= self.alert_threshold:
             return True
         return _matches_alert_topic(article, getattr(client, "alert_topics", []) or [])
+
+
+def claude_env() -> dict[str, str]:
+    """The environment for a ``claude`` subprocess, selecting the account.
+
+    The CLI reads its credentials from the directory ``CLAUDE_CONFIG_DIR`` names
+    (default ``~/.claude``). Setting it therefore picks *which subscription
+    login* to run under — it never introduces an API key, and there is no
+    billing difference: an unset value simply inherits whatever account the
+    process was started with.
+    """
+    env = dict(os.environ)
+    configured = (config.CLAUDE_CONFIG_DIR or "").strip()
+    if configured:
+        env["CLAUDE_CONFIG_DIR"] = str(Path(configured).expanduser())
+    return env
+
+
+def invoke_claude_cli(prompt: str, *, timeout: float = _SUBPROCESS_TIMEOUT_SECONDS) -> str:
+    """Run one ``claude -p`` call and return the model's text.
+
+    The single place the subscription CLI is invoked, shared by the analyzer and
+    the advisor so both inherit the same guarantees: a fixed argv (never a shell
+    string), a wall-clock ceiling, and no token or API endpoint touched here —
+    the CLI subprocess owns authentication.
+    """
+    argv = ["claude", "-p", prompt, "--output-format", "json"]
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell, prompt is an arg
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+            shell=False,  # explicit: the prompt is an argv element, never a shell command
+            env=claude_env(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise BackendError(f"claude -p timed out after {timeout}s") from exc
+    except FileNotFoundError as exc:
+        raise BackendError("claude CLI not found on PATH") from exc
+    if completed.returncode != 0:
+        stderr = (completed.stderr or "").strip()[:500]
+        raise BackendError(f"claude -p exited {completed.returncode}: {stderr}")
+    return _extract_cli_result(completed.stdout)
 
 
 class ClaudeCodeAnalyzer(_BaseClaudeAnalyzer):
@@ -284,24 +341,7 @@ class ClaudeCodeAnalyzer(_BaseClaudeAnalyzer):
         self.timeout = timeout
 
     def _invoke(self, prompt: str) -> str:
-        argv = ["claude", "-p", prompt, "--output-format", "json"]
-        try:
-            completed = subprocess.run(  # noqa: S603 - fixed argv, no shell, prompt is an arg
-                argv,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                check=False,
-                shell=False,  # explicit: the prompt is an argv element, never a shell command
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise BackendError(f"claude -p timed out after {self.timeout}s") from exc
-        except FileNotFoundError as exc:
-            raise BackendError("claude CLI not found on PATH") from exc
-        if completed.returncode != 0:
-            stderr = (completed.stderr or "").strip()[:500]
-            raise BackendError(f"claude -p exited {completed.returncode}: {stderr}")
-        return _extract_cli_result(completed.stdout)
+        return invoke_claude_cli(prompt, timeout=self.timeout)
 
 
 class ClaudeApiAnalyzer(_BaseClaudeAnalyzer):

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Einstellungen · NewsPulse{% endblock %}
+{% block title %}{{ translator(request)("Einstellungen") }} · NewsPulse{% endblock %}
 
 {# Render one preview cell: a list-valued field is joined, a scalar shown as-is. #}
 {% macro cell(value) %}
@@ -11,6 +11,7 @@
 {% endmacro %}
 
 {% block content %}
+{% set t = translator(request) %}
 <style>
   /* Settings-specific layout. Reuses the app-wide CSS custom properties defined
      in app.css (:root), so this page inherits the dashboard palette without
@@ -61,85 +62,248 @@
   .notice { border-radius: var(--radius); padding: 0.55rem 0.75rem; margin-bottom: 0.8rem; font-size: 0.85rem; }
   .notice--error { background: var(--alert-bg); border: 1px solid #fca5a5; color: #b91c1c; }
   .notice--ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #047857; }
-  .client-row { border-top: 1px solid var(--border); padding: 0.75rem 0; }
-  .client-row:first-of-type { border-top: none; }
-  .client-row--inactive { opacity: 0.65; }
-  .client-row .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-  .client-row .actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.3rem; }
-  .client-row .inactive-tag { font-size: 0.7rem; color: var(--muted); font-style: italic; }
   table.data { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
   table.data th, table.data td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
   table.data th { color: var(--muted); font-weight: 600; }
+
+  /* --- Client portfolio table ------------------------------------------- */
+  /* Collapsed add-form: adding is occasional, reading the table is constant. */
+  .add-client-toggle { margin-bottom: 0.9rem; }
+  .add-client-toggle > summary {
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--accent);
+    padding: 0.3rem 0;
+  }
+  .add-client-toggle .add-client { padding-top: 0.6rem; }
+  .table-caption { margin: 0 0 0.4rem; font-size: 0.75rem; color: var(--muted); }
+  /* A wide table must scroll inside its own box, never the page body. The
+     scroll lives on a wrapper, not the table: `display:block` on a <table>
+     collapses its column layout. */
+  .table-scroll { overflow-x: auto; }
+  table.data--clients { white-space: nowrap; }
+  table.data--clients thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    z-index: 1;
+  }
+  table.data--clients td { vertical-align: middle; }
+  .client-tr:hover > td { background: #f9fafb; }
+  .client-tr--inactive > td { color: var(--muted); }
+  .cell-name { font-weight: 600; }
+  .cell-name a { color: var(--text); text-decoration: none; }
+  .cell-name a:hover { color: var(--accent); text-decoration: underline; }
+  .cell-list { color: var(--muted); font-size: 0.78rem; }
+  .col-actions { white-space: nowrap; }
+  .col-actions form { display: inline; }
+  .tag--inactive { background: #f3f4f6; color: var(--muted); margin-left: 0.35rem; }
+  .tag--topic { background: var(--alert-bg); color: #b91c1c; margin-right: 0.25rem; text-transform: none; }
+  /* Row actions read as links, not a row of competing buttons. */
+  .rowlink, .linkbtn {
+    font: inherit;
+    font-size: 0.78rem;
+    background: none;
+    border: none;
+    padding: 0 0.4rem 0 0;
+    color: var(--accent);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .rowlink:hover, .linkbtn:hover { text-decoration: underline; }
+  /* Must out-specify `.panel button` (0,1,1), which would otherwise repaint
+     these as accent-filled buttons with white — i.e. invisible — label text. */
+  .panel .col-actions button.linkbtn {
+    background: none;
+    border: none;
+    padding: 0 0.4rem 0 0;
+    font-weight: 400;
+    color: var(--accent);
+  }
+  .panel .col-actions button.linkbtn--danger { color: var(--alert); }
+  .client-edit-tr > td { background: #f9fafb; white-space: normal; padding: 0.85rem 0.5rem; }
+  .client-edit .actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.3rem; }
   .feed-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 1rem; margin-bottom: 0.75rem; }
   @media (max-width: 620px) { .feed-list { grid-template-columns: 1fr; } }
   .feed-list label { display: flex; gap: 0.4rem; align-items: baseline; color: var(--text); margin: 0; }
   .feed-list .feed-industry { color: var(--muted); font-size: 0.72rem; }
+  .feedgroup { margin-bottom: 0.9rem; }
+  .feedgroup__head { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.35rem; }
+  .feedgroup__name { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .feedgroup__n { font-size: 0.7rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .panel .feedgroup__all {
+    font: inherit; font-size: 0.7rem; font-weight: 600; padding: 1px 8px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: var(--surface); color: var(--accent); cursor: pointer; margin-left: auto;
+  }
+  .panel .feedgroup__all:hover { border-color: var(--accent); }
   .import-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem 0.75rem; }
   @media (max-width: 620px) { .import-fields { grid-template-columns: 1fr; } }
   .run-errors { margin: 0.25rem 0 0; padding-left: 1rem; color: var(--alert); }
+  .run-form { display: flex; align-items: flex-end; gap: 0.75rem; margin-bottom: 0.5rem; }
+  .run-form .filter-field { min-width: 260px; }
+  .run-form select { margin-bottom: 0; }
+  .panel-subhead { margin-top: 1.25rem; }
 </style>
 
 <div class="settings">
-  <h1>Einstellungen</h1>
+  <h1>{{ t("Einstellungen") }}</h1>
 
   <div class="settings-grid">
+    <!-- ── Sweep trigger: the one daily action, so it leads the page ── -->
+    <section class="panel panel--wide" aria-label="{{ t('Lauf starten') }}">
+      <h2>{{ t("Lauf starten") }}</h2>
+      {% if run_error %}<div class="notice notice--error">{{ run_error }}</div>{% endif %}
+      {% if run_started is not none %}
+        <div class="notice notice--ok">
+          {% if run_started %}
+            Nachlauf über {{ run_started }} Tage gestartet — läuft im Hintergrund.
+          {% else %}
+            Lauf gestartet — läuft im Hintergrund.
+          {% endif %}
+          Der Status oben rechts aktualisiert sich nach dem Neuladen.
+        </div>
+      {% endif %}
+      <form method="post" action="/settings/run" class="run-form">
+        <div class="filter-field">
+          <label for="since_days">{{ t("Zeitraum") }}</label>
+          <select id="since_days" name="since_days">
+            <option value="">{{ t("Seit letztem Lauf (Standard)") }}</option>
+            {% for d in backfill_days %}
+              <option value="{{ d }}">{{ t("Letzte") }} {{ d }} {{ t("Tage nachladen") }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit">{{ t("Jetzt aktualisieren") }}</button>
+      </form>
+      <p class="panel-hint">
+        Ein Nachlauf erweitert nur das akzeptierte Zeitfenster — ein Feed liefert
+        weiterhin nur die Einträge, die er aktuell ausspielt (oft wenige Tage).
+        Mehrfaches Ausführen ist unbedenklich: bereits gespeicherte Artikel werden
+        durch die Deduplizierung verworfen.
+      </p>
+    </section>
+
     <!-- ── Clients: add + edit + deactivate (NP-02 CRUD service) ── -->
     <section class="panel panel--wide" aria-label="Clients">
-      <h2>Clients</h2>
+      <h2>{{ t("Clients") }}</h2>
       {% if client_error %}
         <div class="notice notice--error">{{ client_error }}</div>
       {% endif %}
 
-      <form method="post" action="/settings/clients" class="add-client">
-        <div class="import-fields">
-          <div><label for="new-name">Name*</label><input type="text" id="new-name" name="name" required></div>
-          <div><label for="new-industry">Branche</label><input type="text" id="new-industry" name="industry"></div>
-          <div><label for="new-country">Land</label><input type="text" id="new-country" name="country" value="{{ default_country }}" maxlength="2"></div>
-          <div><label for="new-aliases">Aliasse</label><input type="text" id="new-aliases" name="aliases" placeholder="Komma/Semikolon"></div>
-          <div><label for="new-keywords">Suchbegriffe</label><input type="text" id="new-keywords" name="keywords" placeholder="Komma/Semikolon"></div>
-          <div><label for="new-topics">Alarm-Themen</label><input type="text" id="new-topics" name="alert_topics" placeholder="Komma/Semikolon"></div>
-        </div>
-        <button type="submit">Client hinzufügen</button>
-      </form>
-
-      <div class="client-list">
-        {% for client in clients %}
-          <div class="client-row{% if not client.active %} client-row--inactive{% endif %}">
-            <form method="post" action="/settings/clients/{{ client.id }}">
-              <div class="grid2">
-                <div><label>Name</label><input type="text" name="name" value="{{ client.name }}" required></div>
-                <div><label>Branche</label><input type="text" name="industry" value="{{ client.industry or '' }}"></div>
-                <div><label>Land</label><input type="text" name="country" value="{{ client.country }}" maxlength="2"></div>
-                <div><label>Aliasse</label><input type="text" name="aliases" value="{{ client.aliases | join(', ') }}"></div>
-                <div><label>Suchbegriffe</label><input type="text" name="keywords" value="{{ client.keywords | join(', ') }}"></div>
-                <div><label>Alarm-Themen</label><input type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}"></div>
-              </div>
-              <div class="actions">
-                <button type="submit" class="secondary">Speichern</button>
-                {% if not client.active %}<span class="inactive-tag">inaktiv</span>{% endif %}
-              </div>
-            </form>
-            <div class="actions">
-              {% if client.active %}
-                <form method="post" action="/settings/clients/{{ client.id }}/deactivate">
-                  <button type="submit" class="danger">Deaktivieren</button>
-                </form>
-              {% else %}
-                <form method="post" action="/settings/clients/{{ client.id }}/reactivate">
-                  <button type="submit" class="secondary">Reaktivieren</button>
-                </form>
-              {% endif %}
-            </div>
+      {# Collapsed by default: adding is occasional, reading the portfolio is
+         constant, so the six add-fields must not sit permanently above the table. #}
+      <details class="add-client-toggle"{% if client_error and not edit_id %} open{% endif %}>
+        <summary>{{ t("+ Client hinzufügen") }}</summary>
+        <form method="post" action="/settings/clients" class="add-client">
+          <div class="import-fields">
+            <div><label for="new-name">{{ t("Name") }}*</label><input type="text" id="new-name" name="name" required></div>
+            <div><label for="new-industry">{{ t("Branche") }}</label><input type="text" id="new-industry" name="industry"></div>
+            <div><label for="new-country">{{ t("Land") }}</label><input type="text" id="new-country" name="country" value="{{ default_country }}" maxlength="2"></div>
+            <div><label for="new-aliases">{{ t("Aliasse") }}</label><input type="text" id="new-aliases" name="aliases" placeholder="Komma/Semikolon"></div>
+            <div><label for="new-keywords">{{ t("Suchbegriffe") }}</label><input type="text" id="new-keywords" name="keywords" placeholder="Komma/Semikolon"></div>
+            <div><label for="new-topics">{{ t("Alarm-Themen") }}</label><input type="text" id="new-topics" name="alert_topics" placeholder="Komma/Semikolon"></div>
+            <div><label for="new-website">{{ t("Website") }}</label><input type="text" id="new-website" name="website" placeholder="zalando.de — für das Logo"></div>
           </div>
-        {% else %}
-          <p class="rail__empty">Noch keine Clients. Über das Formular oder den Import anlegen.</p>
-        {% endfor %}
-      </div>
+          <button type="submit">{{ t("+ Client hinzufügen") }}</button>
+        </form>
+      </details>
+
+      {% if clients %}
+        <p class="table-caption">{{ clients | selectattr('active') | list | length }} {{ t("aktiv") }} · {{ clients | length }} {{ t("gesamt") }}</p>
+        <div class="table-scroll">
+        <table class="data data--clients">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("Name") }}</th>
+              <th scope="col">{{ t("Rolle") }}</th>
+              <th scope="col">{{ t("Branche") }}</th>
+              <th scope="col">{{ t("Land") }}</th>
+              <th scope="col">{{ t("Aliasse") }}</th>
+              <th scope="col">{{ t("Suchbegriffe") }}</th>
+              <th scope="col">{{ t("Alarm-Themen") }}</th>
+              <th scope="col" class="col-actions">{{ t("Aktionen") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for client in clients %}
+              <tr id="client-{{ client.id }}" class="client-tr{% if not client.active %} client-tr--inactive{% endif %}">
+                <td class="cell-name">
+                  <a href="/client/{{ client.id }}">{{ client.name }}</a>
+                  {% if not client.active %}<span class="tag tag--inactive">{{ t("inaktiv") }}</span>{% endif %}
+                </td>
+                <td>
+                  {# One click flips the role. A competitor is monitored the same
+                     way but never reported to, and never appears in Heute. #}
+                  <form method="post" action="/settings/clients/{{ client.id }}/competitor">
+                    <button type="submit" class="rolebtn {{ 'rolebtn--rival' if client.is_competitor else 'rolebtn--mandate' }}"
+                            title="Umschalten — ein Wettbewerber wird beobachtet, aber nie an ihn berichtet">
+                      {{ t('Wettbewerb') if client.is_competitor else t('Mandant') }}
+                    </button>
+                  </form>
+                </td>
+                <td>{{ client.industry or '—' }}</td>
+                <td>{{ client.country }}</td>
+                <td class="cell-list">{{ client.aliases | join(', ') or '—' }}</td>
+                <td class="cell-list">{{ client.keywords | join(', ') or '—' }}</td>
+                <td class="cell-list">
+                  {% if client.alert_topics %}
+                    {% for topic in client.alert_topics %}<span class="tag tag--topic">{{ topic }}</span>{% endfor %}
+                  {% else %}—{% endif %}
+                </td>
+                <td class="col-actions">
+                  {% if edit_id == client.id %}
+                    <a class="rowlink" href="/settings">{{ t("Schließen") }}</a>
+                  {% else %}
+                    <a class="rowlink" href="/settings?edit={{ client.id }}#client-{{ client.id }}">{{ t("Bearbeiten") }}</a>
+                  {% endif %}
+                  {% if client.active %}
+                    <form method="post" action="/settings/clients/{{ client.id }}/deactivate">
+                      <button type="submit" class="linkbtn linkbtn--danger">{{ t("Deaktivieren") }}</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="/settings/clients/{{ client.id }}/reactivate">
+                      <button type="submit" class="linkbtn">{{ t("Reaktivieren") }}</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% if edit_id == client.id %}
+                <tr class="client-edit-tr">
+                  <td colspan="8">
+                    <form method="post" action="/settings/clients/{{ client.id }}" class="client-edit">
+                      <div class="import-fields">
+                        <div><label for="e-name-{{ client.id }}">Name*</label><input id="e-name-{{ client.id }}" type="text" name="name" value="{{ client.name }}" required></div>
+                        <div><label for="e-industry-{{ client.id }}">Branche</label><input id="e-industry-{{ client.id }}" type="text" name="industry" value="{{ client.industry or '' }}"></div>
+                        <div><label for="e-country-{{ client.id }}">Land</label><input id="e-country-{{ client.id }}" type="text" name="country" value="{{ client.country }}" maxlength="2"></div>
+                        <div><label for="e-aliases-{{ client.id }}">Aliasse</label><input id="e-aliases-{{ client.id }}" type="text" name="aliases" value="{{ client.aliases | join(', ') }}" placeholder="Komma/Semikolon"></div>
+                        <div><label for="e-keywords-{{ client.id }}">Suchbegriffe</label><input id="e-keywords-{{ client.id }}" type="text" name="keywords" value="{{ client.keywords | join(', ') }}" placeholder="Komma/Semikolon"></div>
+                        <div><label for="e-topics-{{ client.id }}">Alarm-Themen</label><input id="e-topics-{{ client.id }}" type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}" placeholder="Komma/Semikolon"></div>
+                      </div>
+                      <div class="actions">
+                        <button type="submit">{{ t("Speichern") }}</button>
+                        <a class="rowlink" href="/settings">{{ t("Abbrechen") }}</a>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% else %}
+        <p class="rail__empty">{{ t("Noch keine Clients. Über das Formular oder den Import anlegen.") }}</p>
+      {% endif %}
     </section>
 
     <!-- ── Import: mapping + preview before commit (NP-02 import) ── -->
     <section class="panel panel--wide" aria-label="Import">
-      <h2>Import (Excel / CSV)</h2>
+      <h2>{{ t("Import (Excel / CSV)") }}</h2>
       {% if import_success is not none %}
         <div class="notice notice--ok">{{ import_success }} Client(s) importiert.</div>
       {% endif %}
@@ -164,8 +328,8 @@
                   hx-post="/settings/import/preview"
                   hx-target="#import-result"
                   hx-select="#import-result"
-                  hx-swap="outerHTML">Vorschau</button>
-          <button type="submit">Importieren</button>
+                  hx-swap="outerHTML">{{ t("Vorschau") }}</button>
+          <button type="submit">{{ t("Importieren") }}</button>
         </div>
       </form>
 
@@ -174,7 +338,7 @@
           <div class="notice notice--error">{{ import_error }}</div>
         {% elif import_rows is not none %}
           <p class="panel-hint">{{ import_row_total }} Zeile(n) — noch nicht importiert. Auf „Importieren“ klicken, um zu übernehmen.
-            {% if import_row_total > import_rows | length %}(Vorschau zeigt die ersten {{ import_rows | length }}.){% endif %}</p>
+            {% if import_row_total > import_rows | length %}({{ t("Vorschau zeigt die ersten") }} {{ import_rows | length }}.){% endif %}</p>
           <table class="data">
             <thead>
               <tr>{% for field in map_fields %}<th>{{ field }}</th>{% endfor %}</tr>
@@ -191,7 +355,7 @@
 
     <!-- ── Alert threshold (persists to settings table) ── -->
     <section class="panel" aria-label="Alarm-Schwellenwert">
-      <h2>Alarm-Schwellenwert</h2>
+      <h2>{{ t("Alarm-Schwellenwert") }}</h2>
       {% if threshold_error %}<div class="notice notice--error">{{ threshold_error }}</div>{% endif %}
       <p class="panel-hint">Ab dieser Wichtigkeit (0–10) wird ein Artikel als Alarm markiert. Wirkt nur auf künftige Läufe.</p>
       <form method="post" action="/settings/threshold">
@@ -201,33 +365,56 @@
             <option value="{{ value }}"{% if value == alert_threshold %} selected{% endif %}>{{ value }}</option>
           {% endfor %}
         </select>
-        <button type="submit">Speichern</button>
+        <button type="submit">{{ t("Speichern") }}</button>
       </form>
     </section>
 
     <!-- ── Active feeds (persists to settings table) ── -->
     <section class="panel" aria-label="Feeds">
-      <h2>Feeds ({{ feeds | selectattr('active') | list | length }}/{{ feeds | length }} aktiv)</h2>
+      <h2>{{ t("Feeds") }} ({{ feeds | selectattr('active') | list | length }}/{{ feeds | length }} {{ t("aktiv") }})</h2>
       <form method="post" action="/settings/feeds">
-        <div class="feed-list">
-          {% for feed in feeds %}
-            <label title="{{ feed.url }}">
-              <input type="checkbox" name="feed" value="{{ feed.name }}"{% if feed.active %} checked{% endif %}>
-              <span>{{ feed.name }}{% if feed.industry %} <span class="feed-industry">{{ feed.industry }}</span>{% endif %}</span>
-            </label>
-          {% endfor %}
-        </div>
+        {# Grouped by tier. One flat block of 58 checkboxes cannot answer the
+           question an operator actually has — "are the Leitmedien switched on?" —
+           and the per-group toggle makes "trade press only" a single click. #}
+        {% for label, group in feed_tiers %}
+          <div class="feedgroup">
+            <div class="feedgroup__head">
+              <span class="feedgroup__name">{{ t(label) }}</span>
+              <span class="feedgroup__n">{{ group | selectattr('active') | list | length }}/{{ group | length }}</span>
+              <button type="button" class="feedgroup__all" data-tier-toggle>{{ t("alle") }}</button>
+            </div>
+            <div class="feed-list">
+              {% for feed in group %}
+                <label title="{{ feed.url }}">
+                  <input type="checkbox" name="feed" value="{{ feed.name }}"{% if feed.active %} checked{% endif %}>
+                  <span>{{ feed.name }}{% if feed.industry %} <span class="feed-industry">{{ feed.industry }}</span>{% endif %}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+        {# Toggles every box in its own group. The individual checkboxes still
+           work without JS, so this is a shortcut and never the only way in. #}
+        <script>
+          document.querySelectorAll("[data-tier-toggle]").forEach(btn => {
+            btn.onclick = () => {
+              const boxes = btn.closest(".feedgroup").querySelectorAll("input[type=checkbox]");
+              const turnOn = [...boxes].some(b => !b.checked);
+              boxes.forEach(b => { b.checked = turnOn; });
+            };
+          });
+        </script>
         <button type="submit">Feeds speichern</button>
       </form>
     </section>
 
     <!-- ── Run history ── -->
     <section class="panel panel--wide" aria-label="Läufe">
-      <h2>Letzte Läufe</h2>
+      <h2>{{ t("Letzte Läufe") }}</h2>
       {% if runs %}
         <table class="data">
           <thead>
-            <tr><th>Start</th><th>Status</th><th>Artikel</th><th>Fehler</th></tr>
+            <tr><th>{{ t("Start") }}</th><th>{{ t("Status") }}</th><th>{{ t("Artikel") }}</th><th>{{ t("Fehler") }}</th></tr>
           </thead>
           <tbody>
             {% for run in runs %}

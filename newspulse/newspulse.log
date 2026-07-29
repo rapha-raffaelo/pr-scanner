@@ -1,0 +1,17 @@
+2026-07-27 20:19:24,849 INFO newspulse.job run start: 1 active client(s), 59 feed(s) (58 registry + 1 client search), since=2026-06-27T18:19:24.821024+00:00 [dry-run]
+2026-07-27 20:19:39,797 INFO newspulse.job dry-run: 2809 item(s) fetched, 99 candidate(s), 96 new article(s) — no writes
+2026-07-27 20:20:00,640 INFO newspulse.job run start: 1 active client(s), 59 feed(s) (58 registry + 1 client search), since=2026-06-27T18:20:00.619800+00:00
+2026-07-27 20:27:11,181 WARNING newspulse.analyzer analysis batch for client 'Zalando' failed (attempt 1/2): response was not valid JSON: Expecting value: line 1 column 1 (char 0); retrying
+2026-07-27 20:28:00,999 INFO newspulse.job run start: 1 active client(s), 59 feed(s) (58 registry + 1 client search), since=2026-06-27T18:28:00.978678+00:00 [dry-run]
+2026-07-27 20:28:18,301 INFO newspulse.job dry-run: 2793 item(s) fetched, 113 candidate(s), 31 new article(s) — no writes
+2026-07-27 20:30:11,753 INFO newspulse.job run done: status=ok, 96 new article(s), 96 analysis(es), 0 error(s)
+2026-07-28 13:16:19,624 INFO newspulse.job run start: 5 active client(s), 63 feed(s) (58 registry + 5 client search), since=2026-06-28T11:16:19.600479+00:00 [dry-run]
+2026-07-28 13:16:39,472 INFO newspulse.job dry-run: 2908 item(s) fetched, 233 candidate(s), 147 new article(s) — no writes
+2026-07-28 13:17:06,147 INFO newspulse.job run start: 5 active client(s), 63 feed(s) (58 registry + 5 client search), since=2026-06-28T11:17:06.123747+00:00
+2026-07-28 13:28:40,931 INFO newspulse.job run done: status=ok, 147 new article(s), 164 analysis(es), 0 error(s)
+2026-07-28 14:39:22,735 INFO newspulse.job run start: 5 active client(s), 63 feed(s) (58 registry + 5 client search), since=2026-07-28T11:17:06.135749+00:00
+2026-07-28 14:40:43,554 INFO newspulse.job run done: status=ok, 7 new article(s), 7 analysis(es), 0 error(s)
+2026-07-28 14:40:43,558 INFO newspulse.web.routes.settings dashboard-triggered run finished: status=ok new_articles=7
+2026-07-28 18:53:40,557 INFO newspulse.job run start: 4 active client(s), 62 feed(s) (58 registry + 4 client search), since=2026-07-28T12:39:22.727767+00:00
+2026-07-28 18:54:39,194 INFO newspulse.job run done: status=ok, 11 new article(s), 11 analysis(es), 0 error(s)
+2026-07-28 18:54:39,199 INFO newspulse.web.routes.settings dashboard-triggered run finished: status=ok new_articles=11

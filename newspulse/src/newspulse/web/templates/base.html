@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="{{ request_language(request) }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,25 +14,282 @@
   <script src="{{ url_for('static', path='htmx.min.js') }}"></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="/">NewsPulse</a>
-    <div class="run-status" title="Last daily run">
-      {% if last_run %}
-        <span class="run-time">
-          {% if last_run.is_running %}Läuft…{% else %}Letzter Lauf: {{ last_run.ran_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}
+  {% set t = translator(request) %}
+  {% set lang = request_language(request) %}
+  <div class="wrap">
+    <header class="top">
+      <div class="brand"><a href="/">News<span>Pulse</span></a></div>
+      <div class="datemeta">
+        {# The viewed day on Today; the current day on every other page. #}
+        {{ (day if day is defined else header_date) | de_long_date }}<br>
+        {% if last_run %}
+          {% if last_run.is_running %}
+            {{ t("Lauf läuft…") }}
+          {% else %}
+            {{ t("Letzter Lauf") }} {{ last_run.ran_at.strftime('%H:%M') }} {{ t("Uhr") }}
+          {% endif %}
+          <span class="dot">·</span>
+          {% if last_run.feed_errors == 0 %}
+            <span class="runok">{{ t("Feeds ok") }}</span>
+          {% else %}
+            <span class="runbad">{{ last_run.feed_errors }} {{ t("Feed-Fehler") }}</span>
+          {% endif %}
+          <span class="dot">·</span> {{ last_run.articles_checked }} {{ t("Artikel geprüft") }}
+        {% else %}
+          <span class="runempty">{{ t("Noch kein Lauf") }}</span>
+        {% endif %}
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <a href="/"{% if request.url.path == '/' %} class="active" aria-current="page"{% endif %}>{{ t("Heute") }}</a>
+      <a href="/clients"{% if request.url.path.startswith('/client') %} class="active" aria-current="page"{% endif %}>{{ t("Mandanten") }}</a>
+      <a href="/archive"{% if request.url.path.startswith('/archive') %} class="active" aria-current="page"{% endif %}>{{ t("Archiv") }}</a>
+      <a href="/settings"{% if request.url.path.startswith('/settings') %} class="active" aria-current="page"{% endif %}>{{ t("Einstellungen") }}</a>
+      {# Fetching news is the one action wanted from any page, so it lives in the
+         nav rather than three clicks deep in Einstellungen. redirect_to returns
+         the reader to where they clicked instead of bouncing them to Settings. #}
+      {# Language toggle. A POST because it writes a cookie, and `next` returns
+         the reader to the page they were on rather than the dashboard root. #}
+      <div class="langtoggle" role="group" aria-label="{{ t('Sprache') }}">
+        {% for code, flag, label in [('de', '🇩🇪', 'Deutsch'), ('en', '🇬🇧', 'English')] %}
+          <form method="post" action="/language/{{ code }}?next={{ request.url.path }}{% if request.url.query %}%3F{{ request.url.query | urlencode }}{% endif %}">
+            <button type="submit" class="langbtn{% if lang == code %} langbtn--on{% endif %}"
+                    title="{{ label }}" aria-pressed="{{ 'true' if lang == code else 'false' }}">{{ flag }}</button>
+          </form>
+        {% endfor %}
+      </div>
+      <form method="post" action="/settings/run" class="nav-refresh nav-refresh--tight">
+        <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+        <button type="submit" title="{{ t('Feeds jetzt abrufen und analysieren — läuft im Hintergrund') }}">{{ t("↻ Aktualisieren") }}</button>
+      </form>
+    </nav>
+
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  {# The assistant drawer. Available from every page and seeded with what the
+     page is showing, so a question does not have to re-explain its own context.
+     Advisory only: it produces text, it never acts. #}
+  <button class="drawer-open" type="button" data-drawer-open
+          title="{{ t('Kommunikationsstrategie zur Berichterstattung auf dieser Seite') }}"><img src="{{ url_for('static', path='captain.svg') }}" alt="" class="cc-icon">{{ t("Captain Comms") }}</button>
+
+  <aside class="drawer" id="assistant-drawer"{% if request.query_params.get("assistant") %}{% else %} hidden{% endif %} aria-label="{{ t('Captain Comms') }}">
+    <header class="drawer__head">
+      <span class="drawer__title">
+        <img src="{{ url_for('static', path='captain.svg') }}" alt="" class="cc-icon cc-icon--lg">
+        <span>
+          <strong>{{ t("Captain Comms") }}</strong>
+          <select class="drawer__pick" id="drawer-client" aria-label="{{ t('Mandant') }}">
+            <option value="">{{ t("Alle Mandanten") }}</option>
+          </select>
         </span>
-        <span class="run-badge run-badge--{{ last_run.status }}">{{ last_run.status }}</span>
-        <span class="run-metric">{{ last_run.articles_checked }} Artikel geprüft</span>
-        <span class="run-metric">
-          {% if last_run.feed_errors == 0 %}Feeds ok{% else %}{{ last_run.feed_errors }} Feed-Fehler{% endif %}
-        </span>
-      {% else %}
-        <span class="run-status--empty">Noch kein Lauf</span>
-      {% endif %}
+      </span>
+      <span class="drawer__acts">
+        <button type="button" class="drawer__reset" data-drawer-reset
+                title="{{ t('Gespräch zurücksetzen') }}">{{ t("Refresh") }}</button>
+        <button type="button" class="drawer__close" data-drawer-close aria-label="{{ t('Schließen') }}">×</button>
+      </span>
+    </header>
+
+    <div class="drawer__body" id="drawer-body">
+      {# The empty state carries his thesis, so the first thing read is what he
+         is for rather than an input box waiting to be filled. #}
+      <div class="drawer__intro" id="drawer-intro">
+        <p class="drawer__motto">{{ t("Zahlen sagen mehr als jede Selbstdarstellung.") }}</p>
+        <p class="drawer__hint">{{ t("Strategische Einordnung der Berichterstattung, die gerade auf dem Schirm ist — belegt aus dem Archiv. Captain Comms sieht Schlagzeilen und Kurzfassungen, nicht die vollständigen Artikel, und entscheidet nichts: er berät.") }}</p>
+        <div class="drawer__chips">
+          {% for suggestion in assistant_suggestions or [
+               t('Welches Narrativ setzt sich gerade durch — und wer treibt es?'),
+               t('Wo müssen wir reagieren, wo ist Schweigen die bessere Strategie?'),
+               t('Welche Botschaft sollten wir diese Woche setzen?'),
+               t('Was übersehen wir gerade?')] %}
+            <button type="button" class="drawer__chip" data-ask="{{ suggestion }}">{{ suggestion }}</button>
+          {% endfor %}
+        </div>
+      </div>
     </div>
-  </header>
-  <main class="content">
-    {% block content %}{% endblock %}
-  </main>
+
+    <form class="drawer__ask" id="drawer-form">
+      <input type="text" id="drawer-input" placeholder="{{ t('Frage stellen…') }}" autocomplete="off">
+      <button type="submit" id="drawer-send" aria-label="{{ t('Fragen') }}">↑</button>
+    </form>
+  </aside>
+
+  <script>
+  (function () {
+    const drawer  = document.getElementById("assistant-drawer");
+    const body    = document.getElementById("drawer-body");
+    const intro   = document.getElementById("drawer-intro");
+    const form    = document.getElementById("drawer-form");
+    const input   = document.getElementById("drawer-input");
+    const send    = document.getElementById("drawer-send");
+    const CTX     = {{ assistant_ctx(request) | tojson }};
+    const picker  = document.getElementById("drawer-client");
+    const AVATAR  = {{ url_for('static', path='captain.svg') | string | tojson }};
+
+    // One thread per subject, held in sessionStorage: the conversation survives
+    // navigating between Heute, the archive and a client page, but ends with the
+    // tab. A PR conversation is about a moment; resuming last week's thread
+    // against this week's coverage would be worse than starting fresh.
+    //
+    // The key follows the selected mandate, so switching subject loads that
+    // mandate's conversation rather than carrying Zalando's thread into a
+    // question about someone else.
+    const keyFor = id => "captaincomms:" + (id || "portfolio");
+    let history = [];
+    let source  = null;
+
+    const load = () => {
+      try { history = JSON.parse(sessionStorage.getItem(keyFor(CTX.client_id)) || "[]"); }
+      catch (e) { history = []; }
+    };
+    const persist = () => {
+      // A full session can outgrow the quota; the thread is a convenience, so
+      // drop it rather than let a storage error break the drawer.
+      try {
+        sessionStorage.setItem(keyFor(CTX.client_id), JSON.stringify(history.slice(-24)));
+      } catch (e) {}
+    };
+    load();
+
+    function bubble(cls, text) {
+      const el = document.createElement("div");
+      el.className = cls;
+      if (cls === "cc-msg cc-msg--a") {
+        const av = document.createElement("img");
+        av.src = AVATAR; av.alt = ""; av.className = "cc-msg__avatar";
+        el.appendChild(av);
+        const txt = document.createElement("div");
+        txt.className = "cc-msg__text";
+        if (text) txt.textContent = text;
+        el.appendChild(txt);
+      } else if (text) {
+        el.textContent = text;
+      }
+      body.appendChild(el);
+      body.scrollTop = body.scrollHeight;
+      return el;
+    }
+
+    const textOf = el => el.querySelector(".cc-msg__text") || el;
+
+    function render() {
+      body.querySelectorAll(".cc-msg, .cc-status").forEach(n => n.remove());
+      intro.hidden = history.length > 0;
+      history.forEach(turn =>
+        bubble(turn.role === "user" ? "cc-msg cc-msg--q" : "cc-msg cc-msg--a", turn.text));
+      body.scrollTop = body.scrollHeight;
+    }
+    render();
+
+    // The mandate list is fetched once, on first open: the drawer lives in the
+    // shared layout, so passing it through every route would touch each one for
+    // a control none of them owns.
+    let loadedClients = false;
+    async function fillPicker() {
+      if (loadedClients) return;
+      loadedClients = true;
+      try {
+        const res = await fetch("/api/assistant/clients");
+        (await res.json()).forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = String(c.id);
+          opt.textContent = c.name;
+          picker.appendChild(opt);
+        });
+        // The page wins by default: opening the drawer on a client page should
+        // already be about that client.
+        picker.value = CTX.client_id ? String(CTX.client_id) : "";
+      } catch (e) { loadedClients = false; }
+    }
+
+    picker.onchange = () => {
+      stop();
+      const chosen = picker.value;
+      if (chosen) { CTX.client_id = chosen; } else { delete CTX.client_id; }
+      load();
+      render();
+      input.focus();
+    };
+
+    const openDrawer  = () => { drawer.hidden = false; fillPicker(); input.focus(); body.scrollTop = body.scrollHeight; };
+    const closeDrawer = () => { drawer.hidden = true; stop(); };
+
+    document.querySelectorAll("[data-drawer-open]").forEach(el => el.onclick = openDrawer);
+    document.querySelectorAll("[data-drawer-close]").forEach(el => el.onclick = closeDrawer);
+    document.querySelectorAll("[data-drawer-reset]").forEach(el => el.onclick = () => {
+      stop();
+      history = [];
+      persist();
+      render();
+      input.focus();
+    });
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !drawer.hidden) closeDrawer(); });
+
+    function stop() {
+      // Closing the socket also kills the subprocess server-side, so an
+      // abandoned question never leaves a `claude` process running.
+      if (source) { source.close(); source = null; }
+      send.disabled = false;
+      input.disabled = false;
+    }
+
+    function ask(question) {
+      if (!question || send.disabled) return;
+      stop();
+      intro.hidden = true;
+
+      bubble("cc-msg cc-msg--q", question);
+      const answer = bubble("cc-msg cc-msg--a");
+      const status = document.createElement("div");
+      status.className = "cc-status";
+      status.innerHTML = '<i></i><i></i><i></i>';
+      textOf(answer).appendChild(status);
+
+      send.disabled = true;
+      input.disabled = true;
+      let reply = "";
+
+      const params = new URLSearchParams({
+        q: question, history: JSON.stringify(history), ...CTX,
+      });
+      source = new EventSource("/api/assistant/stream?" + params.toString());
+
+      source.addEventListener("status", e => { status.title = JSON.parse(e.data); });
+      source.addEventListener("text", e => {
+        status.remove();
+        reply += JSON.parse(e.data);
+        textOf(answer).textContent = reply;
+        body.scrollTop = body.scrollHeight;
+      });
+      source.addEventListener("done", () => {
+        status.remove();
+        // Recorded only once complete, so a half-streamed answer never becomes
+        // context for the next question or gets restored as one.
+        history.push({ role: "user", text: question });
+        history.push({ role: "assistant", text: reply });
+        persist();
+        stop();
+        input.focus();
+      });
+      source.addEventListener("error", e => {
+        status.remove();
+        const err = document.createElement("div");
+        err.className = "cc-err";
+        err.textContent = e.data ? JSON.parse(e.data) : {{ t("Verbindung unterbrochen.") | tojson }};
+        textOf(answer).appendChild(err);
+        stop();
+      });
+    }
+
+    if (!drawer.hidden) fillPicker();
+
+    form.onsubmit = e => { e.preventDefault(); const v = input.value.trim(); input.value = ""; ask(v); };
+    document.querySelectorAll("[data-ask]").forEach(el => el.onclick = () => ask(el.dataset.ask));
+  })();
+  </script>
 </body>
 </html>

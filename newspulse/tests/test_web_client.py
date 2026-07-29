@@ -375,3 +375,175 @@ def test_zero_relevance_row_is_excluded(factory, client):
 def test_unknown_client_returns_404(client):
     """A client id that does not exist returns 404, not a 500."""
     assert client.get("/client/9999").status_code == 404
+
+
+# --- Mandanten overview (/clients) --------------------------------------------
+
+
+def test_clients_index_lists_portfolio_with_counts(factory, client):
+    """The Mandanten overview lists every client and counts today's coverage
+    separately from the whole archive."""
+    today = dt.datetime.now().astimezone().date()
+    with factory() as s:
+        alpha = _seed_client(s, name="Alpha AG", industry="Chemie")
+        beta = _seed_client(s, name="Beta AG")
+        _seed_article(
+            s, client_obj=alpha, title="Heute A", url="https://ex.de/a-today",
+            published_at=_local_noon(today),
+        )
+        _seed_article(
+            s, client_obj=alpha, title="Alt A", url="https://ex.de/a-old",
+            published_at=_local_noon(_JAN),
+        )
+        _seed_article(
+            s, client_obj=beta, title="Alt B", url="https://ex.de/b-old",
+            published_at=_local_noon(_JAN),
+        )
+        s.commit()
+
+    body = client.get("/clients").text
+
+    assert "Alpha AG" in body
+    assert "Beta AG" in body
+    assert "Chemie" in body
+    # Alpha: 1 today of 2 archived; Beta: 0 today of 1 archived.
+    alpha_card = body.split("Alpha AG", 1)[1].split("Beta AG", 1)[0]
+    assert "<b>1</b> heute" in alpha_card
+    assert "<b>2</b> im Archiv" in alpha_card
+
+
+def test_clients_index_excludes_irrelevant_and_handles_empty(factory, client):
+    """A relevance_score=0 pair is not counted, and no clients renders an empty
+    state rather than an error."""
+    assert "Noch keine Mandanten" in client.get("/clients").text
+
+    with factory() as s:
+        c = _seed_client(s, name="Alpha AG")
+        _seed_article(
+            s, client_obj=c, title="NOISE", url="https://ex.de/noise",
+            published_at=_local_noon(_JAN), relevance=0,
+        )
+        s.commit()
+
+    body = client.get("/clients").text
+    card = body.split("Alpha AG", 1)[1]
+    assert "<b>0</b> im Archiv" in card
+
+
+# --- Per-client competitor sets ------------------------------------------------
+
+
+def test_competitor_can_be_linked_and_unlinked_from_the_client_page(factory, client):
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        b = _seed_client(s, name="Beta AG")
+        s.commit()
+        a_id, b_id = a.id, b.id
+
+    client.post(f"/client/{a_id}/competitors", data={"competitor_id": b_id},
+                follow_redirects=False)
+    with factory() as s:
+        assert [c.name for c in s.get(Client, a_id).competitors] == ["Beta AG"]
+
+    client.post(f"/client/{a_id}/competitors/{b_id}/remove", follow_redirects=False)
+    with factory() as s:
+        assert s.get(Client, a_id).competitors == []
+        # Removing a link must not touch the company itself.
+        assert s.get(Client, b_id) is not None
+
+
+def test_linking_is_one_directional(factory, client):
+    """Benchmarking a mandate against a market leader must not add the mandate to
+    the leader's own comparison set."""
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        b = _seed_client(s, name="Beta AG")
+        s.commit()
+        a_id, b_id = a.id, b.id
+
+    client.post(f"/client/{a_id}/competitors", data={"competitor_id": b_id},
+                follow_redirects=False)
+    with factory() as s:
+        assert [c.name for c in s.get(Client, a_id).competitors] == ["Beta AG"]
+        assert s.get(Client, b_id).competitors == []
+
+
+def test_a_client_cannot_be_added_as_its_own_competitor(factory, client):
+    """The schema forbids the self-link; the route must give a no-op, not a 500."""
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        s.commit()
+        a_id = a.id
+
+    resp = client.post(f"/client/{a_id}/competitors", data={"competitor_id": a_id},
+                       follow_redirects=False)
+    assert resp.status_code == 303
+    with factory() as s:
+        assert s.get(Client, a_id).competitors == []
+
+
+def test_share_of_voice_panel_renders_the_comparison(factory, client):
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        b = _seed_client(s, name="Beta AG")
+        s.flush()
+        a.competitors.append(b)
+        _seed_article(s, client_obj=a, title="A story", url="https://ex.de/a",
+                      published_at=_local_noon(dt.date.today()))
+        _seed_article(s, client_obj=b, title="B story", url="https://ex.de/b",
+                      published_at=_local_noon(dt.date.today()))
+        s.commit()
+        a_id = a.id
+
+    body = client.get(f"/client/{a_id}").text
+    assert "Share of Voice" in body
+    assert "Beta AG" in body
+    assert "50.0%" in body
+
+
+def test_without_competitors_the_panel_explains_rather_than_showing_100_percent(
+    factory, client
+):
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        s.commit()
+        a_id = a.id
+    body = client.get(f"/client/{a_id}").text
+    assert "Noch keine Wettbewerber hinterlegt" in body
+
+
+def test_a_client_card_carries_no_nested_links(factory, client):
+    """The card is one anchor. HTML forbids nesting anchors, so a link inside it
+    silently closes the card early and the rest of the content escapes it —
+    which is exactly how the layout broke."""
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        b = _seed_client(s, name="Beta AG")
+        s.flush()
+        a.competitors.append(b)
+        s.commit()
+
+    body = client.get("/clients").text
+    card_start = body.index('class="pcard')
+    card_end = body.index("</a>", card_start)
+    card = body[card_start:card_end]
+    assert "<a " not in card
+    # Competitors and the exports live in the deep dive, not on the card.
+    assert "/export.xlsx" not in card
+    assert "Beta AG" not in card
+
+
+def test_the_deep_dive_is_where_competitors_and_exports_live(factory, client):
+    with factory() as s:
+        a = _seed_client(s, name="Alpha AG")
+        b = _seed_client(s, name="Beta AG")
+        s.flush()
+        a.competitors.append(b)
+        s.commit()
+        a_id = a.id
+
+    body = client.get(f"/client/{a_id}").text
+    assert "Beta AG" in body                      # share of voice
+    assert f"/client/{a_id}/export.xlsx" in body  # tab strip download
+    assert f"/client/{a_id}/advice" in body
+    assert f"/client/{a_id}/map" in body

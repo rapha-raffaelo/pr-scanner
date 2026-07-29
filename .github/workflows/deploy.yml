@@ -1,0 +1,81 @@
+# Test, then deploy to the host on a push to main.
+#
+# Deliberately not a "push and hope": the suite gates the deploy, because this
+# app writes to a database it also serves, and a broken release is a PR agency
+# looking at nothing on the morning it matters.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  # Deployable by hand too — useful for redeploying after a host change that had
+  # nothing to do with a commit.
+  workflow_dispatch:
+
+concurrency:
+  # One deploy at a time. Two overlapping runs would race on the same compose
+  # project and the same SQLite file.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: newspulse
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - name: Test suite
+        run: uv run pytest -q
+      - name: Registry hygiene
+        # Cheap, and catches a duplicated or malformed feed entry before it
+        # reaches the host. Reachability is not checked here — the suite must not
+        # depend on 58 external sites being up.
+        run: uv run pytest -q tests/test_feeds.py
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    # Requires a GitHub Environment named "production"; add a required reviewer
+    # there if you ever want a human to confirm before it ships.
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd ${{ secrets.DEPLOY_PATH }}
+            # Back up the archive before anything touches it. It is one SQLite
+            # file and the only irreplaceable thing on the host — the code can
+            # always be rebuilt from git, the coverage history cannot.
+            mkdir -p backups
+            cp data/newspulse.db "backups/newspulse-$(date +%Y%m%d-%H%M%S).db"
+            ls -1t backups/*.db | tail -n +15 | xargs -r rm --
+            git fetch --all
+            git reset --hard origin/main
+            # Migrations run in the container's start command, so a deploy never
+            # serves a schema older than its code.
+            docker compose up -d --build
+            docker compose ps
+
+      - name: Verify it came back up
+        # A deploy that reports success while the site is down is worse than a
+        # failed one, because nobody looks.
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "${{ secrets.DEPLOY_HEALTH_URL }}" || true)
+            # 401 is the healthy answer: the app is up and challenging.
+            if [ "$code" = "401" ] || [ "$code" = "200" ]; then
+              echo "up (HTTP $code)"; exit 0
+            fi
+            sleep 5
+          done
+          echo "did not come back up"; exit 1

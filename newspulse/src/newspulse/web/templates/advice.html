@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Empfehlungen") }} · {{ client.name }} · NewsPulse{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'advice' %}
+{% include '_client_tabs.html' %}
+
+<div class="client-profile">
+  <h1>{{ t("Empfehlungen") }}</h1>
+  <p class="panel-hint">
+    {{ t("Vorschläge auf Basis der Berichterstattung der letzten") }} {{ advisory.covered_days if advisory else 30 }} {{ t("Tage") }}.
+    <strong>{{ t("Entwurf, keine Entscheidung") }}</strong> — {{ t("jede Maßnahme nennt die Meldungen, auf die sie sich stützt, damit die Begründung nachprüfbar bleibt. Die Bewertung stützt sich nur auf Schlagzeilen und Kurzfassungen, nicht auf die vollständigen Artikel.") }}
+  </p>
+</div>
+
+<form method="post" action="/client/{{ client.id }}/advice" class="run-form">
+  <div class="filter-field">
+    <label for="days">{{ t("Zeitraum") }}</label>
+    <select id="days" name="days">
+      <option value="7">{{ t("Letzte 7 Tage") }}</option>
+      <option value="30" selected>{{ t("Letzte 30 Tage") }}</option>
+      <option value="90">{{ t("Letzte 90 Tage") }}</option>
+    </select>
+  </div>
+  <button type="submit"{% if running %} disabled{% endif %}>
+    {% if advisory %}{{ t("Neu erzeugen") }}{% else %}{{ t("Empfehlungen erzeugen") }}{% endif %}
+  </button>
+  <span class="panel-hint">{{ available }} {{ t("Artikel") }} {{ t("im Zeitraum") }}</span>
+</form>
+
+{% if running %}
+  <div class="notice notice--ok">{{ t("Wird erzeugt — das dauert etwa eine Minute. Seite neu laden.") }}</div>
+{% endif %}
+
+{% if advisory %}
+  <div class="panel panel--wide">
+    <h2>{{ t("Lage") }}</h2>
+    <p class="situation">{{ advisory.situation }}</p>
+    <p class="panel-hint">
+      {{ t("Erzeugt am") }} {{ advisory.generated_at.astimezone().strftime('%d.%m.%Y %H:%M') }} — {{ advisory.article_count }} {{ t("Artikel") }}.
+    </p>
+  </div>
+
+  {% if advisory.suggestions %}
+    <div class="colhead">{{ t("Maßnahmen") }} <span class="n">{{ advisory.suggestions | length }}</span></div>
+    {% for s in advisory.suggestions %}
+      <div class="item advice">
+        <div class="body">
+          <div class="toprow">
+            <span class="tag kind-{{ s.kind }}">{{ t(s.kind) | capitalize }}</span>
+            <span class="tag urgency-{{ s.urgency }}">{{ t(s.urgency | replace('_', ' ')) | capitalize }}</span>
+          </div>
+          <div class="hl">{{ s.title }}</div>
+          <div class="sum">{{ s.rationale }}</div>
+          {% if s.evidence %}
+            <details class="pickup-list">
+              <summary>{{ t("Grundlage") }}: {{ s.evidence | length }} {{ t("Meldung(en)") }}</summary>
+              <ul>
+                {% for idx in s.evidence %}
+                  {% set ref = coverage.get(idx) %}
+                  {% if ref %}
+                    <li>
+                      <a href="{{ ref.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ ref.headline }}</a>
+                      <span class="dot">·</span> {{ ref.source }}
+                      <span class="dot">·</span> {{ ref.published_at.astimezone().strftime('%d.%m.') }}
+                    </li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </details>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      <p>{{ t("Keine Maßnahmen vorgeschlagen — im Zeitraum gab es nichts, das eine Reaktion erfordert.") }}</p>
+    </div>
+  {% endif %}
+{% else %}
+  <div class="empty-state">
+    <p>{{ t("Noch keine Empfehlungen erzeugt.") }}</p>
+  </div>
+{% endif %}
+{% endblock %}

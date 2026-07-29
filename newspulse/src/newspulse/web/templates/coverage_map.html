@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Coverage Map") }} · {{ map.client }} · NewsPulse{% endblock %}
+
+{% macro badge(name) %}
+  <span class="mono-badge" style="background: {{ name | brand_colour }}" title="{{ name }}">{{ name | monogram }}</span>
+{% endmacro %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'map' %}
+{% include '_client_tabs.html' %}
+
+<div class="client-profile">
+  <p class="panel-hint">
+    {{ t("Wer schreibt über wen") }} — {{ days }} {{ t("Tage") }}.
+    {{ t("Die Lücken oben sind Publikationen, die regelmäßig über den Wettbewerb berichten und nie über") }}
+    {{ map.client }} — {{ t("also eine Pitch-Liste, keine Statistik.") }}
+  </p>
+</div>
+
+{% if map.gaps %}
+  <div class="colhead gaps-head">
+    {{ t("Pitch-Lücken") }} <span class="n">{{ map.gaps | length }}</span>
+    <span class="colhead__note">{{ t("berichten über Wettbewerber, nie über") }} {{ map.client }}</span>
+  </div>
+  <div class="gapgrid">
+    {% for row in map.gaps %}
+      <div class="gapcard">
+        <div class="gapsource">{{ row.source }}</div>
+        <div class="gapbars">
+          {% for cell in row.cells if cell.articles %}
+            <div class="gapbar">
+              {{ badge(cell.company) }}
+              <span class="gapbar__track">
+                <span class="gapbar__fill" style="width: {{ (cell.articles / map.max_cell * 100) | round(0, 'floor') | int }}%; background: {{ cell.company | brand_colour }}"></span>
+              </span>
+              <span class="gapbar__n">{{ cell.articles }}</span>
+            </div>
+          {% endfor %}
+          <div class="gapbar gapbar--missing">
+            {{ badge(map.client) }}
+            <span class="gapbar__track"></span>
+            <span class="gapbar__n">0</span>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{# The 78-row grid this replaced was a sparse matrix forced into a dense table:
+   most cells empty, the signal invisible. A diverging bar answers the actual
+   question — who writes about them and not us — by putting the two sides against
+   a shared centre line and sorting by the gap. Only outlets with a real signal
+   are plotted; the rest are a table below. #}
+<div class="colhead" style="margin-top:26px">
+  {{ t("Wer schreibt über wen") }} <span class="n">{{ map.leaning | length }}</span>
+  <span class="colhead__note">{{ t("Wettbewerb links") }} · {{ map.client }} {{ t("rechts") }} · {{ t("nach Ungleichgewicht sortiert") }}</span>
+</div>
+
+<div class="diverge">
+  <div class="diverge__legend">
+    <span class="diverge__key"><i class="dk dk--rival"></i>{{ t("Wettbewerb") }}</span>
+    <span class="diverge__key"><i class="dk dk--own"></i>{{ map.client }}</span>
+  </div>
+  {% for row in map.leaning %}
+    <div class="drow{% if row.is_gap %} drow--gap{% endif %}">
+      <div class="drow__label" title="{{ row.source }}">{{ row.source }}</div>
+      <div class="drow__left">
+        <span class="dbar dbar--rival" style="width: {{ (row.rival_articles / map.widest * 100) | round(1) }}%"></span>
+        {% if row.rival_articles %}<span class="dnum">{{ row.rival_articles }}</span>{% endif %}
+      </div>
+      <div class="drow__axis"></div>
+      <div class="drow__right">
+        <span class="dbar dbar--own" style="width: {{ (row.client_articles / map.widest * 100) | round(1) }}%"></span>
+        {% if row.client_articles %}<span class="dnum">{{ row.client_articles }}</span>{% else %}<span class="dnum dnum--zero">0</span>{% endif %}
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<details class="fulltable">
+  <summary>{{ t("Vollständige Tabelle") }} ({{ map.rows | length }} {{ t("Medien") }})</summary>
+<div class="table-scroll">
+  <table class="data covmap">
+    <thead>
+      <tr>
+        <th>{{ t("Medium") }}</th>
+        {% for company in map.companies %}
+          <th class="covcol">{{ badge(company) }}<span class="covname">{{ company }}</span></th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in map.rows %}
+        <tr{% if row.is_gap %} class="covrow--gap"{% endif %}>
+          <td class="cell-name">{{ row.source }}</td>
+          {% for cell in row.cells %}
+            <td class="covcell">
+              {% if cell.articles %}
+                <span class="covdot"
+                      style="background: {{ cell.company | brand_colour }};
+                             opacity: {{ (0.25 + 0.75 * cell.articles / map.max_cell) | round(2) }}"
+                      title="{{ cell.company }}: {{ cell.articles }} Artikel">{{ cell.articles }}</span>
+              {% else %}
+                <span class="covempty">·</span>
+              {% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</details>
+{% endblock %}

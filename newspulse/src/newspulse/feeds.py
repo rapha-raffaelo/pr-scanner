@@ -32,6 +32,10 @@ class Feed:
     name: str
     url: str
     industry: str | None = None
+    # True for an aggregator feed whose entries each name their own publisher
+    # (see newspulse.gnews). Not settable from the registry TOML: every entry
+    # there is a publisher's own feed, where the registry name *is* the outlet.
+    per_entry_source: bool = False
 
 
 def _coerce_industry(raw: object) -> str | None:

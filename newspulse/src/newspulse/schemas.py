@@ -15,11 +15,13 @@ Two kinds of object live here and it is worth keeping them distinct:
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from .models import SCORE_MAX as _SCORE_MAX
 from .models import SCORE_MIN as _SCORE_MIN
-from .models import Category
+from .models import Category, Tonality
 
 # Scores share the model's fixed 0..10 scale. Imported straight from
 # newspulse.models — the same SCORE_MIN/SCORE_MAX the DB CHECK constraint is built
@@ -41,11 +43,15 @@ class ArticleVerdict(BaseModel):
     is_relevant: bool
     summary: str
     category: Category
+    # Defaulted, not required: a model that omits it should yield an honest
+    # "unbekannt" rather than failing the whole batch over one soft field.
+    tonality: Tonality = Tonality.UNBEKANNT
     relevance_score: int = Field(ge=_SCORE_MIN, le=_SCORE_MAX)
     importance_score: int = Field(ge=_SCORE_MIN, le=_SCORE_MAX)
     # The model's own alert guess. Deliberately NOT used for the stored flag; the
     # analyzer recomputes is_alert in code (see analyzer._compute_is_alert).
     is_alert: bool
+    tonality: Tonality = Tonality.UNBEKANNT
     reasoning: str
 
 
@@ -69,10 +75,53 @@ class Analysis(BaseModel):
     is_relevant: bool
     summary: str
     category: Category
+    # Defaulted, not required: a model that omits it should yield an honest
+    # "unbekannt" rather than failing the whole batch over one soft field.
+    tonality: Tonality = Tonality.UNBEKANNT
     relevance_score: int = Field(ge=_SCORE_MIN, le=_SCORE_MAX)
     importance_score: int = Field(ge=_SCORE_MIN, le=_SCORE_MAX)
     is_alert: bool
+    tonality: Tonality = Tonality.UNBEKANNT
     reasoning: str
 
 
 __all__ = ["ArticleVerdict", "BatchVerdict", "Analysis"]
+
+
+# --- Advisory: suggested PR actions --------------------------------------------
+
+
+class ActionKind(StrEnum):
+    """What sort of move a suggestion is."""
+
+    REAKTIV = "reaktiv"      # respond to something that has happened
+    PROAKTIV = "proaktiv"    # an opening to push a message
+    BEOBACHTEN = "beobachten"  # not yet actionable; watch it
+
+
+class Urgency(StrEnum):
+    """When it needs doing."""
+
+    HEUTE = "heute"
+    DIESE_WOCHE = "diese_woche"
+    LAUFEND = "laufend"
+
+
+class ActionSuggestion(BaseModel):
+    """One suggested PR action, tied to the coverage that prompted it."""
+
+    title: str
+    rationale: str
+    kind: ActionKind
+    urgency: Urgency
+    # Indices into the numbered coverage the prompt supplied. Every suggestion
+    # must point at the stories behind it, so a reader can check the reasoning
+    # instead of taking it on trust.
+    evidence: list[int] = Field(default_factory=list)
+
+
+class AdvisoryBrief(BaseModel):
+    """The model's read of a client's situation plus what it would do about it."""
+
+    situation: str
+    suggestions: list[ActionSuggestion] = Field(default_factory=list)

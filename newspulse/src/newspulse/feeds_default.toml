@@ -47,17 +47,17 @@ industry = "finanzen"
 
 [[feeds]]
 name = "Handelsblatt"
-url = "https://www.handelsblatt.com/contentexport/feed/schlagzeilen"
+url = "https://feeds.cms.handelsblatt.com/schlagzeilen"
 industry = "wirtschaft"
 
 [[feeds]]
 name = "Handelsblatt Unternehmen"
-url = "https://www.handelsblatt.com/contentexport/feed/unternehmen"
+url = "https://feeds.cms.handelsblatt.com/unternehmen"
 industry = "wirtschaft"
 
 [[feeds]]
 name = "Handelsblatt Finanzen"
-url = "https://www.handelsblatt.com/contentexport/feed/finanzen"
+url = "https://feeds.cms.handelsblatt.com/finanzen"
 industry = "finanzen"
 
 [[feeds]]
@@ -106,7 +106,7 @@ url = "https://taz.de/!p4608;rss/"
 
 [[feeds]]
 name = "Focus"
-url = "https://rss.focus.de/fol/XML/rss_folnews.xml"
+url = "https://www.focus.de/rss/"
 
 [[feeds]]
 name = "Stern"
@@ -125,12 +125,12 @@ industry = "wirtschaft"
 
 [[feeds]]
 name = "WirtschaftsWoche"
-url = "https://www.wiwo.de/contentexport/feed/rss/schlagzeilen"
+url = "https://feeds.cms.wiwo.de/rss/schlagzeilen"
 industry = "wirtschaft"
 
 [[feeds]]
-name = "Börsen-Zeitung"
-url = "https://www.boersen-zeitung.de/rss/news.xml"
+name = "wallstreet:online"
+url = "https://www.wallstreet-online.de/rss/nachrichten-alle.xml"
 industry = "finanzen"
 
 [[feeds]]
@@ -140,7 +140,7 @@ industry = "finanzen"
 
 [[feeds]]
 name = "Capital"
-url = "https://www.capital.de/feed"
+url = "https://www.capital.de/feed/standard/"
 industry = "finanzen"
 
 [[feeds]]
@@ -166,18 +166,18 @@ url = "https://rss.golem.de/rss.php?feed=RSS2.0"
 industry = "tech"
 
 [[feeds]]
-name = "Automobilwoche"
-url = "https://www.automobilwoche.de/rss.xml"
+name = "kfz-betrieb"
+url = "https://www.kfz-betrieb.vogel.de/rss/news.xml"
 industry = "automotive"
 
 [[feeds]]
-name = "Automobil Produktion"
-url = "https://www.automobil-produktion.de/feed"
+name = "electrive"
+url = "https://www.electrive.net/feed/"
 industry = "automotive"
 
 [[feeds]]
-name = "Pharmazeutische Zeitung"
-url = "https://www.pharmazeutische-zeitung.de/index.php?type=100"
+name = "Pharma Fakten"
+url = "https://www.pharma-fakten.de/feed/"
 industry = "pharma"
 
 [[feeds]]
@@ -187,40 +187,121 @@ industry = "pharma"
 
 [[feeds]]
 name = "Lebensmittel Zeitung"
-url = "https://www.lebensmittelzeitung.net/rss/news.rss"
+url = "https://www.lebensmittelzeitung.net/news/feed/"
 industry = "handel"
 
 [[feeds]]
 name = "Immobilien Zeitung"
-url = "https://www.immobilien-zeitung.de/rss.xml"
+url = "https://www.iz.de/feed"
 industry = "immobilien"
 
 [[feeds]]
-name = "energate messenger"
-url = "https://www.energate-messenger.de/rss/news/"
+name = "pv magazine"
+url = "https://www.pv-magazine.de/feed/"
 industry = "energie"
 
 [[feeds]]
 name = "Logistik Heute"
-url = "https://www.logistik-heute.de/rss.xml"
+url = "https://logistik-heute.de/rss.xml"
 industry = "logistik"
 
 [[feeds]]
 name = "VDI nachrichten"
-url = "https://www.vdi-nachrichten.com/rss/"
+url = "https://www.vdi-nachrichten.com/feed/"
 industry = "industrie"
 
 [[feeds]]
-name = "Deutsche Verkehrs-Zeitung"
-url = "https://www.dvz.de/rss.xml"
+name = "Logistra"
+url = "https://logistra.de/rss.xml"
 industry = "logistik"
 
 [[feeds]]
 name = "Textilwirtschaft"
-url = "https://www.textilwirtschaft.de/rss/news.rss"
+url = "https://www.textilwirtschaft.de/feed"
 industry = "handel"
 
 [[feeds]]
-name = "Werben & Verkaufen"
-url = "https://www.wuv.de/rss/all"
+name = "Horizont"
+url = "https://www.horizont.net/news/feed/"
 industry = "medien"
+
+# --- Public broadcasters -------------------------------------------------------
+# High-volume national desks; a story that reaches these has broken nationally.
+
+[[feeds]]
+name = "ZDF heute"
+url = "https://www.zdf.de/rss/zdf/nachrichten"
+
+[[feeds]]
+name = "NDR"
+url = "https://www.ndr.de/home/index-rss.xml"
+
+[[feeds]]
+name = "Deutschlandfunk"
+url = "https://www.deutschlandfunk.de/nachrichten-100.rss"
+
+# --- Regional dailies ----------------------------------------------------------
+# A plant closure, a local dispute, or a regional court ruling lands here days
+# before it reaches the national business press — if it ever does.
+
+[[feeds]]
+name = "Tagesspiegel"
+url = "https://www.tagesspiegel.de/contentexport/feed/home"
+industry = "regional"
+
+[[feeds]]
+name = "WAZ"
+url = "https://www.waz.de/rss"
+industry = "regional"
+
+[[feeds]]
+name = "Berliner Zeitung"
+url = "https://www.berliner-zeitung.de/feed.xml"
+industry = "regional"
+
+[[feeds]]
+name = "Hamburger Abendblatt"
+url = "https://www.abendblatt.de/rss"
+industry = "regional"
+
+[[feeds]]
+name = "Rheinische Post"
+url = "https://rp-online.de/feed.rss"
+industry = "regional"
+
+# --- Press releases (owned media) ----------------------------------------------
+# Presseportal is operated by news aktuell, a dpa subsidiary: it carries the
+# releases companies issue themselves. Useful in both directions — what a client
+# said, and what their competitors announced.
+
+[[feeds]]
+name = "Presseportal"
+url = "https://www.presseportal.de/rss/presseportal.rss2"
+industry = "pressemitteilungen"
+
+# --- Additional trade press ----------------------------------------------------
+
+[[feeds]]
+name = "MM Maschinenmarkt"
+url = "https://www.maschinenmarkt.vogel.de/rss/news.xml"
+industry = "industrie"
+
+[[feeds]]
+name = "Process"
+url = "https://www.process.vogel.de/rss/news.xml"
+industry = "chemie"
+
+[[feeds]]
+name = "Markt und Mittelstand"
+url = "https://www.marktundmittelstand.de/rss.xml"
+industry = "wirtschaft"
+
+[[feeds]]
+name = "deutsche-startups"
+url = "https://www.deutsche-startups.de/feed/"
+industry = "startups"
+
+[[feeds]]
+name = "Netzpolitik"
+url = "https://netzpolitik.org/feed/"
+industry = "tech"

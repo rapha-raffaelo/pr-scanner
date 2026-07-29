@@ -134,15 +134,15 @@ def test_today_renders_items_in_importance_order_with_alerts_surfaced(factory, c
     body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
 
     # Within the ranked feed pane: alert(9) before mid(8) before low(5).
-    feed = body.split("triage__feed", 1)[1]
+    feed = body.split('class="feedcol"', 1)[1]
     pos_alert = feed.index("ALERTHEADLINE")
     pos_mid = feed.index("MIDHEADLINE")
     pos_low = feed.index("LOWHEADLINE")
     assert pos_alert < pos_mid < pos_low
 
     # The alert is surfaced in the left rail (an alert card), the others are not.
-    rail = body.split("triage__feed", 1)[0]
-    assert "alert-card" in rail
+    rail = body.split('class="feedcol"', 1)[0]
+    assert "acard" in rail
     assert "ALERTHEADLINE" in rail
     assert "MIDHEADLINE" not in rail
 
@@ -168,7 +168,6 @@ def test_today_item_shows_all_required_fields(factory, client):
     assert published.strftime("%H:%M") in body  # time
     assert "Delta stellt ein neues Produkt vor." in body  # summary
     assert "produkt" in body  # category tag
-    assert "6/10" in body  # importance
     assert "Delta AG" in body  # client
 
 
@@ -284,3 +283,273 @@ def test_local_zone_resolves_dst_aware_not_frozen_offset(monkeypatch):
     assert winter == dt.timedelta(hours=1)
     assert summer == dt.timedelta(hours=2)
     assert winter != summer  # a frozen offset would make these equal
+
+
+# --- Category filter -----------------------------------------------------------
+
+
+def _seed_day_mix(factory):
+    """Three categories on one day, so filtering has something to narrow."""
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Alpha AG", title="KRISEHEADLINE Werk schliesst",
+            url="https://ex.de/k1", importance=9, is_alert=True,
+            published_at=_local_noon(_TEST_DAY), category=Category.KRISE,
+        )
+        _seed_coverage(
+            s, client_name="Beta AG", title="FINANZHEADLINE Aktie faellt",
+            url="https://ex.de/f1", importance=5, is_alert=False,
+            published_at=_local_noon(_TEST_DAY), category=Category.FINANZEN,
+        )
+        _seed_coverage(
+            s, client_name="Gamma AG", title="PRODUKTHEADLINE Neue App",
+            url="https://ex.de/p1", importance=4, is_alert=False,
+            published_at=_local_noon(_TEST_DAY), category=Category.PRODUKT,
+        )
+        s.commit()
+
+
+def test_category_filter_narrows_the_day_to_one_category(factory, client):
+    _seed_day_mix(factory)
+    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "category": "finanzen"}).text
+    assert "FINANZHEADLINE" in body
+    assert "KRISEHEADLINE" not in body
+    assert "PRODUKTHEADLINE" not in body
+
+
+def test_category_filter_also_narrows_the_alert_rail(factory, client):
+    """The rail is the filtered day's alerts, not the whole day's — otherwise a
+    filtered view would show alerts for stories no longer in the feed."""
+    _seed_day_mix(factory)
+    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "category": "finanzen"}).text
+    rail = body.split('class="feedcol"', 1)[0]
+    assert "KRISEHEADLINE" not in rail
+
+
+def test_category_dropdown_offers_only_categories_present_that_day(factory, client):
+    """An option that would return an empty page is worse than no option."""
+    _seed_day_mix(factory)
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    for present in ("krise", "finanzen", "produkt"):
+        assert f'value="{present}"' in body
+    for absent in ("personalie", "wettbewerb", "regulatorik"):
+        assert f'value="{absent}"' not in body
+
+
+def test_unknown_category_degrades_to_no_filter(factory, client):
+    """A stale or hand-typed category shows the whole day, not an empty page."""
+    _seed_day_mix(factory)
+    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "category": "nonsense"}).text
+    assert "KRISEHEADLINE" in body
+    assert "FINANZHEADLINE" in body
+    assert "PRODUKTHEADLINE" in body
+
+
+def test_filter_reports_how_many_items_it_hid(factory, client):
+    _seed_day_mix(factory)
+    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "category": "finanzen"}).text
+    assert "2 ausgeblendet" in body
+
+
+def test_outlet_tier_breaks_ties_without_changing_the_score(factory, client):
+    """Among equally-scored stories the better outlet ranks first — but the
+    displayed score stays the model's own and nothing is dropped."""
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Alpha AG", title="WIREHEADLINE Aktie stabil",
+            url="https://ex.de/w1", importance=7, is_alert=False,
+            published_at=_local_noon(_TEST_DAY), source="Ad-hoc-news.de",
+        )
+        _seed_coverage(
+            s, client_name="Beta AG", title="QUALITYHEADLINE Werk schliesst",
+            url="https://ex.de/q1", importance=7, is_alert=False,
+            published_at=_local_noon(_TEST_DAY), source="FAZ",
+        )
+        s.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    feed = body.split('class="feedcol"', 1)[1]
+    assert feed.index("QUALITYHEADLINE") < feed.index("WIREHEADLINE")
+    # Both are still present: tier reorders, it never hides.
+    assert "WIREHEADLINE" in feed
+
+
+def test_a_higher_score_still_outranks_a_better_outlet(factory, client):
+    """Tier is a tiebreaker, not a promotion: it must never reorder across scores."""
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Alpha AG", title="WIREHEADLINE Wichtige Meldung",
+            url="https://ex.de/w2", importance=9, is_alert=False,
+            published_at=_local_noon(_TEST_DAY), source="Ad-hoc-news.de",
+        )
+        _seed_coverage(
+            s, client_name="Beta AG", title="QUALITYHEADLINE Randnotiz",
+            url="https://ex.de/q2", importance=6, is_alert=False,
+            published_at=_local_noon(_TEST_DAY), source="FAZ",
+        )
+        s.commit()
+
+    feed = client.get("/", params={"date": _TEST_DAY.isoformat()}).text.split('class="feedcol"', 1)[1]
+    assert feed.index("WIREHEADLINE") < feed.index("QUALITYHEADLINE")
+
+
+def test_syndicated_coverage_occupies_one_slot_with_its_pickup_count(factory, client):
+    """Three outlets running one dpa story is one line carrying "3× aufgegriffen",
+    not three lines crowding the rail."""
+    with factory() as s:
+        for outlet in ("SZ.de", "Tagesspiegel", "Baden Online"):
+            _seed_coverage(
+                s, client_name="Alpha AG",
+                title=f"Bafin ruegt Zalando wegen fehlender Angaben zur Uebernahme - {outlet}",
+                url=f"https://ex.de/{outlet}", importance=8, is_alert=True,
+                published_at=_local_noon(_TEST_DAY), source=outlet,
+            )
+        s.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    assert "3× aufgegriffen" in body
+    # One card in the rail, not three.
+    rail = body.split('class="feedcol"', 1)[0]
+    assert rail.count('class="acard"') == 1
+    # And one row in the feed.
+    feed = body.split('class="feedcol"', 1)[1]
+    assert feed.count('class="item') == 1
+    # The other outlets are still reachable, not discarded.
+    assert "Tagesspiegel" in body and "Baden Online" in body
+
+
+def test_distinct_stories_are_not_collapsed_in_the_view(factory, client):
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Alpha AG", title="ERSTE Zalando schliesst Standort Erfurt komplett",
+            url="https://ex.de/s1", importance=9, is_alert=False,
+            published_at=_local_noon(_TEST_DAY), source="MDR.de",
+        )
+        _seed_coverage(
+            s, client_name="Alpha AG", title="ZWEITE Zalando startet Same-Day-Lieferung in Staedten",
+            url="https://ex.de/s2", importance=5, is_alert=False,
+            published_at=_local_noon(_TEST_DAY), source="Spiegel",
+        )
+        s.commit()
+
+    feed = client.get("/", params={"date": _TEST_DAY.isoformat()}).text.split('class="feedcol"', 1)[1]
+    assert feed.count('class="item') == 2
+    assert "aufgegriffen" not in feed
+
+
+def test_competitor_coverage_stays_out_of_the_daily_triage(factory, client):
+    """A rival's coverage is monitored for share of voice, not for triage —
+    mixing it in makes the day look busier than the work actually is."""
+    with factory() as s:
+        mandate = _seed_client(s, "Alpha AG")
+        rival = Client(name="Beta AG", is_competitor=True)
+        s.add(rival)
+        s.flush()
+        for owner, title in ((mandate, "MANDANT Story"), (rival, "RIVALE Story")):
+            art = Article(
+                title=title, url=f"https://ex.de/{title}", source="FAZ",
+                published_at=_local_noon(_TEST_DAY), fetched_at=_local_noon(_TEST_DAY),
+                summary_text="s", language="de", title_hash=title[:8],
+            )
+            s.add(art)
+            s.flush()
+            s.add(Analysis(
+                article_id=art.id, client_id=owner.id, summary="Zusammenfassung.",
+                category=Category.PRODUKT, relevance_score=5, importance_score=7,
+                is_alert=False,
+            ))
+        s.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    assert "MANDANT Story" in body
+    assert "RIVALE Story" not in body
+
+
+def test_the_importance_score_is_not_shown_but_still_orders_the_feed(factory, client):
+    """The raw 0-10 read as noise on a triage screen, so it was removed from the
+    row. It must still do its job: rank the day and drive the alert threshold."""
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Alpha AG", title="NIEDRIG Randnotiz heute",
+            url="https://ex.de/lo", importance=3, is_alert=False,
+            published_at=_local_noon(_TEST_DAY),
+        )
+        _seed_coverage(
+            s, client_name="Beta AG", title="HOCH Wichtige Meldung heute",
+            url="https://ex.de/hi", importance=9, is_alert=False,
+            published_at=_local_noon(_TEST_DAY),
+        )
+        s.commit()
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    assert "Wichtigkeit" not in body
+    feed = body.split('class="feedcol"', 1)[1]
+    assert feed.index("HOCH") < feed.index("NIEDRIG")
+
+
+def test_every_page_offers_a_refresh(client):
+    """Fetching news is wanted from anywhere, not three clicks deep in settings."""
+    for path in ("/", "/clients", "/archive", "/settings"):
+        body = client.get(path).text
+        assert 'action="/settings/run"' in body, path
+        assert "Aktualisieren" in body, path
+
+
+def test_a_stored_logo_survives_rendering_but_an_svg_never_does(client):
+    """safe_url blanks every non-http scheme, which is right for a feed link and
+    wrong for a logo we fetched and validated ourselves. logo_src is the narrow
+    exception — and it must not admit SVG, which is executable markup."""
+    from newspulse.web.app import logo_src
+
+    png = "data:image/png;base64,iVBORw0KGgo="
+    assert logo_src(png) == png
+    assert logo_src("https://example.com/logo.png") == "https://example.com/logo.png"
+    assert logo_src("data:image/svg+xml;base64,PHN2Zz4=") == ""
+    assert logo_src("javascript:alert(1)") == ""
+    assert logo_src("http://example.com/logo.png") == ""  # https only
+    assert logo_src(None) == ""
+
+
+def test_the_day_can_be_filtered_to_one_mandate(factory, client):
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Alpha AG", title="ALPHA Meldung von heute",
+            url="https://ex.de/a", importance=7, is_alert=False,
+            published_at=_local_noon(_TEST_DAY),
+        )
+        _seed_coverage(
+            s, client_name="Beta AG", title="BETA Meldung von heute",
+            url="https://ex.de/b", importance=7, is_alert=False,
+            published_at=_local_noon(_TEST_DAY),
+        )
+        s.commit()
+        alpha_id = s.query(Client).filter_by(name="Alpha AG").one().id
+
+    both = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    assert "ALPHA" in both and "BETA" in both
+
+    only = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": alpha_id}).text
+    assert "ALPHA" in only
+    assert "BETA Meldung" not in only
+
+
+def test_an_unknown_client_id_shows_the_whole_day(factory, client):
+    """Same posture as the category filter: never an unexplainable empty page."""
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Alpha AG", title="ALPHA Meldung von heute",
+            url="https://ex.de/a", importance=7, is_alert=False,
+            published_at=_local_noon(_TEST_DAY),
+        )
+        s.commit()
+    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": 9999}).text
+    assert "ALPHA" in body
+
+
+def test_a_competitor_is_not_offered_as_a_filter(factory, client):
+    """The strip is a way into your own day, not a client manager."""
+    with factory() as s:
+        _seed_client(s, "Alpha AG")
+        s.add(Client(name="Rivale AG", is_competitor=True))
+        s.commit()
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    assert "Rivale AG" not in body

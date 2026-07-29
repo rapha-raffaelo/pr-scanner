@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Archiv") }} · NewsPulse{% endblock %}
+
+{# One archive row. Unlike the client view this list spans the portfolio, so the
+   client is shown as a chip on the row itself and links to that client's own
+   archive. #}
+{% macro archive_row(row) %}
+  <article class="feed-item{% if row.is_alert %} feed-item--alert{% endif %}">
+    <div class="feed-item__head">
+      <a class="feed-item__headline" href="{{ row.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ row.headline }}</a>
+      {% if row.is_alert %}<span class="tag tag--alert">Alert</span>{% endif %}
+    </div>
+    <div class="feed-item__meta">
+      <a class="clichip" href="/client/{{ row.client_id }}">{{ row.client_name }}</a>
+      <span class="source">{{ row.source }}</span>
+      <span class="time">{{ row.published_at.strftime('%d.%m.%Y %H:%M') }}</span>
+      <span class="tag tag--category tag--{{ row.category }}">{{ t(row.category) }}</span>
+      <span class="importance" title="Wichtigkeit {{ row.importance }} von 10">{{ row.importance }}/10</span>
+    </div>
+    {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
+  </article>
+{% endmacro %}
+
+{% block content %}
+{% set t = translator(request) %}
+
+<div class="colhead">{{ t("Archiv") }} <span class="n">{{ pagination.total_count }}</span></div>
+
+{# Every filter in one form so submitting sends them together and the server-side
+   WHERE clauses compose. HTMX swaps only #archive-list; without HTMX the form
+   falls back to a native GET that re-renders the whole page. #}
+<form class="archive-filters" method="get" action="/archive"
+      hx-get="/archive"
+      hx-target="#archive-list"
+      hx-select="#archive-list"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      hx-trigger="submit, change delay:200ms, keyup changed delay:400ms from:#q">
+  <div class="filter-field">
+    <label for="client">{{ t("Mandant") }}</label>
+    <select id="client" name="client">
+      <option value="">{{ t("Alle Mandanten") }}</option>
+      {% for c in clients %}
+        <option value="{{ c.id }}"{% if filters.client == c.id | string %} selected{% endif %}>{{ c.name }}{% if not c.active %} (inaktiv){% endif %}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label for="month">{{ t("Monat") }}</label>
+    <select id="month" name="month">
+      <option value="">{{ t("Alle Monate") }}</option>
+      {% for m in months %}
+        <option value="{{ m.value }}"{% if m.value == filters.month %} selected{% endif %}>{{ m.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label for="source">{{ t("Publisher") }}</label>
+    <select id="source" name="source">
+      <option value="">{{ t("Alle Publisher") }}</option>
+      {% for s in sources %}
+        <option value="{{ s }}"{% if s == filters.source %} selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label for="tier">{{ t("Medien-Tier") }}</label>
+    <select id="tier" name="tier">
+      <option value="">{{ t("Alle Tiers") }}</option>
+      {% for value, label in tiers %}
+        <option value="{{ value }}"{% if value == filters.tier %} selected{% endif %}>{{ t(label) }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label for="category">{{ t("Kategorie") }}</label>
+    <select id="category" name="category">
+      <option value="">{{ t("Alle Kategorien") }}</option>
+      {% for c in categories %}
+        <option value="{{ c }}"{% if c == filters.category %} selected{% endif %}>{{ t(c) | capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field filter-field--search">
+    <label for="q">{{ t("Suche") }}</label>
+    <input type="search" id="q" name="q" value="{{ filters.search }}" placeholder="{{ t('Schlagzeile oder Zusammenfassung') }}">
+  </div>
+  {# Reset clears every param. The inputs live OUTSIDE #archive-list and would
+     otherwise keep their old values and re-apply them on the next change, so
+     blank them here too. Setting .value fires no change event, so this clears
+     the form without triggering a spurious re-filter. #}
+  <a class="filter-reset" href="/archive"
+     hx-get="/archive"
+     hx-target="#archive-list"
+     hx-select="#archive-list"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     onclick="this.closest('form').querySelectorAll('input, select').forEach(el => { el.value = ''; });">{{ t("Zurücksetzen") }}</a>
+  <noscript><button type="submit">{{ t("Filtern") }}</button></noscript>
+</form>
+
+<div id="archive-list">
+  {% if rows %}
+    <p class="archive-count">{{ pagination.total_count }} {{ t("Artikel") }} · {{ t("Seite") }} {{ pagination.page }}/{{ pagination.total_pages }}</p>
+    <div class="archive-rows">
+      {% for row in rows %}{{ archive_row(row) }}{% endfor %}
+    </div>
+    <nav class="pagination" aria-label="{{ t('Seite') }}">
+      {% if pagination.prev_url %}
+        <a class="page-link" href="{{ pagination.prev_url }}" hx-get="{{ pagination.prev_url }}" hx-target="#archive-list" hx-select="#archive-list" hx-swap="outerHTML" hx-push-url="true" rel="prev">{{ t("← Neuer") }}</a>
+      {% else %}
+        <span class="page-link page-link--disabled">{{ t("← Neuer") }}</span>
+      {% endif %}
+      <span class="page-indicator">{{ t("Seite") }} {{ pagination.page }} / {{ pagination.total_pages }}</span>
+      {% if pagination.next_url %}
+        <a class="page-link" href="{{ pagination.next_url }}" hx-get="{{ pagination.next_url }}" hx-target="#archive-list" hx-select="#archive-list" hx-swap="outerHTML" hx-push-url="true" rel="next">{{ t("Älter →") }}</a>
+      {% else %}
+        <span class="page-link page-link--disabled">{{ t("Älter →") }}</span>
+      {% endif %}
+    </nav>
+  {% else %}
+    <div class="empty-state">
+      <p>{{ t("Keine Artikel für die gewählten Filter.") }}</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

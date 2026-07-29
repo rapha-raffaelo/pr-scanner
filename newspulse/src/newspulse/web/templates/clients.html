@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Mandanten") }} · NewsPulse{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+
+<div class="colhead">{{ t("Mandanten") }} <span class="n">{{ rows | length }}</span></div>
+
+{% if rows %}
+  <div class="portfolio">
+    {% for row in rows %}
+      <a class="pcard pcard--link{% if not row.active %} pcard--inactive{% endif %}" href="/client/{{ row.id }}">
+        <div class="phead">
+          {% if row.logo_url %}
+            <img class="plogo" src="{{ row.logo_url | logo_src }}" alt="{{ row.name }}">
+          {% else %}
+            <span class="plogo plogo--mono" style="background: {{ row.name | brand_colour }}">{{ row.name | monogram }}</span>
+          {% endif %}
+          <div>
+            <div class="pname">{{ row.name }}</div>
+            <div class="pind">
+              {{ row.industry or t('Ohne Branche') }}{% if not row.active %} · {{ t("inaktiv") }}{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="pcounts">
+          <div><b>{{ row.today_count }}</b> {{ t("heute") }}</div>
+          <div><b>{{ row.total_count }}</b> {{ t("im Archiv") }}</div>
+        </div>
+        {% if row.alert_topics %}
+          <div class="ptopics">
+            {% for topic in row.alert_topics %}<span class="ptopic">{{ topic }}</span>{% endfor %}
+          </div>
+        {% endif %}
+      </a>
+    {% endfor %}
+  </div>
+  {% if voice %}
+    <div class="colhead" style="margin-top:26px">Share of Voice <span class="colhead__note">letzte 30 Tage</span></div>
+    <table class="data sov">
+      <thead><tr><th>Unternehmen</th><th>Rolle</th><th>Meldungen</th><th>Alerts</th><th>Anteil</th></tr></thead>
+      <tbody>
+        {% for v in voice %}
+          <tr>
+            <td class="cell-name"><a href="/client/{{ v.client_id }}">{{ v.name }}</a></td>
+            <td>{{ 'Wettbewerber' if v.is_competitor else 'Mandant' }}</td>
+            <td>{{ v.mentions }}</td>
+            <td>{{ v.alerts }}</td>
+            <td>
+              <span class="sov-bar" style="width: {{ (v.share * 100) | round(0, 'floor') | int }}%"></span>
+              {{ (v.share * 100) | round(1) }}%
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% else %}
+  <div class="empty-state">
+    <p>{{ t("Noch keine Mandanten. Unter") }} <a href="/settings">{{ t("Einstellungen") }}</a> {{ t("anlegen oder importieren.") }}</p>
+  </div>
+{% endif %}
+{% endblock %}

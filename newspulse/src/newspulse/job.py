@@ -49,7 +49,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config, notify
+from . import config, gnews, notify
 from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
 from .feeds import Feed, load_feeds
@@ -187,6 +187,17 @@ def _determine_since(session: Session, started: dt.datetime) -> dt.datetime:
     return started - _FIRST_RUN_LOOKBACK
 
 
+def lookback_since(days: int, *, now: Callable[[], dt.datetime] | None = None) -> dt.datetime:
+    """The ``since`` bound for a backfill of the last ``days`` days.
+
+    Shared by the CLI's ``--since-days`` and the dashboard's backfill control so
+    both mean exactly the same window.
+    """
+    if days < 1:
+        raise ValueError("days must be at least 1")
+    return (now or _utcnow)() - dt.timedelta(days=days)
+
+
 def _load_known(session: Session) -> tuple[set[str], set[str]]:
     """Stored URLs and title hashes, used to seed dedup against the archive."""
     rows = session.execute(select(Article.url, Article.title_hash)).all()
@@ -214,7 +225,13 @@ def _fetch_all(
     feeds_ok = 0
     for feed in feeds:
         try:
-            batch = fetch(feed.url, since, source=feed.name, fetched_at=fetched_at)
+            batch = fetch(
+                feed.url,
+                since,
+                source=feed.name,
+                fetched_at=fetched_at,
+                per_entry_source=feed.per_entry_source,
+            )
         except Exception as exc:  # noqa: BLE001 — per-feed fault-isolation boundary
             _log.warning("feed %r failed to fetch: %s; skipping", feed.name, exc)
             errors.append(f"feed {feed.name!r}: {exc}")
@@ -276,6 +293,7 @@ def _to_article(item: FeedItem, fetched_at: dt.datetime) -> Article:
         fetched_at=fetched_at,
         summary_text=item.summary,
         language=item.language,
+        author=item.author,
         title_hash=title_hash(item.title, item.source),
     )
 
@@ -451,6 +469,7 @@ def _to_orm_analysis(verdict: AnalysisSchema) -> Analysis:
         relevance_score=verdict.relevance_score,
         importance_score=verdict.importance_score,
         is_alert=verdict.is_alert,
+        tonality=verdict.tonality,
         reasoning=verdict.reasoning,
     )
 
@@ -551,6 +570,7 @@ def run(
     fetch: FetchFeed = fetch_feed,
     now: Callable[[], dt.datetime] | None = None,
     dry_run: bool = False,
+    since: dt.datetime | None = None,
 ) -> RunReport:
     """Execute one daily sweep and return its report.
 
@@ -559,17 +579,36 @@ def run(
     real registry, the subscription analyzer, and the live fetch. ``dry_run`` fetches,
     matches, and deduplicates and reports the counts without calling the analyzer or
     writing anything (no articles, no analyses, no ``runs`` row).
+
+    ``since`` overrides the normal watermark, to backfill a wider window. It only
+    widens which *fetched* items are accepted — RSS carries no "everything since
+    X" request, so a feed still returns only the entries it currently syndicates
+    (often days, not weeks). Backfill is therefore best-effort by nature, and
+    re-running it is free: dedup drops everything already stored.
     """
     now_fn = now or _utcnow
     started = now_fn()
     errors: list[str] = []
     resolved_feeds = list(load_feeds() if feeds is None else feeds)
     clients = list_clients(session)
-    since = _determine_since(session, started)
+    since = since if since is not None else _determine_since(session, started)
+
+    # Per-client searches are appended to the registry, never a replacement for
+    # it: the registry gives reliable, well-formed publisher feeds, the searches
+    # give reach beyond them. Only when the caller did not inject an explicit
+    # feed list — an injected list is exactly what a test is pinning down.
+    query_feeds: list[Feed] = []
+    if feeds is None and config.GOOGLE_NEWS_ENABLED:
+        query_feeds = gnews.client_feeds(list(clients))
+        resolved_feeds.extend(query_feeds)
+
     _log.info(
-        "run start: %d active client(s), %d feed(s), since=%s%s",
+        "run start: %d active client(s), %d feed(s) (%d registry + %d client search), "
+        "since=%s%s",
         len(clients),
         len(resolved_feeds),
+        len(resolved_feeds) - len(query_feeds),
+        len(query_feeds),
         since.isoformat(),
         " [dry-run]" if dry_run else "",
     )
@@ -699,4 +738,4 @@ def _run_real(
     )
 
 
-__all__ = ["RunReport", "run", "setup_logging"]
+__all__ = ["RunReport", "lookback_since", "run", "setup_logging"]

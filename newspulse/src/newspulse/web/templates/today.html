@@ -1,29 +1,87 @@
 {% extends "base.html" %}
-{% block title %}Today · NewsPulse{% endblock %}
+{% block title %}{{ translator(request)("Heute") }} · NewsPulse{% endblock %}
 
-{% macro item_row(item) %}
-  <article class="feed-item{% if item.is_alert %} feed-item--alert{% endif %}">
-    <div class="feed-item__head">
-      <a class="feed-item__headline" href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a>
-      {% if item.is_alert %}<span class="tag tag--alert">Alert</span>{% endif %}
+{# One row of the ranked feed: importance badge, client + category, headline,
+   summary, source/time. Mirrors the locked today-triage mock's .item. #}
+{# One story: the lead article, plus the outlets that also ran it. A syndicated
+   story lists its pickups in a <details> so the row stays one line high until
+   the reader wants the list. #}
+{% macro item_row(story) %}
+  {% set item = story.lead %}
+  <div class="item{% if item.is_alert %} item--alert{% endif %}">
+    <div class="body">
+      <div class="toprow">
+        <span class="clichip">{{ item.client_name }}</span>
+        <span class="tag t-{{ item.category }}">{{ t(item.category) | capitalize }}</span>
+        {% if item.tonality != 'unbekannt' %}
+          <span class="tone tone--{{ item.tonality }}" title="{{ t('Wirkung auf die Reputation des Mandanten') }}">{{ t(item.tonality) | capitalize }}</span>
+        {% endif %}
+        {% if story.is_syndicated %}
+          <span class="pickup" title="{{ story.pickup_count }}">{{ story.pickup_count }}× {{ t("aufgegriffen") }}</span>
+        {% endif %}
+      </div>
+      <div class="hl"><a href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a></div>
+      {% if item.summary %}<div class="sum">{{ item.summary }}</div>{% endif %}
+      <div class="meta">
+        {{ item.source }}
+        {% if item.author %}<span class="dot">·</span> {{ item.author }}{% endif %}
+        <span class="dot">·</span> {{ item.published_at.strftime('%H:%M') }} Uhr
+        {% if story.is_syndicated %}
+          <details class="pickup-list">
+            <summary>{{ t("auch bei") }} {{ story.pickup_count - 1 }} {{ t("weiteren") }}</summary>
+            <ul>
+              {% for member in story.members if member is not sameas item %}
+                <li><a href="{{ member.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ member.source }}</a> <span class="dot">·</span> {{ member.published_at.strftime('%H:%M') }}</li>
+              {% endfor %}
+            </ul>
+          </details>
+        {% endif %}
+      </div>
+      {# One-click workflow. Clicking the state an item already has clears it,
+         so each button both marks and un-marks. redirect_to carries the current
+         URL so the day/filter the operator was looking at survives the POST. #}
+      <div class="triage">
+        {% for state, label in [('gelesen', t('gelesen')), ('markiert', t('für Mandant')), ('erledigt', t('erledigt'))] %}
+          <form method="post" action="/triage/{{ item.analysis_id }}">
+            <input type="hidden" name="state" value="{{ state }}">
+            <input type="hidden" name="redirect_to" value="{{ request.url.path }}?{{ request.url.query }}">
+            <button type="submit" class="triage-btn{% if item.triage_state == state %} triage-btn--on{% endif %}">{{ label }}</button>
+          </form>
+        {% endfor %}
+      </div>
     </div>
-    <div class="feed-item__meta">
-      <span class="client">{{ item.client_name }}</span>
-      <span class="source">{{ item.source }}</span>
-      <span class="time">{{ item.published_at.strftime('%H:%M') }}</span>
-      <span class="tag tag--category tag--{{ item.category }}">{{ item.category }}</span>
-      <span class="importance" title="Importance score">{{ item.importance }}/10</span>
-    </div>
-    {% if item.summary %}<p class="feed-item__summary">{{ item.summary }}</p>{% endif %}
-  </article>
+  </div>
 {% endmacro %}
 
 {% block content %}
+{% set t = translator(request) %}
+
 <div id="today-root">
 <div class="today-toolbar">
-  <h1>Today</h1>
+  {# Category filter and date picker share one form so changing either keeps the
+     other's value; the whole toolbar sits inside #today-root so an HTMX swap
+     re-renders it with the new day's categories. #}
   <form class="date-picker" method="get" action="/">
-    <label for="date">Tag:</label>
+    <label for="category">{{ t("Kategorie") }}:</label>
+    <select
+      id="category"
+      name="category"
+      hx-get="/"
+      hx-trigger="change"
+      hx-target="#today-root"
+      hx-select="#today-root"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      onchange="if (!window.htmx) this.form.requestSubmit()">
+      <option value="">{{ t("Alle Kategorien") }}{% if categories %} ({{ categories | length }}){% endif %}</option>
+      {% for c in categories %}
+        <option value="{{ c }}"{% if c == selected_category %} selected{% endif %}>{{ t(c) | capitalize }}</option>
+      {% endfor %}
+    </select>
+    {% if hidden_count %}
+      <span class="filter-note">{{ hidden_count }} {{ t("ausgeblendet") }}</span>
+    {% endif %}
+    <label for="date">{{ t("Tag") }}:</label>
     {# When HTMX is loaded it handles the change and swaps only #today-root out of
        the response (hx-select), so the full document is never nested inside body.
        The onchange native submit is a fallback that fires ONLY when HTMX is absent
@@ -40,41 +98,90 @@
       hx-swap="outerHTML"
       hx-push-url="true"
       onchange="if (!window.htmx) this.form.requestSubmit()">
-    <noscript><button type="submit">Anzeigen</button></noscript>
+    <noscript><button type="submit">{{ t("Anzeigen") }}</button></noscript>
   </form>
 </div>
 
-<div class="triage">
-  <aside class="triage__rail" aria-label="Alerts">
-    <h2 class="rail__title">Alerts</h2>
-    {% if alerts %}
-      {% for item in alerts %}
-        <div class="alert-card">
-          <a class="alert-card__headline" href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer" title="{{ item.headline }}">{{ item.headline }}</a>
-          <div class="alert-card__meta">
-            <span class="client">{{ item.client_name }}</span>
-            <span class="importance">{{ item.importance }}/10</span>
-          </div>
-          {% if item.summary %}<p class="alert-card__summary" title="{{ item.summary }}">{{ item.summary }}</p>{% endif %}
-        </div>
+{# Which mandate's day to look at. Cards while the portfolio is small enough to
+   scan — an agency knows its clients by sight — and a dropdown once that stops
+   being true. #}
+{% if clients %}
+  <div class="clientfilter">
+    {% if clients | length <= card_limit %}
+      <a class="cfcard{% if not selected_client %} cfcard--on{% endif %}"
+         href="/?date={{ day_iso }}{% if selected_category %}&category={{ selected_category }}{% endif %}">
+        <span class="cfall">{{ t("Alle") }}</span>
+        <span class="cfname">{{ total_today }} {{ t("Meldungen") }}</span>
+      </a>
+      {% for c in clients %}
+        <a class="cfcard{% if selected_client == c.id %} cfcard--on{% endif %}"
+           href="/?date={{ day_iso }}&client={{ c.id }}{% if selected_category %}&category={{ selected_category }}{% endif %}">
+          {% if c.logo_url %}
+            <img class="cflogo" src="{{ c.logo_url | logo_src }}" alt="">
+          {% else %}
+            <span class="cflogo cflogo--mono" style="background: {{ c.name | brand_colour }}">{{ c.name | monogram }}</span>
+          {% endif %}
+          <span class="cfname">{{ c.name }}</span>
+          {% if client_counts.get(c.id) %}<span class="cfn">{{ client_counts[c.id] }}</span>{% endif %}
+        </a>
       {% endfor %}
     {% else %}
-      <p class="rail__empty">Keine Alerts heute.</p>
+      <form class="date-picker" method="get" action="/">
+        <input type="hidden" name="date" value="{{ day_iso }}">
+        {% if selected_category %}<input type="hidden" name="category" value="{{ selected_category }}">{% endif %}
+        <label for="client">{{ t("Mandant") }}:</label>
+        <select id="client" name="client" onchange="this.form.requestSubmit()">
+          <option value="">{{ t("Alle Mandanten") }} ({{ total_today }})</option>
+          {% for c in clients %}
+            <option value="{{ c.id }}"{% if selected_client == c.id %} selected{% endif %}>
+              {{ c.name }}{% if client_counts.get(c.id) %} ({{ client_counts[c.id] }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+        <noscript><button type="submit">{{ t("Filtern") }}</button></noscript>
+      </form>
     {% endif %}
+  </div>
+{% endif %}
+
+<div class="cols">
+  <aside class="alertcol" aria-label="{{ t('Warnungen') }}">
+    <div class="colhead">{{ t("Warnungen") }} <span class="n">{{ alerts | length }}</span></div>
+    {% for story in alerts %}
+      {% set item = story.lead %}
+      <div class="acard">
+        <div class="cli">{{ item.client_name }} <span>·</span> {{ t(item.category) | capitalize }}</div>
+        <div class="hl"><a href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a></div>
+        {% if item.summary %}<div class="sum">{{ item.summary }}</div>{% endif %}
+        <div class="meta">
+          {{ item.source }} <span>·</span> {{ item.published_at.strftime('%H:%M') }}
+          {% if story.is_syndicated %}<span>·</span> <strong>{{ story.pickup_count }}× {{ t("aufgegriffen") }}</strong>{% endif %}
+        </div>
+      </div>
+    {% else %}
+      <p class="rail__empty">{{ t("Keine Warnungen heute.") }}</p>
+    {% endfor %}
   </aside>
 
-  <section class="triage__feed" aria-label="Coverage">
-    <h2 class="feed__title">Coverage</h2>
+  <main class="feedcol" aria-label="{{ t('Gesamter Tag') }}">
+    {# Counts stories, not articles: a syndicated event is one thing to read.
+       The article count is shown alongside when the two differ. #}
+    <div class="colhead">
+      {{ t("Gesamter Tag") }} <span class="n">{{ stories | length }}</span>
+      {% if items | length != stories | length %}
+        <span class="colhead__note">{{ t("aus") }} {{ items | length }} {{ t("Artikeln") }}</span>
+      {% endif %}
+    </div>
     {% if items %}
-      {% for item in items %}
-        {{ item_row(item) }}
+      {% for story in stories %}
+        {{ item_row(story) }}
       {% endfor %}
     {% else %}
       <div class="empty-state">
-        <p>Keine Berichterstattung für {{ day.strftime('%d.%m.%Y') }}.</p>
+        <p>{{ t("Keine Berichterstattung für") }} {{ day.strftime('%d.%m.%Y') }}.</p>
       </div>
     {% endif %}
-  </section>
+  </main>
 </div>
 </div>
 {% endblock %}

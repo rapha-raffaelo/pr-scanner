@@ -398,7 +398,7 @@ def update_client(session: Session, client_id: int, **fields) -> Client:
     client = session.get(Client, client_id)
     if client is None:
         raise LookupError(f"No client with id {client_id}")
-    unknown = set(fields) - _IMPORTABLE_FIELDS - {"active"}
+    unknown = set(fields) - _IMPORTABLE_FIELDS - {"active", "is_competitor", "website", "logo_url"}
     if unknown:
         raise ValueError(f"Unknown client field(s): {sorted(unknown)}")
     if "name" in fields and not str(fields["name"]).strip():

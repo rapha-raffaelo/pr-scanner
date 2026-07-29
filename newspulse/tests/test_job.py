@@ -681,3 +681,83 @@ def test_cli_partial_run_still_exits_zero(monkeypatch):
     monkeypatch.setattr(cli, "get_analyzer", lambda: object())
 
     assert cli.main(["run"]) == 0
+
+
+# --- Per-client Google News queries in the sweep --------------------------------
+
+
+def _seed_one_client(session, name="Alpha AG"):
+    from newspulse.models import Client
+
+    c = Client(name=name, aliases=[], industry=None, country="DE",
+               keywords=[], alert_topics=[])
+    session.add(c)
+    session.commit()
+    return c
+
+
+def test_run_appends_a_client_search_feed_to_the_registry(session, monkeypatch):
+    """The searches are additive: the curated registry still runs, with one query
+    feed per active client on top."""
+    from newspulse import config
+
+    _seed_one_client(session)
+    monkeypatch.setattr(config, "GOOGLE_NEWS_ENABLED", True)
+    monkeypatch.setattr(job, "load_feeds", lambda: [Feed(name="Reg", url="https://reg.example/rss")])
+
+    seen: list[tuple[str, bool]] = []
+
+    def _fetch(url, since, *, source=None, fetched_at=None, per_entry_source=False, **_):
+        seen.append((url, per_entry_source))
+        return []
+
+    job.run(session, analyzer=_FakeAnalyzer(), fetch=_fetch, now=lambda: _NOW)
+
+    assert len(seen) == 2, seen
+    registry, search = seen
+    assert registry == ("https://reg.example/rss", False)
+    assert "news.google.com/rss/search" in search[0]
+    # The decisive flag: aggregator entries keep their own publisher.
+    assert search[1] is True
+    assert "Alpha+AG" in search[0] or "Alpha%20AG" in search[0]
+
+
+def test_google_news_can_be_switched_off(session, monkeypatch):
+    from newspulse import config
+
+    _seed_one_client(session)
+    monkeypatch.setattr(config, "GOOGLE_NEWS_ENABLED", False)
+    monkeypatch.setattr(job, "load_feeds", lambda: [Feed(name="Reg", url="https://reg.example/rss")])
+
+    urls: list[str] = []
+
+    def _fetch(url, since, **_):
+        urls.append(url)
+        return []
+
+    job.run(session, analyzer=_FakeAnalyzer(), fetch=_fetch, now=lambda: _NOW)
+    assert urls == ["https://reg.example/rss"]
+
+
+def test_injected_feeds_are_never_augmented_with_searches(session, monkeypatch):
+    """An explicit feed list is what a test is pinning down; silently adding a
+    network-bound search feed to it would make such tests non-deterministic."""
+    from newspulse import config
+
+    _seed_one_client(session)
+    monkeypatch.setattr(config, "GOOGLE_NEWS_ENABLED", True)
+
+    urls: list[str] = []
+
+    def _fetch(url, since, **_):
+        urls.append(url)
+        return []
+
+    job.run(
+        session,
+        analyzer=_FakeAnalyzer(),
+        feeds=[Feed(name="Only", url="https://only.example/rss")],
+        fetch=_fetch,
+        now=lambda: _NOW,
+    )
+    assert urls == ["https://only.example/rss"]

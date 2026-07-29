@@ -1,0 +1,54 @@
+# Outlet tiers — how much weight a publication's coverage carries.
+#
+# The analyzer scores how important a story is for the client. This table adds
+# the other half of that judgement: *where* it ran. A 7/10 in the FAZ is a
+# different morning from a 7/10 on an automated share-price ticker.
+#
+# Names are matched loosely (case, umlauts, punctuation and a trailing domain
+# suffix are all ignored), so "SZ.de", "sz" and "SZ" are the same outlet. Any
+# outlet not listed here falls to the default tier — deliberately the middle
+# one, because most of what the per-client Google News search finds is genuine
+# regional and trade press that should not be penalised for being unlisted.
+#
+# Editing this file changes which *future* articles are flagged. It never
+# rewrites stored analyses — the same rule the alert threshold follows.
+
+# --- Tier 1: Leitmedien -------------------------------------------------------
+# National quality press, public broadcasters, and the major business titles.
+# Coverage here sets the agenda; other outlets follow it.
+[tier1]
+adjustment = 1
+outlets = [
+  "FAZ", "FAZ Aktuell", "FAZ Wirtschaft", "FAZ Finanzen",
+  "SZ", "SZ.de", "Süddeutsche", "Süddeutsche Zeitung", "Süddeutsche Wirtschaft",
+  "Handelsblatt", "Handelsblatt Unternehmen", "Handelsblatt Finanzen",
+  "Spiegel", "Spiegel Wirtschaft", "Der Spiegel",
+  "Zeit", "Zeit Wirtschaft", "DIE ZEIT", "Zeit Online",
+  "Welt", "WELT", "Welt Wirtschaft",
+  "taz", "Tagesspiegel", "Frankfurter Rundschau", "FR",
+  "Tagesschau", "Tagesschau Wirtschaft", "ZDF heute", "Deutschlandfunk",
+  "NDR", "WDR", "BR24", "MDR", "MDR.de", "rbb24", "rbb24.de", "hessenschau",
+  "n-tv", "n-tv Wirtschaft", "ntv", "T-Online", "RND", "Stern", "Focus",
+  "Manager Magazin", "WirtschaftsWoche", "WiWo", "Capital", "Capital.de",
+  "Handelszeitung", "Wirtschaftsdienst",
+]
+
+# --- Tier 3: automated financial wires ----------------------------------------
+# Ticker and analyst-note aggregators that publish a near-identical share-price
+# item several times a day. Real coverage occasionally appears here, so these
+# are down-weighted rather than excluded — a genuinely important story still
+# clears the bar, a "Aktie zeigt Stabilität" filler item no longer does.
+[tier3]
+adjustment = -2
+outlets = [
+  "Ad-hoc-news", "Ad-hoc-news.de", "adhoc-news",
+  "Finanzen.net", "finanzen.ch", "finanzen.at", "Finanzen",
+  "Wallstreet Online", "wallstreet-online", "wallstreet:online",
+  "FinanzNachrichten.de", "FinanzNachrichten",
+  "Börse Social", "Boerse Social", "Börse Online", "Boerse Online",
+  "boerse.de", "BörsenNEWS.de", "BoersenNEWS", "Börse Express",
+  "Der Aktionär", "Der Aktionaer", "deraktionaer",
+  "ntg24", "ntg24.de", "Investor-Verlag", "First Blue Verlag",
+  "ariva", "ariva.de", "Aktiencheck", "aktiencheck.de",
+  "GOLDINVEST", "4investors", "Börsenblatt Finanzen",
+]

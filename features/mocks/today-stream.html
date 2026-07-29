@@ -1,0 +1,143 @@
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1a1d24; --muted: #6b7280;
+    --line: #e6e8ec; --accent: #4f46e5; --alert: #dc2626; --alertbg: #fef2f2;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.45; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 28px 20px 80px; }
+  header.top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .brand { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .brand span { color: var(--accent); }
+  .datemeta { color: var(--muted); font-size: 13px; text-align: right; }
+  .runok { color: #16a34a; font-weight: 600; }
+  nav.tabs { display: flex; gap: 4px; margin: 18px 0 20px; border-bottom: 1px solid var(--line); }
+  nav.tabs a { padding: 9px 14px; font-size: 14px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+  nav.tabs a.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar .lbl { font-size: 12px; color: var(--muted); }
+  .chipf { font-size: 12.5px; padding: 5px 11px; border: 1px solid var(--line); background: var(--card); border-radius: 20px; color: #40454f; cursor: pointer; }
+  .chipf.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  .item {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 13px 15px 13px 15px; margin-bottom: 8px; display: flex; gap: 13px; position: relative;
+  }
+  .item.alert { border-left: 3px solid var(--alert); }
+  .rank {
+    flex: none; width: 40px; text-align: center;
+  }
+  .rank .num { font-size: 19px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .rank.hot .num { color: var(--alert); }
+  .rank .bar { height: 4px; border-radius: 3px; background: #eef0fb; margin-top: 6px; overflow: hidden; }
+  .rank .bar i { display: block; height: 100%; background: var(--accent); }
+  .rank.hot .bar i { background: var(--alert); }
+  .rank .lab { font-size: 9px; letter-spacing: 0.04em; color: var(--muted); text-transform: uppercase; margin-top: 4px; }
+  .body { flex: 1; min-width: 0; }
+  .toprow { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; flex-wrap: wrap; }
+  .clichip { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 6px; background: #eef0f3; color: #374151; }
+  .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+  .t-produkt { background: #e0f2fe; color: #0369a1; }
+  .t-personalie { background: #ede9fe; color: #6d28d9; }
+  .t-krise { background: #fee2e2; color: #b91c1c; }
+  .t-regulatorik { background: #fef3c7; color: #92400e; }
+  .t-finanzen { background: #dcfce7; color: #15803d; }
+  .t-wettbewerb { background: #f3e8ff; color: #7e22ce; }
+  .alertpill { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 20px; background: var(--alert); color: #fff; }
+  .hl { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+  .hl a { color: var(--ink); text-decoration: none; }
+  .hl a:hover { text-decoration: underline; }
+  .sum { font-size: 13.5px; color: #40454f; margin-bottom: 6px; }
+  .meta { font-size: 12px; color: var(--muted); }
+  .dot { color: #c7cbd1; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">News<span>Pulse</span></div>
+    <div class="datemeta">
+      Mittwoch, 22. Juli 2026<br>
+      Letzter Lauf 06:14 Uhr · <span class="runok">42 Feeds ok</span> · 137 Artikel geprüft
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <a class="active" href="#">Heute</a>
+    <a href="#">Mandanten</a>
+    <a href="#">Einstellungen</a>
+  </nav>
+
+  <div class="toolbar">
+    <span class="lbl">Filter:</span>
+    <span class="chipf on">Alle</span>
+    <span class="chipf">Nur Warnungen</span>
+    <span class="chipf">Regulatorik</span>
+    <span class="chipf">Personalie</span>
+    <span class="chipf">Krise</span>
+    <span class="chipf">Produkt</span>
+  </div>
+
+  <div class="item alert">
+    <div class="rank hot"><div class="num">9</div><div class="bar"><i style="width:90%"></i></div><div class="lab">Wichtig</div></div>
+    <div class="body">
+      <div class="toprow"><span class="clichip">Delivery Hero</span><span class="tag t-regulatorik">Regulatorik</span><span class="alertpill">Alert</span></div>
+      <div class="hl"><a href="#">EU-Kommission weitet Kartelluntersuchung aus</a></div>
+      <div class="sum">Brüssel prüft Absprachen im Liefermarkt; Delivery Hero unter den betroffenen Unternehmen.</div>
+      <div class="meta">Reuters <span class="dot">·</span> 06:58 Uhr</div>
+    </div>
+  </div>
+
+  <div class="item alert">
+    <div class="rank hot"><div class="num">9</div><div class="bar"><i style="width:90%"></i></div><div class="lab">Wichtig</div></div>
+    <div class="body">
+      <div class="toprow"><span class="clichip">Enpal</span><span class="tag t-regulatorik">Regulatorik</span><span class="alertpill">Alert</span></div>
+      <div class="hl"><a href="#">Bundesnetzagentur prüft Vertriebspraktiken bei Solaranbietern</a></div>
+      <div class="sum">Die Behörde untersucht Haustürgeschäfte mehrerer Anbieter; Enpal namentlich als Marktführer genannt.</div>
+      <div class="meta">Handelsblatt <span class="dot">·</span> 07:52 Uhr</div>
+    </div>
+  </div>
+
+  <div class="item alert">
+    <div class="rank hot"><div class="num">8</div><div class="bar"><i style="width:80%"></i></div><div class="lab">Wichtig</div></div>
+    <div class="body">
+      <div class="toprow"><span class="clichip">TeamViewer</span><span class="tag t-personalie">Personalie</span><span class="alertpill">Alert</span></div>
+      <div class="hl"><a href="#">Finanzvorstand verlässt das Unternehmen zum Quartalsende</a></div>
+      <div class="sum">CFO-Wechsel überraschend angekündigt; Nachfolge noch offen, Aktie gibt vorbörslich nach.</div>
+      <div class="meta">FAZ <span class="dot">·</span> 08:20 Uhr</div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="rank"><div class="num">6</div><div class="bar"><i style="width:60%"></i></div><div class="lab">Mittel</div></div>
+    <div class="body">
+      <div class="toprow"><span class="clichip">Enpal</span><span class="tag t-produkt">Produkt</span></div>
+      <div class="hl"><a href="#">Enpal meldet 100.000ste installierte Solaranlage</a></div>
+      <div class="sum">Meilenstein-Meldung des Unternehmens; positive Resonanz in der Fachpresse.</div>
+      <div class="meta">pv-magazine <span class="dot">·</span> 09:10 Uhr</div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="rank"><div class="num">5</div><div class="bar"><i style="width:50%"></i></div><div class="lab">Mittel</div></div>
+    <div class="body">
+      <div class="toprow"><span class="clichip">TeamViewer</span><span class="tag t-produkt">Produkt</span></div>
+      <div class="hl"><a href="#">TeamViewer erweitert Partnerschaft im Industrie-Metaverse</a></div>
+      <div class="sum">Neue Kooperation für AR-Wartungslösungen angekündigt.</div>
+      <div class="meta">heise online <span class="dot">·</span> 10:41 Uhr</div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="rank"><div class="num">4</div><div class="bar"><i style="width:40%"></i></div><div class="lab">Niedrig</div></div>
+    <div class="body">
+      <div class="toprow"><span class="clichip">Enpal</span><span class="tag t-wettbewerb">Wettbewerb</span></div>
+      <div class="hl"><a href="#">Solarbranche wächst trotz gedämpfter Konjunktur</a></div>
+      <div class="sum">Branchenüberblick, Enpal als eines von acht Beispielunternehmen erwähnt.</div>
+      <div class="meta">Süddeutsche <span class="dot">·</span> 11:03 Uhr</div>
+    </div>
+  </div>
+</div>

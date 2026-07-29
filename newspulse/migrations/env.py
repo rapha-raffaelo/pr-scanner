@@ -18,7 +18,11 @@ from newspulse.models import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers defaults to True, which would switch off every
+    # logger alembic.ini does not name — including the whole `newspulse` tree.
+    # In-process (tests, or any code that migrates then runs) that silently
+    # swallows the app's own warnings and errors from this point on.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Inject the runtime URL so alembic.ini need not hard-code a path.
 config.set_main_option("sqlalchemy.url", database_url())

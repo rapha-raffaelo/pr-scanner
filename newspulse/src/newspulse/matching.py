@@ -31,6 +31,7 @@ import datetime as dt
 import hashlib
 import logging
 import re
+import urllib.parse
 from collections.abc import Collection, Sequence
 from typing import NamedTuple
 
@@ -226,7 +227,9 @@ def deduplicate(
     real, distinct story before Claude ever reads it, the one dedup error this
     module cannot recover from.
     """
-    seen_urls: set[str] = set(known_urls or ())
+    # Compared in canonical form so a stored link and the same link carrying a
+    # tracking parameter are one identity. Callers may pass raw stored URLs.
+    seen_urls: set[str] = {canonical_url(u) for u in (known_urls or ())}
     seen_hashes: set[str] = set(known_title_hashes or ())
 
     kept: list[FeedItem] = []
@@ -244,11 +247,12 @@ def deduplicate(
             continue
         # None => this title is too thin to hash-collapse; dedup it by URL only.
         thash = dedup_title_hash(_item_title(item), _item_source(item))
-        if url in seen_urls or (thash is not None and thash in seen_hashes):
+        identity = canonical_url(url)
+        if identity in seen_urls or (thash is not None and thash in seen_hashes):
             dropped += 1
             continue
         kept.append(item)
-        seen_urls.add(url)
+        seen_urls.add(identity)
         if thash is not None:
             seen_hashes.add(thash)
 
@@ -358,6 +362,62 @@ def _item_url(item: FeedItem) -> str:
     return (getattr(item, "url", None) or getattr(item, "link", None) or "").strip()
 
 
+# Query parameters that identify the *referral*, not the article. German outlets
+# routinely append these to their RSS links, so the same story arrives at two
+# spellings of one URL. Prefix families (utm_*) plus a few standalone names.
+_TRACKING_PARAM_PREFIXES = ("utm_", "at_", "wt_")
+_TRACKING_PARAMS = frozenset(
+    {"ref", "fbclid", "gclid", "igshid", "mc_cid", "mc_eid", "cmpid", "ncid", "src"}
+)
+
+
+def _is_tracking_param(name: str) -> bool:
+    key = name.casefold()
+    return key in _TRACKING_PARAMS or key.startswith(_TRACKING_PARAM_PREFIXES)
+
+
+def canonical_url(url: str) -> str:
+    """The identity form of a URL for deduplication.
+
+    Collapses the spellings that mean "the same page": scheme (http/https), a
+    ``www.`` host prefix, host case, a trailing slash, the fragment, and referral
+    tracking parameters. Real query parameters are preserved and re-sorted, since
+    for many outlets the article id lives there (``?id=123``) and dropping it
+    would fold unrelated stories together.
+
+    This is an identity used for comparison only — the article is still stored
+    and linked out under the exact URL the feed gave, so the reader always
+    follows the publisher's own link.
+    """
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    parsed = urllib.parse.urlsplit(raw)
+    # A scheme-less/relative link has no reliable identity to normalize; compare
+    # it as-is rather than inventing a host for it.
+    if not parsed.scheme or not parsed.netloc:
+        return raw
+
+    host = parsed.netloc.casefold()
+    host = host.removeprefix("www.")
+    for scheme, port in (("http", ":80"), ("https", ":443")):
+        if parsed.scheme.casefold() == scheme:
+            host = host.removesuffix(port)
+
+    kept = [
+        (name, value)
+        for name, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+        if not _is_tracking_param(name)
+    ]
+    query = urllib.parse.urlencode(sorted(kept))
+
+    path = parsed.path.rstrip("/")
+    # Scheme is dropped entirely (not normalized to https): http:// and https://
+    # of the same page are the same article, and the fragment never identifies a
+    # different story.
+    return f"{host}{path}" + (f"?{query}" if query else "")
+
+
 def _item_title(item: FeedItem) -> str:
     return getattr(item, "title", "") or ""
 
@@ -368,6 +428,7 @@ def _item_source(item: FeedItem) -> str:
 
 __all__ = [
     "Candidate",
+    "canonical_url",
     "dedup_title_hash",
     "deduplicate",
     "match_candidates",
