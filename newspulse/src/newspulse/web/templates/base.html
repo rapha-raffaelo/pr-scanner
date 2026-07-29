@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}NewsPulse{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <link rel="stylesheet" href="/static/app.css">
   <!-- HTMX for server-driven swaps (date picker); vendored locally so the app
        stays fully offline (DEC-3: everything runs on the local machine). Loaded
        synchronously (no defer) so window.htmx is defined before the date input
        can be changed — otherwise the native onchange fallback could fire a full
        navigation mid-load and double-fetch. It is a small local file, so the
        parse-blocking cost is negligible. -->
-  <script src="{{ url_for('static', path='htmx.min.js') }}"></script>
+  <script src="/static/htmx.min.js"></script>
 </head>
 <body>
   {% set t = translator(request) %}
@@ -74,12 +74,12 @@
      page is showing, so a question does not have to re-explain its own context.
      Advisory only: it produces text, it never acts. #}
   <button class="drawer-open" type="button" data-drawer-open
-          title="{{ t('Kommunikationsstrategie zur Berichterstattung auf dieser Seite') }}"><img src="{{ url_for('static', path='captain.svg') }}" alt="" class="cc-icon">{{ t("Captain Comms") }}</button>
+          title="{{ t('Kommunikationsstrategie zur Berichterstattung auf dieser Seite') }}"><img src="/static/captain.svg" alt="" class="cc-icon">{{ t("Captain Comms") }}</button>
 
   <aside class="drawer" id="assistant-drawer"{% if request.query_params.get("assistant") %}{% else %} hidden{% endif %} aria-label="{{ t('Captain Comms') }}">
     <header class="drawer__head">
       <span class="drawer__title">
-        <img src="{{ url_for('static', path='captain.svg') }}" alt="" class="cc-icon cc-icon--lg">
+        <img src="/static/captain.svg" alt="" class="cc-icon cc-icon--lg">
         <span>
           <strong>{{ t("Captain Comms") }}</strong>
           <select class="drawer__pick" id="drawer-client" aria-label="{{ t('Mandant') }}">
@@ -128,7 +128,7 @@
     const send    = document.getElementById("drawer-send");
     const CTX     = {{ assistant_ctx(request) | tojson }};
     const picker  = document.getElementById("drawer-client");
-    const AVATAR  = {{ url_for('static', path='captain.svg') | string | tojson }};
+    const AVATAR  = "/static/captain.svg";
 
     // One thread per subject, held in sessionStorage: the conversation survives
     // navigating between Heute, the archive and a client page, but ends with the

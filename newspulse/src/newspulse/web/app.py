@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import branding, i18n
 from ..db import get_session
-from .auth import BasicAuthMiddleware, require_auth_for_public_bind
+from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
 
 # The web package ships its own templates/ and static/ next to this module, so
 # resolve them relative to the file rather than the process working directory.
@@ -219,6 +219,28 @@ def create_app() -> FastAPI:
     return app
 
 
+def forwarded_allow_ips(host: str) -> str | None:
+    """Which upstreams may set ``X-Forwarded-Proto``, given the bind address.
+
+    uvicorn trusts those headers only from ``127.0.0.1`` by default. Behind a
+    TLS-terminating proxy that is not loopback — Railway's router, or Caddy in
+    front of the compose stack — the header is therefore ignored, the app
+    believes it is serving plain http, and every absolute URL it generates comes
+    out as ``http://``. On an https page the browser blocks those as mixed
+    content, which takes out the stylesheet and htmx while leaving the HTML
+    intact: the dashboard renders unstyled and inert rather than failing.
+
+    A non-loopback bind means something is in front, because binding publicly
+    without credentials is refused outright (see ``require_auth_for_public_bind``)
+    and the deployment guide puts TLS in front in every route. So trust the
+    proxy exactly then, and keep uvicorn's stricter default for local runs.
+
+    Returning ``None`` leaves uvicorn's default in place rather than restating
+    it, so this never silently pins a value uvicorn later changes.
+    """
+    return None if is_loopback(host) else "*"
+
+
 def main() -> None:
     """Console entry point: start the dashboard with uvicorn (``newspulse-web``).
 
@@ -233,7 +255,12 @@ def main() -> None:
     # Before the socket opens, not after: a public bind with no credentials is
     # the one mistake that cannot be undone by noticing it later.
     require_auth_for_public_bind(config.WEB_HOST)
-    uvicorn.run(create_app(), host=config.WEB_HOST, port=config.WEB_PORT)
+    uvicorn.run(
+        create_app(),
+        host=config.WEB_HOST,
+        port=config.WEB_PORT,
+        forwarded_allow_ips=forwarded_allow_ips(config.WEB_HOST),
+    )
 
 
 __all__ = ["create_app", "get_db", "logo_src", "main", "safe_url", "templates"]

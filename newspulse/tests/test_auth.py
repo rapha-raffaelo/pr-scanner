@@ -176,3 +176,52 @@ def test_an_explicit_port_still_wins_over_the_platform(monkeypatch):
         monkeypatch.delenv("PORT", raising=False)
         monkeypatch.delenv("NEWSPULSE_WEB_PORT", raising=False)
         importlib.reload(config)
+
+
+# --- Reverse-proxy awareness -----------------------------------------------
+#
+# Regression: served behind Railway's TLS-terminating router the dashboard came
+# up unstyled and inert. `url_for` builds an *absolute* URL, uvicorn trusts
+# X-Forwarded-Proto only from 127.0.0.1, so every asset link was emitted as
+# http:// on an https page and the browser blocked the stylesheet and htmx as
+# mixed content. The HTML still rendered, which is why it looked like a broken
+# design rather than a broken deploy.
+
+
+def test_asset_urls_are_root_relative_not_absolute():
+    """Assets on this same app must not carry a scheme or host.
+
+    An absolute URL can be wrong (behind a proxy, or a rename of the public
+    hostname), and when it is wrong the browser does not degrade — it blocks the
+    asset outright. A root-relative path cannot be wrong.
+    """
+    from pathlib import Path
+
+    import newspulse.web.app as web_app
+
+    base = (Path(web_app.__file__).parent / "templates" / "base.html").read_text()
+
+    assert "url_for(" not in base, (
+        "url_for() yields an absolute URL including the scheme; use /static/... "
+        "so the asset cannot be blocked as mixed content behind a TLS proxy"
+    )
+    for asset in ("app.css", "htmx.min.js", "captain.svg"):
+        assert f"/static/{asset}" in base, f"{asset} link went missing"
+    assert "http://" not in base, "no asset may be requested over plain http"
+
+
+def test_forwarded_headers_trusted_only_when_a_proxy_is_in_front():
+    """Loopback keeps uvicorn's strict default; a public bind trusts the proxy.
+
+    A non-loopback bind implies something is in front of it, because binding
+    publicly without credentials is refused outright.
+    """
+    from newspulse.web.app import forwarded_allow_ips
+
+    for local in ("127.0.0.1", "localhost", "::1"):
+        assert forwarded_allow_ips(local) is None, (
+            f"{local} needs no proxy trust, and widening it there would let a "
+            "local process spoof the scheme"
+        )
+    for public in ("0.0.0.0", "::"):
+        assert forwarded_allow_ips(public) == "*"
