@@ -37,7 +37,17 @@ RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
 ENV NEWSPULSE_DATABASE_PATH=/data/newspulse.db \
     NEWSPULSE_WEB_HOST=0.0.0.0 \
     NEWSPULSE_CLAUDE_CONFIG_DIR=/data/claude
-VOLUME ["/data"]
+
+# Deliberately no `VOLUME /data`: Railway rejects the instruction outright
+# ("docker VOLUME is not supported, use Railway Volumes") and the build fails to
+# parse. It bought nothing anyway — an unmounted VOLUME creates an anonymous
+# volume that is just as lost as a plain directory, only harder to find. The
+# mount is declared where it is actually configured: a Railway volume at /data,
+# or the bind mount in docker-compose.yml.
+#
+# The directory is created here so that an unmounted run still starts rather
+# than failing on a missing path. That persists nothing — mount /data.
+RUN mkdir -p /data
 EXPOSE 8000
 
 # Migrations run on start so a deploy never serves a schema older than its code.
