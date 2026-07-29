@@ -123,6 +123,19 @@ WantedBy=multi-user.target
 
 ---
 
+## Notifications on a server
+
+The alert channel defaults to `off`, so nothing is emitted until configured.
+Do **not** set it to `desktop` on a host: that shells out to `notify-send`,
+which does not exist in a headless container, and every alert would fail (logged,
+never fatal — notification failure cannot break a run). Use `email`:
+
+```
+NEWSPULSE_NOTIFY_CHANNEL=email
+NEWSPULSE_SMTP_HOST=…
+NEWSPULSE_SMTP_RECIPIENT=…
+```
+
 ## Before you hand out the URL
 
 - `curl -I https://…/` returns **401**, not 200.
