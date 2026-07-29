@@ -25,11 +25,13 @@ COPY alembic.ini ./
 RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
 
 # The database is a single SQLite file and must outlive the container.
+# Both the database and the CLI login live under one mount: a platform that
+# gives a service a single volume (Railway) cannot attach two, and nothing is
+# gained by separating them — they are lost together or kept together.
 ENV NEWSPULSE_DATABASE_PATH=/data/newspulse.db \
     NEWSPULSE_WEB_HOST=0.0.0.0 \
-    NEWSPULSE_WEB_PORT=8000 \
-    NEWSPULSE_CLAUDE_CONFIG_DIR=/claude
-VOLUME ["/data", "/claude"]
+    NEWSPULSE_CLAUDE_CONFIG_DIR=/data/claude
+VOLUME ["/data"]
 EXPOSE 8000
 
 # Migrations run on start so a deploy never serves a schema older than its code.

@@ -4,7 +4,7 @@ The tool was built to run on one machine (DEC-3). Putting it on a server is
 supported, but it changes one thing fundamentally: **the loopback bind was the
 entire security model.** Everything below follows from replacing it.
 
-Two routes. Pick by whether it has to be available when your Mac is asleep.
+Three routes. Pick by how much host you want to own.
 
 ---
 
@@ -32,7 +32,59 @@ Trade-off: available only while the Mac is awake and the tunnel is running.
 
 ---
 
-## Route B — a small always-on host (Docker)
+## Route B — Railway (managed, deploys on push)
+
+Right when you already have Railway capacity. It builds from the Dockerfile,
+redeploys on every push, and keeps a volume across deploys.
+
+1. **New project → Deploy from GitHub repo.** `railway.json` points it at
+   `newspulse/Dockerfile`; no build configuration needed.
+
+2. **Attach a volume at `/data`.** One mount holds both the archive and the
+   `claude` login — Railway gives a service one volume, and there is nothing to
+   gain from separating two things that are lost together anyway.
+
+3. **Variables** (Settings → Variables):
+
+   ```
+   NEWSPULSE_AUTH_USER=lucas
+   NEWSPULSE_AUTH_PASSWORD=<long and random>
+   NEWSPULSE_BASE_URL=https://<your>.up.railway.app
+   NEWSPULSE_CLAUDE_CONFIG_DIR=/data/claude
+   ```
+
+   Railway injects `PORT`; the app binds it automatically. Do not set
+   `NEWSPULSE_WEB_PORT` — it would override the platform and the router would
+   reach a closed socket.
+
+4. **Log the CLI in, once, inside the running service.** This cannot be done
+   from your Mac: on macOS the Claude credentials live in the **Keychain**, not
+   in `~/.claude`, so there is no file to copy. It has to be a device flow on
+   the host.
+
+   ```sh
+   railway ssh
+   CLAUDE_CONFIG_DIR=/data/claude claude login
+   ```
+
+   The credentials land on the volume and survive redeploys. **They do not
+   survive deleting the volume** — if you ever recreate it, repeat this step, and
+   until you do, analysis and Captain Comms both fail.
+
+5. **The daily sweep** as a second service from the same repo, with a cron
+   schedule (`10 6 * * *`) and the start command:
+
+   ```sh
+   uv run newspulse run && uv run newspulse digest
+   ```
+
+   It needs the same variables and the same volume.
+
+**Cost note.** The sweep spends most of its wall-clock waiting on `claude -p`,
+so it is cheap; the dashboard is idle almost all day. The thing to watch is not
+CPU but the volume, since the archive grows with every run.
+
+## Route C — a small always-on host (Docker)
 
 Any €5/month VPS. Everything needed is in the repo.
 

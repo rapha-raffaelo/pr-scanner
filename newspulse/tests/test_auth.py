@@ -143,3 +143,36 @@ def test_the_base_url_falls_back_to_the_bind(monkeypatch):
     monkeypatch.setattr(config, "WEB_HOST", "127.0.0.1")
     monkeypatch.setattr(config, "WEB_PORT", 8000)
     assert config.base_url() == "http://127.0.0.1:8000"
+
+
+# --- PaaS port binding ---------------------------------------------------------
+
+
+def test_the_platform_injected_port_is_respected(monkeypatch):
+    """Railway, Render and Heroku inject PORT and route to exactly it. Binding
+    something else means the platform sends traffic to a closed socket."""
+    import importlib
+
+    monkeypatch.delenv("NEWSPULSE_WEB_PORT", raising=False)
+    monkeypatch.setenv("PORT", "4242")
+    reloaded = importlib.reload(config)
+    try:
+        assert reloaded.WEB_PORT == 4242
+    finally:
+        monkeypatch.delenv("PORT", raising=False)
+        importlib.reload(config)
+
+
+def test_an_explicit_port_still_wins_over_the_platform(monkeypatch):
+    """A local override must never be silently ignored."""
+    import importlib
+
+    monkeypatch.setenv("PORT", "4242")
+    monkeypatch.setenv("NEWSPULSE_WEB_PORT", "9000")
+    reloaded = importlib.reload(config)
+    try:
+        assert reloaded.WEB_PORT == 9000
+    finally:
+        monkeypatch.delenv("PORT", raising=False)
+        monkeypatch.delenv("NEWSPULSE_WEB_PORT", raising=False)
+        importlib.reload(config)

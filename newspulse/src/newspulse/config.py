@@ -172,7 +172,11 @@ BATCH_SIZE: int = _env_int(_ENV_BATCH_SIZE, _DEFAULT_BATCH_SIZE)
 ANALYZER_TIMEOUT: int = _env_int(_ENV_ANALYZER_TIMEOUT, _DEFAULT_ANALYZER_TIMEOUT)
 ANALYZER_BACKEND: str = os.environ.get(_ENV_ANALYZER_BACKEND, _DEFAULT_ANALYZER_BACKEND)
 WEB_HOST: str = os.environ.get(_ENV_WEB_HOST, _DEFAULT_WEB_HOST)
-WEB_PORT: int = _env_int(_ENV_WEB_PORT, _DEFAULT_WEB_PORT)
+# NEWSPULSE_WEB_PORT wins, then PORT, then the default. PORT is what a PaaS
+# injects (Railway, Render, Heroku) and the app must bind exactly it or the
+# platform routes traffic to a closed socket — the explicit name still takes
+# precedence so a local override is never silently ignored.
+WEB_PORT: int = _env_int(_ENV_WEB_PORT, _env_int("PORT", _DEFAULT_WEB_PORT))
 GOOGLE_NEWS_ENABLED: bool = _env_bool(_ENV_GOOGLE_NEWS, _DEFAULT_GOOGLE_NEWS)
 CLAUDE_CONFIG_DIR: str = os.environ.get(
     _ENV_CLAUDE_CONFIG_DIR, _DEFAULT_CLAUDE_CONFIG_DIR

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": { "builder": "DOCKERFILE", "dockerfilePath": "newspulse/Dockerfile" },
+  "deploy": {
+    "startCommand": "sh -c 'uv run alembic upgrade head && uv run newspulse-web'",
+    "healthcheckPath": "/static/app.css",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3,
+    "numReplicas": 1
+  }
+}

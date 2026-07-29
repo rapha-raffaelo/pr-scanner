@@ -12,10 +12,9 @@ services:
     ports: ["127.0.0.1:8000:8000"]
     env_file: [.env]
     volumes:
+      # One mount holds the archive and the `claude` login. Same layout as the
+      # PaaS deploy, so the two cannot drift apart.
       - ./data:/data
-      # The `claude` login, created once with `docker compose run --rm web
-      # claude login`. Read-only: the app never needs to rewrite it.
-      - ./claude:/claude:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/static/app.css"]
       interval: 60s
@@ -31,7 +30,6 @@ services:
     env_file: [.env]
     volumes:
       - ./data:/data
-      - ./claude:/claude:ro
     entrypoint: ["sh", "-c"]
     command:
       - |
