@@ -143,3 +143,65 @@ def test_quiet_day_still_produces_a_message(factory):
         digest = build_digest(s)
     assert "Keine Berichterstattung" in digest.body
     assert digest.total_stories == 0
+
+
+# --- send_digest, the scheduled path ----------------------------------------
+#
+# Regression: `newspulse run && newspulse digest` crashed on the server with
+# TypeError — SmtpConfig.from_env() was called with no argument. Nothing caught
+# it because no test exercised send_digest at all; every digest test built the
+# body directly. The failure landed on the one path that has to be
+# unbreakable, since it runs unattended from cron.
+
+
+def test_send_digest_without_smtp_configured_returns_none_not_raises(factory, monkeypatch):
+    """An unconfigured mailbox is a no-op, never an exception.
+
+    The digest is a convenience bolted onto the end of the nightly run. If it
+    can raise, it takes the whole scheduled job down with it and the failure
+    surfaces as a broken sweep rather than an unsent mail.
+    """
+    from newspulse import digest as digest_mod
+
+    for var in ("NEWSPULSE_SMTP_HOST", "NEWSPULSE_SMTP_RECIPIENT"):
+        monkeypatch.delenv(var, raising=False)
+
+    with factory() as session:
+        assert digest_mod.send_digest(session) is None
+
+
+def test_send_digest_reads_smtp_settings_from_the_process_environment(factory, monkeypatch):
+    """With SMTP set in the environment it resolves a config and sends.
+
+    Guards the actual call signature: passing the environment is what the
+    crash was about, so asserting delivery happens proves it end to end.
+    """
+    from newspulse import digest as digest_mod
+
+    monkeypatch.setenv("NEWSPULSE_SMTP_HOST", "smtp.example.de")
+    monkeypatch.setenv("NEWSPULSE_SMTP_RECIPIENT", "lucas@example.de")
+
+    sent: list = []
+    with factory() as session:
+        result = digest_mod.send_digest(
+            session, send=lambda summary, cfg: sent.append((summary, cfg))
+        )
+
+    assert result is not None
+    assert len(sent) == 1
+    assert sent[0][1].host == "smtp.example.de"
+    assert sent[0][1].recipient == "lucas@example.de"
+
+
+def test_send_digest_swallows_delivery_failure(factory, monkeypatch):
+    """A dead mail server must not fail the run either."""
+    from newspulse import digest as digest_mod
+
+    monkeypatch.setenv("NEWSPULSE_SMTP_HOST", "smtp.example.de")
+    monkeypatch.setenv("NEWSPULSE_SMTP_RECIPIENT", "lucas@example.de")
+
+    def _boom(summary, cfg):
+        raise OSError("connection refused")
+
+    with factory() as session:
+        assert digest_mod.send_digest(session, send=_boom) is None

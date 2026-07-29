@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -139,7 +140,12 @@ def send_digest(
     the digest is a convenience and must not be able to fail a scheduled run.
     """
     digest = build_digest(session, day=day)
-    resolved = smtp or SmtpConfig.from_env()
+    # from_env reads a mapping rather than os.environ itself, so tests can build
+    # a config without touching the process environment. That made it easy to
+    # call with no argument at all, which raised TypeError here and took down
+    # `newspulse run && newspulse digest` — the one thing the docstring above
+    # promises cannot happen.
+    resolved = smtp or SmtpConfig.from_env(os.environ)
     if resolved is None:
         _log.warning("digest not sent: SMTP is not configured")
         return None
