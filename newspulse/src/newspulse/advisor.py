@@ -39,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import config
-from .analyzer import AnalyzerError, BackendError, ParseError, invoke_claude_cli
+from .analyzer import AnalyzerError, BackendError, ParseError, invoke_with_fallback
 from .models import Advisory, Analysis, Article, Client
 from .schemas import AdvisoryBrief
 
@@ -157,11 +157,14 @@ def advise(
     client: Client,
     *,
     days: int = DEFAULT_DAYS,
-    invoke=invoke_claude_cli,
+    invoke=invoke_with_fallback,
 ) -> tuple[AdvisoryBrief, list[CoverageRef]]:
     """Generate a brief for ``client``. Raises :class:`AnalyzerError` on failure.
 
     ``invoke`` is injectable so tests drive the whole path without a subprocess.
+    It defaults to the fallback-aware caller, so an exhausted subscription
+    produces a brief from the backup provider rather than an error the operator
+    has to interpret at the moment they wanted advice.
     Deliberately raises rather than returning an empty brief on a backend error:
     "nothing to advise" and "the advisor failed" must not look alike to the
     operator.

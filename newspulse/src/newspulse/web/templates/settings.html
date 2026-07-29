@@ -369,6 +369,25 @@
       </form>
     </section>
 
+    <!-- ── Backup provider (read-only: configured by env var, not by the UI) ── -->
+    <section class="panel" aria-label="{{ t('KI-Ausweichmodell') }}">
+      <h2>{{ t("KI-Ausweichmodell") }}</h2>
+      {% if fallback_ready %}
+        <p class="panel-hint">
+          {{ t("Aktiv") }} — <strong>{{ fallback_model }}</strong>.
+          {{ t("Wird nur genutzt, wenn das Claude-Abo sein Nutzungslimit erreicht hat. Analyse, Empfehlungen und Captain Comms laufen dann darüber weiter.") }}
+        </p>
+      {% else %}
+        <p class="panel-hint">
+          {{ t("Nicht eingerichtet") }} —
+          {{ t("erreicht das Claude-Abo sein Limit, bricht der Lauf ab und es entsteht eine Lücke im Archiv. Zum Aktivieren NEWSPULSE_GEMINI_API_KEY setzen.") }}
+        </p>
+      {% endif %}
+      <p class="panel-hint">
+        {{ t("Der Schlüssel wird als Umgebungsvariable gesetzt, nicht hier — damit er nicht in der Datenbank landet, die im Klartext gesichert wird.") }}
+      </p>
+    </section>
+
     <!-- ── Active feeds (persists to settings table) ── -->
     <section class="panel" aria-label="Feeds">
       <h2>{{ t("Feeds") }} ({{ feeds | selectattr('active') | list | length }}/{{ feeds | length }} {{ t("aktiv") }})</h2>

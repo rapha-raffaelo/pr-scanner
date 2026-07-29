@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from ... import i18n
 from ...models import Analysis, Article, Client
-from ...streaming import StreamEvent, stream_claude
+from ...streaming import StreamEvent, stream_assistant
 from ..app import get_db
 from .today import _day_bounds_utc, _local_tz, _parse_day
 
@@ -286,7 +286,7 @@ def assistant_stream(
         prompt = _build_prompt(
             question, label, coverage, _parse_history(history), language
         )
-        for event in stream_claude(prompt, t=translate):
+        for event in stream_assistant(prompt, t=translate):
             yield event.to_sse()
 
     return StreamingResponse(

@@ -37,6 +37,7 @@ from typing import Protocol, runtime_checkable
 from pydantic import ValidationError
 
 from . import config
+from .quota import is_quota_error
 from .models import Article, Category, Client
 from .schemas import Analysis, ArticleVerdict, BatchVerdict
 
@@ -48,6 +49,7 @@ _log = logging.getLogger(__name__)
 # a backend by constant, never by a bare string spread across the package.
 BACKEND_CLAUDE_CODE = "claude_code"
 BACKEND_CLAUDE_API = "claude_api"
+BACKEND_GEMINI = "gemini"
 
 # One retry, then give up. A batch gets two attempts total: the first, plus one
 # retry on a parse/schema/subprocess failure. A second failure is logged and the
@@ -137,6 +139,10 @@ class _BaseClaudeAnalyzer:
             alert_threshold if alert_threshold is not None else config.ALERT_THRESHOLD
         )
         self.batch_size = batch_size if batch_size is not None else config.BATCH_SIZE
+        # Set when the provider reports it is out of capacity. Read by
+        # FallbackAnalyzer, which cannot learn this from a raised exception
+        # because the protocol requires analyze() to swallow batch failures.
+        self.quota_exhausted = False
 
     # -- Subclass hook ----------------------------------------------------------
 
@@ -159,6 +165,11 @@ class _BaseClaudeAnalyzer:
         results: list[Analysis] = []
         for chunk in _chunks(articles, self.batch_size):
             results.extend(self._analyze_batch(client, chunk))
+            if self.quota_exhausted:
+                # Stop asking. The limit is per account, not per batch, so every
+                # remaining chunk would spend a doomed call and its timeout to
+                # learn the same thing.
+                break
         return results
 
     def _analyze_batch(self, client: Client, chunk: Sequence[Article]) -> list[Analysis]:
@@ -171,6 +182,19 @@ class _BaseClaudeAnalyzer:
                 batch = self._parse_batch(raw_text)
                 return self._to_analyses(client, chunk, batch)
             except AnalyzerError as exc:
+                if is_quota_error(exc):
+                    # Out of capacity is a run-level condition, not a batch-level
+                    # one: every remaining batch will hit the same wall. Record
+                    # it and stop immediately — retrying cannot succeed and only
+                    # spends another timeout, and the retry loop would do that
+                    # once per batch for the rest of the sweep.
+                    self.quota_exhausted = True
+                    _log.error(
+                        "analysis batch for client %r hit the provider's usage limit: %s; "
+                        "dropping %d article(s)",
+                        label, exc, len(chunk),
+                    )
+                    return []
                 if attempt < _MAX_ATTEMPTS:
                     _log.warning(
                         "analysis batch for client %r failed (attempt %d/%d): %s; retrying",
@@ -446,6 +470,112 @@ def _coerce_verdict_list(data: object) -> object:
     raise ParseError("expected a JSON array of verdicts")
 
 
+def invoke_with_fallback(prompt: str, *, timeout: float = _SUBPROCESS_TIMEOUT_SECONDS) -> str:
+    """``invoke_claude_cli``, degrading to Gemini when the subscription is spent.
+
+    The one-shot counterpart to :class:`FallbackAnalyzer`, used by the advisor.
+    Unlike the analyzer there is no batching here — a brief is a single call — so
+    the fallback is a plain retry against the other provider rather than a
+    sticky mode.
+
+    Any non-quota failure propagates untouched, so a broken prompt still fails
+    loudly instead of being re-run on a metered account.
+    """
+    try:
+        return invoke_claude_cli(prompt, timeout=timeout)
+    except AnalyzerError as exc:
+        if not (is_quota_error(exc) and config.gemini_configured()):
+            raise
+        from . import gemini
+
+        _log.warning("subscription is out of quota (%s); generating this one with Gemini", exc)
+        return gemini.generate(prompt, timeout=timeout)
+
+
+class GeminiAnalyzer(_BaseClaudeAnalyzer):
+    """Fallback backend: Gemini over REST.
+
+    Inherits every auditable decision from the shared base — batch chunking,
+    schema validation, and the alert flag computed in code rather than taken
+    from the model. Only the transport differs, which is the point: a sweep that
+    fell back must produce rows indistinguishable from a normal one, or the
+    archive quietly becomes two datasets.
+    """
+
+    def __init__(
+        self,
+        *,
+        alert_threshold: int | None = None,
+        batch_size: int | None = None,
+        model: str | None = None,
+        timeout: float = _SUBPROCESS_TIMEOUT_SECONDS,
+    ) -> None:
+        super().__init__(alert_threshold=alert_threshold, batch_size=batch_size)
+        self.model = model
+        self.timeout = timeout
+
+    def _invoke(self, prompt: str) -> str:
+        from . import gemini
+
+        return gemini.generate(prompt, timeout=self.timeout, model=self.model)
+
+
+class FallbackAnalyzer:
+    """Runs ``primary``, and switches to ``secondary`` only when quota is out.
+
+    A wrapper rather than a branch inside each backend, so the fallback rule
+    lives in exactly one readable place and each analyzer stays a plain client of
+    its own provider.
+
+    The switch is *sticky* for the life of the object. A sweep is dozens of
+    batches; once the subscription says the limit is reached, every subsequent
+    batch would hit the same wall, and re-attempting each one would add a failed
+    call and its timeout to every batch for the rest of the run.
+    """
+
+    def __init__(self, primary: Analyzer, secondary: Analyzer) -> None:
+        self.primary = primary
+        self.secondary = secondary
+        self.switched = False
+
+    @property
+    def alert_threshold(self) -> int:
+        return self.primary.alert_threshold
+
+    @property
+    def batch_size(self) -> int:
+        return self.primary.batch_size
+
+    def analyze(self, client: Client, articles: Sequence[Article]) -> list[Analysis]:
+        """Analyse with the primary; on exhausted quota, redo it with the fallback.
+
+        The primary is asked via its ``quota_exhausted`` flag rather than by
+        catching an exception, because the protocol requires ``analyze`` to
+        swallow batch failures and return what it managed — so a quota failure
+        arrives as an empty list, not as something raisable.
+
+        A run that trips the limit part-way is re-analysed from the start on the
+        fallback, and the primary's partial result is discarded rather than
+        merged. Merging would mean one client's coverage was scored by two
+        different models on the same day, and the scores are compared against
+        each other — in the ranking, in the alert threshold, in share of voice.
+        A consistent second-choice reading beats a spliced one.
+        """
+        if self.switched:
+            return self.secondary.analyze(client, articles)
+
+        results = self.primary.analyze(client, articles)
+        if not getattr(self.primary, "quota_exhausted", False):
+            return results
+
+        _log.warning(
+            "primary backend is out of quota; falling back to %s for the rest of this run",
+            type(self.secondary).__name__,
+        )
+        self.switched = True
+        return self.secondary.analyze(client, articles)
+
+
 def get_analyzer(
     backend: str | None = None,
     *,
@@ -455,13 +585,31 @@ def get_analyzer(
     """Construct the analyzer for the configured (or given) backend.
 
     Defaults to the subscription ``claude_code`` backend via config; the metered
-    API backend is selected only by an explicit config value."""
+    API backend is selected only by an explicit config value.
+
+    When a Gemini key is configured and the chosen backend is not itself Gemini,
+    the result is wrapped so an exhausted subscription degrades to the fallback
+    instead of ending the sweep. Without a key this returns exactly what it
+    always did — the fallback cannot engage by accident.
+    """
     resolved = backend or config.ANALYZER_BACKEND
     if resolved == BACKEND_CLAUDE_CODE:
-        return ClaudeCodeAnalyzer(alert_threshold=alert_threshold, batch_size=batch_size)
-    if resolved == BACKEND_CLAUDE_API:
-        return ClaudeApiAnalyzer(alert_threshold=alert_threshold, batch_size=batch_size)
-    raise ValueError(f"unknown analyzer backend {resolved!r}")
+        primary: Analyzer = ClaudeCodeAnalyzer(
+            alert_threshold=alert_threshold, batch_size=batch_size
+        )
+    elif resolved == BACKEND_CLAUDE_API:
+        primary = ClaudeApiAnalyzer(alert_threshold=alert_threshold, batch_size=batch_size)
+    elif resolved == BACKEND_GEMINI:
+        return GeminiAnalyzer(alert_threshold=alert_threshold, batch_size=batch_size)
+    else:
+        raise ValueError(f"unknown analyzer backend {resolved!r}")
+
+    if config.gemini_configured():
+        return FallbackAnalyzer(
+            primary,
+            GeminiAnalyzer(alert_threshold=alert_threshold, batch_size=batch_size),
+        )
+    return primary
 
 
 def _extract_cli_result(stdout: str) -> str:
@@ -492,7 +640,10 @@ __all__ = [
     "AnalyzerError",
     "BackendError",
     "ParseError",
+    "GeminiAnalyzer",
+    "FallbackAnalyzer",
     "get_analyzer",
     "BACKEND_CLAUDE_CODE",
     "BACKEND_CLAUDE_API",
+    "BACKEND_GEMINI",
 ]

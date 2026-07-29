@@ -62,6 +62,26 @@ _ENV_CLAUDE_CONFIG_DIR = "NEWSPULSE_CLAUDE_CONFIG_DIR"
 _ENV_AUTH_USER = "NEWSPULSE_AUTH_USER"
 _ENV_AUTH_PASSWORD = "NEWSPULSE_AUTH_PASSWORD"
 _ENV_BASE_URL = "NEWSPULSE_BASE_URL"
+_ENV_GEMINI_API_KEY = "NEWSPULSE_GEMINI_API_KEY"
+_ENV_GEMINI_MODEL = "NEWSPULSE_GEMINI_MODEL"
+
+# Gemini is the *fallback* provider, used only when the Claude subscription
+# reports that its usage limit is exhausted (see newspulse.quota). It is off
+# unless a key is present: a fallback that engages without the operator having
+# chosen it would move client coverage to a second vendor silently.
+#
+# Note what this changes legally, not just technically. The subscription path
+# sends article text and client notes to Anthropic, which is already the
+# processor. Enabling this adds Google as a second processor for the same
+# material, which is a data-protection decision — hence opt-in by key, never a
+# default. The deployment guide says so where the key is configured.
+_DEFAULT_GEMINI_API_KEY = ""
+
+# Flash rather than Pro: this is batch classification against a fixed schema,
+# where throughput and cost matter more than reasoning depth, and the fallback
+# exists to keep the morning sweep alive rather than to match Claude's output.
+# Overridable because model names age faster than this code.
+_DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 
 # Dashboard credentials. Empty means no authentication, which is only tolerable
 # on a loopback bind — web.auth refuses to start a network-reachable server
@@ -184,6 +204,22 @@ CLAUDE_CONFIG_DIR: str = os.environ.get(
 AUTH_USER: str = os.environ.get(_ENV_AUTH_USER, _DEFAULT_AUTH_USER)
 AUTH_PASSWORD: str = os.environ.get(_ENV_AUTH_PASSWORD, _DEFAULT_AUTH_PASSWORD)
 BASE_URL: str = os.environ.get(_ENV_BASE_URL, _DEFAULT_BASE_URL).rstrip("/")
+GEMINI_API_KEY: str = os.environ.get(_ENV_GEMINI_API_KEY, _DEFAULT_GEMINI_API_KEY).strip()
+GEMINI_MODEL: str = os.environ.get(_ENV_GEMINI_MODEL, _DEFAULT_GEMINI_MODEL).strip()
+
+
+def gemini_configured() -> bool:
+    """Whether the fallback provider can be used at all.
+
+    A function rather than a constant so a key set after import — the Settings
+    page, a test's monkeypatch — is seen without reloading the module.
+    """
+    return bool(os.environ.get(_ENV_GEMINI_API_KEY, GEMINI_API_KEY).strip())
+
+
+def gemini_api_key() -> str:
+    """The current key, read live for the same reason as above."""
+    return os.environ.get(_ENV_GEMINI_API_KEY, GEMINI_API_KEY).strip()
 
 
 def base_url() -> str:

@@ -441,6 +441,12 @@ def _page_context(session: Session) -> dict[str, object]:
         "run_error": None,
         "run_started": None,
         "alert_threshold": get_alert_threshold(session),
+        # Whether a backup provider is armed. Shown rather than assumed: a
+        # fallback nobody can see is one nobody knows has stopped working, and
+        # its absence only becomes visible on the morning the subscription runs
+        # out — which is the morning it mattered.
+        "fallback_ready": config.gemini_configured(),
+        "fallback_model": config.GEMINI_MODEL,
         "score_range": list(range(SCORE_MIN, SCORE_MAX + 1)),
         "default_country": DEFAULT_COUNTRY,
         "map_fields": _MAP_FIELDS,

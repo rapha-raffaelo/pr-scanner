@@ -27,7 +27,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 from . import config
+from . import config
 from .analyzer import claude_env
+from .quota import is_quota_error
 
 _log = logging.getLogger(__name__)
 
@@ -67,6 +69,78 @@ def _assistant_text(payload: dict) -> str:
         if isinstance(block, dict) and block.get("type") == "text":
             parts.append(block.get("text") or "")
     return "".join(parts)
+
+
+def stream_gemini(
+    prompt: str, *, timeout: int = _STREAM_TIMEOUT, t=lambda text: text
+) -> Iterator[StreamEvent]:
+    """The fallback drawer: the same event contract, backed by Gemini.
+
+    Gemini's SSE frames are already deltas, so unlike the CLI path there is no
+    diffing against what was emitted before — treating them as cumulative would
+    repeat the whole answer on every frame.
+    """
+    from . import gemini
+
+    emitted = 0
+    try:
+        yield StreamEvent("status", t("verbunden"))
+        for delta in gemini.stream(prompt, timeout=timeout):
+            emitted += len(delta)
+            if emitted > _MAX_CHARS:
+                yield StreamEvent("error", t("Antwort zu lang, abgebrochen."))
+                return
+            yield StreamEvent("text", delta)
+        if not emitted:
+            yield StreamEvent("error", t("Keine Antwort erhalten."))
+            return
+        yield StreamEvent("done", "")
+    except Exception as exc:  # noqa: BLE001 — an open socket must never see a traceback
+        _log.exception("gemini streaming failed")
+        yield StreamEvent("error", f'{t("Unerwarteter Fehler")}: {exc}')
+
+
+def stream_assistant(
+    prompt: str, *, timeout: int = _STREAM_TIMEOUT, t=lambda text: text
+) -> Iterator[StreamEvent]:
+    """Stream from the subscription, switching to Gemini if its quota is spent.
+
+    The switch is only attempted while nothing has been shown yet. Once a partial
+    answer is on screen there is no honest way to swap providers mid-sentence:
+    the reader would watch one model's half-finished thought be continued by
+    another. In that case the error stands, and they can ask again.
+
+    Status events do not count as output — they are replaced, not appended — so a
+    fallback that happens after "connected" is still invisible to the reader.
+    """
+    if not config.gemini_configured():
+        yield from stream_claude(prompt, timeout=timeout, t=t)
+        return
+
+    shown = False
+    pending_error: str | None = None
+    for event in stream_claude(prompt, timeout=timeout, t=t):
+        if event.kind == "text":
+            shown = True
+        if event.kind == "error" and not shown:
+            # Hold it back: if this turns out to be a quota error we will answer
+            # from the other provider instead, and the reader must not see an
+            # error that was recovered from.
+            pending_error = event.data
+            break
+        yield event
+        if event.kind in ("done", "error"):
+            return
+
+    if pending_error is None:
+        return
+    if not is_quota_error(pending_error):
+        yield StreamEvent("error", pending_error)
+        return
+
+    _log.warning("subscription out of quota mid-drawer (%s); answering with Gemini", pending_error)
+    yield StreamEvent("status", t("Ausweichmodell"))
+    yield from stream_gemini(prompt, timeout=timeout, t=t)
 
 
 def stream_claude(
@@ -168,4 +242,4 @@ def stream_claude(
             process.kill()
 
 
-__all__ = ["StreamEvent", "stream_claude"]
+__all__ = ["StreamEvent", "stream_assistant", "stream_claude", "stream_gemini"]

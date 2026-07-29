@@ -209,3 +209,44 @@ NEWSPULSE_SMTP_RECIPIENT=…
 - `NEWSPULSE_BASE_URL` is set, or the digest mails a dead link.
 - Consider `NEWSPULSE_ALERT_THRESHOLD=8`: at 7 roughly a third of coverage
   flags, and an alert list nobody trusts is one nobody reads.
+
+---
+
+## The AI fallback (Gemini)
+
+Analysis, the advisor and Captain Comms all run on the Claude subscription. When
+that subscription hits its usage limit, the nightly sweep stops scoring and the
+morning shows a gap in the archive that nobody asked for. Setting a Gemini key
+lets those paths continue on a backup provider.
+
+```
+NEWSPULSE_GEMINI_API_KEY=<key from aistudio.google.com>
+NEWSPULSE_GEMINI_MODEL=gemini-2.5-flash        # optional
+```
+
+Nothing else changes: with no key set, every path behaves exactly as before.
+
+**It engages only on quota errors.** A missing CLI, a broken login, a parse
+failure or a network fault still fails on the primary, loudly. That restriction
+is the point — falling back on *any* error would turn a bug into a nightly bill,
+and would have hidden the very login problem that took this deployment three
+attempts to diagnose.
+
+Two consequences worth knowing before you set the key:
+
+- **A second data processor.** Article text and client notes would go to Google
+  as well as Anthropic. For agency work under GDPR that is a contractual
+  question, not just a technical one. This is why the key is opt-in and why
+  nothing falls back without it.
+- **Mixed scoring is avoided, not merged.** If the limit is hit part-way through
+  a client, that client is re-analysed from scratch on the fallback and the
+  partial Claude result is discarded. Scores are compared against each other —
+  in the ranking, in the alert threshold, in share of voice — so one consistent
+  second-choice reading beats a spliced one.
+
+Captain Comms switches only *before* the first word reaches the drawer. Once an
+answer has started there is no honest way to swap models mid-sentence, so the
+error stands and you ask again.
+
+Settings shows whether the fallback is armed, so its absence is visible on an
+ordinary day rather than on the morning it was needed.
