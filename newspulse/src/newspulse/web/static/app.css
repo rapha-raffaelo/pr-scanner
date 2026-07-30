@@ -412,7 +412,20 @@ nav.tabs a.active {
 .pcard .pcounts { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
 .pcard .pcounts b { color: var(--ink); font-size: 15px; font-weight: 700; display: block; }
 .pcard .ptopics { margin-top: 9px; display: flex; gap: 5px; flex-wrap: wrap; }
+/* Two labelled groups per card. Unlabelled, the red chips were read as keywords
+   when they were alert topics — so a card with none looked unconfigured while its
+   keywords were perfectly fine. */
+.pcard .ptags { margin-top: 9px; display: flex; gap: 5px; flex-wrap: wrap; align-items: baseline; }
+.ptags__label {
+  flex: 0 0 100%;
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  font-weight: 700; color: var(--muted); margin-bottom: 1px;
+}
+.ptag { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 20px; background: #eef2ff; color: #3730a3; }
 .ptopic { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 20px; background: var(--alertbg); color: #b91c1c; }
+/* The overflow counter is recessive: it says there is more, it is not more. */
+.ptag--more, .ptopic--more { background: #eef0f3; color: var(--muted); font-weight: 500; }
+.pnotags { margin-top: 9px; font-size: 11.5px; color: var(--muted); font-style: italic; }
 
 /* --- Client detail / archive (NP-08) ------------------------------------- */
 /* This view keeps its own row markup (`.feed-item*`), so it gets its own rules

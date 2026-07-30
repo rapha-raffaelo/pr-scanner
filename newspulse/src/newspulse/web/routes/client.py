@@ -329,6 +329,11 @@ def client_export(
     )
 
 
+#: Tags shown per group on a portfolio card. A card is a glance, not a
+#: configuration screen; the rest is one click away under Bearbeiten.
+_CARD_TAGS = 6
+
+
 @dataclass(frozen=True, slots=True)
 class PortfolioRow:
     """One client as the Mandanten overview lists it."""
@@ -336,9 +341,16 @@ class PortfolioRow:
     id: int
     name: str
     industry: str | None
+    # Both lists, because they do different work and a card that shows only one
+    # says nothing about the other: keywords drive the matcher and the topic
+    # radar, alert topics decide what gets escalated. Trimmed to the first few —
+    # one mandate with twenty-five topics made its card five times the height of
+    # its neighbours and still explained nothing.
+    keywords: list[str]
     alert_topics: list[str]
+    extra_keywords: int
+    extra_topics: int
     active: bool
-    logo_url: str | None
     is_competitor: bool
     logo_url: str | None
     today_count: int
@@ -380,7 +392,10 @@ def clients_index(
             id=c.id,
             name=c.name,
             industry=c.industry,
-            alert_topics=list(c.alert_topics),
+            keywords=list(c.keywords or [])[:_CARD_TAGS],
+            alert_topics=list(c.alert_topics or [])[:_CARD_TAGS],
+            extra_keywords=max(0, len(c.keywords or []) - _CARD_TAGS),
+            extra_topics=max(0, len(c.alert_topics or []) - _CARD_TAGS),
             active=c.active,
             is_competitor=c.is_competitor,
             logo_url=c.logo_url,

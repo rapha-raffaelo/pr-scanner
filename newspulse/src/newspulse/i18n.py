@@ -142,6 +142,10 @@ _EN: dict[str, str] = {
     "sonstiges": "other",
     # --- Clients -------------------------------------------------------------
     "Ohne Branche": "No industry",
+    "Suchbegriffe": "Search terms",
+    "Alarm-Themen": "Alert topics",
+    "Keine Themen hinterlegt — kein Themen-Radar.":
+        "No themes set — no topic radar.",
     "inaktiv": "inactive",
     "heute": "today",
     "im Archiv": "in archive",

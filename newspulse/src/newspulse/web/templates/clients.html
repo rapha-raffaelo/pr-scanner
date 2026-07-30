@@ -27,10 +27,27 @@
           <div><b>{{ row.today_count }}</b> {{ t("heute") }}</div>
           <div><b>{{ row.total_count }}</b> {{ t("im Archiv") }}</div>
         </div>
-        {% if row.alert_topics %}
-          <div class="ptopics">
-            {% for topic in row.alert_topics %}<span class="ptopic">{{ topic }}</span>{% endfor %}
+        {# Labelled, because the two lists mean different things and an unlabelled
+           wall of chips was read as "keywords" when it was alert topics — a card
+           with no chips then looked unconfigured while its keywords were fine. #}
+        {% if row.keywords %}
+          <div class="ptags">
+            <span class="ptags__label">{{ t("Suchbegriffe") }}</span>
+            {% for word in row.keywords %}<span class="ptag">{{ word }}</span>{% endfor %}
+            {% if row.extra_keywords %}<span class="ptag ptag--more">+{{ row.extra_keywords }}</span>{% endif %}
           </div>
+        {% endif %}
+        {% if row.alert_topics %}
+          <div class="ptags">
+            <span class="ptags__label">{{ t("Alarm-Themen") }}</span>
+            {% for topic in row.alert_topics %}<span class="ptopic">{{ topic }}</span>{% endfor %}
+            {% if row.extra_topics %}<span class="ptopic ptopic--more">+{{ row.extra_topics }}</span>{% endif %}
+          </div>
+        {% endif %}
+        {% if not row.keywords and not row.alert_topics %}
+          {# Neither set: no topic radar, so no impulses will ever appear for this
+             mandate. Saying so on the card is cheaper than wondering later. #}
+          <p class="pnotags">{{ t("Keine Themen hinterlegt — kein Themen-Radar.") }}</p>
         {% endif %}
       </a>
     {% endfor %}
