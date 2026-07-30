@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import urllib.parse
 
+from . import company_names
 from .feeds import Feed
 from .models import Client
 
@@ -78,13 +79,19 @@ def query_url(terms: list[str], *, lang: str = _LANG, country: str = _COUNTRY) -
 def client_terms(client: Client) -> list[str]:
     """The search terms identifying one client: its name, then its aliases.
 
+    Each is stripped of its legal form (:mod:`newspulse.company_names`): the
+    terms are quoted as phrases, and no headline writes "GmbH", so searching for
+    it can only exclude the coverage worth finding. Unlike the matcher, which
+    keeps both variants, the query keeps only the stripped one — it has three
+    slots, and spending one on a phrase nothing matches wastes it.
+
     Duplicates are dropped case-insensitively so an alias that merely restates
-    the name does not consume one of the few term slots.
+    the name — "Zalando SE" beside "Zalando" — does not consume a slot.
     """
     terms: list[str] = []
     seen: set[str] = set()
     for raw in [client.name, *client.aliases]:
-        term = (raw or "").strip()
+        term = company_names.strip_legal_form((raw or "").strip())
         if not term:
             continue
         key = term.casefold()

@@ -35,6 +35,7 @@ import urllib.parse
 from collections.abc import Collection, Sequence
 from typing import NamedTuple
 
+from . import company_names
 from .ingest import FeedItem
 from .models import Client
 
@@ -164,10 +165,20 @@ def _compile_client_matcher(client: Client) -> re.Pattern[str] | None:
 
 
 def _client_terms(client: Client) -> list[str]:
-    """Name + aliases + keywords, trimmed, blanks dropped, case-folded-deduped."""
+    """Name + aliases + keywords, trimmed, blanks dropped, case-folded-deduped.
+
+    Each name and alias also contributes its legal-form-free variant (see
+    :mod:`newspulse.company_names`), so a client entered as "IB-7 Beauty Tech
+    GmbH" still matches the headline that writes "IB-7 Beauty Tech". Keywords are
+    topics, not company names, so they are taken as typed.
+    """
     raw = [
-        getattr(client, "name", "") or "",
-        *(getattr(client, "aliases", None) or []),
+        *company_names.variants(getattr(client, "name", "") or ""),
+        *(
+            variant
+            for alias in (getattr(client, "aliases", None) or [])
+            for variant in company_names.variants(alias or "")
+        ),
         *(getattr(client, "keywords", None) or []),
     ]
     terms: list[str] = []

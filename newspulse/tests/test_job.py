@@ -719,7 +719,9 @@ def test_run_appends_a_client_search_feed_to_the_registry(session, monkeypatch):
     assert "news.google.com/rss/search" in search[0]
     # The decisive flag: aggregator entries keep their own publisher.
     assert search[1] is True
-    assert "Alpha+AG" in search[0] or "Alpha%20AG" in search[0]
+    # The query carries the client, minus its legal form (see company_names).
+    assert "Alpha" in search[0]
+    assert "Alpha+AG" not in search[0] and "Alpha%20AG" not in search[0]
 
 
 def test_google_news_can_be_switched_off(session, monkeypatch):

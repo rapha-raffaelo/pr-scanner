@@ -90,7 +90,15 @@ _log = logging.getLogger(__name__)
 # Backfill windows offered in the dashboard. A sweep only widens which *fetched*
 # items are accepted — a feed still returns only what it currently syndicates —
 # so these are best-effort catch-up windows, not a guarantee of N days of history.
-BACKFILL_DAYS = (10, 15, 30)
+#
+# 90 is the onboarding window. Adding a mandate is the one moment the archive is
+# supposed to fill *backwards*, and a Google News search still lists a company's
+# coverage for months: a newly added client's launch coverage was 79 days old, so
+# every window on offer returned nothing and the mandate looked unmonitored. The
+# upper bound stays a fixed choice rather than a free-text field because a sweep
+# analyses everything it accepts, and a year would spend the subscription on
+# coverage nobody asked to re-read.
+BACKFILL_DAYS = (10, 15, 30, 90)
 
 # One sweep at a time. A run fetches 40+ feeds and shells out to `claude` per
 # batch; two concurrent runs would double-fetch and race on the same articles.

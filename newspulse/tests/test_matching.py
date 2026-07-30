@@ -102,6 +102,47 @@ def test_alias_hit_produces_a_candidate():
     assert candidates == [Candidate(item=item, client=client)]
 
 
+def test_name_matches_without_its_legal_form():
+    """Regression from live use: a mandate looked unmonitored for weeks.
+
+    The client was entered as its register name, the press writes the brand, and
+    the matcher searches whole phrases — so all seven items Google returned about
+    it were discarded. The legal-form-free variant closes that (company_names).
+    """
+    client = FakeClient("IB-7 Beauty Tech GmbH")
+    item = _item(
+        "IB-7 Beauty Tech: Weltweit erste KI-Hautpflege",
+        "https://cash.at/ib7",
+    )
+
+    assert matching.match_candidates([item], [client]) == [
+        Candidate(item=item, client=client)
+    ]
+
+
+def test_the_entered_name_still_matches_when_the_form_is_spelled_out():
+    """Dropping the legal form adds a variant, it never replaces the original."""
+    client = FakeClient("IB-7 Beauty Tech GmbH")
+    item = _item(
+        "Übernahme: IB-7 Beauty Tech GmbH wechselt den Eigentümer",
+        "https://x.de/ib7",
+    )
+
+    assert len(matching.match_candidates([item], [client])) == 1
+
+
+def test_stripping_does_not_widen_a_name_into_a_bare_brand_word():
+    """The variant is the name minus its form — not its first token.
+
+    "Deutsche Bank AG" must not start matching every "Deutsche …" headline; only
+    the trailing form comes off.
+    """
+    client = FakeClient("Deutsche Bank AG")
+    item = _item("Deutsche Post erhöht das Porto", "https://x.de/post")
+
+    assert matching.match_candidates([item], [client]) == []
+
+
 def test_keyword_hit_in_summary_produces_a_candidate():
     """The feed summary is searched too, and a keyword (not only name/alias) hits."""
     client = FakeClient("Muster GmbH", keywords=["Rekordgewinn"])

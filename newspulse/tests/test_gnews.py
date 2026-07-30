@@ -62,9 +62,29 @@ def test_query_requires_at_least_one_usable_term():
 
 
 def test_client_terms_are_name_then_aliases_deduplicated_case_insensitively():
-    """An alias restating the name must not consume one of the few term slots."""
+    """An alias restating the name must not consume one of the few term slots.
+
+    With the legal form dropped, "Siemens AG", "siemens ag" and "Siemens" all
+    reduce to the same term — which is the point: three slots, one company.
+    """
     c = _client("Siemens AG", aliases=["siemens ag", "Siemens", "  "])
-    assert gnews.client_terms(c) == ["Siemens AG", "Siemens"]
+    assert gnews.client_terms(c) == ["Siemens"]
+
+
+def test_client_terms_drop_the_legal_form_from_the_phrase_query():
+    """Regression: a name entered with its legal form found nothing.
+
+    The terms are quoted as phrases and no headline writes "GmbH", so searching
+    for it spends a slot on a phrase that cannot match. The real case: coverage of
+    "IB-7 Beauty Tech GmbH" is filed under "IB-7 Beauty Tech".
+    """
+    c = _client("IB-7 Beauty Tech GmbH", aliases=["IB-7"])
+    assert gnews.client_terms(c) == ["IB-7 Beauty Tech", "IB-7"]
+
+
+def test_client_terms_keep_a_name_that_is_only_a_legal_form():
+    """Stripping must never leave a client with no term at all."""
+    assert gnews.client_terms(_client("AG")) == ["AG"]
 
 
 def test_client_feeds_builds_one_aggregator_feed_per_client():
@@ -75,7 +95,7 @@ def test_client_feeds_builds_one_aggregator_feed_per_client():
     assert feed.industry == "Industrie"
     # The decisive flag: entries carry their own publisher, not this feed's name.
     assert feed.per_entry_source is True
-    assert _q(feed.url) == '"Siemens AG" OR "Siemens"'
+    assert _q(feed.url) == '"Siemens"'
 
 
 def test_client_without_a_usable_name_yields_no_feed():

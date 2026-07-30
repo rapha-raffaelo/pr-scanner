@@ -432,6 +432,19 @@ def test_run_trigger_rejects_non_numeric_window(client):
     assert "Ungültiger Zeitraum" in resp.text
 
 
+def test_backfill_offers_an_onboarding_window(client):
+    """A newly added mandate needs its history, not just "since the last run".
+
+    30 days was the widest window on offer, and a client added after its launch
+    coverage had aged past that showed an empty archive with nothing to reach for.
+    """
+    from newspulse.web.routes.settings import BACKFILL_DAYS
+
+    assert 90 in BACKFILL_DAYS
+    body = client.get("/settings").text
+    assert 'value="90"' in body
+
+
 def test_run_trigger_refuses_a_second_concurrent_run(client, monkeypatch):
     """A sweep already in flight is reported, never queued: two concurrent runs
     would double-fetch every feed and race on the same articles."""
