@@ -61,7 +61,7 @@ from .matching import (
     match_candidates,
     title_hash,
 )
-from .models import Analysis, Article, Client, Run, RunStatus
+from .models import Analysis, Article, Client, Run, RunStatus, TopicHit
 from .schemas import Analysis as AnalysisSchema
 
 _log = logging.getLogger(__name__)
@@ -484,6 +484,46 @@ def _group_pairs(
     return [(clients_by_id[cid], articles) for cid, articles in grouped.items()]
 
 
+def _record_topic_hits(
+    session: Session, topic_pairs: Sequence[Candidate], found_at: dt.datetime
+) -> int:
+    """Link each stored radar article to the client whose themes surfaced it.
+
+    Nothing in the article says which mandate it concerns — its themes found it,
+    and the article never names them — so without this row the market material is
+    in the archive attached to nobody. It is what makes the Marktumfeld view and
+    the outlet ranking possible at all.
+
+    Idempotent against the UNIQUE (article_id, client_id): a re-run that
+    re-surfaces the same story adds nothing.
+    """
+    if not topic_pairs:
+        return 0
+    resolved = _resolve_articles(session, topic_pairs)
+    wanted: set[tuple[int, int]] = set()
+    for item, client in topic_pairs:
+        article = resolved.get(id(item))
+        if article is not None:
+            wanted.add((article.id, client.id))
+    if not wanted:
+        return 0
+    existing = {
+        (row.article_id, row.client_id)
+        for row in session.execute(
+            select(TopicHit.article_id, TopicHit.client_id).where(
+                TopicHit.article_id.in_({article_id for article_id, _ in wanted})
+            )
+        ).all()
+    }
+    fresh = [pair for pair in sorted(wanted) if pair not in existing]
+    session.add_all(
+        TopicHit(article_id=article_id, client_id=client_id, found_at=found_at)
+        for article_id, client_id in fresh
+    )
+    session.commit()
+    return len(fresh)
+
+
 def _generate_angles(
     session: Session, topic_pairs: Sequence[Candidate], errors: list[str]
 ) -> int:
@@ -842,6 +882,9 @@ def _run_real(
         topic_pairs = [pair for pair in topic_pairs if id(pair.item) in fresh]
         articles = _persist_articles(session, kept, started)
         new_articles = len(articles)
+        # Attach the radar's stories to the client whose themes found them, so the
+        # market material is browsable rather than merely stored.
+        _record_topic_hits(session, topic_pairs, started)
         resolved_analyzer = analyzer or get_analyzer()
         for client, client_articles in _analysis_targets(session, candidates, clients, started):
             analyses_written += _analyze_and_persist(
@@ -992,6 +1035,7 @@ def backfill_client(
             # market story into the mandate's own archive.
             keep = {id(item) for item in fresh}
             topic_pairs = [pair for pair in topic_pairs if id(pair.item) in keep]
+            _record_topic_hits(session, topic_pairs, started)
 
     drafted = _generate_angles(session, topic_pairs, errors) if topic_pairs else 0
     _log.info(

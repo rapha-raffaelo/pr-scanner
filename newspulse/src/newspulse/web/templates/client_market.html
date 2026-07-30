@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Marktumfeld") }} · {{ client.name }} · NewsPulse{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'market' %}
+{% include '_client_tabs.html' %}
+
+<style>
+  .market__lead { font-size: 0.9rem; color: var(--muted); max-width: 62ch; margin-bottom: 1.1rem; }
+  .market__themes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.4rem; }
+  .market__theme { font-size: 12px; background: #eef2ff; color: #3730a3; padding: 3px 10px; border-radius: 999px; }
+  .market__cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 22px; align-items: start; }
+  @media (max-width: 980px) { .market__cols { grid-template-columns: 1fr; } }
+
+  .nomlist { list-style: none; margin: 0 0 1.4rem; }
+  .nomlist li { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .nom__name { flex: 1; font-weight: 600; }
+  .nom__n { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+  .nom__last { color: var(--muted); font-size: 11.5px; }
+  .nomhead { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+  .nomhelp { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .nomempty { font-size: 12.5px; color: var(--muted); font-style: italic; margin-bottom: 1.2rem; }
+</style>
+
+<h1 class="pagetitle">{{ t("Marktumfeld") }}</h1>
+<p class="market__lead">
+  {{ t("Berichterstattung aus dem Themenfeld des Mandanten — Meldungen, die ihn nicht nennen. Aus diesem Material entstehen die Impulse, und daraus lässt sich ablesen, wer über das Thema schreibt.") }}
+  <br><span class="nom__last">{{ t("Letzte") }} {{ days }} {{ t("Tage") }}</span>
+</p>
+
+{% if themes %}
+  <div class="market__themes">
+    {% for theme in themes %}<span class="market__theme">{{ theme }}</span>{% endfor %}
+  </div>
+{% endif %}
+
+<div class="market__cols">
+  <main>
+    <div class="colhead">{{ t("Meldungen") }} <span class="n">{{ items | length }}</span></div>
+    {% for item in items %}
+      <article class="feed-item">
+        <div class="feed-item__head">
+          <a class="feed-item__headline" href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a>
+        </div>
+        <div class="feed-item__meta">
+          <span class="source">{{ item.source }}</span>
+          {% if item.author %}<span class="time">{{ item.author }}</span>{% endif %}
+          <span class="time">{{ item.published_at | de_datetime }}</span>
+        </div>
+        {% if item.summary %}<p class="feed-item__summary">{{ item.summary }}</p>{% endif %}
+      </article>
+    {% else %}
+      <div class="empty-state">
+        {% if themes %}
+          <p>{{ t("Das Themen-Radar hat in diesem Zeitraum nichts gefunden.") }}</p>
+          <p class="empty-state-hint">
+            {{ t("Die hinterlegten Themen sind womöglich zu eng gefasst — zwei bis drei geläufige Begriffe aus dem Feld treffen mehr als ein Dutzend Spezialbegriffe.") }}
+          </p>
+        {% else %}
+          {# Without themes there is no radar at all, so this is not a quiet market
+             — it is an unconfigured one, and the page must not blame the market. #}
+          <p>{{ t("Für diesen Mandanten ist kein Themen-Radar eingerichtet.") }}</p>
+          <p class="empty-state-hint">
+            {{ t("Ohne hinterlegte Themen lässt sich nicht bestimmen, welche Marktmeldung ihn angeht.") }}
+            <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }}</a>
+          </p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </main>
+
+  <aside>
+    {# The nomination lists. Kept apart deliberately: an outlet that writes about
+       the client is an existing relationship, one that writes about its subject is
+       a target — and for a young company only the second list has anything in it. #}
+    <div class="colhead">{{ t("Wen ansprechen") }}</div>
+
+    <p class="nomhead">{{ t("Medien im Themenfeld") }}</p>
+    <p class="nomhelp">{{ t("Schreiben über das Thema, nicht über den Mandanten.") }}</p>
+    {% if market_outlets %}
+      <ul class="nomlist">
+        {% for nom in market_outlets %}
+          <li>
+            <span class="nom__name">{{ nom.name }}</span>
+            <span class="nom__n">{{ nom.articles }}</span>
+            <span class="nom__last">{{ nom.last_seen | de_short_date }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="nomempty">{{ t("Noch keine Daten — das Radar hat nichts gefunden.") }}</p>
+    {% endif %}
+
+    <p class="nomhead">{{ t("Medien über den Mandanten") }}</p>
+    {% if own_outlets %}
+      <ul class="nomlist">
+        {% for nom in own_outlets %}
+          <li>
+            <span class="nom__name">{{ nom.name }}</span>
+            <span class="nom__n">{{ nom.articles }}</span>
+            <span class="nom__last">{{ nom.last_seen | de_short_date }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="nomempty">{{ t("Noch keine Berichterstattung über den Mandanten.") }}</p>
+    {% endif %}
+
+    <p class="nomhead">{{ t("Journalistinnen und Journalisten") }}</p>
+    {# Stated plainly rather than padded: most feeds carry no author at all, and
+       naming someone who does not cover the beat costs a relationship. #}
+    <p class="nomhelp">{{ t("Nur aus den Feeds, die einen Autor mitliefern — die meisten tun das nicht.") }}</p>
+    {% if market_authors or own_authors %}
+      <ul class="nomlist">
+        {% for nom in market_authors + own_authors %}
+          <li>
+            <span class="nom__name">{{ nom.name }}</span>
+            <span class="nom__n">{{ nom.articles }}</span>
+            <span class="nom__last">{{ nom.last_seen | de_short_date }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="nomempty">{{ t("Kein Feed in diesem Zeitraum hat einen Autor mitgeliefert.") }}</p>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

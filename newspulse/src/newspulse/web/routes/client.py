@@ -22,7 +22,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
 
-from ...models import Analysis, Article, Category, Client
+from ...models import Analysis, Article, Category, Client, TopicHit
 from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
 from ..app import get_db, templates
@@ -479,6 +479,160 @@ def client_detail(
             "last_run": _fetch_last_run(session),
             # The shared header dates every page; the archive view spans many
             # days, so it shows today.
+            "header_date": dt.datetime.now(_local_tz()).date(),
+        },
+    )
+
+
+# --- Marktumfeld: what the topic radar saw, and who reported it ----------------
+
+#: How far back the market view and the outlet ranking look. A quarter, because
+#: the question they answer ("who covers our subject?") is about a beat, not about
+#: this week — a single month of a quiet field would rank on two articles.
+_MARKET_DAYS = 90
+
+#: Outlets and journalists shown. A ranking is a shortlist; past this it stops
+#: being a recommendation and becomes a directory.
+_MARKET_TOP = 12
+
+
+@dataclass(frozen=True, slots=True)
+class MarketItem:
+    """One market article the radar surfaced for this client."""
+
+    headline: str
+    url: str
+    source: str
+    author: str | None
+    published_at: dt.datetime
+    summary: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class Nomination:
+    """One outlet or journalist, ranked by how much of this subject they cover."""
+
+    name: str
+    articles: int
+    last_seen: dt.datetime
+    # True when the count comes from coverage of the client itself rather than
+    # from its market: the two mean different things to a PR consultant and must
+    # not be added together into one meaningless number.
+    writes_about_client: bool
+
+
+def _market_items(session: Session, client_id: int, *, days: int) -> list[MarketItem]:
+    """The radar's articles for this client, newest first."""
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(days=days)
+    tz = _local_tz()
+    rows = session.execute(
+        select(Article)
+        .join(TopicHit, TopicHit.article_id == Article.id)
+        .where(TopicHit.client_id == client_id, Article.published_at >= since)
+        .order_by(Article.published_at.desc())
+    ).scalars().all()
+    return [
+        MarketItem(
+            headline=article.title,
+            url=article.url,
+            source=article.source,
+            author=(article.author or "").strip() or None,
+            published_at=article.published_at.astimezone(tz),
+            summary=article.summary_text,
+        )
+        for article in rows
+    ]
+
+
+def _rank(rows, *, about_client: bool) -> list[Nomination]:
+    """Turn (name, count, last) tuples into nominations, blanks dropped."""
+    out: list[Nomination] = []
+    for name, count, last in rows:
+        cleaned = (name or "").strip()
+        if not cleaned:
+            continue
+        out.append(
+            Nomination(
+                name=cleaned,
+                articles=int(count),
+                last_seen=last,
+                writes_about_client=about_client,
+            )
+        )
+    return out
+
+
+def _nominations(session: Session, client_id: int, *, days: int) -> dict[str, list[Nomination]]:
+    """Who to talk to, ranked from what the archive already knows.
+
+    Two lists, kept apart on purpose. Outlets that write *about the client* are
+    the existing relationships; outlets that write *about its subject* are the
+    ones worth pitching — and for a young company the second list is the only one
+    with anything in it.
+
+    Journalists come from the feeds' author field, which most feeds simply do not
+    set (Google News never does), so that list is thin by nature. It is shown for
+    what it is rather than padded: naming a journalist who does not cover the beat
+    would cost the consultant a relationship, and no ranking is worth that.
+    """
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(days=days)
+
+    def _by(column, join, extra):
+        return session.execute(
+            select(column, func.count(), func.max(Article.published_at))
+            .select_from(Article)
+            .join(join[0], join[1])
+            .where(extra, Article.published_at >= since)
+            .group_by(column)
+            .order_by(func.count().desc(), func.max(Article.published_at).desc())
+            .limit(_MARKET_TOP)
+        ).all()
+
+    topic_join = (TopicHit, TopicHit.article_id == Article.id)
+    own_join = (Analysis, Analysis.article_id == Article.id)
+    return {
+        "market_outlets": _rank(
+            _by(Article.source, topic_join, TopicHit.client_id == client_id),
+            about_client=False,
+        ),
+        "own_outlets": _rank(
+            _by(Article.source, own_join, Analysis.client_id == client_id),
+            about_client=True,
+        ),
+        "market_authors": _rank(
+            _by(Article.author, topic_join, TopicHit.client_id == client_id),
+            about_client=False,
+        ),
+        "own_authors": _rank(
+            _by(Article.author, own_join, Analysis.client_id == client_id),
+            about_client=True,
+        ),
+    }
+
+
+@router.get("/client/{client_id}/market", response_class=HTMLResponse)
+def market_view(
+    request: Request, client_id: int, session: Session = Depends(get_db)
+) -> HTMLResponse:
+    """The client's market: coverage of its subject that never names it.
+
+    The material the positioning drafts are made of, and until now visible only
+    as citations underneath one. Seeing it whole answers the question a draft
+    cannot: why there was an opening today, or why there was not.
+    """
+    client = session.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return templates.TemplateResponse(
+        request,
+        "client_market.html",
+        {
+            "client": client,
+            "items": _market_items(session, client_id, days=_MARKET_DAYS),
+            "days": _MARKET_DAYS,
+            "themes": list(client.keywords or []) + list(client.alert_topics or []),
+            **_nominations(session, client_id, days=_MARKET_DAYS),
+            "last_run": _fetch_last_run(session),
             "header_date": dt.datetime.now(_local_tz()).date(),
         },
     )

@@ -300,6 +300,40 @@ _EN: dict[str, str] = {
     "Nichts gehört. Nochmal antippen und sprechen.":
         "Heard nothing. Tap again and speak.",
     "Spracherkennung nicht verfügbar.": "Speech recognition unavailable.",
+    # --- Client: Marktumfeld (the topic radar's own view) --------------------
+    "Marktumfeld": "Market",
+    "Berichterstattung aus dem Themenfeld des Mandanten — Meldungen, die ihn nicht "
+    "nennen. Aus diesem Material entstehen die Impulse, und daraus lässt sich "
+    "ablesen, wer über das Thema schreibt.":
+        "Coverage from the client's subject area — items that do not name them. "
+        "This is the material the openings are drafted from, and it shows who "
+        "writes about the subject.",
+    "Letzte": "Last",
+    "Das Themen-Radar hat in diesem Zeitraum nichts gefunden.":
+        "The topic radar found nothing in this period.",
+    "Die hinterlegten Themen sind womöglich zu eng gefasst — zwei bis drei "
+    "geläufige Begriffe aus dem Feld treffen mehr als ein Dutzend Spezialbegriffe.":
+        "The themes may be too narrow — two or three common terms from the field "
+        "find more than a dozen specialist ones.",
+    "Für diesen Mandanten ist kein Themen-Radar eingerichtet.":
+        "No topic radar is set up for this client.",
+    "Ohne hinterlegte Themen lässt sich nicht bestimmen, welche Marktmeldung ihn angeht.":
+        "Without themes there is no way to tell which market coverage concerns them.",
+    "Themen hinterlegen": "Add themes",
+    "Wen ansprechen": "Who to approach",
+    "Medien im Themenfeld": "Outlets on the subject",
+    "Schreiben über das Thema, nicht über den Mandanten.":
+        "They write about the subject, not about the client.",
+    "Medien über den Mandanten": "Outlets on the client",
+    "Journalistinnen und Journalisten": "Journalists",
+    "Nur aus den Feeds, die einen Autor mitliefern — die meisten tun das nicht.":
+        "Only from feeds that supply an author — most do not.",
+    "Noch keine Daten — das Radar hat nichts gefunden.":
+        "No data yet — the radar found nothing.",
+    "Noch keine Berichterstattung über den Mandanten.":
+        "No coverage of the client yet.",
+    "Kein Feed in diesem Zeitraum hat einen Autor mitgeliefert.":
+        "No feed supplied an author in this period.",
     "Tage": "days",
 }
 

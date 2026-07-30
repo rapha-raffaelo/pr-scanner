@@ -472,6 +472,43 @@ class Advisory(Base):
     )
 
 
+class TopicHit(Base):
+    """One market article the topic radar surfaced for one client.
+
+    The counterpart to :class:`Analysis`, and deliberately not the same thing.
+    An analysis says "this article is about this client"; a topic hit says "this
+    article is about what this client does, and never mentions them". Filing the
+    second as the first would put a story about the market into a mandate's own
+    coverage count, which is the number the whole tool is judged on.
+
+    It exists because the pairing is otherwise lost. The radar carries it in
+    memory during a run — the client's themes are what found the article, nothing
+    in the article says so — and without a row here the market material is in the
+    database but attached to nobody: unbrowsable, and unusable for ranking which
+    outlets cover a client's subject.
+    """
+
+    __tablename__ = "topic_hits"
+    __table_args__ = (
+        # One row per (article, client): a re-run that re-surfaces the same story
+        # must not stack duplicates, the same posture as analyses.
+        UniqueConstraint("article_id", "client_id", name="uq_topic_hit_article_client"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # When the radar surfaced it, not when it was published: the market view is a
+    # log of what the tool saw, and a story can surface days after it ran.
+    found_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+
 class Angle(Base):
     """One drafted positioning message for a client, off a market development.
 
@@ -532,6 +569,7 @@ __all__ = [
     "Analysis",
     "Advisory",
     "Angle",
+    "TopicHit",
     "Run",
     "Setting",
     "DEFAULT_COUNTRY",

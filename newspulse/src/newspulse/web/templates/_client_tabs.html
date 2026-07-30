@@ -1,6 +1,6 @@
 {# Sub-navigation for one client's deep dive.
 
-   The three views are facets of the same subject, so they share a tab strip
+   The views are facets of the same subject, so they share a tab strip
    rather than being three links on a card — a card should say what a client's
    week looks like, not offer a menu. Excel sits apart because it is a download,
    not a place: styling it as a fourth tab would promise a page that never loads.
@@ -17,6 +17,7 @@
   </div>
   <a href="/client/{{ client.id }}"{% if active == 'overview' %} class="active" aria-current="page"{% endif %}>{{ t("Übersicht") }}</a>
   <a href="/client/{{ client.id }}/advice"{% if active == 'advice' %} class="active" aria-current="page"{% endif %}>{{ t("Empfehlungen") }}</a>
+  <a href="/client/{{ client.id }}/market"{% if active == 'market' %} class="active" aria-current="page"{% endif %}>{{ t("Marktumfeld") }}</a>
   <a href="/client/{{ client.id }}/map"{% if active == 'map' %} class="active" aria-current="page"{% endif %}>{{ t("Coverage Map") }}</a>
   <a class="subtabs__dl" href="/client/{{ client.id }}/export.xlsx" download>↓ {{ t("Excel") }}</a>
 </nav>
