@@ -85,7 +85,7 @@ class Analysis(BaseModel):
     reasoning: str
 
 
-__all__ = ["ArticleVerdict", "BatchVerdict", "Analysis"]
+__all__ = ["ArticleVerdict", "BatchVerdict", "Analysis", "CoachFinding", "CoachReport"]
 
 
 # --- Advisory: suggested PR actions --------------------------------------------
@@ -167,3 +167,44 @@ class AngleDraft(BaseModel):
     # Indices into the numbered developments the prompt supplied, so every draft
     # can be traced back to the coverage that triggered it.
     evidence: list[int] = Field(default_factory=list)
+
+
+# --- Coach: does the guide hold up against the actual coverage? ------------------
+
+
+class FindingKind(StrEnum):
+    """What sort of observation the coach made.
+
+    Three, and no more. A coach that returns a paragraph of nuance per point is a
+    coach nobody reads on a Monday morning; the value is in saying which of these
+    three a thing is.
+    """
+
+    LUECKE = "luecke"      # the guide claims it, the coverage does not show it
+    KONFLIKT = "konflikt"  # the coverage contradicts the guide, or nears a No-Go
+    TRAEGT = "traegt"      # the guide is holding — worth knowing, and rarer
+
+
+class CoachFinding(BaseModel):
+    """One observation, with the evidence that produced it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    kind: FindingKind
+    # One line the consultant can scan; the detail sits underneath.
+    headline: str
+    detail: str
+    # What to do about it. Empty for TRAEGT — "keep going" is not an action, and
+    # inventing one there is how a report becomes noise.
+    suggestion: str = ""
+    # Indices into the numbered coverage the prompt supplied.
+    evidence: list[int] = Field(default_factory=list)
+
+
+class CoachReport(BaseModel):
+    """The coach's read of one client's guide against its coverage."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    # Capped: past five the report stops being a briefing and becomes an audit.
+    findings: list[CoachFinding] = Field(default_factory=list, max_length=5)

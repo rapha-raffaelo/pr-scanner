@@ -364,6 +364,21 @@ _EN: dict[str, str] = {
     "Positionierung: … · Kernbotschaften: … · Nie: …":
         "Positioning: … · Key messages: … · Never: …",
     "Keine Datei gewählt.": "No file selected.",
+    # --- The strategy coach ---------------------------------------------------
+    "Strategie-Coach": "Strategy coach",
+    "Prüft den Guide gegen": "Checks the guide against",
+    "Tage Berichterstattung": "days of coverage",
+    "Jetzt prüfen": "Check now",
+    "luecke": "gap",
+    "konflikt": "conflict",
+    "traegt": "holding",
+    "Nichts gefunden, woran der Guide und die Berichterstattung auseinanderlaufen.":
+        "Nothing found where the guide and the coverage diverge.",
+    "Noch nicht geprüft. Ein Aufruf, keine Speicherung — der Bericht ist immer der aktuelle Stand.":
+        "Not checked yet. One call, nothing stored — the report is always current.",
+    "Beratend, nicht ausführend: der Coach ändert nichts am Guide.":
+        "Advisory, not executing: the coach changes nothing in the guide.",
+    "Kein Kommunikations-Guide hinterlegt.": "No communications guide set.",
     "Berichterstattung aus dem Themenfeld des Mandanten — Meldungen, die ihn nicht "
     "nennen. Aus diesem Material entstehen die Impulse, und daraus lässt sich "
     "ablesen, wer über das Thema schreibt.":

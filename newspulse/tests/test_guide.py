@@ -390,3 +390,171 @@ def test_the_guide_reaches_captain_comms_only_for_the_selected_client(session):
 
     assert "Heilversprechen" in _guide_for(session, client.id)
     assert _guide_for(session, None) == ""
+
+
+# --- The coach ------------------------------------------------------------------
+#
+# One fixed question — does the guide hold up against what was actually written —
+# answered with typed findings rather than prose, so a Monday morning can scan it.
+
+
+def _covered(session, client, title, *, days_ago=1):
+    import datetime as dt
+
+    from newspulse.models import Analysis, Article, Category
+
+    article = Article(
+        title=title,
+        url=f"https://ex.de/{abs(hash(title)) % 100000}",
+        source="cash.at",
+        published_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=days_ago),
+        fetched_at=dt.datetime.now(dt.UTC),
+        summary_text=None,
+        language="de",
+        title_hash=str(abs(hash(title)) % 10**8),
+    )
+    session.add(article)
+    session.flush()
+    session.add(
+        Analysis(
+            article_id=article.id,
+            client_id=client.id,
+            summary="s",
+            category=Category.PRODUKT,
+            relevance_score=6,
+            importance_score=6,
+            is_alert=False,
+        )
+    )
+    session.commit()
+    return article
+
+
+def _report(**over) -> str:
+    import json as _json
+
+    payload = {
+        "findings": [
+            {
+                "kind": "luecke",
+                "headline": "„Nachweis vor Neuheit“ kommt nicht vor.",
+                "detail": "Die Berichterstattung beschreibt die Technik, nicht den Beleg.",
+                "suggestion": "Ein Fachbeitrag zur Prüfmethodik statt der nächsten Produktmeldung.",
+                "evidence": [0],
+            }
+        ]
+    }
+    payload.update(over)
+    return _json.dumps(payload)
+
+
+def test_without_a_guide_the_coach_refuses_rather_than_reporting_nothing(session):
+    """"Nothing to check", "nothing found" and "the call failed" are three
+    different answers and must not collapse into one."""
+    from newspulse import coach
+
+    client = _client(session)
+    _covered(session, client, "Irgendeine Meldung")
+
+    with pytest.raises(coach.GuideMissing):
+        coach.review(session, client, invoke=lambda *a, **k: _report())
+
+
+def test_without_coverage_the_report_is_empty_but_not_an_error(session):
+    from newspulse import coach
+
+    client = _client(session, comms_guide="Nachweis vor Neuheit")
+
+    report, coverage = coach.review(session, client, invoke=lambda *a, **k: _report())
+
+    assert report.findings == []
+    assert coverage == []
+
+
+def test_the_coach_prompt_carries_the_guide_and_the_coverage(session):
+    from newspulse import coach
+
+    client = _client(session, comms_guide="Nie: Heilversprechen")
+    _covered(session, client, "Arrakis meldet Zahlen")
+    seen: dict[str, str] = {}
+
+    def _invoke(prompt, **_):
+        seen["prompt"] = prompt
+        return _report()
+
+    coach.review(session, client, invoke=_invoke)
+
+    assert "Heilversprechen" in seen["prompt"]
+    assert "Arrakis meldet Zahlen" in seen["prompt"]
+    assert "[0]" in seen["prompt"]
+
+
+def test_findings_are_typed_and_keep_their_evidence(session):
+    from newspulse import coach
+    from newspulse.schemas import FindingKind
+
+    client = _client(session, comms_guide="Nachweis vor Neuheit")
+    _covered(session, client, "Arrakis meldet Zahlen")
+
+    report, coverage = coach.review(session, client, invoke=lambda *a, **k: _report())
+
+    assert report.findings[0].kind is FindingKind.LUECKE
+    assert report.findings[0].evidence == [0]
+    assert coverage[0].headline == "Arrakis meldet Zahlen"
+
+
+def test_invented_evidence_is_dropped(session):
+    """A citation pointing at nothing discredits the finding it was meant to
+    support."""
+    from newspulse import coach
+
+    client = _client(session, comms_guide="Nachweis vor Neuheit")
+    _covered(session, client, "Arrakis meldet Zahlen")
+
+    report, _ = coach.review(
+        session,
+        client,
+        invoke=lambda *a, **k: _report(
+            findings=[
+                {
+                    "kind": "konflikt",
+                    "headline": "h",
+                    "detail": "d",
+                    "suggestion": "s",
+                    "evidence": [0, 42],
+                }
+            ]
+        ),
+    )
+
+    assert report.findings[0].evidence == [0]
+
+
+def test_a_non_json_reply_is_a_parse_error(session):
+    from newspulse import coach
+
+    client = _client(session, comms_guide="Nachweis vor Neuheit")
+    _covered(session, client, "Arrakis meldet Zahlen")
+
+    with pytest.raises(coach.ParseError):
+        coach.review(session, client, invoke=lambda *a, **k: "Gerne! Hier die Analyse:")
+
+
+def test_the_page_offers_the_coach_and_says_it_has_not_run(factory, client):
+    with factory() as session:
+        client_id = _client(session, comms_guide="Nachweis vor Neuheit").id
+
+    body = client.get(f"/client/{client_id}/guide").text
+
+    assert "Strategie-Coach" in body
+    assert f'action="/client/{client_id}/guide/coach"' in body
+    assert "Noch nicht geprüft" in body
+
+
+def test_running_the_coach_without_a_guide_says_so_on_the_page(factory, client):
+    with factory() as session:
+        client_id = _client(session).id
+
+    body = client.post(f"/client/{client_id}/guide/coach").text
+
+    assert "Kein Kommunikations-Guide hinterlegt." in body

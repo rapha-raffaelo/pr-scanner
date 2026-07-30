@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
-from ... import guide
+from ... import coach, guide
 from ...analyzer import AnalyzerError
 from ...models import Client
 from ..app import get_db, templates
@@ -34,6 +34,9 @@ def _render(
     proposal: str | None = None,
     error: str | None = None,
     saved: bool = False,
+    findings: list | None = None,
+    coverage: list | None = None,
+    coach_error: str | None = None,
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
@@ -47,6 +50,12 @@ def _render(
             "proposal": proposal,
             "guide_error": error,
             "saved": saved,
+            "findings": findings,
+            # Resolved here so a finding citing a story can show it; the template
+            # never has to reach back into the database.
+            "coverage": {ref.index: ref for ref in (coverage or [])},
+            "coach_error": coach_error,
+            "coach_days": coach.DEFAULT_DAYS,
             "last_run": _fetch_last_run(session),
             "header_date": dt.datetime.now(_local_tz()).date(),
         },
@@ -132,3 +141,27 @@ def remove_source(
     _client_or_404(session, client_id)
     guide.delete_source(session, client_id, source_id)
     return RedirectResponse(f"/client/{client_id}/guide", status_code=_SEE_OTHER)
+
+
+@router.post("/client/{client_id}/guide/coach")
+def run_coach(
+    request: Request, client_id: int, session: Session = Depends(get_db)
+) -> Response:
+    """Check the guide against the coverage and render the findings.
+
+    Not stored. The report is a read of this month's coverage against the guide as
+    it stands right now — both move, and a saved report would be stale the moment
+    either changed. Regenerating costs one call and is always current.
+    """
+    client = _client_or_404(session, client_id)
+    try:
+        report, coverage = coach.review(session, client)
+    except coach.GuideMissing as exc:
+        return _render(request, session, client, coach_error=str(exc))
+    except AnalyzerError as exc:
+        return _render(
+            request, session, client, coach_error=f"Die Prüfung ist fehlgeschlagen: {exc}"
+        )
+    return _render(
+        request, session, client, findings=list(report.findings), coverage=coverage
+    )

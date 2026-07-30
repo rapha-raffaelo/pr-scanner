@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ translator(request)("Kommunikations-Guide") }} · {{ client.name }} · NewsPulse{% endblock %}
 
+
 {% block content %}
 {% set t = translator(request) %}
 {% set active = 'guide' %}
@@ -39,6 +40,28 @@
          border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
   .btn--ghost { background: var(--card); color: var(--accent); }
   .btn--quiet { background: var(--bg); color: var(--muted); border-color: var(--line); font-weight: 400; }
+  .coach { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--cc-mid);
+           border-radius: 10px; padding: 16px 20px; margin-top: 26px; }
+  .coach__head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .coach__badge { width: 26px; height: 26px; border-radius: 8px; background: var(--cc-deep); color: #fff;
+                  display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+  .coach__title { font-size: 14.5px; font-weight: 700; }
+  .coach__sub { font-size: 12px; color: var(--muted); }
+  .coach__head form { margin-left: auto; }
+  .coachlist { list-style: none; }
+  .ci { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .ci > div { flex: 1; }
+  .ci p { color: var(--muted); margin-top: 3px; }
+  .ci__act { color: var(--ink) !important; margin-top: 6px; font-weight: 500; }
+  .ci__tag { flex: none; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+             padding: 3px 9px; border-radius: 20px; height: fit-content; }
+  .ci--luecke .ci__tag { background: #fef3c7; color: #92400e; }
+  .ci--konflikt .ci__tag { background: #fee2e2; color: #b91c1c; }
+  .ci--traegt .ci__tag { background: #dcfce7; color: #15803d; }
+  .ci__sources { list-style: none; margin-top: 6px; font-size: 12px; }
+  .ci__sources a { color: var(--accent); }
+  .coach__empty { font-size: 13px; color: var(--muted); font-style: italic; }
+  .coach__foot { font-size: 11.5px; color: var(--muted); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 </style>
 
 <h1 class="pagetitle">{{ t("Kommunikations-Guide") }}</h1>
@@ -130,4 +153,57 @@
   area.addEventListener("input", function () { out.textContent = area.value.length; });
 })();
 </script>
+
+{# --- The coach ------------------------------------------------------------
+   Not a second assistant. Captain Comms answers questions; this answers one
+   fixed question — does the guide hold up against what was actually written —
+   and its findings are typed so a Monday morning can scan them. #}
+<section class="coach">
+  <div class="coach__head">
+    <span class="coach__badge">C</span>
+    <div>
+      <div class="coach__title">{{ t("Strategie-Coach") }}</div>
+      <div class="coach__sub">{{ t("Prüft den Guide gegen") }} {{ coach_days }} {{ t("Tage Berichterstattung") }}</div>
+    </div>
+    <form method="post" action="/client/{{ client.id }}/guide/coach">
+      <button type="submit" class="btn btn--ghost">{{ t("Jetzt prüfen") }}</button>
+    </form>
+  </div>
+
+  {% if coach_error %}
+    <div class="notice notice--error">{{ coach_error }}</div>
+  {% elif findings is not none %}
+    {% if findings %}
+      <ul class="coachlist">
+        {% for finding in findings %}
+          <li class="ci ci--{{ finding.kind }}">
+            <span class="ci__tag">{{ t(finding.kind) }}</span>
+            <div>
+              <strong>{{ finding.headline }}</strong>
+              <p>{{ finding.detail }}</p>
+              {% if finding.suggestion %}<p class="ci__act">→ {{ finding.suggestion }}</p>{% endif %}
+              {% if finding.evidence %}
+                <ul class="ci__sources">
+                  {% for idx in finding.evidence %}
+                    {% set ref = coverage.get(idx) %}
+                    {% if ref %}
+                      <li><a href="{{ ref.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ ref.headline }}</a>
+                        <span class="dot">·</span> {{ ref.source }}</li>
+                    {% endif %}
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {# An empty report is a real answer, and the prompt says so explicitly. #}
+      <p class="coach__empty">{{ t("Nichts gefunden, woran der Guide und die Berichterstattung auseinanderlaufen.") }}</p>
+    {% endif %}
+  {% else %}
+    <p class="coach__empty">{{ t("Noch nicht geprüft. Ein Aufruf, keine Speicherung — der Bericht ist immer der aktuelle Stand.") }}</p>
+  {% endif %}
+  <p class="coach__foot">{{ t("Beratend, nicht ausführend: der Coach ändert nichts am Guide.") }}</p>
+</section>
 {% endblock %}
