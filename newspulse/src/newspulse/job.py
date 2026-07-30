@@ -910,13 +910,24 @@ def backfill_client(
     fetch: FetchFeed = fetch_feed,
     now: Callable[[], dt.datetime] | None = None,
 ) -> int:
-    """Fetch and analyse the newest ``limit`` articles about one client.
+    """Fetch a new client's recent coverage — and the market it sits in.
 
-    Runs when a mandate is created, so its page has coverage from the first
-    minute. Deliberately narrow: only that client's own search feed (its name and
-    aliases), only that client matched, only that client analysed. The registry
-    feeds are portfolio-wide and re-fetching six months of them to onboard one
-    company would be a sweep, not an onboarding.
+    Runs when a mandate is created, so its page has something from the first
+    minute. Two fetches, because a young company has two very different starting
+    positions and the second is the common one:
+
+    * its **own coverage**, from its name search, analysed and capped at ``limit``;
+    * its **market**, from the topic radar — articles that never mention it but
+      discuss its subject. Those are stored unanalysed, exactly as the daily sweep
+      stores them, and they are what a positioning draft is made of.
+
+    Without the second fetch a mandate nobody writes about yet arrives empty and
+    stays empty until the next nightly sweep, which is precisely the company that
+    most needs something to say. With it, the run can offer a draft on day one.
+
+    Deliberately narrow otherwise: only this client's feeds, only this client
+    matched, only this client analysed. The registry feeds are portfolio-wide, and
+    re-fetching them to onboard one company would be a sweep, not an onboarding.
 
     **No ``runs`` row is written**, and that is load-bearing rather than an
     omission. ``_determine_since`` takes the last successful run's start as the
@@ -929,40 +940,66 @@ def backfill_client(
     """
     now_fn = now or _utcnow
     started = now_fn()
+    since = started - _ONBOARDING_LOOKBACK
     errors: list[str] = []
-
-    feeds = gnews.client_feeds([client])
-    if not feeds:
-        _log.info("no search feed for %r (no usable name); nothing to onboard", client.name)
-        return 0
-
-    items, _ok = _fetch_all(feeds, started - _ONBOARDING_LOOKBACK, fetch, started, errors)
-    candidates = _match(items, [client], errors)
-    known_urls, known_hashes = _load_known(session)
-    kept = deduplicate(
-        _distinct_items(candidates),
-        known_urls=known_urls,
-        known_title_hashes=known_hashes,
-    )
-    # Newest first, then capped: "the last 30 articles" is a recency promise, and
-    # taking whichever thirty the feed happened to list would break it. The
-    # fallback keeps the sort from crashing on an item that somehow has no date;
-    # such an item sorts last rather than taking a slot from a dated one.
+    # Newest first, then capped: "the last 30" is a recency promise, and taking
+    # whichever thirty the feed happened to list would break it. The fallback
+    # keeps the sort from crashing on an item that somehow carries no date; such
+    # an item sorts last rather than taking a slot from a dated one.
     oldest = dt.datetime.min.replace(tzinfo=dt.UTC)
-    kept.sort(key=lambda item: item.published_at or oldest, reverse=True)
-    kept = kept[:limit]
-    if not kept:
-        _log.info("nothing new to onboard for %r", client.name)
-        return 0
+    newest_first = lambda batch: sorted(  # noqa: E731 — a sort key, not a function
+        batch, key=lambda item: item.published_at or oldest, reverse=True
+    )
+    known_urls, known_hashes = _load_known(session)
 
-    articles = _persist_articles(session, kept, started)
-    resolved_analyzer = analyzer or get_analyzer()
-    analysed = _analyze_and_persist(session, client, articles, resolved_analyzer, errors)
+    # --- Its own coverage ------------------------------------------------------
+    articles: list[Article] = []
+    feeds = gnews.client_feeds([client])
+    if feeds:
+        items, _ok = _fetch_all(feeds, since, fetch, started, errors)
+        candidates = _match(items, [client], errors)
+        kept = newest_first(
+            deduplicate(
+                _distinct_items(candidates),
+                known_urls=known_urls,
+                known_title_hashes=known_hashes,
+            )
+        )[:limit]
+        if kept:
+            articles = _persist_articles(session, kept, started)
+            resolved_analyzer = analyzer or get_analyzer()
+            _analyze_and_persist(session, client, articles, resolved_analyzer, errors)
+            # Re-read what is stored, so the radar below cannot store a second copy
+            # of a story that just arrived through the name search.
+            known_urls, known_hashes = _load_known(session)
+
+    # --- The market it sits in -------------------------------------------------
+    topic_pairs: list[Candidate] = []
+    radar = gnews.topic_feeds([client]) if not client.is_competitor else {}
+    if radar:
+        topic_pairs, _radar_ok = _fetch_topics(radar, [client], since, fetch, started, errors)
+        fresh = newest_first(
+            deduplicate(
+                _distinct_items(topic_pairs),
+                known_urls=known_urls,
+                known_title_hashes=known_hashes,
+            )
+        )[:limit]
+        if fresh:
+            _persist_articles(session, fresh, started)
+            # Unanalysed on purpose, exactly as the sweep stores them: these are
+            # not coverage of the client, and filing them as such would put a
+            # market story into the mandate's own archive.
+            keep = {id(item) for item in fresh}
+            topic_pairs = [pair for pair in topic_pairs if id(pair.item) in keep]
+
+    drafted = _generate_angles(session, topic_pairs, errors) if topic_pairs else 0
     _log.info(
-        "onboarded %r: %d article(s) stored, %d analysed, %d error(s)",
+        "onboarded %r: %d article(s) about it, %d from its market, %d draft(s), %d error(s)",
         client.name,
         len(articles),
-        analysed,
+        len(topic_pairs),
+        drafted,
         len(errors),
     )
     return len(articles)

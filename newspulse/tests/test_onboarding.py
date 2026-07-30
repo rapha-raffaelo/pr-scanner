@@ -208,6 +208,137 @@ def test_a_dead_feed_does_not_take_the_creation_down_with_it(session):
     ) == 0
 
 
+# --- The market it sits in -----------------------------------------------------
+#
+# The case that matters most for a young company: nobody writes about it yet, but
+# its subject is being discussed. Those articles are what a positioning statement
+# is made of, and without this the mandate waits until the next nightly sweep for
+# any of it.
+
+
+def _market_items(count: int, *, newest: dt.datetime = _NOW) -> list[FeedItem]:
+    """Market coverage that never names the client — the whole point of it."""
+    return [
+        FeedItem(
+            title=f"Kryptoboerse stellt Betrieb ein {i}",
+            link=f"https://example.de/markt/{i}",
+            source="yellow.com",
+            published_at=newest - dt.timedelta(days=i),
+            summary="Ein Handelsplatz kuendigt die Abwicklung an.",
+            language="de",
+        )
+        for i in range(count)
+    ]
+
+
+def _split_fetch(own: list[FeedItem], market: list[FeedItem]) -> job.FetchFeed:
+    """Answer the name search and the topic radar with different material."""
+
+    def _fetch(url, since, *, source=None, fetched_at=None, **_):
+        batch = market if "Themen-Radar" in (source or "") else own
+        return [item for item in batch if item.published_at >= since]
+
+    return _fetch
+
+
+def test_a_client_nobody_writes_about_still_gets_its_market(session, monkeypatch):
+    """Arrakis on day one: zero articles about it, plenty about its subject."""
+    from newspulse import angles
+
+    monkeypatch.setattr(angles, "suggest", lambda *a, **k: None)
+    client = _client(session, keywords=["Onchain-Liquiditaet"])
+
+    stored = job.backfill_client(
+        session, client, analyzer=_FakeAnalyzer(),
+        fetch=_split_fetch([], _market_items(4)), now=lambda: _NOW,
+    )
+
+    # Nothing is *about* the client, which is what the return value counts.
+    assert stored == 0
+    # But its market is in the archive, ready to be positioned against.
+    assert session.scalar(select(func.count()).select_from(Article)) == 4
+    # And filed as market, not as coverage: an article that never names the
+    # mandate must not appear in its own archive.
+    assert session.scalar(select(func.count()).select_from(Analysis)) == 0
+
+
+def test_the_market_material_can_produce_a_draft_on_day_one(session, monkeypatch):
+    """One model call, and the mandate has something to say the day it is created."""
+    from newspulse import angles
+    from newspulse.models import Angle
+    from newspulse.schemas import AngleDraft
+
+    seen: list[int] = []
+
+    def _suggest(sess, cli, material, **_):
+        seen.append(len(material))
+        numbered = angles.developments(material)
+        draft = AngleDraft(
+            worth_sending=True,
+            subject="Liquiditaet als Infrastruktur",
+            message="Zwei Absaetze Text.",
+            context="Mehrere Handelsplaetze schliessen.",
+            thesis="Der Markt konsolidiert.",
+            overclaim="Zentrale Boersen verschwinden.",
+            evidence=[0],
+        )
+        return draft, numbered
+
+    monkeypatch.setattr(angles, "suggest", _suggest)
+    client = _client(session, keywords=["Onchain-Liquiditaet"])
+
+    job.backfill_client(
+        session, client, analyzer=_FakeAnalyzer(),
+        fetch=_split_fetch([], _market_items(3)), now=lambda: _NOW,
+    )
+
+    assert seen == [3]
+    assert session.scalar(select(func.count()).select_from(Angle)) == 1
+
+
+def test_a_client_without_themes_gets_no_market_fetch(session):
+    """Without themes there is no way to tell which market coverage concerns them."""
+    client = _client(session, keywords=[])
+
+    job.backfill_client(
+        session, client, analyzer=_FakeAnalyzer(),
+        fetch=_split_fetch(_items(2), _market_items(5)), now=lambda: _NOW,
+    )
+
+    # Only the two about the client itself; the radar was never asked.
+    assert session.scalar(select(func.count()).select_from(Article)) == 2
+
+
+def test_a_competitor_gets_no_market_fetch(session):
+    """Nobody writes a competitor a positioning statement."""
+    client = _client(session, keywords=["Onchain-Liquiditaet"])
+    client.is_competitor = True
+    session.commit()
+
+    job.backfill_client(
+        session, client, analyzer=_FakeAnalyzer(),
+        fetch=_split_fetch([], _market_items(3)), now=lambda: _NOW,
+    )
+
+    assert session.scalar(select(func.count()).select_from(Article)) == 0
+
+
+def test_a_story_arriving_through_both_feeds_is_stored_once(session, monkeypatch):
+    """The name search and the radar overlap; the archive must not hold it twice."""
+    from newspulse import angles
+
+    monkeypatch.setattr(angles, "suggest", lambda *a, **k: None)
+    client = _client(session, keywords=["Onchain-Liquiditaet"])
+    both = _items(2)
+
+    job.backfill_client(
+        session, client, analyzer=_FakeAnalyzer(),
+        fetch=_split_fetch(both, both), now=lambda: _NOW,
+    )
+
+    assert session.scalar(select(func.count()).select_from(Article)) == 2
+
+
 # --- The wiring ----------------------------------------------------------------
 
 
