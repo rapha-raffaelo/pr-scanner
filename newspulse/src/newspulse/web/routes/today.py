@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import config
+from ... import angles, config
 from ...models import Analysis, Article, Client, Run
 from ...outlets import tier_for
 from ...stories import cluster
@@ -60,6 +60,25 @@ class TodayItem:
     importance: int
     client_name: str
     is_alert: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AngleView:
+    """One drafted positioning message as the third column renders it."""
+
+    id: int
+    client_id: int
+    client_name: str
+    subject: str
+    message: str
+    context: str
+    credibility: str
+    thesis: str
+    overclaim: str
+    statements: list[str]
+    # The developments the draft was built on, so the reader can check it against
+    # the coverage rather than take the text on trust.
+    sources: list[tuple[str, str, str]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,6 +233,52 @@ def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
     return items
 
 
+def _fetch_angles(session: Session, day: dt.date) -> list[AngleView]:
+    """The positioning drafts generated on ``day``, newest first.
+
+    Dated by when the draft was *generated*, not by the coverage under it: it is a
+    piece of the day's work, and it arrives the morning the market moved. Sources
+    are resolved here rather than in the template so a draft citing an article that
+    no longer exists renders without its citation instead of erroring.
+    """
+    start_utc, end_utc = _day_bounds_utc(day)
+    drafts = angles.for_day(session, start_utc, end_utc)
+    if not drafts:
+        return []
+
+    names = dict(session.execute(select(Client.id, Client.name)).all())
+    wanted = {aid for draft in drafts for aid in draft.article_ids}
+    articles = (
+        {
+            row.id: row
+            for row in session.scalars(
+                select(Article).where(Article.id.in_(wanted))
+            ).all()
+        }
+        if wanted
+        else {}
+    )
+    views: list[AngleView] = []
+    for draft in drafts:
+        cited = [articles[aid] for aid in draft.article_ids if aid in articles]
+        views.append(
+            AngleView(
+                id=draft.id,
+                client_id=draft.client_id,
+                client_name=names.get(draft.client_id, "—"),
+                subject=draft.subject,
+                message=draft.message,
+                context=draft.context,
+                credibility=draft.credibility,
+                thesis=draft.thesis,
+                overclaim=draft.overclaim,
+                statements=list(draft.statements),
+                sources=[(a.title, a.source, a.url) for a in cited],
+            )
+        )
+    return views
+
+
 def _fetch_last_run(session: Session) -> RunStatusView | None:
     """The most recent run for the header, or None if the job never ran."""
     run: Run | None = session.execute(
@@ -289,6 +354,12 @@ def today_view(
     # computed on a copy that is not the lead.
     alerts = [s for s in stories if any(m.is_alert for m in s.members)]
 
+    # Follows the client filter, like the rest of the page: looking at one mandate
+    # means looking at one mandate, including what to send them.
+    drafts = _fetch_angles(session, day)
+    if selected_client is not None:
+        drafts = [d for d in drafts if d.client_id == selected_client]
+
     return templates.TemplateResponse(
         request,
         "today.html",
@@ -302,6 +373,7 @@ def today_view(
             "items": items,
             "stories": stories,
             "alerts": alerts,
+            "angles": drafts,
             "clients": mandates,
             "client_counts": counts,
             "selected_client": selected_client,

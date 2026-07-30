@@ -72,14 +72,102 @@ nav.tabs a.active {
   border-bottom-color: var(--accent);
 }
 
-/* --- Two-pane triage layout --------------------------------------------- */
+/* --- Three-pane triage layout -------------------------------------------- */
+/* Alerts (what went wrong) · the day (what happened) · impulses (what to send).
+   The two rails are fixed and the feed takes the rest, so the day stays the
+   widest column at every width — it is still the page's subject.
+
+   The wrap is widened only where all three fit; below that the impulse rail
+   drops under the feed rather than squeezing the reading column, and below the
+   existing 820px breakpoint everything stacks as before. */
 .cols {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  /* The impulse rail is the widest of the two rails: it holds prose meant to be
+     read and then sent, not a list of headlines to be scanned. */
+  grid-template-columns: 300px minmax(0, 1fr) 380px;
   gap: 22px;
   align-items: start;
 }
+@media (max-width: 1300px) {
+  .cols { grid-template-columns: 320px minmax(0, 1fr); }
+  /* Span both columns rather than becoming a third row of one: a draft is read
+     as prose, and a 320px-wide column of prose is a chore. */
+  .cols > .anglecol { grid-column: 1 / -1; }
+}
 @media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
+@media (min-width: 1301px) { .wrap { max-width: 1520px; } }
+
+/* --- Right rail: positioning drafts (impulses) --------------------------- */
+.anglecol .colhead { color: var(--accent); }
+.anglecol .colhead .n { background: #eef2ff; color: #4338ca; }
+
+.impulse {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.impulse__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.impulse__copy {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.impulse__copy:hover { color: var(--ink); border-color: #cbd5e1; }
+.impulse__copy--done { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+
+.impulse__subject { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+/* The sendable text. pre-wrap so the model's paragraph breaks survive into the
+   clipboard exactly as they render here. */
+.impulse__text {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.impulse__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: var(--muted);
+  margin-right: 4px;
+}
+.impulse__thesis, .impulse__overclaim {
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.impulse__thesis { background: #f5f3ff; }
+/* Muted, not hidden: it is the claim the draft refuses, and seeing it is how the
+   reader checks that the message did not drift into it. */
+.impulse__overclaim { background: #fafafa; color: var(--muted); }
+.impulse__overclaim .impulse__label { color: #b91c1c; }
+
+.impulse__more { margin-top: 8px; font-size: 13px; }
+.impulse__more summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.impulse__block { margin: 8px 0; }
+.impulse__statements { margin: 6px 0 6px 18px; }
+.impulse__statements li { margin-bottom: 4px; }
+.impulse__sources { list-style: none; margin: 8px 0 0; font-size: 12px; }
+.impulse__sources li { margin-bottom: 4px; }
+.impulse__sources a { color: var(--accent); }
+.impulse__caveat { margin-top: 10px; font-size: 11px; color: var(--muted); }
 
 .colhead {
   font-size: 13px;

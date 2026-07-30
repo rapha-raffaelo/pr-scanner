@@ -39,7 +39,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import config
-from .analyzer import AnalyzerError, BackendError, ParseError, invoke_with_fallback
+from .analyzer import (
+    AnalyzerError,
+    BackendError,
+    ParseError,
+    invoke_with_fallback,
+    strip_code_fence,
+)
 from .models import Advisory, Analysis, Article, Client
 from .schemas import AdvisoryBrief
 
@@ -141,9 +147,14 @@ def _parse(raw: str) -> AdvisoryBrief:
     Same trust boundary as the analyzer: the reply is text until the schema says
     otherwise. A brief that fails validation is discarded rather than partially
     rendered, because a half-parsed recommendation is worse than none.
+
+    A markdown code fence is unwrapped first (the analyzer's own helper). Like
+    :mod:`newspulse.angles` and unlike the batch analyzer, this is a single call
+    with no retry behind it, so a ```json wrapper would otherwise cost the whole
+    brief at the moment someone asked for it.
     """
     try:
-        payload = json.loads(raw)
+        payload = json.loads(strip_code_fence(raw))
     except json.JSONDecodeError as exc:
         raise ParseError(f"advisory was not valid JSON: {exc}") from exc
     try:

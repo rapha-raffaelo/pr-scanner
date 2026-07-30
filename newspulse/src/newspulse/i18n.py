@@ -73,6 +73,22 @@ _EN: dict[str, str] = {
     "Wichtigkeit": "Importance",
     "Wirkung auf die Reputation des Mandanten":
         "Effect on the client's reputation",
+    # --- Today: the impulse column (positioning drafts) ----------------------
+    # "Impuls" is the consultant's own word for this: a prompt to say something,
+    # not a task. "Opening" carries the same sense in English — a moment that has
+    # opened up — where a literal "impulse" would read as a mood.
+    "Impulse": "Openings",
+    "Kein Anlass heute.": "No opening today.",
+    "Kopieren": "Copy",
+    "These": "Thesis",
+    "Nicht die These": "Not the thesis",
+    "Kontext": "Context",
+    "Glaubwürdigkeit": "Credibility",
+    "Ableitbare Aussagen": "Derivable statements",
+    "Entwurf aus Schlagzeilen und Feed-Anrissen, nicht aus den vollständigen "
+    "Artikeln. Vor dem Versand prüfen.":
+        "Drafted from headlines and feed snippets, not from the full articles. "
+        "Check before sending.",
     "positiv": "positive",
     "neutral": "neutral",
     "negativ": "negative",

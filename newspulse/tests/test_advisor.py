@@ -117,6 +117,24 @@ def test_non_json_reply_is_a_parse_error_not_a_silent_empty_brief(session, clien
         advisor.advise(session, client, invoke=lambda p, timeout=None: "Gerne! Hier...")
 
 
+def test_a_fenced_reply_is_still_read(session, client):
+    """A ```json wrapper is a formatting habit, and this call has no retry: losing
+    the brief to it would mean failing at exactly the moment someone asked."""
+    payload = _reply({
+        "situation": "Die Lage ist ruhig.",
+        "suggestions": [{
+            "title": "t", "rationale": "r", "kind": "proaktiv",
+            "urgency": "laufend", "evidence": [0],
+        }],
+    })
+    brief, _ = advisor.advise(
+        session, client, invoke=lambda p, timeout=None: f"```json\n{payload}\n```"
+    )
+
+    assert brief.situation == "Die Lage ist ruhig."
+    assert len(brief.suggestions) == 1
+
+
 def test_reply_failing_the_schema_is_rejected_whole(session, client):
     """A half-parsed recommendation is worse than none."""
     with pytest.raises(ParseError):

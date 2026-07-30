@@ -763,3 +763,271 @@ def test_injected_feeds_are_never_augmented_with_searches(session, monkeypatch):
         now=lambda: _NOW,
     )
     assert urls == ["https://only.example/rss"]
+
+
+# --- The topic radar and the positioning drafts it feeds -----------------------
+#
+# This is the second track through the sweep, and its defining property is that the
+# client is *not* named in the coverage: the term matcher would reject every item,
+# correctly, so the pairing is carried from the feed that found it. The tests below
+# pin exactly that, plus the two things that keep the column honest — nothing is
+# analysed as coverage, and a failed draft never damages the run.
+
+
+def _radar_client(session, name="Arrakis", **over):
+    from newspulse.models import Client
+
+    client = Client(
+        name=name,
+        aliases=[],
+        industry=over.get("industry"),
+        country="DE",
+        keywords=over.get("keywords", ["Onchain-Liquidität"]),
+        alert_topics=over.get("alert_topics", []),
+        is_competitor=over.get("is_competitor", False),
+    )
+    session.add(client)
+    session.commit()
+    return client
+
+
+def _enable_radar(monkeypatch, registry_url="https://reg.example/rss"):
+    from newspulse import config
+
+    monkeypatch.setattr(config, "GOOGLE_NEWS_ENABLED", True)
+    monkeypatch.setattr(
+        job, "load_feeds", lambda: [Feed(name="Reg", url=registry_url)]
+    )
+
+
+def _radar_fetch(radar_items: list[FeedItem]):
+    """Fetch that answers the topic radar only, and nothing else."""
+
+    def _fetch(url, since, *, source=None, fetched_at=None, per_entry_source=False, **_):
+        if "Themen-Radar" in (source or ""):
+            return list(radar_items)
+        return []
+
+    return _fetch
+
+
+def test_radar_stores_coverage_that_names_no_client(session, monkeypatch):
+    """The load-bearing case: the story that never mentions the mandate.
+
+    "BitMEX stellt den Betrieb ein" is not about Arrakis and must not be filed as
+    coverage of it — but it is exactly the development Arrakis can speak to, so it
+    has to reach the archive and the draft.
+    """
+    from newspulse import angles
+
+    _radar_client(session)
+    _enable_radar(monkeypatch)
+    # This test is about storage, not drafting. Without the stub the run reaches the
+    # real `claude -p` — the drafting step swallows its failure, so the assertions
+    # would still pass while the suite spends a minute in a subprocess.
+    monkeypatch.setattr(angles, "suggest", lambda *a, **k: None)
+    analyzer = _FakeAnalyzer()
+    item = _item("BitMEX stellt den Betrieb ein", "https://cash.at/bitmex")
+
+    report = job.run(
+        session,
+        analyzer=analyzer,
+        fetch=_radar_fetch([item]),
+        now=lambda: _NOW,
+    )
+
+    assert _count(session, Article) == 1
+    # Stored, but never filed as coverage: no analysis pairs it with the client.
+    assert _count(session, Analysis) == 0
+    assert analyzer.calls == []
+    assert report.items_fetched == 1
+
+
+def test_a_competitor_gets_no_radar(session, monkeypatch):
+    """Nobody writes a competitor a positioning message, so nothing is spent on one."""
+    _radar_client(session, name="Otto", is_competitor=True)
+    _enable_radar(monkeypatch)
+
+    sources: list[str] = []
+
+    def _fetch(url, since, *, source=None, **_):
+        sources.append(source or "")
+        return []
+
+    job.run(session, analyzer=_FakeAnalyzer(), fetch=_fetch, now=lambda: _NOW)
+
+    assert not any("Themen-Radar" in s for s in sources), sources
+
+
+def test_a_client_without_themes_gets_no_radar(session, monkeypatch):
+    """Without themes there is no way to tell which market coverage concerns them."""
+    _radar_client(session, keywords=[], alert_topics=[])
+    _enable_radar(monkeypatch)
+
+    sources: list[str] = []
+
+    def _fetch(url, since, *, source=None, **_):
+        sources.append(source or "")
+        return []
+
+    job.run(session, analyzer=_FakeAnalyzer(), fetch=_fetch, now=lambda: _NOW)
+
+    assert not any("Themen-Radar" in s for s in sources), sources
+
+
+def test_radar_material_produces_a_stored_draft(session, monkeypatch):
+    """One call per mandate with material, and the draft lands in the database."""
+    from newspulse import angles
+    from newspulse.models import Angle
+
+    client = _radar_client(session)
+    _enable_radar(monkeypatch)
+    calls: list[int] = []
+
+    def _fake_suggest(sess, cli, material, **_):
+        calls.append(cli.id)
+        draft = _draft_for(material)
+        return draft
+
+    monkeypatch.setattr(angles, "suggest", _fake_suggest)
+
+    report = job.run(
+        session,
+        analyzer=_FakeAnalyzer(),
+        fetch=_radar_fetch([_item("BitMEX stellt den Betrieb ein", "https://cash.at/x")]),
+        now=lambda: _NOW,
+    )
+
+    assert calls == [client.id]
+    assert report.angles_written == 1
+    stored = session.scalars(select(Angle)).all()
+    assert len(stored) == 1
+    assert stored[0].client_id == client.id
+    assert stored[0].article_ids  # always cites the coverage behind it
+
+
+def _draft_for(material):
+    """A minimal (draft, numbered) pair over the material the job resolved."""
+    from newspulse import angles as angles_module
+    from newspulse.schemas import AngleDraft
+
+    numbered = angles_module.developments(material)
+    draft = AngleDraft(
+        worth_sending=True,
+        subject="Liquidität als Infrastruktur",
+        message="Zwei Absätze Text.",
+        context="Mehrere Handelsplätze schließen.",
+        thesis="Der Markt konsolidiert.",
+        overclaim="Zentrale Börsen verschwinden.",
+        statements=["Liquidität ist Infrastruktur."],
+        evidence=[0],
+    )
+    return draft, numbered
+
+
+def test_a_failing_draft_never_damages_the_run(session, monkeypatch):
+    """A missed opportunity is not a broken sweep.
+
+    The run must stay ``ok`` with its articles intact, and the failure must not
+    surface as a feed error — the header would then report a fetch problem that
+    never happened.
+    """
+    from newspulse import angles
+
+    _radar_client(session)
+    _enable_radar(monkeypatch)
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("claude ist weg")
+
+    monkeypatch.setattr(angles, "suggest", _boom)
+
+    report = job.run(
+        session,
+        analyzer=_FakeAnalyzer(),
+        fetch=_radar_fetch([_item("BitMEX stellt den Betrieb ein", "https://cash.at/y")]),
+        now=lambda: _NOW,
+    )
+
+    assert report.status is RunStatus.OK
+    assert report.angles_written == 0
+    assert report.errors == []
+    assert _count(session, Article) == 1
+
+
+def test_one_client_failing_leaves_the_others_drafted(session, monkeypatch):
+    """Per-client isolation: mandate B still gets its draft when A's call dies."""
+    from newspulse import angles
+    from newspulse.models import Angle
+
+    first = _radar_client(session, name="Arrakis")
+    second = _radar_client(session, name="Zalando", keywords=["Retouren"])
+    _enable_radar(monkeypatch)
+
+    def _suggest(sess, cli, material, **_):
+        if cli.id == first.id:
+            raise RuntimeError("erste Anfrage stirbt")
+        return _draft_for(material)
+
+    monkeypatch.setattr(angles, "suggest", _suggest)
+
+    report = job.run(
+        session,
+        analyzer=_FakeAnalyzer(),
+        fetch=_radar_fetch([_item("BitMEX stellt den Betrieb ein", "https://cash.at/z")]),
+        now=lambda: _NOW,
+    )
+
+    assert report.angles_written == 1
+    stored = session.scalars(select(Angle)).all()
+    assert [a.client_id for a in stored] == [second.id]
+
+
+def test_a_second_run_does_not_re_pitch_the_same_development(session, monkeypatch):
+    """Yesterday's story is not today's opening.
+
+    Dedup drops the already-stored item, so the second run has no fresh material
+    and never asks — which is what keeps the column from repeating itself daily.
+    """
+    from newspulse import angles
+
+    _radar_client(session)
+    _enable_radar(monkeypatch)
+    calls: list[int] = []
+
+    def _suggest(sess, cli, material, **_):
+        calls.append(cli.id)
+        return _draft_for(material)
+
+    monkeypatch.setattr(angles, "suggest", _suggest)
+    fetch = _radar_fetch([_item("BitMEX stellt den Betrieb ein", "https://cash.at/rep")])
+
+    job.run(session, analyzer=_FakeAnalyzer(), fetch=fetch, now=lambda: _NOW)
+    job.run(session, analyzer=_FakeAnalyzer(), fetch=fetch, now=lambda: _NOW)
+
+    assert len(calls) == 1, "the second run must not re-pitch a stored development"
+
+
+def test_a_dry_run_spends_nothing_on_drafts(session, monkeypatch):
+    """A preview reports what would be stored; a draft has nowhere to go."""
+    from newspulse import angles
+
+    _radar_client(session)
+    _enable_radar(monkeypatch)
+    monkeypatch.setattr(
+        angles, "suggest", lambda *a, **k: pytest.fail("dry run must not draft")
+    )
+
+    sources: list[str] = []
+
+    def _fetch(url, since, *, source=None, **_):
+        sources.append(source or "")
+        return []
+
+    report = job.run(
+        session, analyzer=_FakeAnalyzer(), fetch=_fetch, now=lambda: _NOW, dry_run=True
+    )
+
+    assert report.dry_run is True
+    assert report.angles_written == 0
+    assert not any("Themen-Radar" in s for s in sources), sources

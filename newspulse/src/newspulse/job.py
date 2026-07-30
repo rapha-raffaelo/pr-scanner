@@ -49,7 +49,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config, gnews, notify
+from . import angles, config, gnews, notify
 from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
 from .feeds import Feed, load_feeds
@@ -126,6 +126,10 @@ class RunReport:
     analyses_written: int
     errors: list[str]
     dry_run: bool
+    # Positioning drafts the topic radar produced (see newspulse.angles). Defaulted
+    # so a caller constructing a report positionally — every existing test — keeps
+    # working, and because zero is the honest value on a day with no opening.
+    angles_written: int = 0
 
 
 def _utcnow() -> dt.datetime:
@@ -256,6 +260,48 @@ def _match(
         _log.warning("matching failed: %s; skipping match for this run", exc)
         errors.append(f"match: {exc}")
         return []
+
+
+def _fetch_topics(
+    feeds_by_client: dict[int, Feed],
+    clients: Sequence[Client],
+    since: dt.datetime,
+    fetch: FetchFeed,
+    fetched_at: dt.datetime,
+    errors: list[str],
+) -> tuple[list[Candidate], int]:
+    """Fetch each client's topic radar, pairing every item with *that* client.
+
+    The pairing is carried, not derived. These items are market coverage the
+    client can speak to (:mod:`newspulse.angles`), and the client's name does not
+    appear in them — so the term matcher would reject every one, correctly. What
+    makes an item belong to a mandate here is which mandate's themes found it.
+
+    Fault-isolated per feed like :func:`_fetch_all`, and returns the number of
+    radar feeds that fetched cleanly so a run's feed count stays truthful.
+    """
+    by_id = {client.id: client for client in clients}
+    pairs: list[Candidate] = []
+    feeds_ok = 0
+    for client_id, feed in feeds_by_client.items():
+        client = by_id.get(client_id)
+        if client is None:
+            continue
+        try:
+            batch = fetch(
+                feed.url,
+                since,
+                source=feed.name,
+                fetched_at=fetched_at,
+                per_entry_source=feed.per_entry_source,
+            )
+        except Exception as exc:  # noqa: BLE001 — per-feed fault-isolation boundary
+            _log.warning("topic radar %r failed to fetch: %s; skipping", feed.name, exc)
+            errors.append(f"feed {feed.name!r}: {exc}")
+            continue
+        feeds_ok += 1
+        pairs.extend(Candidate(item=item, client=client) for item in batch)
+    return pairs, feeds_ok
 
 
 def _distinct_items(candidates: Sequence[Candidate]) -> list[FeedItem]:
@@ -438,6 +484,54 @@ def _group_pairs(
     return [(clients_by_id[cid], articles) for cid, articles in grouped.items()]
 
 
+def _generate_angles(
+    session: Session, topic_pairs: Sequence[Candidate], errors: list[str]
+) -> int:
+    """Draft a positioning message per mandate whose radar found something new.
+
+    Runs after the sweep's own row is written, and — like :func:`_notify` — logs
+    its failures instead of appending to the run's errors. A missing draft is a
+    missed opportunity, not a broken sweep, and marking the run ``partial`` for it
+    would both misreport the coverage pipeline and re-open the "since" window for
+    a reason that has nothing to do with coverage.
+
+    ``topic_pairs`` has already been narrowed to this run's *fresh* radar items by
+    the caller. That narrowing is load-bearing: a search feed keeps listing a story
+    for days, so drafting off everything it returns would re-pitch the same
+    development every morning — the behaviour that trains a reader to ignore a
+    column.
+
+    One call per mandate with material, none for a mandate without. ``errors`` is
+    accepted so a future caller can choose to surface these; nothing is appended
+    today, deliberately.
+    """
+    if not topic_pairs:
+        return 0
+    resolved = _resolve_articles(session, topic_pairs)
+    grouped: dict[int, tuple[Client, list[tuple[Article, str]]]] = {}
+    for item, client in topic_pairs:
+        article = resolved.get(id(item))
+        if article is None:
+            continue
+        entry = grouped.setdefault(client.id, (client, []))
+        entry[1].append((article, item.source))
+
+    written = 0
+    for client, material in grouped.values():
+        try:
+            result = angles.suggest(session, client, material)
+        except Exception as exc:  # noqa: BLE001 — per-client fault-isolation boundary
+            _log.warning("positioning draft for %r failed: %s; skipping", client.name, exc)
+            continue
+        if result is None:
+            continue
+        draft, numbered = result
+        angles.store(session, client, draft, numbered)
+        written += 1
+        _log.info("positioning draft stored for %r: %s", client.name, draft.subject)
+    return written
+
+
 def _analysis_targets(
     session: Session,
     candidates: Sequence[Candidate],
@@ -585,6 +679,12 @@ def run(
     X" request, so a feed still returns only the entries it currently syndicates
     (often days, not weeks). Backfill is therefore best-effort by nature, and
     re-running it is free: dedup drops everything already stored.
+
+    The topic radar (per-mandate theme searches feeding
+    :mod:`newspulse.angles`) runs only on the persisting path. A dry run reports
+    what the coverage pipeline would store; drafting a positioning message is a
+    model call whose output has nowhere to go without writes, so it is skipped
+    rather than spent.
     """
     now_fn = now or _utcnow
     started = now_fn()
@@ -598,24 +698,41 @@ def run(
     # give reach beyond them. Only when the caller did not inject an explicit
     # feed list — an injected list is exactly what a test is pinning down.
     query_feeds: list[Feed] = []
+    topic_by_client: dict[int, Feed] = {}
     if feeds is None and config.GOOGLE_NEWS_ENABLED:
         query_feeds = gnews.client_feeds(list(clients))
         resolved_feeds.extend(query_feeds)
+        # Mandates only. A competitor is tracked to compare its share of the
+        # conversation; nobody writes it a positioning message, so spending a
+        # model call on one would be spending it on nothing.
+        topic_by_client = gnews.topic_feeds(
+            [client for client in clients if not client.is_competitor]
+        )
 
     _log.info(
-        "run start: %d active client(s), %d feed(s) (%d registry + %d client search), "
-        "since=%s%s",
+        "run start: %d active client(s), %d feed(s) (%d registry + %d client search "
+        "+ %d topic radar), since=%s%s",
         len(clients),
-        len(resolved_feeds),
+        len(resolved_feeds) + len(topic_by_client),
         len(resolved_feeds) - len(query_feeds),
         len(query_feeds),
+        len(topic_by_client),
         since.isoformat(),
         " [dry-run]" if dry_run else "",
     )
     if dry_run:
         return _run_dry(session, resolved_feeds, clients, since, fetch, started, errors)
     return _run_real(
-        session, resolved_feeds, clients, since, fetch, now_fn, started, errors, analyzer
+        session,
+        resolved_feeds,
+        clients,
+        since,
+        fetch,
+        now_fn,
+        started,
+        errors,
+        analyzer,
+        topic_by_client,
     )
 
 
@@ -683,23 +800,46 @@ def _run_real(
     started: dt.datetime,
     errors: list[str],
     analyzer: Analyzer | None,
+    topic_feeds: dict[int, Feed] | None = None,
 ) -> RunReport:
     """The persisting sweep, wrapped so any crash still records a ``failed`` run."""
     new_articles = 0
     analyses_written = 0
+    angles_written = 0
     feeds_ok = items_count = candidates_count = 0
+    # Bound before the try so the post-run drafting step has a defined value even
+    # when the sweep aborts on its first line.
+    topic_pairs: list[Candidate] = []
+    radar = topic_feeds or {}
     status = RunStatus.OK
     try:
         items, feeds_ok = _fetch_all(feeds, since, fetch, started, errors)
-        items_count = len(items)
+        topic_pairs, topics_ok = _fetch_topics(radar, clients, since, fetch, started, errors)
+        feeds_ok += topics_ok
+        items_count = len(items) + len(topic_pairs)
         candidates = _match(items, clients, errors)
         candidates_count = len(candidates)
         known_urls, known_hashes = _load_known(session)
+        # The radar's items are deduplicated and stored alongside the matched ones,
+        # in one pass: a development that arrives both as coverage and as a radar
+        # hit must become one article, or the archive holds it twice and the draft
+        # cites a copy the reader cannot find.
         kept = deduplicate(
-            _distinct_items(candidates),
+            _distinct_items([*candidates, *topic_pairs]),
             known_urls=known_urls,
             known_title_hashes=known_hashes,
         )
+        # Narrow the radar's pairs to what dedup actually kept, i.e. what is new
+        # today. Without this the drafting step sees every item the radar returned
+        # — including the ones stored days ago, which a search feed keeps listing —
+        # and re-pitches the same development every morning.
+        #
+        # Identity, because dedup returns the very objects it was given. A story
+        # that arrived through both routes and lost its radar copy to the kept
+        # coverage copy drops out here; that is the right outcome, since a story
+        # naming the client is coverage and already has a column.
+        fresh = {id(item) for item in kept}
+        topic_pairs = [pair for pair in topic_pairs if id(pair.item) in fresh]
         articles = _persist_articles(session, kept, started)
         new_articles = len(articles)
         resolved_analyzer = analyzer or get_analyzer()
@@ -714,11 +854,17 @@ def _run_real(
         status = RunStatus.FAILED
         session.rollback()
     run = _finalize_run(session, started, now_fn(), status, new_articles, errors)
+    # Drafting happens after the run is recorded and only if the sweep itself came
+    # through: pitching a positioning message off a half-fetched radar would put a
+    # confident text in front of the reader on the strength of partial data.
+    if status is not RunStatus.FAILED:
+        angles_written = _generate_angles(session, topic_pairs, errors)
     _log.info(
-        "run done: status=%s, %d new article(s), %d analysis(es), %d error(s)",
+        "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
+        angles_written,
         len(errors),
     )
     # The run's data is committed; deliver any fired-alert notification now. This is
@@ -727,7 +873,7 @@ def _run_real(
     _notify(session, run)
     return RunReport(
         status=status,
-        feeds_total=len(feeds),
+        feeds_total=len(feeds) + len(radar),
         feeds_ok=feeds_ok,
         items_fetched=items_count,
         candidates=candidates_count,
@@ -735,6 +881,7 @@ def _run_real(
         analyses_written=analyses_written,
         errors=list(errors),
         dry_run=False,
+        angles_written=angles_written,
     )
 
 

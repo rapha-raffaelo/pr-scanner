@@ -141,6 +141,46 @@ def test_no_german_chrome_survives_on_an_english_page(client, factory):
         assert leftover not in body, leftover
 
 
+def test_the_impulse_column_translates_its_chrome_but_not_the_draft(client, factory):
+    """The one column whose *content* is generated prose.
+
+    Its labels are chrome and must switch; the drafted message is data — written in
+    German for a German mandate — and retranslating it would be a lie about what the
+    tool produced. Same rule as a stored summary.
+    """
+    import datetime as dt
+
+    from newspulse.models import Angle
+
+    with factory() as s:
+        c = Client(name="Arrakis")
+        s.add(c)
+        s.flush()
+        s.add(
+            Angle(
+                client_id=c.id,
+                generated_at=dt.datetime.now(dt.UTC),
+                subject="Börsenschließungen",
+                message="Die aktuellen Schließungen zeigen die Schwächen der Struktur.",
+                context="Mehrere Handelsplätze schließen.",
+                thesis="Der Markt konsolidiert.",
+                overclaim="Zentrale Börsen verschwinden.",
+                statements=["Liquidität ist Infrastruktur."],
+            )
+        )
+        s.commit()
+
+    client.cookies.set(i18n.COOKIE_NAME, "en")
+    body = client.get("/").text
+
+    assert "Openings" in body
+    assert "Copy" in body
+    assert "Not the thesis" in body
+    assert "Impulse" not in body.split('class="anglecol"', 1)[1].split("</aside>")[0]
+    # The draft itself stays as generated.
+    assert "Die aktuellen Schließungen zeigen die Schwächen der Struktur." in body
+
+
 def test_captain_comms_is_reachable_from_every_page(client):
     for path in ("/", "/clients", "/archive", "/settings"):
         body = client.get(path).text

@@ -647,3 +647,151 @@ def test_a_day_with_coverage_shows_no_hint(factory, client):
     body = client.get("/").text
 
     assert "empty-state-hint" not in body
+
+
+# --- The third column: positioning drafts --------------------------------------
+#
+# What to *send* a mandate, drafted by the daily run off market coverage the mandate
+# is not in (newspulse.angles). It is the one column that is not a list of articles,
+# so what it must get right is different: the sendable text has to be separable from
+# the reasoning around it, and it must not show a draft from another day.
+
+
+def _seed_angle(session, *, client_name="Arrakis", generated_at, **over):
+    from newspulse.models import Angle
+
+    client = session.scalar(select(Client).where(Client.name == client_name))
+    if client is None:
+        client = _seed_client(session, client_name)
+    angle = Angle(
+        client_id=client.id,
+        generated_at=generated_at,
+        subject=over.get("subject", "Börsenschließungen: Liquidität als Infrastruktur"),
+        message=over.get(
+            "message",
+            "Die aktuellen Schließungen zeigen nicht das Ende des Marktes.\n\n"
+            "Projekte müssen Liquidität als eigene Infrastruktur betrachten.",
+        ),
+        context=over.get("context", "Mehrere Handelsplätze kündigen die Abwicklung an."),
+        credibility=over.get("credibility", "Berührt den Kern des Mandanten."),
+        thesis=over.get("thesis", "Der Markt konsolidiert."),
+        overclaim=over.get("overclaim", "Zentrale Börsen verschwinden."),
+        statements=over.get("statements", ["Liquidität ist Infrastruktur."]),
+        article_ids=over.get("article_ids", []),
+    )
+    session.add(angle)
+    session.commit()
+    return angle
+
+
+def _noon_utc(day: dt.date) -> dt.datetime:
+    """Midday in the display zone, i.e. safely inside that local day's window."""
+    return dt.datetime.combine(day, dt.time(12, 0), tzinfo=config.local_zone())
+
+
+def test_the_impulse_column_renders_the_draft_and_its_reasoning(factory, client):
+    with factory() as session:
+        _seed_angle(session, generated_at=_noon_utc(_TEST_DAY))
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    column = body.split('class="anglecol"', 1)[1]
+    assert "Börsenschließungen: Liquidität als Infrastruktur" in column
+    assert "Liquidität als eigene Infrastruktur betrachten" in column
+    assert "Der Markt konsolidiert." in column
+    # The rejected reading is shown, not hidden: it is how the reader checks that
+    # the message did not drift into it.
+    assert "Zentrale Börsen verschwinden." in column
+    assert "Arrakis" in column
+
+
+def test_only_the_sendable_text_sits_in_the_copy_target(factory, client):
+    """The copy button takes one element. Our reasoning must not be inside it, or
+    it lands in a client's inbox."""
+    with factory() as session:
+        angle = _seed_angle(session, generated_at=_noon_utc(_TEST_DAY))
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    target = body.split(f'id="impulse-text-{angle.id}"', 1)[1].split("</div>", 1)[0]
+    assert "Liquidität als eigene Infrastruktur" in target
+    assert "Der Markt konsolidiert." not in target
+    assert "Berührt den Kern" not in target
+    assert f'data-copy-from="impulse-text-{angle.id}"' in body
+
+
+def test_a_draft_from_another_day_is_not_shown(factory, client):
+    """The page is a day. Yesterday's draft is not today's work."""
+    with factory() as session:
+        _seed_angle(
+            session,
+            generated_at=_noon_utc(_TEST_DAY - dt.timedelta(days=1)),
+            subject="GESTERN",
+        )
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    assert "GESTERN" not in body
+    assert "Kein Anlass heute." in body
+
+
+def test_the_column_follows_the_client_filter(factory, client):
+    """Looking at one mandate means looking at one mandate, drafts included."""
+    with factory() as session:
+        keep = _seed_angle(session, client_name="Arrakis", generated_at=_noon_utc(_TEST_DAY),
+                           subject="ARRAKISIMPULS")
+        _seed_angle(session, client_name="Zalando", generated_at=_noon_utc(_TEST_DAY),
+                    subject="ZALANDOIMPULS")
+        selected = keep.client_id
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": selected}).text
+
+    assert "ARRAKISIMPULS" in body
+    assert "ZALANDOIMPULS" not in body
+
+
+def test_the_draft_cites_the_coverage_it_was_built_on(factory, client):
+    """A draft without its sources cannot be checked, only believed."""
+    with factory() as session:
+        source_article = Article(
+            title="BitMEX stellt den Betrieb ein",
+            url="https://cash.at/bitmex",
+            source="cash.at",
+            published_at=_noon_utc(_TEST_DAY),
+            fetched_at=_noon_utc(_TEST_DAY),
+            summary_text="Der Handelsplatz kündigt die Abwicklung an.",
+            language="de",
+            title_hash="bitmex01",
+        )
+        session.add(source_article)
+        session.flush()
+        _seed_angle(
+            session,
+            generated_at=_noon_utc(_TEST_DAY),
+            article_ids=[source_article.id],
+        )
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    column = body.split('class="anglecol"', 1)[1]
+    assert "BitMEX stellt den Betrieb ein" in column
+    assert 'href="https://cash.at/bitmex"' in column
+
+
+def test_a_draft_citing_a_vanished_article_still_renders(factory, client):
+    """Degrade to a draft without citations rather than to a 500."""
+    with factory() as session:
+        _seed_angle(session, generated_at=_noon_utc(_TEST_DAY), article_ids=[9999])
+
+    resp = client.get("/", params={"date": _TEST_DAY.isoformat()})
+
+    assert resp.status_code == 200
+    assert "Börsenschließungen" in resp.text
+
+
+def test_the_column_says_so_when_there_is_no_opening(factory, client):
+    """An empty column is the normal case and must read as a working tool."""
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    assert 'class="anglecol"' in body
+    assert "Kein Anlass heute." in body

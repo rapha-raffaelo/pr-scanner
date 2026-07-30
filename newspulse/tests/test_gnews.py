@@ -101,3 +101,74 @@ def test_client_feeds_builds_one_aggregator_feed_per_client():
 def test_client_without_a_usable_name_yields_no_feed():
     """A blank name would build a query that matches everything."""
     assert gnews.client_feeds([_client("   ")]) == []
+
+
+# --- The topic radar -----------------------------------------------------------
+#
+# A second search per client, on its themes rather than its name. It exists for the
+# coverage a mandate is *not* in: the market development it could speak to, which by
+# definition never carries its name (see newspulse.angles).
+
+
+def _themed(name: str, keywords: list[str], alert_topics: list[str] | None = None) -> Client:
+    client = Client(
+        name=name,
+        aliases=[],
+        industry="Krypto",
+        country="DE",
+        keywords=keywords,
+        alert_topics=alert_topics or [],
+    )
+    # topic_feeds keys on the id, which an unsaved ORM object does not have.
+    client.id = abs(hash(name)) % 10_000
+    return client
+
+
+def test_topic_terms_take_keywords_first_then_alert_topics():
+    """Keywords describe the field; an alert topic is the sharper event inside it."""
+    client = _themed("Arrakis", ["Onchain-Liquidität"], ["Börsenschließung"])
+    assert gnews.topic_terms(client) == ["Onchain-Liquidität", "Börsenschließung"]
+
+
+def test_topic_terms_deduplicate_and_drop_blanks():
+    client = _themed("Arrakis", ["Liquidität", "  ", "liquidität"], ["Liquidität"])
+    assert gnews.topic_terms(client) == ["Liquidität"]
+
+
+def test_a_long_theme_list_is_capped_in_the_query_in_theme_order():
+    """A long OR-chain drifts off topic and returns a general news feed.
+
+    The cap lives in query_url, as it does for the name search, so ``topic_terms``
+    stays a plain ordered list — and that order decides which themes survive it:
+    keywords before alert topics.
+    """
+    client = _themed(
+        "Arrakis", ["eins", "zwei", "drei", "vier"], alert_topics=["fünf"]
+    )
+
+    assert gnews.topic_terms(client) == ["eins", "zwei", "drei", "vier", "fünf"]
+    query = _q(gnews.topic_feeds([client])[client.id].url)
+    assert query == '"eins" OR "zwei" OR "drei"'
+
+
+def test_topic_feeds_are_keyed_by_client_so_provenance_survives():
+    """The pairing is the whole point: nothing in the item's text names the client."""
+    client = _themed("Arrakis", ["Onchain-Liquidität"])
+
+    feeds = gnews.topic_feeds([client])
+
+    assert list(feeds) == [client.id]
+    feed = feeds[client.id]
+    assert "Themen-Radar" in feed.name
+    assert "Arrakis" in feed.name
+    assert feed.per_entry_source is True
+    assert _q(feed.url) == '"Onchain-Liquidität"'
+    # And emphatically not the client's own name: that search already exists, and
+    # duplicating it here would spend a second feed on the same results.
+    assert "Arrakis" not in _q(feed.url)
+
+
+def test_a_client_without_themes_gets_no_radar():
+    """Searching an industry label alone would return a general news feed to pitch
+    from, which is worse than admitting there is nothing to watch."""
+    assert gnews.topic_feeds([_themed("Arrakis", [], [])]) == {}

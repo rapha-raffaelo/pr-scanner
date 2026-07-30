@@ -125,3 +125,45 @@ class AdvisoryBrief(BaseModel):
 
     situation: str
     suggestions: list[ActionSuggestion] = Field(default_factory=list)
+
+
+# --- Angle: a positioning message the consultant can send on ---------------------
+
+
+class AngleDraft(BaseModel):
+    """A drafted positioning message for one client, off one market development.
+
+    The field set is taken from how the consultant actually writes these: a
+    finished text he could send, the factual basis under it, why *this* mandate
+    may credibly say it, the thesis it rests on — and, explicitly, the overclaim
+    it must not become. That last field is not decoration. The example this was
+    built from named its own trap ("central exchanges are disappearing, DEXes
+    win") and rejected it; a draft that cannot name what it is *not* claiming is
+    usually claiming too much.
+
+    ``worth_sending`` is the model's own gate. False means "there is no opening
+    here", which is the normal answer on most days for most mandates — nothing is
+    stored, and the column stays empty rather than filling with manufactured
+    urgency.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    worth_sending: bool
+    # A line for the consultant, not the client: what this is about, so a column
+    # of drafts can be scanned without opening each one.
+    subject: str = ""
+    # The message itself, ready to send: prose, no bullet points, no salutation.
+    message: str = ""
+    # The developments it rests on, with the specifics (who, when, what exactly).
+    context: str = ""
+    # Why this mandate can speak to it without overreaching.
+    credibility: str = ""
+    thesis: str = ""
+    overclaim: str = ""
+    # The two to four statements derivable from the thesis. Capped: past four they
+    # stop being a position and become a list.
+    statements: list[str] = Field(default_factory=list, max_length=4)
+    # Indices into the numbered developments the prompt supplied, so every draft
+    # can be traced back to the coverage that triggered it.
+    evidence: list[int] = Field(default_factory=list)

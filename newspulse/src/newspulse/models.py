@@ -472,6 +472,54 @@ class Advisory(Base):
     )
 
 
+class Angle(Base):
+    """One drafted positioning message for a client, off a market development.
+
+    Distinct from :class:`Advisory` on purpose. An advisory is internal — what the
+    consultant should *do*, in his own language, generated when he asks. This is
+    outward-facing text he could forward to the mandate, produced unasked by the
+    daily sweep, and it comes from coverage that does not mention the client at
+    all (the topic radar). Same client, opposite direction; folding them into one
+    table would mean one of the two lying about what it is.
+
+    The prose fields are columns rather than a JSON blob because they are read,
+    searched and shown individually; ``statements`` and ``article_ids`` are lists
+    and stay JSON. ``article_ids`` points into ``articles`` rather than duplicating
+    headlines, so a draft always cites the story as stored.
+    """
+
+    __tablename__ = "angles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Indexed: the Today view asks for one local day's drafts on every render.
+    generated_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow, index=True
+    )
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    context: Mapped[str] = mapped_column(Text, nullable=False)
+    credibility: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    thesis: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # The overclaim the draft deliberately avoids. Stored because it is what makes
+    # the draft checkable: it says out loud which stronger claim was rejected.
+    overclaim: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    statements: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+    article_ids: Mapped[list[int]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+
+
 __all__ = [
     "Base",
     "Category",
@@ -483,6 +531,7 @@ __all__ = [
     "Article",
     "Analysis",
     "Advisory",
+    "Angle",
     "Run",
     "Setting",
     "DEFAULT_COUNTRY",

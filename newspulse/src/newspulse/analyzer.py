@@ -224,7 +224,7 @@ class _BaseClaudeAnalyzer:
     def _parse_batch(self, raw_text: str) -> BatchVerdict:
         """Parse and schema-validate the model's JSON. Any failure -> ParseError,
         which triggers the single retry and, on a second failure, the drop."""
-        payload = _strip_code_fence(raw_text)
+        payload = strip_code_fence(raw_text)
         try:
             data = json.loads(payload)
         except json.JSONDecodeError as exc:
@@ -439,7 +439,7 @@ def _build_articles_block(chunk: Sequence[Article]) -> str:
     return "\n\n".join(entries)
 
 
-def _strip_code_fence(text: str) -> str:
+def strip_code_fence(text: str) -> str:
     """Strip a leading/trailing markdown code fence if the model wrapped its JSON
     in one (```json ... ```), a common and harmless formatting habit."""
     stripped = text.strip()
@@ -646,4 +646,9 @@ __all__ = [
     "BACKEND_CLAUDE_CODE",
     "BACKEND_CLAUDE_API",
     "BACKEND_GEMINI",
+    # Public because every prompt in the app asks for bare JSON and every model
+    # occasionally wraps it in a fence anyway; the one-shot callers (advisor,
+    # angles) have no retry to absorb that, so they share this rather than each
+    # growing their own copy.
+    "strip_code_fence",
 ]

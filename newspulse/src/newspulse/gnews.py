@@ -55,6 +55,10 @@ _MAX_TERMS = 3
 # results came from a search rather than a subscribed publication.
 _FEED_LABEL = "Google News: {client}"
 
+# The topic radar is labelled distinctly because its results are a different kind
+# of thing: market coverage the client can speak to, not coverage *of* the client.
+_TOPIC_FEED_LABEL = "Themen-Radar: {client}"
+
 
 def query_url(terms: list[str], *, lang: str = _LANG, country: str = _COUNTRY) -> str:
     """Build the Google News RSS search URL for ``terms``.
@@ -124,4 +128,62 @@ def client_feeds(clients: list[Client]) -> list[Feed]:
     return feeds
 
 
-__all__ = ["client_feeds", "client_terms", "query_url"]
+def topic_terms(client: Client) -> list[str]:
+    """The client's own themes: its keywords first, then its alert topics.
+
+    Both, because they are the same thing from two angles — what this mandate is
+    about, and what it must not miss — and an operator who filled in one rarely
+    filled in the other. Keywords lead: they describe the mandate's field, while
+    an alert topic is usually the sharper, rarer event inside it. The order is
+    therefore also a priority: :func:`query_url` keeps only the first few, because
+    a long OR-chain drifts off topic and returns a general news feed.
+    """
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw in [*(client.keywords or []), *(client.alert_topics or [])]:
+        term = (raw or "").strip()
+        if not term:
+            continue
+        key = term.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        terms.append(term)
+    return terms
+
+
+def topic_feeds(clients: list[Client]) -> dict[int, Feed]:
+    """One topic-radar feed per client that has themes, keyed by client id.
+
+    Keyed rather than listed because provenance is the whole point here: an item
+    from this feed is an *opening* for that one client, and nothing in the item's
+    text will say so — the client is not mentioned in it. The caller therefore has
+    to keep the pairing it fetched with (see ``job._fetch_topics``), which a flat
+    list of feeds would throw away.
+
+    A client with no keywords and no alert topics gets no radar. That is the
+    honest default: without themes there is no way to tell which market coverage
+    concerns them, and searching their industry label alone would return a general
+    news feed to pitch from.
+    """
+    feeds: dict[int, Feed] = {}
+    for client in clients:
+        terms = topic_terms(client)
+        if not terms:
+            continue
+        feeds[client.id] = Feed(
+            name=_TOPIC_FEED_LABEL.format(client=client.name),
+            url=query_url(terms),
+            industry=client.industry,
+            per_entry_source=True,
+        )
+    return feeds
+
+
+__all__ = [
+    "client_feeds",
+    "client_terms",
+    "query_url",
+    "topic_feeds",
+    "topic_terms",
+]

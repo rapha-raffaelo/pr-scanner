@@ -196,6 +196,98 @@
       </div>
     {% endif %}
   </main>
+
+  {# The third column: what to send a mandate, drafted by the daily run off market
+     coverage the mandate is not in. Advisory — nothing is sent from here. The
+     reader copies, edits, decides. #}
+  <aside class="anglecol" aria-label="{{ t('Impulse') }}">
+    <div class="colhead">{{ t("Impulse") }} <span class="n">{{ angles | length }}</span></div>
+    {% for angle in angles %}
+      <article class="impulse" id="impulse-{{ angle.id }}">
+        <div class="impulse__head">
+          <span class="clichip">{{ angle.client_name }}</span>
+          <button type="button" class="impulse__copy" data-copy-from="impulse-text-{{ angle.id }}">{{ t("Kopieren") }}</button>
+        </div>
+        {% if angle.subject %}<div class="impulse__subject">{{ angle.subject }}</div>{% endif %}
+
+        {# The sendable text, and only that, inside the copy target — the reader
+           must never paste our internal reasoning into a client mail. #}
+        <div class="impulse__text" id="impulse-text-{{ angle.id }}">{{ angle.message }}</div>
+
+        {% if angle.thesis %}
+          <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ angle.thesis }}</div>
+        {% endif %}
+        {% if angle.overclaim %}
+          {# Shown, not hidden: it is the check on the draft. If the message drifts
+             into this sentence, it is the wrong message. #}
+          <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
+        {% endif %}
+
+        <details class="impulse__more">
+          <summary>{{ t("Grundlage") }}{% if angle.sources %} · {{ angle.sources | length }} {{ t("Meldung(en)") }}{% endif %}</summary>
+          {% if angle.context %}
+            <p class="impulse__block"><span class="impulse__label">{{ t("Kontext") }}</span> {{ angle.context }}</p>
+          {% endif %}
+          {% if angle.credibility %}
+            <p class="impulse__block"><span class="impulse__label">{{ t("Glaubwürdigkeit") }}</span> {{ angle.credibility }}</p>
+          {% endif %}
+          {% if angle.statements %}
+            <p class="impulse__block"><span class="impulse__label">{{ t("Ableitbare Aussagen") }}</span></p>
+            <ol class="impulse__statements">
+              {% for statement in angle.statements %}<li>{{ statement }}</li>{% endfor %}
+            </ol>
+          {% endif %}
+          {% if angle.sources %}
+            <ul class="impulse__sources">
+              {% for title, source, url in angle.sources %}
+                <li><a href="{{ url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ title }}</a> <span class="dot">·</span> {{ source }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+          <p class="impulse__caveat">{{ t("Entwurf aus Schlagzeilen und Feed-Anrissen, nicht aus den vollständigen Artikeln. Vor dem Versand prüfen.") }}</p>
+        </details>
+      </article>
+    {% else %}
+      <p class="rail__empty">{{ t("Kein Anlass heute.") }}</p>
+    {% endfor %}
+  </aside>
 </div>
+
+<script>
+// Copy the message only. Uses the async clipboard API where available and falls
+// back to a hidden textarea + execCommand, because the dashboard is also served
+// over plain HTTP on a LAN, where navigator.clipboard is undefined.
+(function () {
+  document.querySelectorAll("[data-copy-from]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var source = document.getElementById(button.dataset.copyFrom);
+      if (!source) return;
+      var text = source.textContent.trim();
+      var done = function () {
+        var previous = button.textContent;
+        button.textContent = "✓";
+        button.classList.add("impulse__copy--done");
+        setTimeout(function () {
+          button.textContent = previous;
+          button.classList.remove("impulse__copy--done");
+        }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+        return;
+      }
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      try { document.execCommand("copy"); done(); } catch (e) {}
+      document.body.removeChild(area);
+    });
+  });
+})();
+</script>
 </div>
 {% endblock %}
