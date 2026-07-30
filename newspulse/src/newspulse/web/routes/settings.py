@@ -57,6 +57,7 @@ from ...feeds import load_feeds
 from ...outlets import tier_for
 from ...logos import fetch_logo, normalize_website
 from ...models import DEFAULT_COUNTRY, SCORE_MAX, SCORE_MIN, Client, Run, Setting
+from .. import runlock
 from ..app import get_db, templates
 
 router = APIRouter()
@@ -100,11 +101,11 @@ _log = logging.getLogger(__name__)
 # coverage nobody asked to re-read.
 BACKFILL_DAYS = (10, 15, 30, 90)
 
-# One sweep at a time. A run fetches 40+ feeds and shells out to `claude` per
-# batch; two concurrent runs would double-fetch and race on the same articles.
-# Non-blocking acquire, so a second click is refused immediately rather than
-# queueing another full sweep behind the first.
-_run_guard = threading.Lock()
+# One sweep at a time (see web.runlock for why the lock lives there now: the
+# layout needs the same signal to draw the header spinner, and it cannot import a
+# route to get it). Re-exported under the old name so the tests and call sites
+# that reach for ``settings._run_guard`` keep working.
+_run_guard = runlock.guard
 
 
 def _execute_run(since_days: int | None) -> None:

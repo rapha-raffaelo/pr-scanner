@@ -41,6 +41,11 @@ _EN: dict[str, str] = {
         "Fetch and analyse feeds now — runs in the background",
     "Letzter Lauf": "Last run",
     "Lauf läuft…": "Run in progress…",
+    # While a sweep runs the header shows the *previous* run's time, so the
+    # counts beside it are not read as the current ones.
+    "Stand von": "as of",
+    "Läuft…": "Running…",
+    "Ein Lauf läuft bereits": "A run is already in progress",
     "Uhr": "",
     "Feeds ok": "Feeds ok",
     "Feed-Fehler": "feed errors",

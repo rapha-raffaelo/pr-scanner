@@ -19,26 +19,7 @@
   <div class="wrap">
     <header class="top">
       <div class="brand"><a href="/">News<span>Pulse</span></a></div>
-      <div class="datemeta">
-        {# The viewed day on Today; the current day on every other page. #}
-        {{ (day if day is defined else header_date) | de_long_date }}<br>
-        {% if last_run %}
-          {% if last_run.is_running %}
-            {{ t("Lauf läuft…") }}
-          {% else %}
-            {{ t("Letzter Lauf") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}
-          {% endif %}
-          <span class="dot">·</span>
-          {% if last_run.feed_errors == 0 %}
-            <span class="runok">{{ t("Feeds ok") }}</span>
-          {% else %}
-            <span class="runbad">{{ last_run.feed_errors }} {{ t("Feed-Fehler") }}</span>
-          {% endif %}
-          <span class="dot">·</span> {{ last_run.articles_checked }} {{ t("Artikel geprüft") }}
-        {% else %}
-          <span class="runempty">{{ t("Noch kein Lauf") }}</span>
-        {% endif %}
-      </div>
+      {% include "partials/runmeta.html" %}
     </header>
 
     <nav class="tabs">
@@ -61,7 +42,15 @@
       </div>
       <form method="post" action="/settings/run" class="nav-refresh nav-refresh--tight">
         <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
-        <button type="submit" title="{{ t('Feeds jetzt abrufen und analysieren — läuft im Hintergrund') }}">{{ t("↻ Aktualisieren") }}</button>
+        {# Disabled while a sweep is in flight: the trigger refuses a second run
+           anyway, and a button that looks clickable while the answer is "nein"
+           reads as a broken control. The header carries the reason. #}
+        {% if run_active() %}
+          <button type="submit" class="nav-refresh__btn nav-refresh__btn--busy" disabled
+                  title="{{ t('Ein Lauf läuft bereits') }}"><span class="spinner" aria-hidden="true"></span>{{ t("Läuft…") }}</button>
+        {% else %}
+          <button type="submit" title="{{ t('Feeds jetzt abrufen und analysieren — läuft im Hintergrund') }}">{{ t("↻ Aktualisieren") }}</button>
+        {% endif %}
       </form>
     </nav>
 

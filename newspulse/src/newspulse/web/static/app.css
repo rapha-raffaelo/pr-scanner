@@ -47,6 +47,34 @@ header.top {
 .brand a { color: var(--ink); text-decoration: none; }
 .brand span { color: var(--accent); }
 .datemeta { color: var(--muted); font-size: 13px; text-align: right; }
+
+/* --- A sweep in progress -------------------------------------------------- */
+/* The wheel. A sweep takes a minute or two of fetching and `claude -p` calls,
+   during which the page is otherwise indistinguishable from an idle one — so the
+   header says so, and keeps saying so until the run ends and the page reloads. */
+.spinner {
+  display: inline-block;
+  width: 11px; height: 11px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: np-spin 0.7s linear infinite;
+}
+@keyframes np-spin { to { transform: rotate(360deg); } }
+/* A reader who asked for less motion still needs the state, so the ring stays —
+   it simply stops turning. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; border-right-color: currentColor; opacity: .55; }
+}
+
+.runbusy { color: var(--accent); font-weight: 600; }
+/* The previous run's time while the new one is still working: the numbers beside
+   it are that run's, and presenting them as current would be a small lie. */
+.runstale { color: var(--muted); }
+
+.nav-refresh__btn--busy { opacity: .75; cursor: default; }
 .runok { color: #16a34a; font-weight: 600; }
 .runbad { color: var(--alert); font-weight: 600; }
 .runempty { font-style: italic; }

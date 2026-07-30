@@ -1,0 +1,38 @@
+{# The header's date + run status. Rendered by the layout and re-rendered on its
+   own by /partials/runmeta, so the two can never drift into different markup.
+
+   While a sweep is running this element polls itself. It stops on its own: the
+   route answers a finished run with HX-Refresh instead of a fragment, so the page
+   reloads once and comes back without any polling attribute. #}
+{% set t = translator(request) %}
+<div class="datemeta"
+     id="runmeta"
+     {% if run_active() %}
+     hx-get="/partials/runmeta"
+     hx-trigger="every 4s"
+     hx-target="this"
+     hx-swap="outerHTML"
+     {% endif %}>
+  {# The viewed day on Today; the current day on every other page. #}
+  {{ (day if day is defined else header_date) | de_long_date }}<br>
+  {% if run_active() %}
+    {# The one state the header could never show before: the runs row is written
+       when a sweep finishes, so "in progress" had to come from the process lock. #}
+    <span class="runbusy"><span class="spinner" aria-hidden="true"></span>{{ t("Lauf läuft…") }}</span>
+    {% if last_run %}
+      <span class="dot">·</span>
+      <span class="runstale">{{ t("Stand von") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}</span>
+    {% endif %}
+  {% elif last_run %}
+    {{ t("Letzter Lauf") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}
+    <span class="dot">·</span>
+    {% if last_run.feed_errors == 0 %}
+      <span class="runok">{{ t("Feeds ok") }}</span>
+    {% else %}
+      <span class="runbad">{{ last_run.feed_errors }} {{ t("Feed-Fehler") }}</span>
+    {% endif %}
+    <span class="dot">·</span> {{ last_run.articles_checked }} {{ t("Artikel geprüft") }}
+  {% else %}
+    <span class="runempty">{{ t("Noch kein Lauf") }}</span>
+  {% endif %}
+</div>

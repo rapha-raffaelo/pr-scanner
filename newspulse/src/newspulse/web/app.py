@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import branding, config, i18n
 from ..db import get_session
+from . import runlock
 from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
 
 # The web package ships its own templates/ and static/ next to this module, so
@@ -208,6 +209,11 @@ templates.env.filters["logo_src"] = logo_src
 # The drawer lives in the shared layout, so its context is a global rather than
 # something every route has to remember to pass.
 templates.env.globals["assistant_ctx"] = assistant_context
+# A global rather than a context key, because the header is in the shared layout
+# and every route would otherwise have to remember to pass it — the way to end up
+# with one page that never shows the spinner. Called per render, so it reflects
+# the moment the page was built.
+templates.env.globals["run_active"] = runlock.is_running
 templates.env.globals["translator"] = translator
 templates.env.globals["request_language"] = request_language
 templates.env.globals["LANGUAGES"] = i18n.LANGUAGES
@@ -238,7 +244,8 @@ def create_app() -> FastAPI:
     # Imported here (not at module top) to avoid a circular import: the route
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
-        advisory, archive, assistant, client, language, settings, today, triage,
+        advisory, archive, assistant, client, language, runstatus, settings,
+        today, triage,
     )
 
     app.include_router(today.router)
@@ -249,6 +256,7 @@ def create_app() -> FastAPI:
     app.include_router(assistant.router)
     app.include_router(language.router)
     app.include_router(triage.router)
+    app.include_router(runstatus.router)
     return app
 
 
