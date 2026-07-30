@@ -98,8 +98,24 @@
   .cell-name { font-weight: 600; }
   .cell-name a { color: var(--text); text-decoration: none; }
   .cell-name a:hover { color: var(--accent); text-decoration: underline; }
-  .cell-list { color: var(--muted); font-size: 0.78rem; }
-  .col-actions { white-space: nowrap; }
+  /* Capped, because these cells hold whatever the operator typed: one mandate
+     carries five aliases and thirty search terms, and on a nowrap table that one
+     row pushed the actions column past the right edge of the screen. "Bearbeiten"
+     was present the whole time and simply out of reach. The full list stays in
+     the cell's title attribute. */
+  .cell-list {
+    color: var(--muted); font-size: 0.78rem;
+    max-width: 22ch; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Pinned to the right edge as well, so the actions stay reachable even when the
+     table does overflow — a wide screen should not be the price of editing. */
+  .col-actions {
+    white-space: nowrap;
+    position: sticky; right: 0;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+  }
+  .client-tr:hover > .col-actions { background: #f9fafb; }
   .col-actions form { display: inline; }
   .tag--inactive { background: #f3f4f6; color: var(--muted); margin-left: 0.35rem; }
   .tag--topic { background: var(--alert-bg); color: #b91c1c; margin-right: 0.25rem; text-transform: none; }
@@ -248,8 +264,8 @@
                 </td>
                 <td>{{ client.industry or '—' }}</td>
                 <td>{{ client.country }}</td>
-                <td class="cell-list">{{ client.aliases | join(', ') or '—' }}</td>
-                <td class="cell-list">{{ client.keywords | join(', ') or '—' }}</td>
+                <td class="cell-list" title="{{ client.aliases | join(', ') }}">{{ client.aliases | join(', ') or '—' }}</td>
+                <td class="cell-list" title="{{ client.keywords | join(', ') }}">{{ client.keywords | join(', ') }}{{ '—' if not client.keywords }}</td>
                 <td class="cell-list">
                   {% if client.alert_topics %}
                     {% for topic in client.alert_topics %}<span class="tag tag--topic">{{ topic }}</span>{% endfor %}
