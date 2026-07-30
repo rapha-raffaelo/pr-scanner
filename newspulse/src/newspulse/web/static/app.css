@@ -776,6 +776,50 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   background: linear-gradient(135deg, var(--cc-mid), var(--cc-deep)); color: #fff;
 }
 .drawer__ask button:disabled { opacity: .45; cursor: default; }
+
+/* Voice controls. Deliberately quieter than the send button: speaking is an
+   alternative way in, not the primary one, and the send button stays the thing
+   the eye lands on. */
+.drawer__ask .drawer__voice {
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1;
+}
+.drawer__ask .drawer__voice:hover { color: var(--ink); border-color: var(--cc-mid); }
+/* His green, not the app's indigo: these controls belong to the assistant. */
+.drawer__ask .drawer__voice--on {
+  color: var(--cc-deep);
+  border-color: var(--cc-mid);
+  background: #ecfdf5;
+}
+/* Listening. A ring rather than a colour change on the glyph, so the state is
+   readable at a glance and does not depend on the emoji rendering. */
+.drawer__ask .drawer__voice--live {
+  color: #b91c1c;
+  border-color: #fca5a5;
+  background: var(--alertbg);
+  animation: cc-listen 1.4s ease-in-out infinite;
+}
+@keyframes cc-listen {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .45); }
+  50%      { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
+}
+/* Respect a reader who asked for less motion: the colour still carries the state. */
+@media (prefers-reduced-motion: reduce) {
+  .drawer__ask .drawer__voice--live { animation: none; }
+}
+
+/* The one line that says where the audio goes, plus recognition errors. */
+.drawer__voicenote {
+  margin: 0;
+  padding: 0 16px 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--card);
+}
 @media print { .drawer, .drawer-open { display: none; } }
 /* --- Diverging coverage bars ---------------------------------------------- */
 /* Two hues, one per side, with a neutral centre line — the diverging form, not

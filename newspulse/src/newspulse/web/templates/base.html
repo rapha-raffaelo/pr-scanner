@@ -112,10 +112,22 @@
       </div>
     </div>
 
+    {# Voice controls. Both are hidden until the script confirms the browser has
+       the API, so a dead button never appears — Web Speech is a Chrome/Safari
+       feature and needs a secure context (https or localhost). #}
     <form class="drawer__ask" id="drawer-form">
+      <button type="button" class="drawer__voice" id="drawer-mic" hidden
+              aria-pressed="false"
+              title="{{ t('Frage sprechen — die Spracherkennung läuft im Browser, nicht in NewsPulse') }}"
+              aria-label="{{ t('Frage sprechen') }}">🎙</button>
       <input type="text" id="drawer-input" placeholder="{{ t('Frage stellen…') }}" autocomplete="off">
+      <button type="button" class="drawer__voice" id="drawer-speak" hidden
+              aria-pressed="false"
+              title="{{ t('Antworten vorlesen') }}"
+              aria-label="{{ t('Antworten vorlesen') }}">🔈</button>
       <button type="submit" id="drawer-send" aria-label="{{ t('Fragen') }}">↑</button>
     </form>
+    <p class="drawer__voicenote" id="drawer-voicenote" hidden></p>
   </aside>
 
   <script>
@@ -273,6 +285,9 @@
         history.push({ role: "assistant", text: reply });
         persist();
         stop();
+        // Read aloud only when complete, never token by token: the stream arrives
+        // in fragments, and speaking those would stutter mid-word.
+        speak(reply);
         input.focus();
       });
       source.addEventListener("error", e => {
@@ -289,6 +304,175 @@
 
     form.onsubmit = e => { e.preventDefault(); const v = input.value.trim(); input.value = ""; ask(v); };
     document.querySelectorAll("[data-ask]").forEach(el => el.onclick = () => ask(el.dataset.ask));
+
+    // --- Voice ---------------------------------------------------------------
+    //
+    // Asking out loud, and hearing the answer, via the browser's own Web Speech
+    // API. No library, no build step, no server round-trip for the audio — which
+    // also means: the recognition is NOT ours. Chrome ships the audio to Google's
+    // speech service, Safari to Apple's. A spoken question here names mandates and
+    // strategy, so the control says so in its tooltip, the drawer says so the first
+    // time it is used, and nothing is recorded unless the button is pressed.
+    //
+    // Reading answers aloud is the opposite: SpeechSynthesis runs on-device with
+    // installed voices. It is still opt-in and off by default, because a tool that
+    // starts talking while a client is on the phone is a tool you switch off.
+    const mic       = document.getElementById("drawer-mic");
+    const speaker   = document.getElementById("drawer-speak");
+    const voicenote = document.getElementById("drawer-voicenote");
+    const LANG      = {{ lang | tojson }};
+    // BCP-47 tags, not the app's two-letter code: a recognizer given "de" falls
+    // back to its default locale, which for a German question means English.
+    const VOICE_LANG = LANG === "en" ? "en-GB" : "de-DE";
+    const SPEAK_KEY  = "captaincomms:speak";
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    // Assigned by the recognition block below when the browser has the API, so the
+    // teardown at the end of this file can end a session it does not otherwise know
+    // about. A no-op everywhere else.
+    let stopListening = () => {};
+
+    const note = text => {
+      voicenote.textContent = text || "";
+      voicenote.hidden = !text;
+    };
+
+    // -- Speaking the answer --
+    const canSpeak = "speechSynthesis" in window;
+    let speakOn = canSpeak && localStorage.getItem(SPEAK_KEY) === "1";
+
+    function paintSpeaker() {
+      speaker.textContent = speakOn ? "🔊" : "🔈";
+      speaker.classList.toggle("drawer__voice--on", speakOn);
+      speaker.setAttribute("aria-pressed", speakOn ? "true" : "false");
+    }
+
+    function hush() {
+      if (canSpeak) window.speechSynthesis.cancel();
+    }
+
+    function speak(text) {
+      if (!speakOn || !text) return;
+      hush();  // never let two answers overlap
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = VOICE_LANG;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    if (canSpeak) {
+      speaker.hidden = false;
+      paintSpeaker();
+      speaker.onclick = () => {
+        speakOn = !speakOn;
+        // Remembered, unlike the thread: it is a preference about the room you
+        // work in, not part of a conversation.
+        try { localStorage.setItem(SPEAK_KEY, speakOn ? "1" : "0"); } catch (e) {}
+        paintSpeaker();
+        if (!speakOn) hush();
+      };
+    }
+
+    // -- Asking out loud --
+    if (SR) {
+      mic.hidden = false;
+      let recognition = null;
+      let listening = false;
+      // Set when recognition itself hands over the question, so the automatic
+      // submit happens once — Chrome fires `end` after `result`, and both paths
+      // would otherwise ask twice.
+      let submitted = false;
+
+      const paintMic = () => {
+        mic.classList.toggle("drawer__voice--live", listening);
+        mic.setAttribute("aria-pressed", listening ? "true" : "false");
+      };
+
+      stopListening = () => {
+        listening = false;
+        paintMic();
+        if (recognition) { try { recognition.stop(); } catch (e) {} }
+      };
+
+      mic.onclick = () => {
+        if (listening) { stopListening(); return; }
+        // A microphone and a loudspeaker in the same room feed each other; stop
+        // talking before listening.
+        hush();
+
+        recognition = new SR();
+        recognition.lang = VOICE_LANG;
+        // Interim results so the field fills while speaking: without them the
+        // input sits empty and the control looks broken until the sentence ends.
+        recognition.interimResults = true;
+        recognition.continuous = false;
+        recognition.maxAlternatives = 1;
+        submitted = false;
+
+        recognition.onstart = () => {
+          listening = true;
+          submitted = false;
+          paintMic();
+          note({{ t("Hört zu… die Erkennung übernimmt der Browser, nicht NewsPulse.") | tojson }});
+        };
+
+        recognition.onresult = event => {
+          let transcript = "";
+          let isFinal = false;
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+            if (event.results[i].isFinal) isFinal = true;
+          }
+          input.value = transcript.trim();
+          if (!isFinal) return;
+          // Hands-free is the point: a finished sentence is sent, rather than
+          // waiting for a click the speaker's hands are not on.
+          const question = input.value;
+          input.value = "";
+          submitted = true;
+          stopListening();
+          note("");
+          ask(question);
+        };
+
+        recognition.onerror = event => {
+          stopListening();
+          if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+            note({{ t("Kein Zugriff auf das Mikrofon. Im Browser für diese Seite erlauben.") | tojson }});
+          } else if (event.error === "no-speech") {
+            note({{ t("Nichts gehört. Nochmal antippen und sprechen.") | tojson }});
+          } else if (event.error !== "aborted") {
+            note({{ t("Spracherkennung nicht verfügbar.") | tojson }});
+          }
+        };
+
+        recognition.onend = () => {
+          listening = false;
+          paintMic();
+          // Stopped mid-sentence: keep what was heard in the field so it can be
+          // corrected and sent by hand, rather than discarding it.
+          if (!submitted && !input.value.trim()) note("");
+        };
+
+        try {
+          recognition.start();
+        } catch (e) {
+          note({{ t("Spracherkennung nicht verfügbar.") | tojson }});
+        }
+      };
+    }
+
+    // Leaving the drawer ends both. An answer read aloud into an empty room and a
+    // microphone left open behind a closed panel are the two failures worth wiring
+    // for; the drawer's own close/reset handlers run first and are left untouched.
+    const endVoice = () => { hush(); stopListening(); note(""); };
+    document.querySelectorAll("[data-drawer-close], [data-drawer-reset]").forEach(el =>
+      el.addEventListener("click", endVoice)
+    );
+    // No `!drawer.hidden` guard here: the drawer's own Escape handler is
+    // registered first and has already hidden the panel by the time this runs, so
+    // the guard would skip exactly the case it was meant to cover. Both calls are
+    // no-ops when nothing is speaking or listening.
+    document.addEventListener("keydown", e => { if (e.key === "Escape") endVoice(); });
   })();
   </script>
 </body>

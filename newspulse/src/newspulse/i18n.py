@@ -280,6 +280,21 @@ _EN: dict[str, str] = {
     "Portfolio": "Portfolio",
     "Fragen": "Ask",
     "Frage stellen…": "Ask a question…",
+    # --- Captain Comms: voice ------------------------------------------------
+    # The tooltip names where the audio goes. The browser does the recognition,
+    # which means Chrome sends it to Google and Safari to Apple — not something to
+    # bury, given a spoken question here names mandates.
+    "Frage sprechen": "Speak your question",
+    "Frage sprechen — die Spracherkennung läuft im Browser, nicht in NewsPulse":
+        "Speak your question — recognition runs in the browser, not in NewsPulse",
+    "Antworten vorlesen": "Read answers aloud",
+    "Hört zu… die Erkennung übernimmt der Browser, nicht NewsPulse.":
+        "Listening… recognition is handled by the browser, not by NewsPulse.",
+    "Kein Zugriff auf das Mikrofon. Im Browser für diese Seite erlauben.":
+        "No microphone access. Allow it for this page in the browser.",
+    "Nichts gehört. Nochmal antippen und sprechen.":
+        "Heard nothing. Tap again and speak.",
+    "Spracherkennung nicht verfügbar.": "Speech recognition unavailable.",
     "Tage": "days",
 }
 

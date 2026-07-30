@@ -150,6 +150,27 @@ failed. Alerts remain a separate, urgency-driven notification.
 An Excel report per client — coverage plus per-category and per-publisher
 summaries — is at **Mandanten → Excel**, or `/client/{id}/export.xlsx?days=30`.
 
+## Captain Comms (the assistant drawer)
+
+Reachable from every page. It answers strategy questions about whatever the page
+is showing, grounded in the archive, and it is advisory only — it produces text,
+it never acts.
+
+**Voice.** Two controls in the ask row: 🎙 asks out loud, 🔈/🔊 reads the answer
+back. Both use the browser's own Web Speech API — no library, no build step, and
+no audio ever reaches NewsPulse. Both disappear in a browser that lacks the API
+(it needs Chrome or Safari over https or localhost) rather than sitting there
+dead.
+
+Know what the microphone costs before using it: **the recognition is not local.**
+Chrome uploads the audio to Google's speech service, Safari to Apple's. A spoken
+question here names mandates and strategy, so treat the button the way you would
+treat the Gemini fallback — a deliberate choice to involve a second processor, not
+a convenience to switch on by default. Nothing is captured unless the button is
+pressed, and the drawer says so while it listens. Reading answers aloud is the
+harmless direction (`SpeechSynthesis` runs on-device) and is still off until you
+switch it on; the choice is remembered per browser.
+
 ## Empfehlungen (suggested PR actions)
 
 **Mandanten → Empfehlungen** generates a brief from a client's recent coverage:
