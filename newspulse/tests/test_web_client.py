@@ -547,3 +547,44 @@ def test_the_deep_dive_is_where_competitors_and_exports_live(factory, client):
     assert f"/client/{a_id}/export.xlsx" in body  # tab strip download
     assert f"/client/{a_id}/advice" in body
     assert f"/client/{a_id}/map" in body
+
+
+# --- The competitor picker -----------------------------------------------------
+
+
+def test_only_companies_marked_as_competitors_can_be_added(factory, client):
+    """Regression: the picker offered every other company, mandates included.
+
+    A beauty-tech startup was proposed as Zalando's benchmark. A mandate is work
+    to be done and a competitor is a yardstick; adding one as the other puts an
+    unrelated mention count into the share-of-voice table.
+    """
+    with factory() as session:
+        subject = Client(name="Zalando", aliases=[], keywords=[], alert_topics=[])
+        mandate = Client(name="IB-7 Beauty Tech GmbH", aliases=[], keywords=[], alert_topics=[])
+        rival = Client(name="About You", aliases=[], keywords=[], alert_topics=[],
+                       is_competitor=True)
+        session.add_all([subject, mandate, rival])
+        session.commit()
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}").text
+    picker = body.split('id="competitor_id"', 1)[1].split("</select>", 1)[0]
+
+    assert "About You" in picker
+    assert "IB-7 Beauty Tech GmbH" not in picker
+
+
+def test_with_no_competitor_anywhere_the_page_says_where_they_come_from(factory, client):
+    """An empty picker is a dead end unless it says how to fill it."""
+    with factory() as session:
+        subject = Client(name="Zalando", aliases=[], keywords=[], alert_topics=[])
+        session.add(subject)
+        session.commit()
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}").text
+
+    assert 'id="competitor_id"' not in body
+    assert "Kein Unternehmen ist als Wettbewerber angelegt" in body
+    assert 'href="/settings"' in body

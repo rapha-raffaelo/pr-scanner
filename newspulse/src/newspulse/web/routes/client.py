@@ -461,9 +461,18 @@ def client_detail(
                 client_id, filters, current_page, total_pages, total
             ),
             "voice": share_of_voice(session, client, days=30),
-            # Every other company, so a competitor can be added from this page.
+            # Companies marked as competitors, and only those. Offering the other
+            # mandates here invited exactly the nonsense it produced: a beauty-tech
+            # startup proposed as Zalando's benchmark. A mandate is work to be done;
+            # a competitor is a yardstick, and the two are not interchangeable just
+            # because both happen to be monitored.
             "candidates": [
-                c for c in session.scalars(select(Client).order_by(Client.name)).all()
+                c
+                for c in session.scalars(
+                    select(Client)
+                    .where(Client.is_competitor.is_(True))
+                    .order_by(Client.name)
+                ).all()
                 if c.id != client.id and c not in client.competitors
             ],
             "competitors": list(client.competitors),

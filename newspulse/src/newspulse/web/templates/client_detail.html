@@ -85,6 +85,14 @@
       Meldungszahl vergleichbar. Unter Einstellungen anlegen und dort als
       <em>Wettbewerber</em> markieren, damit er nicht im Morgen-Digest auftaucht.
     </p>
+  {% else %}
+    {# The list is empty because no company is marked as a competitor — not
+       because there is nothing to add. Saying where they come from is the whole
+       difference between a missing control and a broken one. #}
+    <p class="panel-hint">
+      {{ t("Kein Unternehmen ist als Wettbewerber angelegt. Ein Wettbewerber ist selbst ein überwachtes Unternehmen — nur so ist seine Meldungszahl vergleichbar.") }}
+      <a href="/settings">{{ t("In Einstellungen anlegen") }}</a>
+    </p>
   {% endif %}
 </section>
 
