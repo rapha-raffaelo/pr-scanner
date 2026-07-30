@@ -345,6 +345,12 @@ nav.tabs a.active {
   color: var(--muted);
   font-size: 13px;
 }
+/* The hint under an empty day. Sits below the "nothing today" line and carries
+   the way out of it, so it reads as secondary to that statement rather than as a
+   competing message. */
+.empty-state-hint { margin-top: .6rem; font-size: 13px; }
+.empty-state-hint a { color: var(--accent); font-weight: 600; }
+
 .rail__empty { color: var(--muted); font-style: italic; font-size: 13px; }
 
 /* --- Triage actions ------------------------------------------------------ */

@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Analysis, Article, Client, Run
@@ -144,6 +144,44 @@ def _day_bounds_utc(day: dt.date) -> tuple[dt.datetime, dt.datetime]:
     start_local = dt.datetime.combine(day, dt.time.min, tzinfo=tz)
     end_local = start_local + dt.timedelta(days=1)
     return start_local.astimezone(dt.UTC), end_local.astimezone(dt.UTC)
+
+
+#: How far back the empty state looks when a day has nothing.
+#: Ten days because that is the shortest backfill window the run offers, so the
+#: number it reports is one the operator can actually act on.
+_EMPTY_STATE_LOOKBACK_DAYS = 10
+
+
+def _recent_coverage_count(session: Session, day: dt.date, days: int = _EMPTY_STATE_LOOKBACK_DAYS) -> int:
+    """How much coverage sits in the ``days`` before ``day``, excluding ``day``.
+
+    Only used to fill the empty state. German feeds publish a handful of relevant
+    items per day per mandate, so a normal morning shows one or two rows and a
+    quiet one shows none — and a bare "nothing for today" then reads as a broken
+    tool rather than a quiet news day. It is the difference between an empty page
+    and an empty page that says where the other 40 articles are.
+    """
+    start = day - dt.timedelta(days=days)
+    return int(
+        session.execute(
+            select(func.count())
+            .select_from(Analysis)
+            .join(Article, Article.id == Analysis.article_id)
+            .join(Client, Client.id == Analysis.client_id)
+            .where(
+                Article.published_at >= dt.datetime.combine(start, dt.time.min, dt.UTC),
+                Article.published_at < dt.datetime.combine(day, dt.time.min, dt.UTC),
+                # The same relevance gate _fetch_items uses, not the is_relevant
+                # column: the count has to describe the rows the archive will
+                # actually show, or the hint promises coverage that isn't there.
+                Analysis.relevance_score >= _MIN_RELEVANCE,
+                # Mandates only: competitor coverage is context inside a client's
+                # own view, and offering to navigate to it here would contradict
+                # the rule that competitors are not listed as clients.
+                Client.is_competitor.is_(False),
+            )
+        ).scalar_one()
+    )
 
 
 def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
@@ -297,6 +335,10 @@ def today_view(
         {
             "day": day,
             "day_iso": day.strftime(_DATE_FORMAT),
+            # Only computed when there is nothing to show, so the ordinary path
+            # does not pay for a count nobody reads.
+            "recent_count": _recent_coverage_count(session, day) if not items else 0,
+            "recent_days": _EMPTY_STATE_LOOKBACK_DAYS,
             "items": items,
             "stories": stories,
             "alerts": alerts,

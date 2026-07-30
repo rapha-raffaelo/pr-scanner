@@ -553,3 +553,71 @@ def test_a_competitor_is_not_offered_as_a_filter(factory, client):
         s.commit()
     body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
     assert "Rivale AG" not in body
+
+
+# --- The empty day ------------------------------------------------------------
+#
+# Regression from live use: after a successful first sweep the operator opened
+# Heute, saw "Keine Berichterstattung für <today>", and concluded the tool was
+# broken — while 40 analysed articles sat in the archive. German feeds yield a
+# handful of relevant items per mandate per day, so an empty or near-empty day is
+# the normal case, not the failure case. The empty state has to say where the
+# coverage is, or it reads as a fault every quiet morning.
+
+
+def test_empty_day_points_at_recent_coverage_in_the_archive(factory, client):
+    today = dt.datetime.now().astimezone().date()
+    with factory() as session:
+        for offset in (2, 3, 4):
+            _seed_coverage(
+                session,
+                client_name="Zalando",
+                title=f"Zalando meldet Zahlen {offset}",
+                url=f"https://example.de/z{offset}",
+                importance=6,
+                is_alert=False,
+                published_at=dt.datetime.combine(
+                    today - dt.timedelta(days=offset), dt.time(9, 0), tzinfo=dt.UTC
+                ),
+            )
+        session.commit()
+
+    body = client.get("/").text
+
+    assert "Keine Berichterstattung" in body, "today genuinely has nothing"
+    hint = body.split('empty-state-hint')[1].split('</p>')[0]
+    assert "3" in hint, f"the hint must carry the count of recent articles: {hint!r}"
+    assert 'href="/archive"' in hint, "and a way to reach them"
+
+
+def test_a_truly_empty_database_offers_setup_not_the_archive(factory, client):
+    """Nothing anywhere is a different problem, and needs different advice.
+
+    Pointing at an empty archive would send the operator somewhere that confirms
+    nothing; the useful next step is adding mandates and running a backfill.
+    """
+    body = client.get("/").text
+
+    assert "Keine Berichterstattung" in body
+    assert 'href="/settings"' in body
+    assert 'href="/archive"' not in body.split("empty-state")[-1]
+
+
+def test_a_day_with_coverage_shows_no_hint(factory, client):
+    """The hint belongs to the empty state only — it must not clutter a busy day."""
+    today = dt.datetime.now().astimezone().date()
+    with factory() as session:
+        _seed_coverage(
+            session,
+            client_name="Zalando",
+            title="Zalando heute",
+            url="https://example.de/heute",
+            importance=8,
+            is_alert=False,
+            published_at=dt.datetime.combine(today, dt.time(9, 0), tzinfo=dt.UTC),
+        )
+        session.commit()
+
+    body = client.get("/").text
+
+    assert "empty-state-hint" not in body

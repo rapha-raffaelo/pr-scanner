@@ -179,6 +179,20 @@
     {% else %}
       <div class="empty-state">
         <p>{{ t("Keine Berichterstattung für") }} {{ day.strftime('%d.%m.%Y') }}.</p>
+        {# A quiet day is normal — German feeds yield a handful of relevant items
+           per mandate. Saying only "nothing today" makes a working tool look
+           broken, so point at the coverage that does exist. #}
+        {% if recent_count %}
+          <p class="empty-state-hint">
+            {{ recent_count }} {{ t("Artikel in den letzten") }} {{ recent_days }} {{ t("Tagen") }} —
+            <a href="/archive">{{ t("im Archiv ansehen") }}</a>
+          </p>
+        {% else %}
+          <p class="empty-state-hint">
+            {{ t("Noch keine Berichterstattung erfasst. Mandanten anlegen und einen Lauf mit Nachlauf starten:") }}
+            <a href="/settings">{{ t("Einstellungen") }}</a>
+          </p>
+        {% endif %}
       </div>
     {% endif %}
   </main>
