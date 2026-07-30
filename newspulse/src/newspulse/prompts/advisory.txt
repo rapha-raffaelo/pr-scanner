@@ -5,6 +5,7 @@ sondern eine konkrete Einschätzung der Lage und daraus abgeleitete Maßnahmen.
 MANDANT
 $client_profile
 
+$comms_guide
 BERICHTERSTATTUNG DER LETZTEN $days TAGE (je mit einer id, wichtigste zuerst)
 $coverage
 

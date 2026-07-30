@@ -43,7 +43,7 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config
+from . import config, guide
 from .analyzer import (
     AnalyzerError,
     ParseError,
@@ -212,6 +212,10 @@ def suggest(
 
     prompt = _prompt_template().substitute(
         client_profile=_client_profile(client),
+        # What the mandate stands for, if anyone has written it down. Without it
+        # the draft invents a voice on every call; with it, the No-Gos are a rule
+        # the text has to obey rather than context it may weigh.
+        comms_guide=guide.for_prompt(client),
         developments=_render_developments(numbered),
         own_coverage=_own_coverage_block(session, client.id),
     )

@@ -252,6 +252,14 @@ class Client(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
     )
+    # What this client wants to say, in what tone, and what it never says. Keywords
+    # describe what is written *about* them; this describes what they stand for,
+    # which every generated text otherwise has to guess. Prepended to the angle,
+    # advisory and assistant prompts, so it is deliberately short — see
+    # web.routes.guide.GUIDE_MAX_CHARS.
+    comms_guide: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
 
     # The companies this client is benchmarked against. Each is itself a Client
     # row, so a competitor is matched, analysed and archived exactly like a
@@ -472,6 +480,30 @@ class Advisory(Base):
     )
 
 
+class GuideSource(Base):
+    """One document a client's communications guide was distilled from.
+
+    The extracted **text** is stored, not the file. The text is what the
+    distillation reads and what a later re-run needs; the layout is not, and
+    keeping binaries out of a SQLite file that gets copied on every deploy is
+    worth more than being able to hand the original back.
+    """
+
+    __tablename__ = "guide_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    # Kept so the source list can say how much was read without loading the text.
+    characters: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    uploaded_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+
 class TopicHit(Base):
     """One market article the topic radar surfaced for one client.
 
@@ -570,6 +602,7 @@ __all__ = [
     "Advisory",
     "Angle",
     "TopicHit",
+    "GuideSource",
     "Run",
     "Setting",
     "DEFAULT_COUNTRY",

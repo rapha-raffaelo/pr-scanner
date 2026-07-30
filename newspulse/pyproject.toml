@@ -20,6 +20,11 @@ dependencies = [
     # without it the configured display zone silently degrades to UTC, which is
     # the exact bug NEWSPULSE_TIMEZONE exists to fix.
     "tzdata>=2024.1",
+    # Text extraction for the communications guide. A brand guideline arrives as a
+    # PDF; pure-Python and small, so it costs the image nothing. Plain text and
+    # Markdown need no library at all, and .docx is deliberately not supported yet
+    # rather than half-supported — see web/routes/guide.py.
+    "pypdf>=5.0",
 ]
 
 [project.scripts]

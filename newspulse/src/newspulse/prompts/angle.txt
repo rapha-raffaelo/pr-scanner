@@ -6,6 +6,7 @@ kann.
 MANDANT
 $client_profile
 
+$comms_guide
 MARKTENTWICKLUNGEN AUS SEINEM THEMENFELD (je mit einer id)
 Wichtig: Diese Meldungen handeln NICHT vom Mandanten. Sie handeln von seinem
 Markt. Genau darin liegt die Gelegenheit — und die Grenze.

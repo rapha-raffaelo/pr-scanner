@@ -26,7 +26,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ... import i18n
+from ... import guide, i18n
 from ...models import Analysis, Article, Client
 from ...streaming import StreamEvent, stream_assistant
 from ..app import get_db
@@ -220,16 +220,36 @@ _HEADINGS = {
 }
 
 
+def _guide_for(session: Session, client_id: int | None) -> str:
+    """The selected mandate's communications guide, or nothing.
+
+    Only when the drawer is pointed at one client: a portfolio-wide question has no
+    single voice to obey, and pasting one client's No-Gos into an answer about
+    another would be worse than having none.
+    """
+    if client_id is None:
+        return ""
+    client = session.get(Client, client_id)
+    return guide.for_prompt(client) if client is not None else ""
+
+
 def _build_prompt(
     question: str,
     label: str,
     coverage: str,
     history: list[tuple[str, str]],
     language: str = "de",
+    comms_guide: str = "",
 ) -> str:
     frame = _FRAMES.get(language, _FRAME_DE)
     context, conversation, ask = _HEADINGS.get(language, _HEADINGS["de"])
-    parts = [frame, "", f"{context} ({label})", coverage]
+    parts = [frame]
+    # Ahead of the coverage: what the mandate stands for shapes how its coverage
+    # should be read, and an answer that contradicts the client's own No-Gos is
+    # worse than no answer.
+    if comms_guide:
+        parts += ["", comms_guide]
+    parts += ["", f"{context} ({label})", coverage]
     if history:
         parts += ["", conversation, _render_history(history)]
     parts += ["", ask, question]
@@ -284,7 +304,12 @@ def assistant_stream(
         )
         yield StreamEvent("status", f'{translate("Kontext")}: {label}').to_sse()
         prompt = _build_prompt(
-            question, label, coverage, _parse_history(history), language
+            question,
+            label,
+            coverage,
+            _parse_history(history),
+            language,
+            comms_guide=_guide_for(session, client_id),
         )
         for event in stream_assistant(prompt, t=translate):
             yield event.to_sse()

@@ -335,6 +335,35 @@ _EN: dict[str, str] = {
     "Spracherkennung nicht verfügbar.": "Speech recognition unavailable.",
     # --- Client: Marktumfeld (the topic radar's own view) --------------------
     "Marktumfeld": "Market",
+    # --- Client: the communications guide ------------------------------------
+    "Guide": "Guide",
+    "Kommunikations-Guide": "Communications guide",
+    "Keywords sagen, worüber berichtet wird. Der Guide sagt, was dieser Mandant sagen will, was er nie sagt und in welchem Ton — und geht jedem erzeugten Text voran.":
+        "Keywords say what is written about. The guide says what this client wants "
+        "to say, what it never says and in what tone — and it precedes every "
+        "generated text.",
+    "Guide gespeichert.": "Guide saved.",
+    "Vorschlag aus den Unterlagen — noch nicht gespeichert":
+        "Proposal from the documents — not saved yet",
+    "Übernehmen": "Apply",
+    "Verwerfen": "Discard",
+    "Quellen": "Sources",
+    "Zeichen": "characters",
+    "Vorschlag erzeugen": "Propose a guide",
+    "Noch keine Unterlagen. Der Guide lässt sich auch einfach selbst schreiben.":
+        "No documents yet. The guide can simply be written by hand.",
+    "Hochladen": "Upload",
+    "PDF, TXT oder Markdown · höchstens": "PDF, TXT or Markdown · at most",
+    "Gespeichert wird der extrahierte Text, nicht die Datei.":
+        "The extracted text is stored, not the file.",
+    "Speichern": "Save",
+    "Wirkt auf": "Feeds into",
+    "Das Budget ist hart: dieser Text geht in jeden Aufruf, jeden Tag, für jeden Mandanten.":
+        "The budget is hard: this text goes into every call, every day, for every "
+        "client.",
+    "Positionierung: … · Kernbotschaften: … · Nie: …":
+        "Positioning: … · Key messages: … · Never: …",
+    "Keine Datei gewählt.": "No file selected.",
     "Berichterstattung aus dem Themenfeld des Mandanten — Meldungen, die ihn nicht "
     "nennen. Aus diesem Material entstehen die Impulse, und daraus lässt sich "
     "ablesen, wer über das Thema schreibt.":

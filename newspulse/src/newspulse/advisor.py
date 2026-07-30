@@ -38,7 +38,7 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config
+from . import config, guide
 from .analyzer import (
     AnalyzerError,
     BackendError,
@@ -186,6 +186,7 @@ def advise(
 
     prompt = _prompt_template().substitute(
         client_profile=_client_profile(client),
+        comms_guide=guide.for_prompt(client),
         days=days,
         coverage=_render_coverage(coverage),
     )

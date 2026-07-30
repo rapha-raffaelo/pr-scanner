@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Kommunikations-Guide") }} · {{ client.name }} · NewsPulse{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'guide' %}
+{% include '_client_tabs.html' %}
+
+<style>
+  .guide__lead { font-size: 0.9rem; color: var(--muted); max-width: 64ch; margin-bottom: 1.2rem; }
+  .guide__cols { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 26px; align-items: start; }
+  @media (max-width: 980px) { .guide__cols { grid-template-columns: 1fr; } }
+  .glabel { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em;
+            font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+  .gbudget { float: right; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--accent); }
+  .guide__area {
+    width: 100%; min-height: 260px; font: inherit; font-size: 13.5px; line-height: 1.6;
+    padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--card); color: var(--ink); resize: vertical;
+  }
+  .guide__area:focus { outline: none; border-color: var(--accent); }
+  .guide__actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .guide__uses { font-size: 11.5px; color: var(--muted); }
+  .guide__uses span { background: #eef2ff; color: #3730a3; padding: 2px 9px; border-radius: 999px; margin-right: 4px; }
+  .srcs { list-style: none; margin-bottom: 12px; }
+  .srcs li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .srcs__name { flex: 1; display: flex; flex-direction: column; }
+  .srcs__meta { font-size: 11.5px; color: var(--muted); }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 16px; text-align: center; background: var(--bg); }
+  .drop input[type=file] { font: inherit; font-size: 12.5px; }
+  .drop__hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .proposal {
+    background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 16px;
+  }
+  .proposal__head { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .proposal__text { white-space: pre-wrap; font-size: 13.5px; line-height: 1.6; margin-bottom: 12px; }
+  .btn { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 8px;
+         border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  .btn--ghost { background: var(--card); color: var(--accent); }
+  .btn--quiet { background: var(--bg); color: var(--muted); border-color: var(--line); font-weight: 400; }
+</style>
+
+<h1 class="pagetitle">{{ t("Kommunikations-Guide") }}</h1>
+<p class="guide__lead">
+  {{ t("Keywords sagen, worüber berichtet wird. Der Guide sagt, was dieser Mandant sagen will, was er nie sagt und in welchem Ton — und geht jedem erzeugten Text voran.") }}
+</p>
+
+{% if saved %}<div class="notice notice--ok">{{ t("Guide gespeichert.") }}</div>{% endif %}
+{% if guide_error %}<div class="notice notice--error">{{ guide_error }}</div>{% endif %}
+
+{% if proposal %}
+  {# The preview step. Nothing from a document is applied without a person seeing
+     it: an upload can contradict what is already there, and that is not a call a
+     model should make silently. #}
+  <div class="proposal">
+    <div class="proposal__head">{{ t("Vorschlag aus den Unterlagen — noch nicht gespeichert") }}</div>
+    <div class="proposal__text">{{ proposal }}</div>
+    <form method="post" action="/client/{{ client.id }}/guide">
+      <input type="hidden" name="comms_guide" value="{{ proposal }}">
+      <button type="submit" class="btn">{{ t("Übernehmen") }}</button>
+      <a class="btn btn--quiet" href="/client/{{ client.id }}/guide">{{ t("Verwerfen") }}</a>
+    </form>
+  </div>
+{% endif %}
+
+<div class="guide__cols">
+  <div>
+    <label class="glabel">{{ t("Quellen") }}</label>
+    {% if sources %}
+      <ul class="srcs">
+        {% for source in sources %}
+          <li>
+            <span class="srcs__name">
+              {{ source.filename }}
+              <span class="srcs__meta">{{ "{:,}".format(source.characters).replace(",", ".") }} {{ t("Zeichen") }} · {{ source.uploaded_at | de_short_date }}</span>
+            </span>
+            <form method="post" action="/client/{{ client.id }}/guide/sources/{{ source.id }}/remove">
+              <button type="submit" class="linkbtn linkbtn--danger">{{ t("entfernen") }}</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/client/{{ client.id }}/guide/distill">
+        <button type="submit" class="btn btn--ghost">{{ t("Vorschlag erzeugen") }}</button>
+      </form>
+    {% else %}
+      <p class="drop__hint" style="margin-bottom:12px">{{ t("Noch keine Unterlagen. Der Guide lässt sich auch einfach selbst schreiben.") }}</p>
+    {% endif %}
+
+    <form method="post" action="/client/{{ client.id }}/guide/upload" enctype="multipart/form-data" class="drop" style="margin-top:12px">
+      <input type="file" name="file" accept=".pdf,.txt,.md,.markdown">
+      <button type="submit" class="btn btn--quiet" style="margin-top:8px">{{ t("Hochladen") }}</button>
+      <p class="drop__hint">
+        {{ t("PDF, TXT oder Markdown · höchstens") }} {{ max_mb }} MB.
+        {{ t("Gespeichert wird der extrahierte Text, nicht die Datei.") }}
+      </p>
+    </form>
+  </div>
+
+  <div>
+    <form method="post" action="/client/{{ client.id }}/guide">
+      <label class="glabel" for="comms_guide">
+        {{ t("Guide") }}
+        <span class="gbudget"><span id="guide-count">{{ guide_text | length }}</span> / {{ max_chars }} {{ t("Zeichen") }}</span>
+      </label>
+      <textarea class="guide__area" id="comms_guide" name="comms_guide" maxlength="{{ max_chars }}"
+                placeholder="{{ t('Positionierung: … · Kernbotschaften: … · Nie: …') }}">{{ guide_text }}</textarea>
+      <div class="guide__actions">
+        <button type="submit" class="btn">{{ t("Speichern") }}</button>
+        <span class="guide__uses">
+          {{ t("Wirkt auf") }}:
+          <span>{{ t("Impulse") }}</span><span>{{ t("Empfehlungen") }}</span><span>{{ t("Captain Comms") }}</span>
+        </span>
+      </div>
+      <p class="drop__hint">
+        {{ t("Das Budget ist hart: dieser Text geht in jeden Aufruf, jeden Tag, für jeden Mandanten.") }}
+      </p>
+    </form>
+  </div>
+</div>
+
+<script>
+// Live counter. The budget is the one thing about this field that is not obvious,
+// so it updates as you type rather than only on save.
+(function () {
+  var area = document.getElementById("comms_guide");
+  var out = document.getElementById("guide-count");
+  if (!area || !out) return;
+  area.addEventListener("input", function () { out.textContent = area.value.length; });
+})();
+</script>
+{% endblock %}
