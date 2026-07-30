@@ -9,16 +9,14 @@ state rather than an error.
 from __future__ import annotations
 
 import datetime as dt
-import os
 from dataclasses import dataclass
-from pathlib import Path
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ... import config
 from ...models import Analysis, Article, Client, Run
 from ...outlets import tier_for
 from ...stories import cluster
@@ -40,46 +38,6 @@ _MIN_RELEVANCE = 1
 # is faster to hit while you can still take it in at a glance, and unusable once
 # it wraps to three lines.
 _CLIENT_CARD_LIMIT = 10
-
-# The zoneinfo db stores each zone under a ".../zoneinfo/<Area>/<City>" path;
-# the tail after this marker is the IANA name of an /etc/localtime symlink.
-_ZONEINFO_MARKER = "zoneinfo/"
-
-
-def _resolve_local_zone() -> dt.tzinfo:
-    """Resolve the machine's local zone as a DST-aware ``ZoneInfo``.
-
-    A DST-aware zone is required, not the fixed offset that
-    ``datetime.now().astimezone().tzinfo`` returns: that offset reflects the DST
-    state *right now* and, applied to a day in the other DST regime, shifts the
-    local-day window by the DST delta (±1h), misattributing articles near local
-    midnight. Prefers the ``TZ`` env var, then the ``/etc/localtime`` symlink
-    target; falls back to the current fixed offset (DST-naive) only if neither
-    yields a known zone, so the dashboard never crashes on an exotic host.
-    """
-    tz_name = os.environ.get("TZ")
-    if tz_name:
-        try:
-            return ZoneInfo(tz_name)
-        except (ZoneInfoNotFoundError, ValueError):
-            pass
-    localtime = Path("/etc/localtime")
-    if localtime.is_symlink():
-        target = str(localtime.readlink())
-        if _ZONEINFO_MARKER in target:
-            try:
-                return ZoneInfo(target.split(_ZONEINFO_MARKER, 1)[1])
-            except (ZoneInfoNotFoundError, ValueError):
-                pass
-    # Last resort: the current fixed offset. astimezone() always yields a
-    # concrete tzinfo; fall back to UTC defensively.
-    return dt.datetime.now().astimezone().tzinfo or dt.UTC
-
-
-# Resolved once at import: the host's zone does not change during a process, and
-# a ZoneInfo (not a frozen offset) is what makes _day_bounds_utc DST-correct for
-# any requested day.
-_LOCAL_ZONE = _resolve_local_zone()
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,12 +74,14 @@ class RunStatusView:
 
 
 def _local_tz() -> dt.tzinfo:
-    """The machine's local timezone — 'today' is the current *local* day.
+    """The reader's timezone — 'today' is the current day *there*.
 
-    A single DST-aware zone (resolved once at import), so bounding any requested
-    day uses that day's own offset rather than today's frozen one.
+    The configured display zone (:func:`config.local_zone`), not the host's: the
+    host is a UTC container, and deriving the day window from it rolled the day
+    over at 02:00 Berlin time. DST-aware, so bounding any requested day uses that
+    day's own offset rather than today's.
     """
-    return _LOCAL_ZONE
+    return config.local_zone()
 
 
 def _parse_day(raw: str | None) -> dt.date:
@@ -261,11 +221,11 @@ def _fetch_last_run(session: Session) -> RunStatusView | None:
     ).scalar_one_or_none()
     if run is None:
         return None
-    # Shown in local time so the header matches the article times and day window
-    # (all local); a run with no finished_at is still in progress.
-    ran_at = (run.finished_at or run.started_at).astimezone(_local_tz())
+    # Left in UTC as stored: base.html renders it through the de_time filter,
+    # which applies the reader's zone (the same one the day window uses). A run
+    # with no finished_at is still in progress.
     return RunStatusView(
-        ran_at=ran_at,
+        ran_at=run.finished_at or run.started_at,
         is_running=run.finished_at is None,
         status=run.status.value,
         articles_checked=run.articles_found,

@@ -59,6 +59,7 @@ All tunables load from environment variables with sane defaults (see
 | `NEWSPULSE_WEB_HOST`        | `127.0.0.1`    | dashboard bind address                   |
 | `NEWSPULSE_WEB_PORT`        | `8000`         | dashboard port                           |
 | `NEWSPULSE_GOOGLE_NEWS`     | `1`            | also run one Google News search per client (see below) |
+| `NEWSPULSE_TIMEZONE`        | `Europe/Berlin`| zone every displayed time is shown in, and where a day starts |
 
 ## Sources
 

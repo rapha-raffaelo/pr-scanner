@@ -438,7 +438,7 @@
           <tbody>
             {% for run in runs %}
               <tr>
-                <td>{{ run.started_at.strftime('%d.%m.%Y %H:%M') }}{% if run.is_running %} (läuft…){% endif %}</td>
+                <td>{{ run.started_at | de_datetime }}{% if run.is_running %} (läuft…){% endif %}</td>
                 <td><span class="run-badge run-badge--{{ run.status }}">{{ run.status }}</span></td>
                 <td>{{ run.articles_found }}</td>
                 <td>

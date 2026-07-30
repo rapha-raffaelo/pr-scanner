@@ -38,7 +38,7 @@
     <h2>{{ t("Lage") }}</h2>
     <p class="situation">{{ advisory.situation }}</p>
     <p class="panel-hint">
-      {{ t("Erzeugt am") }} {{ advisory.generated_at.astimezone().strftime('%d.%m.%Y %H:%M') }} — {{ advisory.article_count }} {{ t("Artikel") }}.
+      {{ t("Erzeugt am") }} {{ advisory.generated_at | de_datetime }} — {{ advisory.article_count }} {{ t("Artikel") }}.
     </p>
   </div>
 
@@ -63,7 +63,7 @@
                     <li>
                       <a href="{{ ref.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ ref.headline }}</a>
                       <span class="dot">·</span> {{ ref.source }}
-                      <span class="dot">·</span> {{ ref.published_at.astimezone().strftime('%d.%m.') }}
+                      <span class="dot">·</span> {{ ref.published_at | de_short_date }}
                     </li>
                   {% endif %}
                 {% endfor %}

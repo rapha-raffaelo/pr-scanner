@@ -69,7 +69,10 @@ def build_digest(
     a digest that says "12 Artikel" when it is really three stories overstates
     the morning.
     """
-    reference = now or dt.datetime.now().astimezone()
+    # The reader's zone, not the host's: on a UTC container a "day" runs from
+    # 02:00 to 02:00 Berlin time, so the morning brief silently dropped anything
+    # published between midnight and 02:00 and counted it as yesterday's.
+    reference = now or dt.datetime.now(config.local_zone())
     target = day or reference.date()
     tz = reference.tzinfo or dt.UTC
     start = dt.datetime.combine(target, dt.time.min, tzinfo=tz).astimezone(dt.UTC)

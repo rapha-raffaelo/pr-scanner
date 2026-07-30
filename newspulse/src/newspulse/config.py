@@ -8,9 +8,11 @@ here rather than hard-coding paths, thresholds, or batch sizes.
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import os
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 _log = logging.getLogger(__name__)
 
@@ -127,6 +129,24 @@ _ENV_SMTP_SENDER = "NEWSPULSE_SMTP_SENDER"
 _ENV_SMTP_RECIPIENT = "NEWSPULSE_SMTP_RECIPIENT"
 _ENV_SMTP_STARTTLS = "NEWSPULSE_SMTP_STARTTLS"
 
+# The zone every *displayed* time is rendered in — run times, article times, the
+# header date — and the one that defines a "day" for the Today page, the archive
+# and the morning digest. Stored timestamps stay UTC; this is a display setting.
+#
+# A named zone with a default, rather than the host's own zone, because the host
+# is a container: Railway (and every other PaaS image) runs UTC, so deriving the
+# zone from /etc/localtime showed a Berlin reader every time two hours early and
+# rolled the day over at 02:00 local. The reader's zone is a property of the
+# reader, not of the machine that happens to serve them — so it is configuration,
+# and its default is where the reader is.
+_DEFAULT_TIMEZONE = "Europe/Berlin"
+_ENV_TIMEZONE = "NEWSPULSE_TIMEZONE"
+
+# The conventional spelling a Docker host or shell profile may already export.
+# Honored after the explicit name so a deployment can override it without having
+# to change the container's own clock.
+_ENV_TZ = "TZ"
+
 # 587 is the standard mail-submission port for STARTTLS; overridable for a relay that
 # listens elsewhere (e.g. 465 with implicit TLS, or a local 25 sink).
 _DEFAULT_SMTP_PORT = 587
@@ -206,6 +226,52 @@ AUTH_PASSWORD: str = os.environ.get(_ENV_AUTH_PASSWORD, _DEFAULT_AUTH_PASSWORD)
 BASE_URL: str = os.environ.get(_ENV_BASE_URL, _DEFAULT_BASE_URL).rstrip("/")
 GEMINI_API_KEY: str = os.environ.get(_ENV_GEMINI_API_KEY, _DEFAULT_GEMINI_API_KEY).strip()
 GEMINI_MODEL: str = os.environ.get(_ENV_GEMINI_MODEL, _DEFAULT_GEMINI_MODEL).strip()
+
+
+def resolve_local_zone() -> dt.tzinfo:
+    """Resolve the display zone as a DST-aware :class:`~zoneinfo.ZoneInfo`.
+
+    A named zone, never the fixed offset ``datetime.now().astimezone().tzinfo``
+    hands back: that offset reflects the DST state *right now* and, applied to a
+    day in the other DST regime, shifts that local day by an hour and
+    misattributes articles near local midnight.
+
+    ``NEWSPULSE_TIMEZONE`` wins, then ``TZ``, then :data:`_DEFAULT_TIMEZONE`. An
+    unrecognized name falls through to the next candidate — a typo must not crash
+    the dashboard — and UTC is the last resort, reached only on a host with no tz
+    database at all. Reads the environment on each call so a test can set either
+    variable; callers use the value cached in :data:`LOCAL_ZONE`.
+    """
+    candidates = (
+        (_ENV_TIMEZONE, os.environ.get(_ENV_TIMEZONE)),
+        (_ENV_TZ, os.environ.get(_ENV_TZ)),
+        ("default", _DEFAULT_TIMEZONE),
+    )
+    for source, raw in candidates:
+        name = (raw or "").strip()
+        if not name:
+            continue
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            _log.warning("Unknown timezone %s=%r, ignoring", source, name)
+    _log.warning("No usable timezone (missing tz database?); showing times in UTC")
+    return dt.UTC
+
+
+#: Resolved once at import, like every other setting here: the display zone does
+#: not change during a process, and it is a zone rather than a frozen offset so
+#: bounding any day uses that day's own DST offset.
+LOCAL_ZONE: dt.tzinfo = resolve_local_zone()
+
+
+def local_zone() -> dt.tzinfo:
+    """The zone displayed times are rendered in.
+
+    A function so a test can monkeypatch :data:`LOCAL_ZONE` and be seen, the same
+    posture as :func:`gemini_configured`.
+    """
+    return LOCAL_ZONE
 
 
 def gemini_configured() -> bool:

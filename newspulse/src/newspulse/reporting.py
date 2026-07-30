@@ -27,6 +27,7 @@ import pandas as pd
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from . import config
 from .models import Analysis, Article, Client
 
 # Same gate the dashboard applies: relevance 0 means "does not concern this
@@ -126,7 +127,11 @@ def _coverage_frame(
     return pd.DataFrame(
         [
             {
-                "Datum": article.published_at.astimezone().strftime("%d.%m.%Y %H:%M"),
+                # Stored UTC; the export reads as a German report, so the column
+                # shows the reader's zone rather than the server's.
+                "Datum": article.published_at.astimezone(config.local_zone()).strftime(
+                    "%d.%m.%Y %H:%M"
+                ),
                 "Publisher": article.source,
                 "Autor": article.author or "",
                 "Schlagzeile": article.title,

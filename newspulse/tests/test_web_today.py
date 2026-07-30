@@ -9,13 +9,15 @@ fixture engine, so no real database file or daily job is involved.
 from __future__ import annotations
 
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from newspulse import config
 from newspulse.models import Analysis, Article, Base, Category, Client, Run, RunStatus
 from newspulse.web.app import create_app, get_db, safe_url
 from newspulse.web.routes import today
@@ -26,10 +28,9 @@ _TEST_DAY = dt.date(2026, 7, 20)
 
 
 def _local_noon(day: dt.date) -> dt.datetime:
-    """Noon on ``day`` in the machine's local tz — safely inside the local day
-    window the route computes, regardless of the runner's timezone."""
-    local_tz = dt.datetime.now().astimezone().tzinfo
-    return dt.datetime.combine(day, dt.time(12, 0), tzinfo=local_tz)
+    """Noon on ``day`` in the *display* zone — safely inside the day window the
+    route computes, regardless of where the test runner's own clock is set."""
+    return dt.datetime.combine(day, dt.time(12, 0), tzinfo=config.local_zone())
 
 
 @pytest.fixture
@@ -269,20 +270,45 @@ def test_zero_relevance_analysis_is_excluded(factory, client):
     assert "Keine Berichterstattung" in body  # falls through to the empty state
 
 
-def test_local_zone_resolves_dst_aware_not_frozen_offset(monkeypatch):
-    """The resolved local zone honors DST, unlike a single frozen offset.
+def test_today_uses_the_configured_display_zone(monkeypatch):
+    """The day window comes from the configured zone, not the host's clock.
 
-    The old ``datetime.now().astimezone().tzinfo`` returned a fixed offset, so a
-    day in the other DST regime was bounded with the wrong offset (±1h). A
-    DST-aware zone yields different offsets for winter vs summer days.
+    The zone itself is resolved in :mod:`newspulse.config` (tested there); this
+    pins that the route reads it from there, so a UTC container can no longer
+    decide when the reader's day starts.
     """
-    monkeypatch.setenv("TZ", "Europe/Berlin")
-    zone = today._resolve_local_zone()
-    winter = dt.datetime(2026, 1, 15, tzinfo=zone).utcoffset()
-    summer = dt.datetime(2026, 7, 15, tzinfo=zone).utcoffset()
-    assert winter == dt.timedelta(hours=1)
-    assert summer == dt.timedelta(hours=2)
-    assert winter != summer  # a frozen offset would make these equal
+    monkeypatch.setattr(config, "LOCAL_ZONE", ZoneInfo("Europe/Berlin"))
+    assert today._local_tz() is config.local_zone()
+    start, end = today._day_bounds_utc(dt.date(2026, 7, 20))
+    # Berlin is UTC+2 in July, so the local day starts at 22:00 UTC the night
+    # before — the whole point of not bounding the day in the server's zone.
+    assert start == dt.datetime(2026, 7, 19, 22, 0, tzinfo=dt.UTC)
+    assert end == dt.datetime(2026, 7, 20, 22, 0, tzinfo=dt.UTC)
+
+
+def test_header_run_time_is_shown_in_the_reader_zone(factory, client, monkeypatch):
+    """Regression: the header showed the run time in the container's zone (UTC).
+
+    A sweep at 10:00 Berlin was rendered "Letzter Lauf 08:00 Uhr" on Railway,
+    because the timestamp is stored UTC and nothing converted it for display.
+    """
+    monkeypatch.setattr(config, "LOCAL_ZONE", ZoneInfo("Europe/Berlin"))
+    with factory() as s:
+        s.add(
+            Run(
+                started_at=dt.datetime(2026, 7, 30, 7, 55, tzinfo=dt.UTC),
+                finished_at=dt.datetime(2026, 7, 30, 8, 0, tzinfo=dt.UTC),
+                status=RunStatus.OK,
+                articles_found=1,
+                errors=[],
+            )
+        )
+        s.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    assert "Letzter Lauf 10:00 Uhr" in body
+    assert "08:00 Uhr" not in body
 
 
 # --- Category filter -----------------------------------------------------------

@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .. import branding, i18n
+from .. import branding, config, i18n
 from ..db import get_session
 from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
 
@@ -93,6 +93,34 @@ def de_long_date(value: dt.date | dt.datetime) -> str:
         f"{_DE_WEEKDAYS[value.weekday()]}, {value.day}. "
         f"{_DE_MONTHS[value.month - 1]} {value.year}"
     )
+
+
+def _local(value: dt.datetime) -> dt.datetime:
+    """A stored timestamp in the reader's zone.
+
+    Every timestamp in the database is UTC (``UTCDateTime``), so rendering one
+    without converting shows the container's clock — which is UTC on a PaaS host,
+    and rendered a 10:00 sweep as "Letzter Lauf 08:00 Uhr". Doing it in the
+    filter means the *view* need not: a route may hand over a value already in
+    the reader's zone (the Today feed does, because it also groups by local day)
+    and ``astimezone`` on it is a no-op.
+    """
+    return value.astimezone(config.local_zone())
+
+
+def de_time(value: dt.datetime) -> str:
+    """Clock time in the reader's zone: ``08:15``."""
+    return _local(value).strftime("%H:%M")
+
+
+def de_datetime(value: dt.datetime) -> str:
+    """Date and clock time in the reader's zone: ``22.07.2026 08:15``."""
+    return _local(value).strftime("%d.%m.%Y %H:%M")
+
+
+def de_short_date(value: dt.datetime) -> str:
+    """Day and month in the reader's zone, as coverage lists cite it: ``22.07.``"""
+    return _local(value).strftime("%d.%m.")
 
 
 # Image types a stored logo may carry. Deliberately the raster set only: an SVG
@@ -169,6 +197,11 @@ templates.env.filters["safe_url"] = safe_url
 # The shared header renders a long German date on every page; registering it here
 # keeps one definition for all templates.
 templates.env.filters["de_long_date"] = de_long_date
+# Every rendered timestamp goes through one of these, so the reader's zone is
+# applied once, in one place, instead of per template (see _local).
+templates.env.filters["de_time"] = de_time
+templates.env.filters["de_datetime"] = de_datetime
+templates.env.filters["de_short_date"] = de_short_date
 # Client identity: a monogram + stable colour stand in wherever no logo is set,
 # so the portfolio never looks half-configured.
 templates.env.filters["logo_src"] = logo_src

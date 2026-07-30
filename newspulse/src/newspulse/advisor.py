@@ -128,7 +128,7 @@ def recent_coverage(
 
 def _render_coverage(items: list[CoverageRef]) -> str:
     return "\n".join(
-        f"[{item.index}] {item.published_at.astimezone():%d.%m.} "
+        f"[{item.index}] {item.published_at.astimezone(config.local_zone()):%d.%m.} "
         f"({item.source}, {item.category}, Wichtigkeit {item.importance}"
         f"{', ALARM' if item.is_alert else ''}): {item.headline}"
         for item in items

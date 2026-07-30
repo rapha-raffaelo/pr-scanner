@@ -224,7 +224,7 @@ def set_active_feed_names(
 
 @dataclass(frozen=True, slots=True)
 class RunView:
-    """One row in the run-history table (times already in local tz)."""
+    """One row in the run-history table (times stored UTC, rendered local)."""
 
     started_at: dt.datetime
     finished_at: dt.datetime | None
@@ -259,7 +259,7 @@ class _HeaderRun:
 
 
 def _fetch_runs(session: Session, limit: int) -> list[RunView]:
-    """The most recent ``limit`` runs, newest first, times in the local zone."""
+    """The most recent ``limit`` runs, newest first, times as stored (UTC)."""
     runs = (
         session.execute(select(Run).order_by(Run.started_at.desc()).limit(limit))
         .scalars()
@@ -267,10 +267,11 @@ def _fetch_runs(session: Session, limit: int) -> list[RunView]:
     )
     return [
         RunView(
-            # Stored UTC (UTCDateTime); shown local via astimezone() so the table
-            # matches the header's last-run time.
-            started_at=run.started_at.astimezone(),
-            finished_at=run.finished_at.astimezone() if run.finished_at else None,
+            # Left in UTC: the template's de_datetime/de_time filters convert to
+            # the reader's zone, so the conversion lives in exactly one place
+            # (see web.app._local) instead of once per view that renders a time.
+            started_at=run.started_at,
+            finished_at=run.finished_at,
             status=run.status.value,
             articles_found=run.articles_found,
             errors=list(run.errors),
@@ -435,8 +436,8 @@ def _page_context(session: Session) -> dict[str, object]:
         "runs": runs,
         "last_run": _header_from_runs(runs),
         # The shared header dates every page; this view has no viewed-day of its
-        # own, so it shows today.
-        "header_date": dt.datetime.now().astimezone().date(),
+        # own, so it shows today — in the reader's zone, like every other page.
+        "header_date": dt.datetime.now(config.local_zone()).date(),
         "backfill_days": BACKFILL_DAYS,
         "run_error": None,
         "run_started": None,
