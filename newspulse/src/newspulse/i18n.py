@@ -64,6 +64,24 @@ _EN: dict[str, str] = {
     "aus": "from",
     "Artikeln": "articles",
     "Keine Berichterstattung für": "No coverage for",
+    "am": "on",
+    "für diesen Mandanten": "for this client",
+    # The "nothing was ever found" state. Different advice from a quiet day: the
+    # archive has nothing to offer, so the page points at the configuration.
+    "Für": "For",
+    "ist noch keine Berichterstattung erfasst.": "no coverage has been recorded yet.",
+    "Weder heute noch früher. Das ist fast immer eine Frage der Einrichtung, nicht der Nachrichtenlage:":
+        "Neither today nor earlier. That is almost always a question of setup, "
+        "not of the news:",
+    "Aliasse prüfen.": "Check the aliases.",
+    "Die Presse schreibt selten den Registernamen — ohne passenden Alias verwirft der Abgleich jede Meldung.":
+        "The press rarely writes the registered name — without a matching alias "
+        "the filter discards every item.",
+    "Mandant bearbeiten": "Edit client",
+    "Nachlauf starten.": "Run a backfill.",
+    "Der tägliche Lauf holt nur Neues. Die erste Berichterstattung über einen Mandanten liegt meist Wochen zurück.":
+        "The daily sweep only fetches what is new. A client's first coverage is "
+        "usually weeks old.",
     "Alle": "All",
     "Meldungen": "items",
     "Mandant": "Client",

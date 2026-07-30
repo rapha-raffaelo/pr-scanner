@@ -177,23 +177,61 @@
         {{ item_row(story) }}
       {% endfor %}
     {% else %}
-      <div class="empty-state">
-        <p>{{ t("Keine Berichterstattung für") }} {{ day.strftime('%d.%m.%Y') }}.</p>
-        {# A quiet day is normal — German feeds yield a handful of relevant items
-           per mandate. Saying only "nothing today" makes a working tool look
-           broken, so point at the coverage that does exist. #}
-        {% if recent_count %}
-          <p class="empty-state-hint">
-            {{ recent_count }} {{ t("Artikel in den letzten") }} {{ recent_days }} {{ t("Tagen") }} —
-            <a href="/archive">{{ t("im Archiv ansehen") }}</a>
+      {# Four states, and they need different advice. A quiet day is normal —
+         German feeds yield a handful of relevant items per mandate — so "nothing
+         today" alone makes a working tool look broken. But a mandate with nothing
+         *ever* is a configuration problem, and pointing it at the archive sends it
+         somewhere that confirms nothing. #}
+      {% if selected_client and not client_has_archive %}
+        <div class="empty-state empty-state--setup">
+          <p class="empty-state__lead">
+            {{ t("Für") }} <strong>{{ selected_client_name }}</strong>
+            {{ t("ist noch keine Berichterstattung erfasst.") }}
           </p>
-        {% else %}
           <p class="empty-state-hint">
-            {{ t("Noch keine Berichterstattung erfasst. Mandanten anlegen und einen Lauf mit Nachlauf starten:") }}
-            <a href="/settings">{{ t("Einstellungen") }}</a>
+            {{ t("Weder heute noch früher. Das ist fast immer eine Frage der Einrichtung, nicht der Nachrichtenlage:") }}
           </p>
-        {% endif %}
-      </div>
+          <ul class="fixlist">
+            <li>
+              <span class="fixlist__num">1</span>
+              <span>
+                <strong>{{ t("Aliasse prüfen.") }}</strong>
+                <span class="fixlist__why">{{ t("Die Presse schreibt selten den Registernamen — ohne passenden Alias verwirft der Abgleich jede Meldung.") }}</span>
+              </span>
+              <a href="/settings?edit={{ selected_client }}">{{ t("Mandant bearbeiten") }} →</a>
+            </li>
+            <li>
+              <span class="fixlist__num">2</span>
+              <span>
+                <strong>{{ t("Nachlauf starten.") }}</strong>
+                <span class="fixlist__why">{{ t("Der tägliche Lauf holt nur Neues. Die erste Berichterstattung über einen Mandanten liegt meist Wochen zurück.") }}</span>
+              </span>
+              <a href="/settings">{{ t("Einstellungen") }} →</a>
+            </li>
+          </ul>
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p>
+            {{ t("Keine Berichterstattung für") }}
+            {% if selected_client %}<strong>{{ selected_client_name }}</strong> {{ t("am") }} {% endif %}{{ day.strftime('%d.%m.%Y') }}.
+          </p>
+          {% if recent_count %}
+            <p class="empty-state-hint">
+              {{ recent_count }}
+              {{ t("Artikel in den letzten") }} {{ recent_days }} {{ t("Tagen") }}
+              {%- if selected_client %} {{ t("für diesen Mandanten") }}{% endif %} —
+              {# The link carries the filter, or it answers a question nobody asked. #}
+              <a href="/archive{% if selected_client %}?client={{ selected_client }}{% endif %}">{{ t("im Archiv ansehen") }}</a>
+            </p>
+          {% else %}
+            <p class="empty-state-hint">
+              {{ t("Noch keine Berichterstattung erfasst. Mandanten anlegen und einen Lauf mit Nachlauf starten:") }}
+              <a href="/settings">{{ t("Einstellungen") }}</a>
+            </p>
+          {% endif %}
+        </div>
+      {% endif %}
     {% endif %}
   </main>
 

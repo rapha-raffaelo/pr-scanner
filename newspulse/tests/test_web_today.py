@@ -795,3 +795,92 @@ def test_the_column_says_so_when_there_is_no_opening(factory, client):
 
     assert 'class="anglecol"' in body
     assert "Kein Anlass heute." in body
+
+
+# --- The empty state under a client filter -------------------------------------
+#
+# Live report: with the filter on a mandate that has no coverage at all, the page
+# offered "40 Artikel in den letzten 10 Tagen — im Archiv ansehen". Those forty
+# belonged to another client, and the link dropped the filter on the way there. The
+# hint promised coverage that did not exist and then failed to show it.
+
+
+def _seed_for(session, client_name, title, url, *, days_ago):
+    _seed_coverage(
+        session,
+        client_name=client_name,
+        title=title,
+        url=url,
+        importance=6,
+        is_alert=False,
+        published_at=_local_noon(_TEST_DAY - dt.timedelta(days=days_ago)),
+    )
+
+
+def test_the_hint_counts_only_the_filtered_clients_coverage(factory, client):
+    with factory() as session:
+        _seed_for(session, "Zalando", "Zalando meldet Zahlen", "https://ex.de/z1", days_ago=2)
+        _seed_for(session, "Zalando", "Zalando eroeffnet Lager", "https://ex.de/z2", days_ago=3)
+        _seed_for(session, "Arrakis", "Arrakis startet Vaults", "https://ex.de/a1", days_ago=2)
+        session.commit()
+        arrakis = session.scalar(select(Client).where(Client.name == "Arrakis")).id
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": arrakis}).text
+    # Whitespace-normalised, and cut before the link: the client id in the href
+    # would otherwise match a digit assertion about the count.
+    hint = body.split("empty-state-hint", 1)[1].split("<a", 1)[0]
+    hint = " ".join(hint.split())
+
+    # One article for Arrakis, not the three in the portfolio.
+    assert "1 Artikel in den letzten 10 Tagen für diesen Mandanten" in hint
+
+
+def test_the_archive_link_carries_the_filter(factory, client):
+    """Otherwise it answers a question nobody asked."""
+    with factory() as session:
+        _seed_for(session, "Arrakis", "Arrakis startet Vaults", "https://ex.de/a1", days_ago=2)
+        session.commit()
+        arrakis = session.scalar(select(Client).where(Client.name == "Arrakis")).id
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": arrakis}).text
+
+    assert f'href="/archive?client={arrakis}"' in body
+
+
+def test_a_mandate_with_nothing_at_all_gets_a_checklist_not_a_dead_link(factory, client):
+    """"Nothing today" and "nothing, ever" need opposite advice.
+
+    The archive has nothing to show for the second, and sending the reader there
+    confirms nothing. What is nearly always true instead is that the setup is
+    incomplete — which is exactly what was wrong with the mandate that prompted
+    this.
+    """
+    with factory() as session:
+        _seed_for(session, "Zalando", "Zalando meldet Zahlen", "https://ex.de/z1", days_ago=2)
+        empty = Client(name="IB-7 Beauty Tech GmbH")
+        session.add(empty)
+        session.commit()
+        empty_id = empty.id
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": empty_id}).text
+
+    assert "ist noch keine Berichterstattung erfasst" in body
+    assert "IB-7 Beauty Tech GmbH" in body
+    assert f'href="/settings?edit={empty_id}"' in body
+    # And emphatically not the other client's count.
+    assert "im Archiv ansehen" not in body
+
+
+def test_without_a_filter_the_portfolio_count_is_still_the_right_one(factory, client):
+    with factory() as session:
+        _seed_for(session, "Zalando", "Zalando meldet Zahlen", "https://ex.de/z1", days_ago=2)
+        _seed_for(session, "Arrakis", "Arrakis startet Vaults", "https://ex.de/a1", days_ago=2)
+        session.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    hint = " ".join(body.split("empty-state-hint", 1)[1].split("<a", 1)[0].split())
+
+    assert "2 Artikel in den letzten 10 Tagen" in hint
+    # No filter, so no client scoping in the sentence or in the link.
+    assert "für diesen Mandanten" not in hint
+    assert 'href="/archive"' in body

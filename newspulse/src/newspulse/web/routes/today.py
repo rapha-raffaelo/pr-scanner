@@ -131,7 +131,12 @@ def _day_bounds_utc(day: dt.date) -> tuple[dt.datetime, dt.datetime]:
 _EMPTY_STATE_LOOKBACK_DAYS = 10
 
 
-def _recent_coverage_count(session: Session, day: dt.date, days: int = _EMPTY_STATE_LOOKBACK_DAYS) -> int:
+def _recent_coverage_count(
+    session: Session,
+    day: dt.date,
+    days: int = _EMPTY_STATE_LOOKBACK_DAYS,
+    client_id: int | None = None,
+) -> int:
     """How much coverage sits in the ``days`` before ``day``, excluding ``day``.
 
     Only used to fill the empty state. German feeds publish a handful of relevant
@@ -139,6 +144,12 @@ def _recent_coverage_count(session: Session, day: dt.date, days: int = _EMPTY_ST
     quiet one shows none — and a bare "nothing for today" then reads as a broken
     tool rather than a quiet news day. It is the difference between an empty page
     and an empty page that says where the other 40 articles are.
+
+    ``client_id`` scopes it to the mandate the page is filtered to. Without that
+    the hint counted the whole portfolio while the reader was looking at one
+    company: a page about a mandate with no coverage at all offered "40 Artikel in
+    den letzten 10 Tagen", which were somebody else's, behind a link that dropped
+    the filter on the way to the archive.
     """
     start = day - dt.timedelta(days=days)
     return int(
@@ -148,6 +159,7 @@ def _recent_coverage_count(session: Session, day: dt.date, days: int = _EMPTY_ST
             .join(Article, Article.id == Analysis.article_id)
             .join(Client, Client.id == Analysis.client_id)
             .where(
+                *( [Analysis.client_id == client_id] if client_id is not None else [] ),
                 Article.published_at >= dt.datetime.combine(start, dt.time.min, dt.UTC),
                 Article.published_at < dt.datetime.combine(day, dt.time.min, dt.UTC),
                 # The same relevance gate _fetch_items uses, not the is_relevant
@@ -160,6 +172,27 @@ def _recent_coverage_count(session: Session, day: dt.date, days: int = _EMPTY_ST
                 Client.is_competitor.is_(False),
             )
         ).scalar_one()
+    )
+
+
+def _client_has_any_coverage(session: Session, client_id: int | None) -> bool:
+    """Whether this mandate has ever had a piece of coverage stored.
+
+    Separates "quiet day" from "nothing was ever found", which need opposite
+    advice: the first points at the archive, the second at the configuration that
+    is almost always the real cause.
+    """
+    if client_id is None:
+        return False
+    return bool(
+        session.execute(
+            select(Analysis.id)
+            .where(
+                Analysis.client_id == client_id,
+                Analysis.relevance_score >= _MIN_RELEVANCE,
+            )
+            .limit(1)
+        ).first()
     )
 
 
@@ -368,7 +401,25 @@ def today_view(
             "day_iso": day.strftime(_DATE_FORMAT),
             # Only computed when there is nothing to show, so the ordinary path
             # does not pay for a count nobody reads.
-            "recent_count": _recent_coverage_count(session, day) if not items else 0,
+            # Scoped to the filter the reader is looking through, and only
+            # computed when there is nothing to show.
+            "recent_count": (
+                _recent_coverage_count(session, day, client_id=selected_client)
+                if not items
+                else 0
+            ),
+            # Whether this mandate has *any* coverage at all, ever. "Nothing today"
+            # and "nothing, ever" are different problems: the first is a quiet news
+            # day, the second is almost always a configuration one, and offering an
+            # archive link for it sends the reader somewhere that confirms nothing.
+            "client_has_archive": (
+                _client_has_any_coverage(session, selected_client)
+                if not items and selected_client is not None
+                else False
+            ),
+            "selected_client_name": next(
+                (m.name for m in mandates if m.id == selected_client), ""
+            ),
             "recent_days": _EMPTY_STATE_LOOKBACK_DAYS,
             "items": items,
             "stories": stories,

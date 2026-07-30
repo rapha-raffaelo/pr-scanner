@@ -70,6 +70,26 @@ header.top {
 }
 
 .runbusy { color: var(--accent); font-weight: 600; }
+
+/* --- Empty state: the "nothing was ever found" variant -------------------- */
+/* A checklist, not a dead link. A mandate with no coverage at all is nearly
+   always a configuration problem, and the archive has nothing to show it. */
+.empty-state--setup { text-align: left; max-width: 620px; margin: 0 auto; }
+.empty-state--setup .empty-state__lead { text-align: center; font-size: 14.5px; margin-bottom: 6px; }
+.empty-state--setup .empty-state-hint { text-align: center; }
+.fixlist { list-style: none; margin: 14px 0 0; padding: 0; }
+.fixlist li {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 11px 0; border-top: 1px solid var(--line); font-size: 13px;
+}
+.fixlist li > span:nth-child(2) { flex: 1; }
+.fixlist__why { color: var(--muted); }
+.fixlist__num {
+  flex: none; width: 20px; height: 20px; border-radius: 50%;
+  background: #eef2ff; color: #4338ca; font-size: 11px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; margin-top: 1px;
+}
+.fixlist a { color: var(--accent); font-weight: 600; white-space: nowrap; }
 /* The previous run's time while the new one is still working: the numbers beside
    it are that run's, and presenting them as current would be a small lie. */
 .runstale { color: var(--muted); }
