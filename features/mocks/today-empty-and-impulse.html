@@ -1,0 +1,644 @@
+<style>
+  /* Mockup: the Today page when a client filter is on and the day is empty, plus
+     an Impulse column that always says something.
+
+     Two live problems it answers:
+
+     1. With IB-7 selected, the empty state reads "40 Artikel in den letzten 10
+        Tagen — im Archiv ansehen". Those 40 are Zalando's: the count ignores the
+        client filter, and the link drops it too. The hint sends the reader to a
+        page about someone else.
+     2. The Impulse column shows "Kein Anlass heute." and nothing else, on a page
+        whose whole point is to have something to act on. A draft is generated only
+        from material that arrived *today*, so a quiet morning empties the column
+        even when the week held something worth sending.
+
+     Palette and type scale are the locked today-triage mock's. */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1a1d24; --muted: #6b7280;
+    --line: #e6e8ec; --accent: #4f46e5; --alert: #dc2626; --alertbg: #fef2f2;
+    --cc-deep: #14523c; --cc-mid: #22815f;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.45; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1520px; margin: 0 auto; padding: 28px 20px 60px; }
+  header.top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .brand { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .brand span { color: var(--accent); }
+  .datemeta { color: var(--muted); font-size: 13px; text-align: right; }
+  .runok { color: #16a34a; font-weight: 600; }
+  nav.tabs { display: flex; gap: 4px; margin: 18px 0 22px; border-bottom: 1px solid var(--line); }
+  nav.tabs a { padding: 9px 14px; font-size: 14px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+  nav.tabs a.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+
+  .clientfilter { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .cfcard { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--card);
+            border: 1px solid var(--line); border-radius: 999px; font-size: 13.5px; text-decoration: none; color: var(--ink); }
+  .cfcard--on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .cflogo { width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center;
+            justify-content: center; font-size: 10px; font-weight: 700; color: #fff; background: #2f6f4f; }
+  .cfn { font-size: 11px; background: #eef0f3; color: #374151; padding: 1px 7px; border-radius: 20px; }
+
+  .cols { display: grid; grid-template-columns: 300px minmax(0, 1fr) 380px; gap: 22px; align-items: start; }
+  .colhead { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
+             margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .colhead .n { font-size: 11px; background: #eef0f3; color: #374151; padding: 2px 8px; border-radius: 20px; }
+  .alertcol .colhead { color: var(--alert); }
+  .alertcol .colhead .n { background: #fee2e2; color: #b91c1c; }
+  .anglecol .colhead { color: var(--accent); }
+  .anglecol .colhead .n { background: #eef2ff; color: #4338ca; }
+  .rail__empty { font-size: 13px; color: var(--muted); font-style: italic; }
+
+  /* --- The empty state, rebuilt ------------------------------------------- */
+  .empty-state {
+    background: var(--card); border: 1px dashed var(--line); border-radius: 10px;
+    padding: 26px 24px; text-align: center;
+  }
+  .empty-state__lead { font-size: 14.5px; margin-bottom: 6px; }
+  .empty-state__lead strong { font-weight: 600; }
+  .empty-state-hint { font-size: 13px; color: var(--muted); }
+  .empty-state-hint a { color: var(--accent); font-weight: 600; }
+
+  /* The "this mandate has nothing at all" variant: not a dead end but a
+     checklist, because that state is nearly always a configuration problem. */
+  .empty-state--setup { text-align: left; max-width: 640px; margin: 0 auto; }
+  .empty-state--setup .empty-state__lead { text-align: center; }
+  .fixlist { list-style: none; margin: 16px 0 0; }
+  .fixlist li { display: flex; gap: 10px; padding: 11px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .fixlist .why { color: var(--muted); }
+  .fixlist .num { flex: none; width: 20px; height: 20px; border-radius: 50%; background: #eef2ff;
+                  color: #4338ca; font-size: 11px; font-weight: 700; display: inline-flex;
+                  align-items: center; justify-content: center; margin-top: 1px; }
+  .fixlist a { color: var(--accent); font-weight: 600; white-space: nowrap; }
+
+  /* --- Impulse column ------------------------------------------------------ */
+  .impulse { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+             border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .impulse__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .clichip { font-size: 11.5px; font-weight: 600; background: #eef0f3; color: #374151; padding: 2px 9px; border-radius: 20px; }
+  .impulse__copy { font-size: 12px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 6px;
+                   background: var(--bg); color: var(--muted); cursor: pointer; }
+  /* NEW: every draft says how old it is. Without this, a card from Monday looks
+     like this morning's work — the reason the column can be allowed to keep one. */
+  .impulse__age { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+  .impulse__age--today { color: #16a34a; font-weight: 600; }
+  .impulse__subject { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+  .impulse__text { font-size: 14px; line-height: 1.6; margin-bottom: 10px; white-space: pre-wrap; }
+  .impulse__label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700;
+                    color: var(--muted); margin-right: 4px; }
+  .impulse__thesis { font-size: 13px; padding: 6px 8px; border-radius: 6px; background: #f5f3ff; margin-bottom: 6px; }
+  .impulse__overclaim { font-size: 13px; padding: 6px 8px; border-radius: 6px; background: #fafafa; color: var(--muted); }
+  .impulse__overclaim .impulse__label { color: #b91c1c; }
+  .impulse__more { margin-top: 8px; font-size: 12px; color: var(--muted); }
+
+  /* NEW: the honest empty card. It reports what the radar did, which is the
+     difference between "nothing happened" and "nothing is configured". */
+  .impulse--quiet { border-left-color: var(--line); }
+  .impulse--quiet .impulse__lead { font-size: 13.5px; margin-bottom: 6px; }
+  .impulse--quiet .impulse__why { font-size: 12.5px; color: var(--muted); }
+  .impulse__act { margin-top: 10px; font-size: 12.5px; }
+  .impulse__act button { font: inherit; font-size: 12.5px; padding: 5px 12px; border: 1px solid var(--line);
+                         border-radius: 6px; background: var(--bg); color: var(--ink); cursor: pointer; }
+
+  /* --- Mock scaffolding (not part of the app) ------------------------------ */
+  .note { max-width: 1520px; margin: 0 auto 10px; padding: 0 20px; }
+  .note h2 { font-size: 15px; margin-top: 34px; margin-bottom: 4px; }
+  .note p { font-size: 13px; color: var(--muted); max-width: 780px; }
+  .note code { background: #eef0f3; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .variants { max-width: 1520px; margin: 0 auto; padding: 0 20px; display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
+  .variant { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .variant h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted);
+                margin-bottom: 12px; font-weight: 700; }
+  .bad { border-left: 3px solid var(--alert); }
+  .bad h3 { color: var(--alert); }
+</style>
+
+<div class="note">
+  <h2 style="margin-top:0">Szenario: Mandantenfilter auf IB-7, Tag ohne Berichterstattung</h2>
+  <p>
+    Derselbe Zustand wie im Live-Dashboard — nur sagt die Seite jetzt etwas, das für
+    <em>diesen</em> Mandanten stimmt, und die Impuls-Spalte ist nicht leer.
+  </p>
+</div>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">News<span>Pulse</span></div>
+    <div class="datemeta">
+      Donnerstag, 30. Juli 2026<br>
+      Letzter Lauf 10:00 Uhr · <span class="runok">Feeds ok</span> · 1 Artikel geprüft
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <a href="#" class="active">Heute</a><a href="#">Mandanten</a><a href="#">Archiv</a><a href="#">Einstellungen</a>
+  </nav>
+
+  <div class="clientfilter">
+    <a class="cfcard" href="#"><span>Alle</span> <span class="cfn">1</span></a>
+    <a class="cfcard cfcard--on" href="#"><span class="cflogo">I7</span> IB-7 Beauty Tech GmbH</a>
+    <a class="cfcard" href="#"><span class="cflogo" style="background:#e04a1f">▶</span> Zalando <span class="cfn">1</span></a>
+  </div>
+
+  <div class="cols">
+    <aside class="alertcol">
+      <div class="colhead">Warnungen <span class="n">0</span></div>
+      <p class="rail__empty">Keine Warnungen heute.</p>
+    </aside>
+
+    <main>
+      <div class="colhead">Gesamter Tag <span class="n">0</span></div>
+
+      <!-- Zustand B: dieser Mandant hat überhaupt nichts im Archiv. Der bisherige
+           Text ("40 Artikel in den letzten 10 Tagen") gehörte Zalando. -->
+      <div class="empty-state empty-state--setup">
+        <p class="empty-state__lead">
+          Für <strong>IB-7 Beauty Tech GmbH</strong> ist noch keine Berichterstattung erfasst.
+        </p>
+        <p class="empty-state-hint" style="text-align:center">
+          Nicht heute, und auch nicht in den letzten 10 Tagen. Das ist fast immer eine
+          Frage der Einrichtung, nicht der Nachrichtenlage:
+        </p>
+        <ul class="fixlist">
+          <li>
+            <span class="num">1</span>
+            <span>
+              <strong>Aliasse prüfen.</strong>
+              <span class="why">Die Presse schreibt „IB-7", nicht den Registernamen —
+              ohne Alias verwirft der Abgleich jede Meldung.</span>
+            </span>
+            <a href="#">Mandant bearbeiten →</a>
+          </li>
+          <li>
+            <span class="num">2</span>
+            <span>
+              <strong>90 Tage nachladen.</strong>
+              <span class="why">Der tägliche Lauf holt nur Neues. Die Erstberichterstattung
+              eines Mandanten liegt meist Wochen zurück.</span>
+            </span>
+            <a href="#">Einstellungen →</a>
+          </li>
+        </ul>
+      </div>
+    </main>
+
+    <aside class="anglecol">
+      <div class="colhead">Impulse <span class="n">1</span></div>
+
+      <!-- NEU: der jüngste Impuls der letzten 7 Tage bleibt stehen, mit Altersangabe.
+           Ein Anlass verfällt nicht um Mitternacht. -->
+      <article class="impulse">
+        <div class="impulse__head">
+          <span class="clichip">IB-7 Beauty Tech GmbH</span>
+          <button class="impulse__copy">Kopieren</button>
+        </div>
+        <div class="impulse__age">aus dem Radar vom <strong>28.07.</strong> · vor 2 Tagen</div>
+        <div class="impulse__subject">KI-Rezepturen: die Prüfbarkeit wird zum Unterschied</div>
+        <div class="impulse__text">Mehrere Hersteller kündigen derzeit KI-entwickelte Pflegeprodukte an. Für den Markt ist die interessante Frage nicht, ob ein Algorithmus eine Rezeptur vorschlagen kann — sondern woran Verbraucher und Handel erkennen sollen, welche Wirkung tatsächlich belegt ist.
+
+Wer KI in der Entwicklung einsetzt, sollte deshalb offenlegen, was das Modell entschieden hat und was die Klinik geprüft hat. Der Nachweis wird das Unterscheidungsmerkmal, nicht die Technologie selbst.</div>
+        <div class="impulse__thesis"><span class="impulse__label">These</span> KI verschiebt den Wettbewerb von der Rezeptur zur Nachweisführung.</div>
+        <div class="impulse__overclaim"><span class="impulse__label">Nicht die These</span> KI ersetzt die Kosmetikentwicklung.</div>
+        <div class="impulse__more">▸ Grundlage · 3 Meldungen</div>
+      </article>
+    </aside>
+  </div>
+</div>
+
+<div class="note">
+  <h2>Die übrigen Zustände</h2>
+  <p>
+    Vier Fälle, die heute alle denselben Satz bekommen. Der Unterschied zwischen
+    „ruhiger Tag" und „hier ist etwas nicht eingerichtet" ist genau der, den der
+    Leser braucht.
+  </p>
+</div>
+
+<div class="variants">
+  <div class="variant bad">
+    <h3>Heute · falsch</h3>
+    <div class="empty-state">
+      <p class="empty-state__lead">Keine Berichterstattung für 30.07.2026.</p>
+      <p class="empty-state-hint">40 Artikel in den letzten 10 Tagen — <a href="#">im Archiv ansehen</a></p>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin-top:10px">
+      Filter steht auf IB-7, gezählt wird das ganze Portfolio. Die 40 Artikel sind
+      Zalandos, und der Link führt in ein ungefiltertes Archiv.
+    </p>
+  </div>
+
+  <div class="variant">
+    <h3>A · Mandant gewählt, hat Archiv</h3>
+    <div class="empty-state">
+      <p class="empty-state__lead">Keine Berichterstattung für <strong>Zalando</strong> am 30.07.2026.</p>
+      <p class="empty-state-hint">41 Artikel für Zalando in den letzten 10 Tagen — <a href="#">im Archiv ansehen</a></p>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin-top:10px">
+      Zähler und Link tragen den Filter: <code>/archive?client=1</code>.
+    </p>
+  </div>
+
+  <div class="variant">
+    <h3>C · Kein Filter, Portfolio hat Archiv</h3>
+    <div class="empty-state">
+      <p class="empty-state__lead">Keine Berichterstattung für 30.07.2026.</p>
+      <p class="empty-state-hint">40 Artikel in den letzten 10 Tagen — <a href="#">im Archiv ansehen</a></p>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin-top:10px">
+      Unverändert. Ohne Filter ist die Portfolio-Zahl die richtige.
+    </p>
+  </div>
+
+  <div class="variant">
+    <h3>D · Nichts, nirgends</h3>
+    <div class="empty-state">
+      <p class="empty-state__lead">Noch keine Berichterstattung erfasst.</p>
+      <p class="empty-state-hint">Mandanten anlegen und einen Lauf mit Nachlauf starten: <a href="#">Einstellungen</a></p>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin-top:10px">
+      Unverändert.
+    </p>
+  </div>
+</div>
+
+<div class="note">
+  <h2>Impulse: was steht da, wenn kein Entwurf existiert</h2>
+  <p>
+    „Immer etwas anzeigen" heißt nicht „immer einen Entwurf erfinden". Es heißt: die
+    Spalte sagt, was das Radar in den letzten 7 Tagen gesehen hat — und wenn nichts
+    davon trug, sagt sie das mitsamt dem Grund.
+  </p>
+</div>
+
+<div class="variants">
+  <div class="variant">
+    <h3>1 · Entwurf, heute erzeugt</h3>
+    <article class="impulse">
+      <div class="impulse__head"><span class="clichip">Zalando</span><button class="impulse__copy">Kopieren</button></div>
+      <div class="impulse__age impulse__age--today">aus dem Radar von heute · 07:10 Uhr</div>
+      <div class="impulse__subject">Retourenquoten: die Debatte dreht sich</div>
+      <div class="impulse__text">…</div>
+    </article>
+  </div>
+
+  <div class="variant">
+    <h3>2 · Radar lief, kein Anlass</h3>
+    <article class="impulse impulse--quiet">
+      <div class="impulse__head"><span class="clichip">IB-7 Beauty Tech GmbH</span></div>
+      <p class="impulse__lead">Kein Anlass in den letzten 7 Tagen.</p>
+      <p class="impulse__why">
+        Das Radar hat 12 Marktmeldungen gesichtet — keine davon berührt den Kern
+        des Mandanten stark genug für eine Positionierung.
+      </p>
+      <p class="impulse__act"><button>Trotzdem einen Entwurf erzeugen</button></p>
+    </article>
+    <p style="font-size:12.5px;color:var(--muted);margin-top:10px">
+      Die Zahl ist der Beleg, dass gearbeitet wurde. „Kein Anlass" ohne sie liest
+      sich wie ein Ausfall.
+    </p>
+  </div>
+
+  <div class="variant">
+    <h3>3 · Kein Radar möglich</h3>
+    <article class="impulse impulse--quiet">
+      <div class="impulse__head"><span class="clichip">Muster GmbH</span></div>
+      <p class="impulse__lead">Kein Themen-Radar für diesen Mandanten.</p>
+      <p class="impulse__why">
+        Ohne hinterlegte Themen lässt sich nicht sagen, welche Marktmeldung ihn
+        angeht. Zwei bis drei Begriffe genügen.
+      </p>
+      <p class="impulse__act"><a href="#" style="color:var(--accent);font-weight:600">Themen hinterlegen →</a></p>
+    </article>
+  </div>
+
+  <div class="variant">
+    <h3>4 · Mehrere Mandanten, ungefiltert</h3>
+    <article class="impulse">
+      <div class="impulse__head"><span class="clichip">Zalando</span><button class="impulse__copy">Kopieren</button></div>
+      <div class="impulse__age impulse__age--today">heute</div>
+      <div class="impulse__subject">Retourenquoten: die Debatte dreht sich</div>
+    </article>
+    <article class="impulse">
+      <div class="impulse__head"><span class="clichip">IB-7 Beauty Tech GmbH</span><button class="impulse__copy">Kopieren</button></div>
+      <div class="impulse__age">vom 28.07. · vor 2 Tagen</div>
+      <div class="impulse__subject">KI-Rezepturen: die Prüfbarkeit wird zum Unterschied</div>
+    </article>
+    <p style="font-size:12.5px;color:var(--muted);margin-top:10px">
+      Höchstens ein Entwurf je Mandant, neuester zuerst. Ältere bleiben auf der
+      Mandantenseite erreichbar, statt die Spalte volllaufen zu lassen.
+    </p>
+  </div>
+</div>
+
+<div class="note">
+  <h2>Kommunikations-Guide je Mandant</h2>
+  <p>
+    Keywords sagen, <em>worüber</em> berichtet wird. Sie sagen nichts darüber, was
+    dieser Mandant sagen will, was er nie sagt, und in welchem Ton. Genau das
+    fehlt jedem erzeugten Text — dem Impuls, den Empfehlungen, Captain Comms —
+    und wird heute in jedem Prompt neu erraten.
+  </p>
+  <p>
+    Zwei Wege hinein, ein Ergebnis: <strong>Dokumente hochladen</strong> (Markenleitfaden,
+    Messaging House, Sprachregelung) oder <strong>selbst schreiben</strong>. Hochgeladenes
+    wird einmal destilliert und <em>vorgeschlagen</em>, nie direkt übernommen — dieselbe
+    Vorschau-vor-Schreiben-Regel wie beim Mandanten-Import.
+  </p>
+</div>
+
+<div class="wrap" style="padding-top:0;padding-bottom:0">
+  <div class="strategy" style="margin-bottom:18px">
+    <div class="strategy__head">
+      <span class="cflogo" style="background:#2f6f4f">I7</span>
+      <div>
+        <div class="strategy__name">IB-7 Beauty Tech GmbH</div>
+        <div class="strategy__tabs">Übersicht · Empfehlungen · <strong>Kommunikations-Guide</strong> · Coverage Map</div>
+      </div>
+    </div>
+
+    <div class="guidecols">
+      <div>
+        <label class="glabel">Quellen</label>
+        <ul class="srcs">
+          <li>
+            <span class="srcs__ico">PDF</span>
+            <span class="srcs__name">Markenleitfaden_2026.pdf<span class="srcs__meta">18 Seiten · 12.400 Wörter · 28.07.</span></span>
+            <a href="#">neu auswerten</a>
+          </li>
+          <li>
+            <span class="srcs__ico">DOCX</span>
+            <span class="srcs__name">Sprachregelung_KI.docx<span class="srcs__meta">3 Seiten · 900 Wörter · 28.07.</span></span>
+            <a href="#">neu auswerten</a>
+          </li>
+        </ul>
+        <div class="drop">
+          <strong>Dokument hierher ziehen</strong>
+          <span>PDF, DOCX, TXT oder Markdown · höchstens 10 MB</span>
+        </div>
+        <p class="shelp">
+          Gespeichert wird der extrahierte Text, nicht die Datei. Ein gescanntes PDF
+          ohne Textebene wird abgelehnt statt still zu einem leeren Guide zu führen.
+        </p>
+      </div>
+
+      <div>
+        <label class="glabel">
+          Guide
+          <span class="budget">1.240 / 2.000 Zeichen</span>
+        </label>
+        <div class="sinput" style="min-height:120px">Wir machen Wirksamkeit nachweisbar. KI ist bei uns Mittel zur
+Rezepturentwicklung, nicht das Verkaufsargument — belegt durch klinische Prüfung.
+
+<strong>Kernbotschaften:</strong> Nachweis vor Neuheit · Transparenz bei Inhaltsstoffen ·
+Regulierung als Qualitätsfilter, nicht als Bremse
+
+<strong>Nie:</strong> Heilversprechen · namentliche Wettbewerbervergleiche · „revolutionär"</div>
+        <p class="shelp">
+          Frei editierbar — das Destillat ist ein Vorschlag, kein Ergebnis. Das
+          Zeichenbudget ist hart: dieser Text geht in <em>jeden</em> Aufruf, jeden Tag,
+          für jeden Mandanten.
+        </p>
+        <p class="shelp" style="margin-top:8px">
+          Wirkt auf: <span class="uses">Impulse</span> <span class="uses">Empfehlungen</span>
+          <span class="uses">Captain Comms</span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Der Vorschau-Schritt: was aus dem Dokument würde, bevor irgendetwas gespeichert ist. -->
+  <div class="strategy" style="margin-bottom:18px">
+    <div class="glabel" style="margin-bottom:12px">
+      Vorschlag aus <em>Markenleitfaden_2026.pdf</em> — nichts davon ist gespeichert
+    </div>
+    <ul class="proposal">
+      <li>
+        <span class="prop__tag prop__tag--new">neu</span>
+        <div>
+          <strong>Tonalität: fachlich-erklärend</strong>
+          <p>Abgeleitet aus „Wir erklären, wir bewerben nicht" (S. 4).</p>
+        </div>
+        <span class="prop__acts"><button class="prop__yes">Übernehmen</button><button>Verwerfen</button></span>
+      </li>
+      <li>
+        <span class="prop__tag prop__tag--conflict">Konflikt</span>
+        <div>
+          <strong>No-Go: „klinisch getestet" ohne Studienangabe</strong>
+          <p>Steht im Leitfaden (S. 11) und widerspricht der bisherigen Zeile
+          „klinisch geprüft" im Guide. Beide behalten geht nicht.</p>
+        </div>
+        <span class="prop__acts"><button class="prop__yes">Übernehmen</button><button>Verwerfen</button></span>
+      </li>
+      <li>
+        <span class="prop__tag">unverändert</span>
+        <div>
+          <strong>Positionierung</strong>
+          <p>Der Leitfaden sagt dasselbe wie der bestehende Guide. Kein Vorschlag.</p>
+        </div>
+        <span class="prop__acts"></span>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<div class="note">
+  <h2>Was daraus im Prompt landet</h2>
+  <p>
+    Nicht die Dokumente — das Destillat. Ein 18-Seiten-Leitfaden in jedem täglichen
+    Aufruf wäre pro Mandant und Tag ein Vielfaches der Analysekosten, ohne bessere
+    Entwürfe. Die No-Gos gehen dabei nicht als Kontext hinein, sondern als Verbot.
+  </p>
+</div>
+
+<div class="wrap" style="padding-top:0">
+  <div class="strategy">
+    <div class="strategy__head">
+      <span class="cflogo" style="background:#2f6f4f">I7</span>
+      <div>
+        <div class="strategy__name">IB-7 Beauty Tech GmbH</div>
+        <div class="strategy__tabs">Übersicht · Empfehlungen · <strong>Strategie</strong> · Coverage Map</div>
+      </div>
+    </div>
+
+    <div class="sgrid">
+      <div class="sfield">
+        <label>Positionierung <span class="sreq">wichtigstes Feld</span></label>
+        <div class="sinput">Wir machen Wirksamkeit nachweisbar. KI ist bei uns Mittel zur
+          Rezepturentwicklung, nicht das Verkaufsargument — belegt durch klinische Prüfung.</div>
+        <p class="shelp">Ein bis zwei Sätze. Woran soll der Leser diesen Mandanten erkennen?</p>
+      </div>
+
+      <div class="sfield">
+        <label>Kernbotschaften <span class="scount">3</span></label>
+        <ul class="schips">
+          <li>Nachweis vor Neuheit</li>
+          <li>Transparenz bei Inhaltsstoffen</li>
+          <li>Regulierung als Qualitätsfilter, nicht als Bremse</li>
+          <li class="schips__add">+ hinzufügen</li>
+        </ul>
+        <p class="shelp">Was in jedem Text vorkommen darf. Höchstens fünf — mehr sind keine Kernbotschaften.</p>
+      </div>
+
+      <div class="sfield">
+        <label>No-Gos</label>
+        <ul class="schips schips--no">
+          <li>Heilversprechen</li>
+          <li>Vergleiche mit namentlichen Wettbewerbern</li>
+          <li>„revolutionär", „einzigartig"</li>
+          <li class="schips__add">+ hinzufügen</li>
+        </ul>
+        <p class="shelp">Was nie gesagt wird. Geht direkt in jeden Entwurf als Verbot.</p>
+      </div>
+
+      <div class="sfield">
+        <label>Tonalität</label>
+        <div class="stone">
+          <span class="stone__opt">nüchtern</span>
+          <span class="stone__opt stone__opt--on">fachlich-erklärend</span>
+          <span class="stone__opt">zugespitzt</span>
+          <span class="stone__opt">kämpferisch</span>
+        </div>
+        <p class="shelp">Bestimmt die Schreibweise der Entwürfe, nicht ihren Inhalt.</p>
+      </div>
+
+      <div class="sfield">
+        <label>Zielpublikum</label>
+        <div class="sinput sinput--short">Fachhandel, Kosmetikjournalismus, Investoren im Beauty-Tech-Umfeld</div>
+      </div>
+
+      <div class="sfield">
+        <label>Sprecher &amp; Zitatgeber</label>
+        <div class="sinput sinput--short">Dr. A. Berg (Forschung) für alles Wissenschaftliche · Geschäftsführung für Markt und Finanzierung</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Der Coach: keine zweite Chatbox, sondern eine Prüfung dieses Profils an der
+       tatsächlichen Berichterstattung. Er sagt, wo Anspruch und Realität auseinanderlaufen. -->
+  <div class="coach">
+    <div class="coach__head">
+      <span class="coach__badge">C</span>
+      <div>
+        <div class="coach__title">Strategie-Coach</div>
+        <div class="coach__sub">Prüft das Profil gegen 30 Tage Berichterstattung · zuletzt heute 10:04</div>
+      </div>
+      <button class="coach__run">Neu prüfen</button>
+    </div>
+
+    <ul class="coachlist">
+      <li class="ci ci--gap">
+        <span class="ci__tag">Lücke</span>
+        <div>
+          <strong>„Nachweis vor Neuheit" kommt in der Berichterstattung nicht vor.</strong>
+          <p>In 14 von 16 Meldungen wird der Mandant über die KI beschrieben, nicht über die
+          klinische Prüfung. Die Kernbotschaft steht im Profil, aber nicht im Markt.</p>
+          <p class="ci__act">→ Vorschlag: ein Fachbeitrag zur Prüfmethodik statt der nächsten Produktmeldung.</p>
+        </div>
+      </li>
+      <li class="ci ci--risk">
+        <span class="ci__tag">Konflikt</span>
+        <div>
+          <strong>Zwei Zitate nähern sich einem No-Go.</strong>
+          <p>„Wirkt nachweislich gegen Hautalterung" (cash.at, 12.05.) liegt nah an einem
+          Heilversprechen — und damit an der Grenze der EU-Kosmetikverordnung.</p>
+          <p class="ci__act">→ Sprachregelung schärfen, bevor die nächste Anfrage kommt.</p>
+        </div>
+      </li>
+      <li class="ci ci--ok">
+        <span class="ci__tag">Trägt</span>
+        <div>
+          <strong>Tonalität passt zur Resonanz.</strong>
+          <p>Die fachlich-erklärenden Passagen wurden dreimal wörtlich übernommen,
+          die werblichen kein einziges Mal.</p>
+        </div>
+      </li>
+    </ul>
+
+    <p class="coach__foot">
+      Beratend, nicht ausführend — wie alles hier. Der Coach ändert nichts am Profil,
+      er sagt nur, woran er sich stößt.
+    </p>
+  </div>
+</div>
+
+<style>
+  /* --- Strategie-Profil ---------------------------------------------------- */
+  .strategy { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; margin-bottom: 18px; }
+  .strategy__head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .strategy__name { font-size: 17px; font-weight: 700; }
+  .strategy__tabs { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .sgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px 26px; }
+  .sfield label { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em;
+                  font-weight: 700; color: var(--muted); margin-bottom: 7px; }
+  .sreq { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--accent); margin-left: 6px; }
+  .scount { text-transform: none; background: #eef0f3; color: #374151; padding: 1px 7px; border-radius: 20px; margin-left: 6px; }
+  .sinput { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13.5px;
+            background: var(--bg); line-height: 1.5; }
+  .sinput--short { padding: 8px 12px; }
+  .shelp { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .schips { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+  .schips li { font-size: 12.5px; background: #eef2ff; color: #3730a3; padding: 4px 11px; border-radius: 999px; }
+  .schips--no li { background: var(--alertbg); color: #b91c1c; }
+  .schips__add, .schips--no .schips__add { background: transparent; color: var(--muted); border: 1px dashed var(--line); }
+  .stone { display: flex; gap: 6px; flex-wrap: wrap; }
+  .stone__opt { font-size: 12.5px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
+  .stone__opt--on { border-color: var(--accent); color: var(--accent); font-weight: 600; background: #eef2ff; }
+
+  /* --- Kommunikations-Guide: Quellen, Budget, Vorschau --------------------- */
+  .guidecols { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 26px; align-items: start; }
+  @media (max-width: 900px) { .guidecols { grid-template-columns: 1fr; } }
+  .glabel { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em;
+            font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+  .budget { float: right; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--accent); }
+  .srcs { list-style: none; margin-bottom: 12px; }
+  .srcs li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .srcs__ico { flex: none; font-size: 10px; font-weight: 700; color: #fff; background: #64748b;
+               padding: 3px 6px; border-radius: 4px; }
+  .srcs__name { flex: 1; display: flex; flex-direction: column; }
+  .srcs__meta { font-size: 11.5px; color: var(--muted); }
+  .srcs a { font-size: 12.5px; color: var(--accent); font-weight: 600; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 20px; text-align: center;
+          display: flex; flex-direction: column; gap: 4px; background: var(--bg); }
+  .drop strong { font-size: 13.5px; }
+  .drop span { font-size: 12px; color: var(--muted); }
+  .uses { font-size: 11.5px; background: #eef2ff; color: #3730a3; padding: 2px 9px; border-radius: 999px; margin-right: 4px; }
+
+  .proposal { list-style: none; }
+  .proposal li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0;
+                 border-top: 1px solid var(--line); font-size: 13px; }
+  .proposal p { color: var(--muted); margin-top: 3px; }
+  .prop__tag { flex: none; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+               padding: 3px 9px; border-radius: 20px; background: #eef0f3; color: #374151; }
+  .prop__tag--new { background: #dcfce7; color: #15803d; }
+  .prop__tag--conflict { background: #fee2e2; color: #b91c1c; }
+  .proposal > li > div { flex: 1; }
+  .prop__acts { flex: none; display: flex; gap: 6px; }
+  .prop__acts button { font: inherit; font-size: 12px; padding: 4px 11px; border: 1px solid var(--line);
+                       border-radius: 6px; background: var(--bg); cursor: pointer; }
+  .prop__yes { border-color: var(--accent) !important; color: var(--accent); font-weight: 600; }
+
+  /* --- Coach --------------------------------------------------------------- */
+  .coach { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--cc-mid);
+           border-radius: 10px; padding: 18px 22px; }
+  .coach__head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .coach__badge { width: 28px; height: 28px; border-radius: 8px; background: var(--cc-deep); color: #fff;
+                  display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
+  .coach__title { font-size: 15px; font-weight: 700; }
+  .coach__sub { font-size: 12px; color: var(--muted); }
+  .coach__run { margin-left: auto; font: inherit; font-size: 12.5px; padding: 6px 14px; border: 1px solid var(--line);
+                border-radius: 6px; background: var(--bg); cursor: pointer; }
+  .coachlist { list-style: none; }
+  .ci { display: flex; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .ci p { color: var(--muted); margin-top: 3px; }
+  .ci__act { color: var(--ink) !important; margin-top: 6px; font-weight: 500; }
+  .ci__tag { flex: none; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+             padding: 3px 9px; border-radius: 20px; height: fit-content; }
+  .ci--gap .ci__tag { background: #fef3c7; color: #92400e; }
+  .ci--risk .ci__tag { background: #fee2e2; color: #b91c1c; }
+  .ci--ok .ci__tag { background: #dcfce7; color: #15803d; }
+  .coach__foot { font-size: 12px; color: var(--muted); margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+</style>
