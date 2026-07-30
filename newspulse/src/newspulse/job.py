@@ -885,4 +885,94 @@ def _run_real(
     )
 
 
-__all__ = ["RunReport", "lookback_since", "run", "setup_logging"]
+# --- Onboarding: the first fill for a newly added client -----------------------
+
+# How much coverage a new mandate arrives with. A cap on *articles*, not on days,
+# because that is what bounds the cost: every one of them goes through the
+# analyzer in batches. Thirty is roughly three batch calls — a few minutes and a
+# small slice of the subscription — and enough that the mandate's page is not
+# empty on the day it is created, which was the complaint that started this.
+ONBOARDING_ARTICLES = 30
+
+# How far back the onboarding fetch is willing to look. Generous, because the cap
+# above is the real limit: a search feed reaching six months back simply yields
+# its newest thirty, and a mandate whose coverage is older than this was not
+# being written about anyway.
+_ONBOARDING_LOOKBACK = dt.timedelta(days=180)
+
+
+def backfill_client(
+    session: Session,
+    client: Client,
+    *,
+    limit: int = ONBOARDING_ARTICLES,
+    analyzer: Analyzer | None = None,
+    fetch: FetchFeed = fetch_feed,
+    now: Callable[[], dt.datetime] | None = None,
+) -> int:
+    """Fetch and analyse the newest ``limit`` articles about one client.
+
+    Runs when a mandate is created, so its page has coverage from the first
+    minute. Deliberately narrow: only that client's own search feed (its name and
+    aliases), only that client matched, only that client analysed. The registry
+    feeds are portfolio-wide and re-fetching six months of them to onboard one
+    company would be a sweep, not an onboarding.
+
+    **No ``runs`` row is written**, and that is load-bearing rather than an
+    omission. ``_determine_since`` takes the last successful run's start as the
+    watermark for the next sweep, so recording this narrow, single-client fetch as
+    a run would tell the next daily sweep that everything up to now had already
+    been covered — and the rest of the portfolio would silently lose a day.
+
+    Returns the number of articles stored. Raises nothing on a dead feed: the
+    fetch is fault-isolated per feed like the sweep's.
+    """
+    now_fn = now or _utcnow
+    started = now_fn()
+    errors: list[str] = []
+
+    feeds = gnews.client_feeds([client])
+    if not feeds:
+        _log.info("no search feed for %r (no usable name); nothing to onboard", client.name)
+        return 0
+
+    items, _ok = _fetch_all(feeds, started - _ONBOARDING_LOOKBACK, fetch, started, errors)
+    candidates = _match(items, [client], errors)
+    known_urls, known_hashes = _load_known(session)
+    kept = deduplicate(
+        _distinct_items(candidates),
+        known_urls=known_urls,
+        known_title_hashes=known_hashes,
+    )
+    # Newest first, then capped: "the last 30 articles" is a recency promise, and
+    # taking whichever thirty the feed happened to list would break it. The
+    # fallback keeps the sort from crashing on an item that somehow has no date;
+    # such an item sorts last rather than taking a slot from a dated one.
+    oldest = dt.datetime.min.replace(tzinfo=dt.UTC)
+    kept.sort(key=lambda item: item.published_at or oldest, reverse=True)
+    kept = kept[:limit]
+    if not kept:
+        _log.info("nothing new to onboard for %r", client.name)
+        return 0
+
+    articles = _persist_articles(session, kept, started)
+    resolved_analyzer = analyzer or get_analyzer()
+    analysed = _analyze_and_persist(session, client, articles, resolved_analyzer, errors)
+    _log.info(
+        "onboarded %r: %d article(s) stored, %d analysed, %d error(s)",
+        client.name,
+        len(articles),
+        analysed,
+        len(errors),
+    )
+    return len(articles)
+
+
+__all__ = [
+    "ONBOARDING_ARTICLES",
+    "RunReport",
+    "backfill_client",
+    "lookback_since",
+    "run",
+    "setup_logging",
+]

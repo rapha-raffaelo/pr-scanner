@@ -108,6 +108,42 @@ BACKFILL_DAYS = (10, 15, 30, 90)
 _run_guard = runlock.guard
 
 
+def _onboard(client_id: int, name: str) -> None:
+    """Fetch a newly created client's recent coverage on a worker thread.
+
+    Waits for the guard rather than giving up on it: a mandate created while the
+    daily sweep is running should still arrive with coverage, just a few minutes
+    later. Blocking is safe here — this is a daemon thread, and the only thing
+    waiting on it is the archive filling in.
+    """
+    with runlock.guard:
+        try:
+            with get_session() as session:
+                client = session.get(Client, client_id)
+                if client is None:  # deleted between creation and this thread
+                    return
+                stored = job.backfill_client(session, client)
+                _log.info("onboarding fetch for %r stored %d article(s)", name, stored)
+        except Exception:  # noqa: BLE001 — a worker thread must never die silently
+            _log.exception("onboarding fetch for %r failed", name)
+
+
+def _start_onboarding(client_id: int, name: str) -> None:
+    """Kick off the onboarding fetch without holding up the form response.
+
+    A new mandate is empty until something is fetched for it, and fetching plus
+    analysing takes minutes — far too long to leave a form submission hanging. The
+    header's spinner covers the wait, because this holds the same guard a sweep
+    does.
+    """
+    threading.Thread(
+        target=_onboard,
+        args=(client_id, name),
+        daemon=True,
+        name=f"newspulse-onboard-{client_id}",
+    ).start()
+
+
 def _execute_run(since_days: int | None) -> None:
     """Run one sweep on a worker thread; always release the guard.
 
@@ -671,6 +707,7 @@ def add_client_route(
             # immediately, and the monogram covers the case where it fails.
             created.logo_url = fetch_logo(site)
             session.commit()
+        _start_onboarding(created.id, created.name)
     except ValueError as exc:
         return _render_settings(request, session, client_error=str(exc))
     return RedirectResponse("/settings", status_code=_SEE_OTHER)
