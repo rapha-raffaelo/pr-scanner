@@ -720,19 +720,105 @@ def test_only_the_sendable_text_sits_in_the_copy_target(factory, client):
     assert f'data-copy-from="impulse-text-{angle.id}"' in body
 
 
-def test_a_draft_from_another_day_is_not_shown(factory, client):
-    """The page is a day. Yesterday's draft is not today's work."""
+def test_a_draft_from_earlier_in_the_week_still_stands(factory, client):
+    """An opening does not expire at midnight, and the column said it did.
+
+    Bound to the day it was generated, the rail emptied itself every night and hid
+    a draft that was still perfectly usable.
+    """
     with factory() as session:
         _seed_angle(
             session,
-            generated_at=_noon_utc(_TEST_DAY - dt.timedelta(days=1)),
-            subject="GESTERN",
+            generated_at=_noon_utc(_TEST_DAY - dt.timedelta(days=2)),
+            subject="VORGESTERN",
         )
 
     body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
 
-    assert "GESTERN" not in body
-    assert "Kein Anlass heute." in body
+    assert "VORGESTERN" in body
+    # And it says how old it is, or it reads as this morning's work every morning.
+    assert "vor 2 Tagen" in body
+
+
+def test_a_draft_older_than_the_window_is_gone(factory, client):
+    with factory() as session:
+        _seed_angle(
+            session,
+            generated_at=_noon_utc(_TEST_DAY - dt.timedelta(days=9)),
+            subject="LETZTEWOCHE",
+        )
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    assert "LETZTEWOCHE" not in body
+
+
+def test_todays_draft_is_marked_as_todays(factory, client):
+    with factory() as session:
+        _seed_angle(session, generated_at=_noon_utc(_TEST_DAY), subject="HEUTE")
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    assert "aus dem Radar von heute" in body
+
+
+def test_a_mandate_without_a_draft_reports_what_the_radar_saw(factory, client):
+    """"Kein Anlass" alone is indistinguishable from a broken feature.
+
+    The count is the evidence that work happened, which is the difference between
+    a quiet market and a tool that silently stopped.
+    """
+    from newspulse.models import TopicHit
+
+    with factory() as session:
+        mandate = _seed_client(session, "Arrakis")
+        session.flush()
+        for i in range(3):
+            article = Article(
+                title=f"Markt {i}",
+                url=f"https://ex.de/markt{i}",
+                source="yellow.com",
+                published_at=_noon_utc(_TEST_DAY),
+                fetched_at=_noon_utc(_TEST_DAY),
+                summary_text=None,
+                language="de",
+                title_hash=f"markt{i}",
+            )
+            session.add(article)
+            session.flush()
+            session.add(
+                TopicHit(
+                    article_id=article.id,
+                    client_id=mandate.id,
+                    found_at=_noon_utc(_TEST_DAY),
+                )
+            )
+        mandate.keywords = ["Onchain-Liquidität"]
+        session.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    column = body.split('class="anglecol"', 1)[1]
+
+    assert "Kein Anlass in den letzten 7 Tagen" in column
+    assert "3" in column
+    assert "Marktumfeld ansehen" in column
+
+
+def test_a_mandate_without_themes_is_told_that_instead(factory, client):
+    """No radar is a configuration fact, not a quiet market, and the two need
+    opposite responses."""
+    with factory() as session:
+        mandate = _seed_client(session, "Ohne Themen")
+        mandate.keywords = []
+        mandate.alert_topics = []
+        session.commit()
+        mandate_id = mandate.id
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    column = body.split('class="anglecol"', 1)[1]
+
+    assert "Kein Themen-Radar für diesen Mandanten." in column
+    assert f'href="/settings?edit={mandate_id}"' in column
 
 
 def test_the_column_follows_the_client_filter(factory, client):

@@ -246,6 +246,13 @@
           <span class="clichip">{{ angle.client_name }}</span>
           <button type="button" class="impulse__copy" data-copy-from="impulse-text-{{ angle.id }}">{{ t("Kopieren") }}</button>
         </div>
+        {# The age, always. A draft may stand for a week, and without this a card
+           from Monday reads as this morning's work every morning until it goes. #}
+        <div class="impulse__age{% if angle.age_days == 0 %} impulse__age--today{% endif %}">
+          {%- if angle.age_days == 0 %}{{ t("aus dem Radar von heute") }}
+          {%- elif angle.age_days == 1 %}{{ t("von gestern") }}
+          {%- else %}{{ t("vor") }} {{ angle.age_days }} {{ t("Tagen") }}{% endif -%}
+        </div>
         {% if angle.subject %}<div class="impulse__subject">{{ angle.subject }}</div>{% endif %}
 
         {# The sendable text, and only that, inside the copy target — the reader
@@ -285,9 +292,41 @@
           <p class="impulse__caveat">{{ t("Entwurf aus Schlagzeilen und Feed-Anrissen, nicht aus den vollständigen Artikeln. Vor dem Versand prüfen.") }}</p>
         </details>
       </article>
-    {% else %}
-      <p class="rail__empty">{{ t("Kein Anlass heute.") }}</p>
     {% endfor %}
+
+    {# Mandates with no draft. The column has to say something, or an empty rail
+       reads as a broken feature instead of a market that gave nothing away — and
+       what it says has to be true: a radar that ran and found no opening is
+       working, a mandate with no themes is not set up. #}
+    {% for quiet in quiet_clients %}
+      <article class="impulse impulse--quiet">
+        <div class="impulse__head"><span class="clichip">{{ quiet.client_name }}</span></div>
+        {% if quiet.has_themes %}
+          <p class="impulse__lead">{{ t("Kein Anlass in den letzten") }} {{ angle_days }} {{ t("Tagen") }}.</p>
+          <p class="impulse__why">
+            {% if quiet.seen %}
+              {{ t("Das Themen-Radar hat") }} {{ quiet.seen }}
+              {{ t("Marktmeldung(en) gesichtet — keine davon berührt den Kern des Mandanten stark genug für eine Positionierung.") }}
+            {% else %}
+              {{ t("Das Themen-Radar hat in diesem Zeitraum nichts gefunden.") }}
+            {% endif %}
+          </p>
+          <p class="impulse__act">
+            <a href="/client/{{ quiet.client_id }}/market">{{ t("Marktumfeld ansehen") }} →</a>
+          </p>
+        {% else %}
+          <p class="impulse__lead">{{ t("Kein Themen-Radar für diesen Mandanten.") }}</p>
+          <p class="impulse__why">{{ t("Ohne hinterlegte Themen lässt sich nicht bestimmen, welche Marktmeldung ihn angeht. Zwei bis drei Begriffe genügen.") }}</p>
+          <p class="impulse__act">
+            <a href="/settings?edit={{ quiet.client_id }}">{{ t("Themen hinterlegen") }} →</a>
+          </p>
+        {% endif %}
+      </article>
+    {% endfor %}
+
+    {% if not angles and not quiet_clients %}
+      <p class="rail__empty">{{ t("Kein Anlass heute.") }}</p>
+    {% endif %}
   </aside>
 </div>
 

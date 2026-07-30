@@ -178,7 +178,20 @@ nav.tabs a.active {
 .impulse__copy:hover { color: var(--ink); border-color: #cbd5e1; }
 .impulse__copy--done { color: #15803d; border-color: #86efac; background: #f0fdf4; }
 
+/* The age of a draft, always visible: a card may stand for a week. */
+.impulse__age { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+.impulse__age--today { color: #16a34a; font-weight: 600; }
 .impulse__subject { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+
+/* The honest empty card: no accent bar, because there is nothing to act on — but
+   it reports what the radar did, which is the difference between "nothing
+   happened" and "nothing is configured". */
+.impulse--quiet { border-left-color: var(--line); }
+.impulse--quiet .impulse__lead { font-size: 13.5px; margin-bottom: 5px; }
+.impulse--quiet .impulse__why { font-size: 12.5px; color: var(--muted); }
+.impulse__act { margin-top: 9px; font-size: 12.5px; }
+.impulse__act a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.impulse__act a:hover { text-decoration: underline; }
 /* The sendable text. pre-wrap so the model's paragraph breaks survive into the
    clipboard exactly as they render here. */
 .impulse__text {

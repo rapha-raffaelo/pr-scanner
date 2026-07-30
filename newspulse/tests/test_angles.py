@@ -303,32 +303,83 @@ def test_store_falls_back_to_every_development_when_none_was_cited(session):
 # --- Reading them back ---------------------------------------------------------
 
 
-def test_for_day_returns_only_drafts_inside_the_window(session):
+def _angle(client_id: int, subject: str, when: dt.datetime) -> Angle:
+    return Angle(
+        client_id=client_id, generated_at=when, subject=subject, message="m", context="c"
+    )
+
+
+def test_recent_keeps_a_draft_standing_for_a_week(session):
+    """An opening does not expire at midnight.
+
+    The market development a draft rests on is still current days later, and a
+    column that empties itself every night hides work that is still usable.
+    """
     client = _client(session)
-    inside = Angle(
-        client_id=client.id,
-        generated_at=dt.datetime(2026, 7, 30, 6, 0, tzinfo=dt.UTC),
-        subject="heute",
-        message="m",
-        context="c",
+    session.add_all(
+        [
+            _angle(client.id, "vorgestern", dt.datetime(2026, 7, 28, 6, 0, tzinfo=dt.UTC)),
+        ]
     )
-    outside = Angle(
-        client_id=client.id,
-        generated_at=dt.datetime(2026, 7, 28, 6, 0, tzinfo=dt.UTC),
-        subject="vorgestern",
-        message="m",
-        context="c",
-    )
-    session.add_all([inside, outside])
     session.commit()
 
-    found = angles.for_day(
-        session,
-        dt.datetime(2026, 7, 29, 22, 0, tzinfo=dt.UTC),
-        dt.datetime(2026, 7, 30, 22, 0, tzinfo=dt.UTC),
-    )
+    found = angles.recent(session, dt.datetime(2026, 7, 30, 22, 0, tzinfo=dt.UTC))
 
-    assert [a.subject for a in found] == ["heute"]
+    assert [a.subject for a in found] == ["vorgestern"]
+
+
+def test_recent_drops_a_draft_older_than_the_window(session):
+    """Past a week the news has moved and the draft is no longer current."""
+    client = _client(session)
+    session.add(_angle(client.id, "alt", dt.datetime(2026, 7, 20, 6, 0, tzinfo=dt.UTC)))
+    session.commit()
+
+    assert angles.recent(session, dt.datetime(2026, 7, 30, 22, 0, tzinfo=dt.UTC)) == []
+
+
+def test_recent_keeps_only_the_newest_draft_per_client(session):
+    """Two drafts for one mandate in a week are two attempts at the same moment,
+    not two things to send — stacking them turns the column into a backlog."""
+    client = _client(session)
+    session.add_all(
+        [
+            _angle(client.id, "aelter", dt.datetime(2026, 7, 27, 6, 0, tzinfo=dt.UTC)),
+            _angle(client.id, "neuer", dt.datetime(2026, 7, 29, 6, 0, tzinfo=dt.UTC)),
+        ]
+    )
+    session.commit()
+
+    found = angles.recent(session, dt.datetime(2026, 7, 30, 22, 0, tzinfo=dt.UTC))
+
+    assert [a.subject for a in found] == ["neuer"]
+
+
+def test_recent_ignores_drafts_generated_after_the_viewed_day(session):
+    """Looking at a past day must show what was current then, not what is now —
+    the page is a day, and its right-hand column has to agree with the rest."""
+    client = _client(session)
+    session.add(_angle(client.id, "heute", dt.datetime(2026, 7, 30, 6, 0, tzinfo=dt.UTC)))
+    session.commit()
+
+    found = angles.recent(session, dt.datetime(2026, 7, 29, 22, 0, tzinfo=dt.UTC))
+
+    assert found == []
+
+
+def test_recent_lists_one_draft_per_client_newest_first(session):
+    first = _client(session)
+    second = _client(session, name="Zalando")
+    session.add_all(
+        [
+            _angle(first.id, "arrakis", dt.datetime(2026, 7, 28, 6, 0, tzinfo=dt.UTC)),
+            _angle(second.id, "zalando", dt.datetime(2026, 7, 29, 6, 0, tzinfo=dt.UTC)),
+        ]
+    )
+    session.commit()
+
+    found = angles.recent(session, dt.datetime(2026, 7, 30, 22, 0, tzinfo=dt.UTC))
+
+    assert [a.subject for a in found] == ["zalando", "arrakis"]
 
 
 def test_latest_returns_the_newest_draft_for_one_client(session):

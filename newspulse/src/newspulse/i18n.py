@@ -102,6 +102,21 @@ _EN: dict[str, str] = {
     # opened up — where a literal "impulse" would read as a mood.
     "Impulse": "Openings",
     "Kein Anlass heute.": "No opening today.",
+    # The age of a draft. It may stand for a week, so every card says how old it
+    # is — otherwise Monday's work reads as this morning's every morning.
+    "aus dem Radar von heute": "from today's radar",
+    "von gestern": "from yesterday",
+    "vor": "",
+    "Kein Anlass in den letzten": "No opening in the last",
+    "Das Themen-Radar hat": "The topic radar looked at",
+    "Marktmeldung(en) gesichtet — keine davon berührt den Kern des Mandanten stark genug für eine Positionierung.":
+        "market item(s) — none of them touches the client's core closely enough "
+        "for a position.",
+    "Marktumfeld ansehen": "See the market",
+    "Kein Themen-Radar für diesen Mandanten.": "No topic radar for this client.",
+    "Ohne hinterlegte Themen lässt sich nicht bestimmen, welche Marktmeldung ihn angeht. Zwei bis drei Begriffe genügen.":
+        "Without themes there is no way to tell which market coverage concerns "
+        "them. Two or three terms are enough.",
     "Kopieren": "Copy",
     "These": "Thesis",
     "Nicht die These": "Not the thesis",

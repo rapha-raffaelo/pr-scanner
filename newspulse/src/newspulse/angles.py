@@ -266,22 +266,39 @@ def store(
     return angle
 
 
-def for_day(
-    session: Session, start_utc: dt.datetime, end_utc: dt.datetime
-) -> list[Angle]:
-    """The drafts generated within a local day's UTC bounds, newest first.
+#: How far back the column looks for a draft. An opening does not expire at
+#: midnight: the market development it rests on is still current a few days later,
+#: and a column that empties itself every night hides work that is still usable.
+#: A week is where it stops being current — past that the news has moved.
+COLUMN_DAYS = 7
 
-    Scoped to the viewed day because the Today page is a day: a draft from last
-    Tuesday is not today's work, and it stays reachable through the client's own
-    page rather than accumulating in the column.
+
+def recent(session: Session, until: dt.datetime, *, days: int = COLUMN_DAYS) -> list[Angle]:
+    """The newest draft per client in the ``days`` before ``until``.
+
+    One per client, deliberately. Two drafts for the same mandate in one week are
+    two attempts at the same moment, not two things to send, and stacking them
+    turns a column meant to be acted on into a backlog. Older ones stay reachable
+    on the client's own page.
+
+    ``until`` is the end of the viewed day, so looking at a past day shows what was
+    current *then* rather than what is current now — the page is a day, and its
+    right-hand column has to agree with the rest of it.
     """
-    return list(
-        session.scalars(
-            select(Angle)
-            .where(Angle.generated_at >= start_utc, Angle.generated_at < end_utc)
-            .order_by(Angle.generated_at.desc(), Angle.id.desc())
-        ).all()
-    )
+    since = until - dt.timedelta(days=days)
+    rows = session.scalars(
+        select(Angle)
+        .where(Angle.generated_at >= since, Angle.generated_at < until)
+        .order_by(Angle.generated_at.desc(), Angle.id.desc())
+    ).all()
+    seen: set[int] = set()
+    latest: list[Angle] = []
+    for angle in rows:
+        if angle.client_id in seen:
+            continue
+        seen.add(angle.client_id)
+        latest.append(angle)
+    return latest
 
 
 def latest(session: Session, client_id: int) -> Angle | None:
@@ -299,7 +316,8 @@ __all__ = [
     "Development",
     "ParseError",
     "developments",
-    "for_day",
+    "COLUMN_DAYS",
+    "recent",
     "latest",
     "store",
     "suggest",

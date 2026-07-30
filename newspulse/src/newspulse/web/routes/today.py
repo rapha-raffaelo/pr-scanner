@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ... import angles, config
-from ...models import Analysis, Article, Client, Run
+from ...models import Analysis, Article, Client, Run, TopicHit
 from ...outlets import tier_for
 from ...stories import cluster
 from ..app import get_db, templates
@@ -79,6 +79,26 @@ class AngleView:
     # The developments the draft was built on, so the reader can check it against
     # the coverage rather than take the text on trust.
     sources: list[tuple[str, str, str]]
+    # Days between the draft and the viewed day. Shown, because a card that stays
+    # for a week would otherwise read as this morning's work every morning.
+    age_days: int
+
+
+@dataclass(frozen=True, slots=True)
+class QuietClientView:
+    """A mandate with no draft, and the reason there is none.
+
+    The column has to say something on a quiet day, or an empty rail reads as a
+    broken feature rather than as a market that gave nothing away. What it says has
+    to be true, and the two reasons need opposite responses: a radar that ran and
+    found no opening is working, a mandate with no themes is not set up.
+    """
+
+    client_id: int
+    client_name: str
+    #: Market items the radar surfaced in the window; the evidence that it ran.
+    seen: int
+    has_themes: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,15 +287,19 @@ def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
 
 
 def _fetch_angles(session: Session, day: dt.date) -> list[AngleView]:
-    """The positioning drafts generated on ``day``, newest first.
+    """The newest positioning draft per client in the week up to ``day``.
 
-    Dated by when the draft was *generated*, not by the coverage under it: it is a
-    piece of the day's work, and it arrives the morning the market moved. Sources
-    are resolved here rather than in the template so a draft citing an article that
-    no longer exists renders without its citation instead of erroring.
+    A week rather than the viewed day: an opening does not expire at midnight. The
+    market development a draft rests on is still current days later, and a column
+    that empties itself every night hides work that is still usable — which is
+    what it did. Each card carries its age instead, so a draft from Monday is not
+    mistaken for this morning's.
+
+    Sources are resolved here rather than in the template, so a draft citing an
+    article that no longer exists renders without its citation instead of erroring.
     """
-    start_utc, end_utc = _day_bounds_utc(day)
-    drafts = angles.for_day(session, start_utc, end_utc)
+    _start_utc, end_utc = _day_bounds_utc(day)
+    drafts = angles.recent(session, end_utc)
     if not drafts:
         return []
 
@@ -307,9 +331,43 @@ def _fetch_angles(session: Session, day: dt.date) -> list[AngleView]:
                 overclaim=draft.overclaim,
                 statements=list(draft.statements),
                 sources=[(a.title, a.source, a.url) for a in cited],
+                age_days=max(
+                    0, (day - draft.generated_at.astimezone(_local_tz()).date()).days
+                ),
             )
         )
     return views
+
+
+def _fetch_quiet_clients(
+    session: Session, day: dt.date, drafted: set[int], mandates: list[Client]
+) -> list[QuietClientView]:
+    """The mandates with no draft, each with the reason there is none.
+
+    Counting what the radar *saw* is the point. "Kein Anlass" on its own is
+    indistinguishable from a broken feature; "12 Marktmeldungen gesichtet, keine
+    davon trug" is a report on work done.
+    """
+    _start_utc, end_utc = _day_bounds_utc(day)
+    since = end_utc - dt.timedelta(days=angles.COLUMN_DAYS)
+    seen_counts = dict(
+        session.execute(
+            select(TopicHit.client_id, func.count())
+            .join(Article, Article.id == TopicHit.article_id)
+            .where(TopicHit.found_at >= since, TopicHit.found_at < end_utc)
+            .group_by(TopicHit.client_id)
+        ).all()
+    )
+    return [
+        QuietClientView(
+            client_id=client.id,
+            client_name=client.name,
+            seen=int(seen_counts.get(client.id, 0)),
+            has_themes=bool(client.keywords or client.alert_topics),
+        )
+        for client in mandates
+        if client.id not in drafted
+    ]
 
 
 def _fetch_last_run(session: Session) -> RunStatusView | None:
@@ -390,8 +448,10 @@ def today_view(
     # Follows the client filter, like the rest of the page: looking at one mandate
     # means looking at one mandate, including what to send them.
     drafts = _fetch_angles(session, day)
+    quiet = _fetch_quiet_clients(session, day, {d.client_id for d in drafts}, mandates)
     if selected_client is not None:
         drafts = [d for d in drafts if d.client_id == selected_client]
+        quiet = [q for q in quiet if q.client_id == selected_client]
 
     return templates.TemplateResponse(
         request,
@@ -425,6 +485,8 @@ def today_view(
             "stories": stories,
             "alerts": alerts,
             "angles": drafts,
+            "quiet_clients": quiet,
+            "angle_days": angles.COLUMN_DAYS,
             "clients": mandates,
             "client_counts": counts,
             "selected_client": selected_client,
