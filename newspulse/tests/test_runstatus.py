@@ -125,3 +125,42 @@ def test_the_header_shows_the_previous_run_as_stale_not_as_current(client, runni
 
     assert "Stand von" in body
     assert "Letzter Lauf" not in body
+
+
+def test_a_generating_page_polls_itself_so_nobody_is_told_to_reload(client, running):
+    """The instruction "Seite neu laden" was work the machinery already does.
+
+    Both background generators hold the sweep's guard, so the header polls while
+    they run and reloads the whole page when they release it. This pins the wiring
+    those notices now depend on.
+    """
+    body = client.get("/").text
+
+    assert 'hx-get="/partials/runmeta"' in body
+    assert "Seite neu laden" not in body
+
+
+def test_the_advisory_generator_holds_the_sweep_guard(monkeypatch):
+    """Without it the advisory page would sit there finished and look unfinished."""
+    from newspulse.web.routes import advisory
+
+    held: list[bool] = []
+
+    def _fake_session():
+        raise RuntimeError("stop here — the guard is what this test is about")
+
+    monkeypatch.setattr(advisory, "get_session", _fake_session)
+    monkeypatch.setattr(
+        advisory.runlock if hasattr(advisory, "runlock") else advisory,
+        "_run_guard",
+        advisory._run_guard,
+        raising=False,
+    )
+
+    # The worker acquires the guard before doing any work, and releases it even
+    # when that work explodes.
+    advisory._generating.acquire()
+    advisory._run_advisory(1, 30)
+
+    held.append(advisory._run_guard.locked())
+    assert held == [False], "the guard must not be left held after a failure"

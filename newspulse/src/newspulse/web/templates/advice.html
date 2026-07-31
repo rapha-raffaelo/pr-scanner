@@ -47,7 +47,7 @@
   </span>
 </form>
 {% if drafting %}
-  <div class="notice notice--ok">{{ t("Impuls wird erzeugt — das dauert etwa eine Minute. Seite neu laden.") }}</div>
+  <div class="notice notice--ok"><span class="spinner" aria-hidden="true"></span>{{ t("Impuls wird erzeugt — die Seite aktualisiert sich, sobald er steht.") }}</div>
 {% endif %}
 
 {% if angles %}
@@ -133,7 +133,7 @@
 </form>
 
 {% if running %}
-  <div class="notice notice--ok">{{ t("Wird erzeugt — das dauert etwa eine Minute. Seite neu laden.") }}</div>
+  <div class="notice notice--ok"><span class="spinner" aria-hidden="true"></span>{{ t("Wird erzeugt — die Seite aktualisiert sich, sobald der Entwurf steht.") }}</div>
 {% endif %}
 
 {% if advisory %}

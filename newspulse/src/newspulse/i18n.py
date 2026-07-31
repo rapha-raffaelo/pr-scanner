@@ -248,6 +248,10 @@ _EN: dict[str, str] = {
     "Neu erzeugen": "Regenerate",
     "Empfehlungen erzeugen": "Generate recommendations",
     "im Zeitraum": "in period",
+    "Wird erzeugt — die Seite aktualisiert sich, sobald der Entwurf steht.":
+        "Generating — the page will refresh itself once the draft is ready.",
+    "Impuls wird erzeugt — die Seite aktualisiert sich, sobald er steht.":
+        "Drafting — the page will refresh itself once it is ready.",
     "Wird erzeugt — das dauert etwa eine Minute. Seite neu laden.":
         "Generating — this takes about a minute. Reload the page.",
     "Lage": "Situation",

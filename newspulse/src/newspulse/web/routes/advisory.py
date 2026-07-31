@@ -39,8 +39,15 @@ _generating = threading.Lock()
 
 
 def _run_advisory(client_id: int, days: int) -> None:
-    """Generate and store a brief on a worker thread; always release the lock."""
+    """Generate and store a brief on a worker thread; always release the lock.
+
+    Holds the sweep's guard as well, which is what makes the page refresh itself:
+    the header polls while that guard is held and reloads the whole page when it is
+    released. Without it the reader was told to reload by hand — an instruction the
+    machinery had already made unnecessary everywhere else.
+    """
     try:
+        _run_guard.acquire()
         with get_session() as session:
             client = session.get(Client, client_id)
             if client is None:
@@ -57,6 +64,12 @@ def _run_advisory(client_id: int, days: int) -> None:
         _log.exception("advisory generation failed")
     finally:
         _generating.release()
+        # Released after the brief is committed, so the reload the header triggers
+        # finds the finished result rather than an empty page a beat too early.
+        try:
+            _run_guard.release()
+        except RuntimeError:  # never acquired, e.g. an error before the try body
+            pass
 
 
 @router.get("/client/{client_id}/advice", response_class=HTMLResponse)
