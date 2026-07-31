@@ -26,6 +26,13 @@
   .sect__act .panel-hint { margin: 0; }
   .sect__body > .item:last-child, .sect__body > .impulse:last-child { margin-bottom: 0; }
   .sect__empty { font-size: 13px; color: var(--muted); font-style: italic; }
+  /* A refusal is a result, not an absence: it gets a border and upright type so
+     it reads as an answer to the click rather than as the empty state. */
+  .sect__refusal {
+    font-style: normal; color: var(--ink); line-height: 1.55;
+    border-left: 3px solid var(--line); padding: 2px 0 2px 12px; max-width: 74ch;
+  }
+  .sect__refusal strong { color: var(--muted); }
 
   /* The situation reads as a lead paragraph, not as a second page title. */
   .situation { font-size: 14px; line-height: 1.6; margin-bottom: 6px; }
@@ -45,7 +52,9 @@
 </div>
 
 {# --- Positioning: from the market ---------------------------------------- #}
-<section class="sect">
+{# The id is the swap target for the poll below: while a draft is running this
+   section replaces itself every few seconds until the impulse appears. #}
+<section class="sect" id="positioning">
   <div class="sect__head">
     <span class="sect__title">{{ t("Positionierung") }}</span>
     {% if angles %}<span class="sect__n">{{ angles | length }}</span>{% endif %}
@@ -71,8 +80,20 @@
     </span>
   </div>
 
+  {# The page said it would refresh itself and then did not: the draft runs on a
+     worker thread and nothing ever asked whether it had finished, so the impulse
+     appeared only if the reader happened to reload. The poller sits inside the
+     section it replaces, so it is swapped away with it — when the draft is done
+     the new markup carries no notice, and the polling stops on its own. #}
   {% if drafting %}
-    <div class="notice notice--ok"><span class="spinner" aria-hidden="true"></span>{{ t("Impuls wird erzeugt — die Seite aktualisiert sich, sobald er steht.") }}</div>
+    <div class="notice notice--ok"
+         hx-get="/client/{{ client.id }}/advice"
+         hx-trigger="every 3s"
+         hx-select="#positioning"
+         hx-target="#positioning"
+         hx-swap="outerHTML">
+      <span class="spinner" aria-hidden="true"></span>{{ t("Impuls wird erzeugt — die Seite aktualisiert sich, sobald er steht.") }}
+    </div>
   {% endif %}
 
   <div class="sect__body">
@@ -93,8 +114,14 @@
       </article>
     {% else %}
       {# Three reasons for an empty section, and they need different answers: the
-         radar has nothing yet, it found nothing worth saying, or it cannot run. #}
-      {% if not has_themes %}
+         radar has nothing yet, it found nothing worth saying, or it cannot run.
+         The last click's own answer outranks all three — it is the only one that
+         describes what actually happened rather than what is stored. #}
+      {% if impulse_refusal %}
+        <p class="sect__empty sect__refusal">
+          <strong>{{ t("Kein Impuls erzeugt.") }}</strong> {{ impulse_refusal }}
+        </p>
+      {% elif not has_themes %}
         <p class="handover__act">
           {{ t("Für diesen Mandanten läuft noch kein Themen-Radar — ohne hinterlegte Themen entsteht auch kein Impuls.") }}
           <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }} →</a>
@@ -113,7 +140,7 @@
 </section>
 
 {# --- Recommendations: from the client's own coverage ---------------------- #}
-<section class="sect">
+<section class="sect" id="recommendations">
   <div class="sect__head">
     <span class="sect__title">{{ t("Empfehlungen") }}</span>
     {% if advisory and advisory.suggestions %}<span class="sect__n">{{ advisory.suggestions | length }}</span>{% endif %}
@@ -143,7 +170,14 @@
   </div>
 
   {% if running %}
-    <div class="notice notice--ok"><span class="spinner" aria-hidden="true"></span>{{ t("Wird erzeugt — die Seite aktualisiert sich, sobald der Entwurf steht.") }}</div>
+    <div class="notice notice--ok"
+         hx-get="/client/{{ client.id }}/advice?days={{ days }}"
+         hx-trigger="every 3s"
+         hx-select="#recommendations"
+         hx-target="#recommendations"
+         hx-swap="outerHTML">
+      <span class="spinner" aria-hidden="true"></span>{{ t("Wird erzeugt — die Seite aktualisiert sich, sobald der Entwurf steht.") }}
+    </div>
   {% endif %}
 
   <div class="sect__body">

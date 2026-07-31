@@ -148,7 +148,7 @@ def test_a_long_theme_list_is_capped_in_the_query_in_theme_order():
 
     assert gnews.topic_terms(client) == ["eins", "zwei", "drei", "vier", "fünf"]
     query = _q(gnews.topic_feeds([client])[client.id].url)
-    assert query == '"eins" OR "zwei" OR "drei"'
+    assert query == '("eins" OR "zwei" OR "drei") AND ("Krypto")'
 
 
 def test_topic_feeds_are_keyed_by_client_so_provenance_survives():
@@ -162,7 +162,7 @@ def test_topic_feeds_are_keyed_by_client_so_provenance_survives():
     assert "Themen-Radar" in feed.name
     assert "Arrakis" in feed.name
     assert feed.per_entry_source is True
-    assert _q(feed.url) == '"Onchain-Liquidität"'
+    assert _q(feed.url) == '("Onchain-Liquidität") AND ("Krypto")'
     # And emphatically not the client's own name: that search already exists, and
     # duplicating it here would spend a second feed on the same results.
     assert "Arrakis" not in _q(feed.url)
@@ -172,6 +172,62 @@ def test_a_client_without_themes_gets_no_radar():
     """Searching an industry label alone would return a general news feed to pitch
     from, which is worse than admitting there is nothing to watch."""
     assert gnews.topic_feeds([_themed("Arrakis", [], [])]) == {}
+
+
+# --- The radar's field ---------------------------------------------------------
+# A theme list is whatever the operator typed, and what they type is short common
+# words: "Wachstum", "Mode", "Logistik". OR-joined and unscoped, that query
+# returned Xbox's growth figures and Canada's GDP for a fashion retailer — 100
+# hits, none usable, and a drafting model that (correctly) refused to build a
+# statement out of them. The industry is the missing half of the question.
+
+
+def test_the_radar_is_scoped_to_the_clients_field():
+    client = _themed("Zalando", ["Wachstum", "Retouren"])
+    client.industry = "Fashion"
+
+    assert _q(gnews.topic_feeds([client])[client.id].url) == (
+        '("Wachstum" OR "Retouren") AND ("Fashion")'
+    )
+
+
+def test_an_industry_written_as_a_list_becomes_alternatives():
+    """Operators write "Onchain-Liquidität; DeFi", not a single label."""
+    client = _themed("Arrakis", ["Liquidität"])
+    client.industry = "Onchain-Liquidität; DeFi"
+
+    assert gnews.context_terms(client) == ["Onchain-Liquidität", "DeFi"]
+    assert _q(gnews.topic_feeds([client])[client.id].url) == (
+        '("Liquidität") AND ("Onchain-Liquidität" OR "DeFi")'
+    )
+
+
+def test_the_field_is_capped_so_the_scope_cannot_widen_back_out():
+    client = _themed("Weit", ["Thema"])
+    client.industry = "eins, zwei, drei, vier"
+
+    assert _q(gnews.topic_feeds([client])[client.id].url) == (
+        '("Thema") AND ("eins" OR "zwei")'
+    )
+
+
+def test_without_an_industry_the_query_stays_unscoped():
+    """No field, no constraint — inventing one would silently change what the
+    radar finds, which is worse than a wide search the reader can see."""
+    client = _themed("Ohne", ["Thema"])
+    client.industry = None
+
+    assert gnews.context_terms(client) == []
+    assert _q(gnews.topic_feeds([client])[client.id].url) == '"Thema"'
+
+
+def test_the_name_search_is_never_scoped_by_industry():
+    """Coverage *of* the client is found by its name; requiring an industry word
+    as well would drop the very mentions the mandate exists to catch."""
+    client = _themed("Zalando", ["Wachstum"])
+    client.industry = "Fashion"
+
+    assert "AND" not in _q(gnews.client_feeds([client])[0].url)
 
 
 # --- The edition a client is searched in ---------------------------------------

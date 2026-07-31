@@ -36,6 +36,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import resources
 from string import Template
@@ -194,6 +195,7 @@ def suggest(
     items: list[tuple[Article, str]],
     *,
     invoke=invoke_with_fallback,
+    note: Callable[[str], None] | None = None,
 ) -> tuple[AngleDraft, list[Development]] | None:
     """Draft a positioning message for ``client``, or ``None`` if there is none.
 
@@ -202,6 +204,13 @@ def suggest(
     outcome (nothing to show), and neither is an error. A backend failure, by
     contrast, raises :class:`AnalyzerError`: "nothing to say" and "the draft
     failed" must never look alike.
+
+    ``note`` receives the reason when the answer is "nothing to send". The model
+    writes a genuinely useful one — "the hits are isolated competitor decisions
+    with no fresh hook" — and it used to go to the log and nowhere else, so the
+    reader pressed the button, watched the spinner, and got a page that looked
+    exactly like a broken one. A refusal the reader can read is a result; a
+    silent one is indistinguishable from a bug.
 
     ``invoke`` is injectable so tests drive the whole path without a subprocess.
     """
@@ -220,11 +229,12 @@ def suggest(
     )
     draft = _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
     if not draft.worth_sending:
+        reason = (draft.subject or "").strip()
         _log.info(
-            "no positioning opening for %r: %s",
-            client.name,
-            draft.subject or "no reason given",
+            "no positioning opening for %r: %s", client.name, reason or "no reason given"
         )
+        if note is not None:
+            note(reason or "Das Modell sah keinen tragfähigen Anlass.")
         return None
     if not draft.message.strip():
         # worth_sending with no text is a contradiction; treat it as the model

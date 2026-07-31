@@ -31,6 +31,7 @@ established relevance simply because Google returned it.
 
 from __future__ import annotations
 
+import re
 import urllib.parse
 
 from . import company_names
@@ -76,6 +77,12 @@ def edition_for(client: Client) -> tuple[str, str]:
 # name plus a couple of aliases is what actually identifies a company.
 _MAX_TERMS = 3
 
+# The field the themes must sit in. Two is enough to say "fashion retail" or
+# "DeFi liquidity" without the AND-clause growing long enough to exclude
+# everything: each extra term widens the scope again, which is the opposite of
+# what it is for.
+_MAX_CONTEXT_TERMS = 2
+
 # Feeds are labelled so a run's logs and the settings view make it obvious which
 # results came from a search rather than a subscribed publication.
 _FEED_LABEL = "Google News: {client}"
@@ -85,17 +92,36 @@ _FEED_LABEL = "Google News: {client}"
 _TOPIC_FEED_LABEL = "Themen-Radar: {client}"
 
 
-def query_url(terms: list[str], *, lang: str = _LANG, country: str = _COUNTRY) -> str:
+def query_url(
+    terms: list[str],
+    *,
+    lang: str = _LANG,
+    country: str = _COUNTRY,
+    context: list[str] | None = None,
+) -> str:
     """Build the Google News RSS search URL for ``terms``.
 
     Terms are quoted and OR-joined so ``Deutsche Bahn`` matches as a phrase
     rather than as two loose words, which would return every story containing
     "deutsche".
+
+    ``context`` narrows the result to a field: the terms must appear *and* one of
+    the context terms must too. Without it the topic radar searched a bare
+    OR-chain of whatever an operator typed, and single common words are the ones
+    they type — a mandate whose themes included "Wachstum" and "Mode" got Xbox's
+    growth figures, Canada's GDP and the Apple Watch, then a drafting model that
+    correctly refused to build a statement out of them. The client's own industry
+    is the missing half of the question: not "who wrote about growth" but "who
+    wrote about growth *in this field*".
     """
     cleaned = [t.strip() for t in terms if t and t.strip()]
     if not cleaned:
         raise ValueError("at least one search term is required")
     query = " OR ".join(f'"{term}"' for term in cleaned[:_MAX_TERMS])
+    scope = [t.strip() for t in (context or []) if t and t.strip()][:_MAX_CONTEXT_TERMS]
+    if scope:
+        field = " OR ".join(f'"{term}"' for term in scope)
+        query = f"({query}) AND ({field})"
     params = {
         "q": query,
         "hl": lang,
@@ -178,6 +204,32 @@ def topic_terms(client: Client) -> list[str]:
     return terms
 
 
+def context_terms(client: Client) -> list[str]:
+    """The field the client's themes have to sit in, from its industry label.
+
+    Operators write the industry as a short list — "Onchain-Liquidität; DeFi",
+    "E-Commerce Handel" — so it is split on the separators they actually use and
+    each part kept as a phrase. A mandate with no industry gets no constraint;
+    that is the honest fallback, since inventing a field would silently change
+    what the radar finds.
+    """
+    raw = (getattr(client, "industry", "") or "").strip()
+    if not raw:
+        return []
+    terms: list[str] = []
+    seen: set[str] = set()
+    for part in re.split(r"[;,/]|\band\b|\bund\b", raw):
+        term = part.strip(" .-")
+        if not term:
+            continue
+        key = term.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        terms.append(term)
+    return terms
+
+
 def topic_feeds(clients: list[Client]) -> dict[int, Feed]:
     """One topic-radar feed per client that has themes, keyed by client id.
 
@@ -200,7 +252,9 @@ def topic_feeds(clients: list[Client]) -> dict[int, Feed]:
         lang, country = edition_for(client)
         feeds[client.id] = Feed(
             name=_TOPIC_FEED_LABEL.format(client=client.name),
-            url=query_url(terms, lang=lang, country=country),
+            url=query_url(
+                terms, lang=lang, country=country, context=context_terms(client)
+            ),
             industry=client.industry,
             per_entry_source=True,
         )

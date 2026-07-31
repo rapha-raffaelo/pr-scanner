@@ -121,6 +121,10 @@ def advice_view(
             "day_options": ADVICE_DAYS,
             "running": _generating.locked(),
             "drafting": _drafting.locked(),
+            # Why the last click came back empty, if it did. Shown instead of the
+            # generic "the radar has collected nothing", which was wrong as often
+            # as it was right.
+            "impulse_refusal": _last_refusal.get(client_id),
             # What to offer when there is no coverage to advise on. An advisory
             # reads a client's own press; a young mandate has none, and telling it
             # "nothing to recommend" is true but useless. The impulse works off the
@@ -172,6 +176,14 @@ def generate_advice(
 # second click would spend a second call on the same question.
 _drafting = threading.Lock()
 
+# Why the last click produced nothing, per client. The draft runs on a worker
+# thread and the page is a later request, so the reason needs somewhere to wait —
+# and "nothing happened" with no explanation is the single thing that made this
+# button look broken. Deliberately in memory and deliberately not a schema
+# change: it describes one click, not the mandate, and going stale on restart is
+# the correct behaviour for a "what just happened" message.
+_last_refusal: dict[int, str] = {}
+
 
 def _run_impulse(client_id: int) -> None:
     """Draft one impulse on a worker thread; always release the guard.
@@ -185,13 +197,26 @@ def _run_impulse(client_id: int) -> None:
                 client = session.get(Client, client_id)
                 if client is None:
                     return
-                drafted = job.draft_impulse(session, client)
+                _last_refusal.pop(client_id, None)
+                drafted = job.draft_impulse(
+                    session,
+                    client,
+                    note=lambda reason: _last_refusal.__setitem__(client_id, reason),
+                )
+                if drafted:
+                    _last_refusal.pop(client_id, None)
                 _log.info(
                     "impulse request for %r: %s",
                     client.name,
                     "drafted" if drafted else "no opening found",
                 )
-    except Exception:  # noqa: BLE001 — a worker thread must never die silently
+    except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
+        # A crash must not read as "nothing worth saying": the reader would go on
+        # believing the market was quiet.
+        _last_refusal[client_id] = (
+            f"Der Entwurf ist mit einem Fehler abgebrochen: {exc}. "
+            "Details stehen im Log."
+        )
         _log.exception("impulse request failed")
     finally:
         _drafting.release()

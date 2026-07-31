@@ -124,6 +124,56 @@ def test_the_radar_is_refreshed_before_drafting(session, monkeypatch):
     assert session.scalar(select(func.count()).select_from(TopicHit)) == 1
 
 
+def test_a_story_the_archive_already_holds_still_links_to_this_client(session, monkeypatch):
+    """The case that made the button useless for a real mandate.
+
+    A search feed lists the same items for days, and a story can already be in the
+    archive because another mandate's radar found it first. Dedup therefore drops
+    it as "not new" — and the link between story and client used to be written
+    only for what dedup kept. So the client's radar stayed empty no matter how
+    often the button was pressed, and the page kept answering "the radar has
+    collected nothing" while the material sat in the archive.
+
+    The link is an association, not a copy: it must be recorded whether or not
+    the article arrived today.
+    """
+    client = _client(session)
+    # Already stored, and attached to nobody — exactly what an earlier sweep for
+    # a different mandate leaves behind.
+    known = Article(
+        title="Kosmetikbranche diskutiert KI-Rezepturen",
+        url="https://ex.de/bekannt",
+        source="Cosmetics Business",
+        published_at=_NOW - dt.timedelta(days=3),
+        fetched_at=_NOW - dt.timedelta(days=3),
+        summary_text="Ein Satz.",
+        language="de",
+        title_hash="already-stored",
+    )
+    session.add(known)
+    session.commit()
+    assert session.scalar(select(func.count()).select_from(TopicHit)) == 0
+
+    def _fetch(url, since, *, source=None, **_):
+        return [
+            FeedItem(
+                title=known.title,
+                link=known.url,
+                source=known.source,
+                published_at=known.published_at,
+                summary="Ein Satz.",
+                language="de",
+            )
+        ]
+
+    monkeypatch.setattr(angles, "suggest", _draft())
+
+    assert job.draft_impulse(session, client, fetch=_fetch, now=lambda: _NOW) is True
+    # Linked to this client, and no second copy of the article.
+    assert session.scalar(select(func.count()).select_from(TopicHit)) == 1
+    assert session.scalar(select(func.count()).select_from(Article)) == 1
+
+
 def test_a_client_without_themes_yields_nothing_and_costs_nothing(session, monkeypatch):
     """No themes, no radar, no question to ask — and no model call to waste."""
     client = _client(session, keywords=[], alert_topics=[])
@@ -152,6 +202,59 @@ def test_the_model_declining_stores_nothing(session, monkeypatch):
 
     assert job.draft_impulse(session, client, fetch=_no_fetch, now=lambda: _NOW) is False
     assert session.scalar(select(func.count()).select_from(Angle)) == 0
+
+
+def test_a_refusal_comes_back_with_its_reason(session, monkeypatch):
+    """The complaint behind this: "creating an impulse still doesn't work".
+
+    It ran every time. The model simply judged the material too thin — a fair
+    call, since the archive stores headlines only and never article bodies — and
+    said so in a sentence that went to the log and nowhere else. From the page it
+    was indistinguishable from a button that did nothing.
+    """
+    client = _client(session)
+    _stored_market(session, client, "Vereinzelte Wettbewerbermeldung")
+
+    def _refuse(sess, cli, material, **kw):
+        kw["note"]("Kein tragfähiger Anlass: vereinzelte Wettbewerber-Entscheidungen.")
+        return None
+
+    monkeypatch.setattr(angles, "suggest", _refuse)
+    said: list[str] = []
+
+    assert (
+        job.draft_impulse(session, client, fetch=_no_fetch, now=lambda: _NOW, note=said.append)
+        is False
+    )
+    assert said == ["Kein tragfähiger Anlass: vereinzelte Wettbewerber-Entscheidungen."]
+
+
+def test_the_reason_names_the_missing_piece_when_there_is_no_material(session, monkeypatch):
+    """"Nothing found" and "found nothing worth saying" need different answers:
+    the first is a configuration problem the reader can fix."""
+    client = _client(session)
+    monkeypatch.setattr(
+        angles, "suggest", lambda *a, **k: pytest.fail("must not ask the model")
+    )
+    said: list[str] = []
+
+    assert (
+        job.draft_impulse(session, client, fetch=_no_fetch, now=lambda: _NOW, note=said.append)
+        is False
+    )
+    assert len(said) == 1
+    assert "Themen-Radar" in said[0]
+
+
+def test_a_client_without_themes_says_so_rather_than_going_quiet(session, monkeypatch):
+    client = _client(session, keywords=[], alert_topics=[])
+    said: list[str] = []
+
+    assert (
+        job.draft_impulse(session, client, fetch=_no_fetch, now=lambda: _NOW, note=said.append)
+        is False
+    )
+    assert "keine Themen hinterlegt" in said[0]
 
 
 def test_material_older_than_the_window_is_not_used(session, monkeypatch):

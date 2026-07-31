@@ -678,6 +678,42 @@ def test_the_advice_period_survives_the_page(factory, client):
     assert '<option value="90" selected>' in ninety.replace("\n", "")
 
 
+def test_a_running_draft_makes_the_page_fetch_its_own_result(factory, client):
+    """The page promised "die Seite aktualisiert sich" and never did.
+
+    The draft runs on a worker thread; nothing on the page ever asked whether it
+    had finished, so the finished impulse showed up only if the reader thought to
+    reload. The poller lives inside the section it replaces, so it disappears
+    with the notice once the draft is stored — no timer left running.
+    """
+    from newspulse.web.routes import advisory
+
+    with factory() as session:
+        subject = Client(
+            name="IB-7 Beauty Tech GmbH",
+            aliases=[],
+            keywords=["KI in der Kosmetik"],
+            alert_topics=[],
+        )
+        session.add(subject)
+        session.commit()
+        subject_id = subject.id
+
+    idle = client.get(f"/client/{subject_id}/advice").text
+    assert "hx-target=\"#positioning\"" not in idle
+
+    # Hold the guard the way a running draft does.
+    assert advisory._drafting.acquire(blocking=False)
+    try:
+        busy = client.get(f"/client/{subject_id}/advice").text
+    finally:
+        advisory._drafting.release()
+
+    assert 'hx-target="#positioning"' in busy
+    assert 'hx-trigger="every 3s"' in busy
+    assert f'hx-get="/client/{subject_id}/advice"' in busy
+
+
 def test_an_unknown_period_falls_back_instead_of_erroring(factory, client):
     with factory() as session:
         subject = Client(name="IB-7", aliases=[], keywords=[], alert_topics=[])

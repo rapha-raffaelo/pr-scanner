@@ -879,12 +879,23 @@ def _run_real(
         # coverage copy drops out here; that is the right outcome, since a story
         # naming the client is coverage and already has a column.
         fresh = {id(item) for item in kept}
-        topic_pairs = [pair for pair in topic_pairs if id(pair.item) in fresh]
         articles = _persist_articles(session, kept, started)
         new_articles = len(articles)
         # Attach the radar's stories to the client whose themes found them, so the
         # market material is browsable rather than merely stored.
+        #
+        # Every pair, not just today's new ones. A TopicHit is an association, not
+        # a copy: it says "this client's themes surfaced this story". Recording
+        # only the fresh ones meant an article the archive already held — the
+        # common case, since a search feed keeps listing the same items for days,
+        # and since a story can arrive first as another client's coverage — never
+        # got linked to this client at all. Its radar then read as empty forever,
+        # and the impulse button, which draws on exactly these rows, could never
+        # find material. The write is idempotent against UNIQUE(article, client).
         _record_topic_hits(session, topic_pairs, started)
+        # Drafting is the part that must see only what is new today, or the same
+        # development gets re-pitched every morning.
+        topic_pairs = [pair for pair in topic_pairs if id(pair.item) in fresh]
         resolved_analyzer = analyzer or get_analyzer()
         for client, client_articles in _analysis_targets(session, candidates, clients, started):
             analyses_written += _analyze_and_persist(
@@ -1029,13 +1040,16 @@ def backfill_client(
             )
         )[:limit]
         if fresh:
-            _persist_articles(session, fresh, started)
             # Unanalysed on purpose, exactly as the sweep stores them: these are
             # not coverage of the client, and filing them as such would put a
             # market story into the mandate's own archive.
-            keep = {id(item) for item in fresh}
-            topic_pairs = [pair for pair in topic_pairs if id(pair.item) in keep]
-            _record_topic_hits(session, topic_pairs, started)
+            _persist_articles(session, fresh, started)
+        # Linked whether or not the archive already held them — a new mandate
+        # whose field overlaps an existing one would otherwise start with an
+        # empty radar, because every story it found was already stored.
+        _record_topic_hits(session, topic_pairs, started)
+        keep = {id(item) for item in fresh}
+        topic_pairs = [pair for pair in topic_pairs if id(pair.item) in keep]
 
     drafted = _generate_angles(session, topic_pairs, errors) if topic_pairs else 0
     _log.info(
@@ -1067,6 +1081,7 @@ def draft_impulse(
     *,
     fetch: FetchFeed = fetch_feed,
     now: Callable[[], dt.datetime] | None = None,
+    note: Callable[[str], None] | None = None,
 ) -> bool:
     """Fetch this client's market and draft one positioning message from it.
 
@@ -1078,16 +1093,32 @@ def draft_impulse(
 
     Returns whether a draft was stored. False covers "no themes", "nothing in the
     market" and the model's own "no opening here" — all three are honest answers
-    to the question, and none of them is an error.
+    to the question, and none of them is an error. ``note`` receives which one it
+    was, in a sentence the reader can act on: a button that produces nothing and
+    says nothing is indistinguishable from a broken one, and this one produced
+    nothing far more often than anybody could tell.
     """
     now_fn = now or _utcnow
     started = now_fn()
     since = started - IMPULSE_LOOKBACK
     errors: list[str] = []
 
+    said: list[str] = []
+
+    def _say(message: str) -> None:
+        # First explanation wins: the model's own reason is more use than the
+        # generic fallback that follows it.
+        if note is not None and not said:
+            said.append(message)
+            note(message)
+
     radar = gnews.topic_feeds([client])
     if not radar:
         _log.info("no themes for %r; nothing to draft from", client.name)
+        _say(
+            "Für diesen Mandanten sind keine Themen hinterlegt — ohne Themen gibt "
+            "es kein Marktumfeld, aus dem ein Impuls entstehen könnte."
+        )
         return False
 
     # Refresh first, so a click picks up what appeared since the last sweep.
@@ -1098,8 +1129,12 @@ def draft_impulse(
     )
     if fresh:
         _persist_articles(session, fresh, started)
-        keep = {id(item) for item in fresh}
-        _record_topic_hits(session, [p for p in pairs if id(p.item) in keep], started)
+    # Link every pair the radar returned, not just the ones stored a moment ago.
+    # This is the click that is supposed to answer "what should we say?", and the
+    # material query below reads these rows: gating them on novelty meant a
+    # mandate whose stories the archive already held asked the question and got
+    # "the radar has collected nothing" back, every time, forever.
+    _record_topic_hits(session, pairs, started)
 
     # Then draw on everything stored for this client in the window — the point of
     # the button is that a quiet morning must not mean an empty answer.
@@ -1114,10 +1149,21 @@ def draft_impulse(
     ]
     if not material:
         _log.info("no market material for %r in the last %s", client.name, IMPULSE_LOOKBACK)
+        _say(
+            f"Das Themen-Radar hat in den letzten {IMPULSE_LOOKBACK.days} Tagen "
+            "nichts zu den hinterlegten Themen gefunden. Oft sind die Themen zu "
+            "eng oder zu allgemein formuliert."
+        )
         return False
 
-    result = angles.suggest(session, client, material)
+    result = angles.suggest(session, client, material, note=_say)
     if result is None:
+        # suggest() has already explained a refusal; this covers the case where it
+        # had nothing to refuse over.
+        _say(
+            f"Aus {len(material)} Marktmeldung(en) ergab sich kein tragfähiger "
+            "Anlass."
+        )
         return False
     draft, numbered = result
     angles.store(session, client, draft, numbered)
