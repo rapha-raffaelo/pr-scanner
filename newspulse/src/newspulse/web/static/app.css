@@ -72,10 +72,12 @@ header.top {
 .runbusy { color: var(--accent); font-weight: 600; }
 
 /* "Not relevant" is not a triage state — it removes the row from this client's
-   coverage — so it sits apart from the three that merely mark progress. */
+   coverage — so it sits apart from the three that merely mark progress. The same
+   control appears in the archive rows on the client page, and wears the same
+   pill there: one action, one look, wherever it turns up. */
 .triage-btn--dismiss { margin-left: auto; color: var(--muted); }
 .triage-btn--dismiss:hover { color: var(--alert); border-color: #fca5a5; }
-.feed-item__act { margin-top: 6px; }
+.feed-item__act { display: flex; margin-top: 8px; }
 
 /* --- Empty state: the "nothing was ever found" variant -------------------- */
 /* A checklist, not a dead link. A mandate with no coverage at all is nearly
@@ -458,9 +460,16 @@ nav.tabs a.active {
 /* These lived in one page's inline <style>, so every other page that used the
    same class names fell back to the browser's default grey — which is what made
    the impulse page look a decade older than the card beside it. They belong here,
-   once, where every template can reach them. */
-.btn, .run-form button, .sect__act button,
-.panel button:not(.linkbtn):not(.rolebtn) {
+   once, where every template can reach them.
+
+   The container half of the selector is wrapped in :where(), which contributes
+   no specificity, so the whole rule weighs exactly one element selector. That
+   matters: the previous version was `.panel button:not(.linkbtn):not(.rolebtn)`
+   at (0,3,1), which out-ranked every component class and forced a growing list
+   of :not() exceptions — one per quiet control anyone added. Now a class simply
+   wins, and the :not() list is a safety net rather than the mechanism. */
+.btn,
+:where(.run-form, .sect__act, .panel) button:where(:not(.linkbtn, .rolebtn, .rival, .feedgroup__all)) {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -472,13 +481,13 @@ nav.tabs a.active {
   cursor: pointer;
   transition: filter .12s, box-shadow .12s;
 }
-.btn:hover, .run-form button:hover:not(:disabled), .sect__act button:hover:not(:disabled),
-.panel button:not(.linkbtn):not(.rolebtn):hover:not(:disabled) {
+.btn:hover:not(:disabled),
+:where(.run-form, .sect__act, .panel) button:where(:not(.linkbtn, .rolebtn, .rival, .feedgroup__all)):hover:not(:disabled) {
   filter: brightness(1.08);
   box-shadow: 0 1px 6px rgba(79, 70, 229, .28);
 }
-.btn:disabled, .run-form button:disabled, .sect__act button:disabled,
-.panel button:not(.linkbtn):not(.rolebtn):disabled {
+.btn:disabled,
+:where(.run-form, .sect__act, .panel) button:where(:not(.linkbtn, .rolebtn, .rival, .feedgroup__all)):disabled {
   background: var(--bg);
   color: var(--muted);
   border-color: var(--line);
@@ -490,6 +499,100 @@ nav.tabs a.active {
    with the one button that does the thing. */
 .btn--ghost { background: var(--card); color: var(--accent); }
 .btn--quiet { background: var(--bg); color: var(--muted); border-color: var(--line); font-weight: 500; }
+.btn.secondary, .panel button.secondary { background: var(--card); color: var(--accent); }
+.btn.danger, .panel button.danger { background: var(--card); color: var(--alert); border-color: #fca5a5; }
+
+/* A control that reads as a link: row actions, and anything destructive enough
+   that it must not look like the primary thing to click. Defined here rather
+   than in settings.html, where it used to live — outside that one page it left
+   "nicht relevant" rendering as a beveled grey UA button in every archive row. */
+.rowlink, .linkbtn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.rowlink:hover, .linkbtn:hover { text-decoration: underline; }
+.rowlink:focus-visible, .linkbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.linkbtn--danger { color: var(--muted); }
+.linkbtn--danger:hover { color: var(--alert); }
+/* Inside the settings table the actions sit in a tight nowrap column and need
+   the trailing gap that a bare link does not carry. */
+.col-actions .rowlink, .col-actions .linkbtn { padding: 0 0.4rem 0 0; font-size: 0.78rem; }
+.col-actions .linkbtn--danger { color: var(--alert); }
+
+/* --- Shared surfaces ------------------------------------------------------ */
+/* Card, table and status box. Every one of these was declared only in
+   settings.html, so the same markup produced a card on one page and a bare run
+   of text on the next: the share-of-voice "panel" on the client page had no
+   background, no border and no padding at all, and the coverage map's table
+   fell back to the browser's own — 16px type, no cell padding, no rules. */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem;
+}
+.panel h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0 0 0.85rem;
+}
+.panel label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.15rem; }
+.panel input[type="text"], .panel input[type="file"], .panel select {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  margin-bottom: 0.6rem;
+}
+
+/* The file input's own button lives in the shadow DOM, so no class or container
+   selector above can reach it: on both the CSV import and the guide upload it
+   stayed a beveled grey UA button in the middle of an otherwise styled form.
+   It gets the quiet variant — picking a file is not the action, submitting is. */
+input[type="file"] { cursor: pointer; }
+input[type="file"]::file-selector-button {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-right: 10px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+input[type="file"]::file-selector-button:hover { border-color: var(--accent); }
+
+.notice { border-radius: var(--radius); padding: 0.55rem 0.75rem; margin-bottom: 0.8rem; font-size: 0.85rem; }
+.notice--error { background: var(--alert-bg); border: 1px solid #fca5a5; color: #b91c1c; }
+.notice--ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #047857; }
+
+table.data { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+table.data th, table.data td {
+  text-align: left; padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border); vertical-align: top;
+}
+table.data th { color: var(--muted); font-weight: 600; }
+.table-caption { margin: 0 0 0.4rem; font-size: 0.75rem; color: var(--muted); }
+/* A wide table must scroll inside its own box, never the page body. The scroll
+   lives on a wrapper, not the table: `display:block` on a <table> collapses its
+   column layout. */
+.table-scroll { overflow-x: auto; }
+.cell-name { font-weight: 600; }
+.cell-name a { color: var(--text); text-decoration: none; }
+.cell-name a:hover { color: var(--accent); text-decoration: underline; }
 
 .run-form { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .run-form select {
@@ -607,18 +710,9 @@ table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04e
 .sov-panel .panel-hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
 .sov form { display: inline; }
 
-/* Row actions on the client page. The settings view defines these in its own
-   inline <style>; without them here the buttons render as default boxes. */
-.sov .linkbtn {
-  font: inherit;
-  font-size: 12px;
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--accent);
-  cursor: pointer;
-}
-.sov .linkbtn:hover { text-decoration: underline; }
+/* Removing a competitor is destructive enough to read red here, where the row it
+   removes is the row you are looking at. The base .linkbtn comes from the shared
+   control layer above; this is the only thing the table adds. */
 .sov .linkbtn--danger { color: var(--alert); }
 
 /* --- Header refresh ------------------------------------------------------ */
@@ -741,6 +835,9 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .langtoggle { display: flex; gap: 2px; margin-left: auto; align-self: center; }
 .langtoggle form { display: inline; }
 .langbtn {
+  /* `font: inherit` first: without it the button keeps the UA's Arial, which is
+     the one place in the header that did not use the app's own typeface. */
+  font: inherit;
   font-size: 15px; line-height: 1; padding: 5px 7px;
   border: 1px solid transparent; border-radius: 8px;
   background: none; cursor: pointer; opacity: 0.45;

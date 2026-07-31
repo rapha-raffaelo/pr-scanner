@@ -36,10 +36,9 @@
   }
   .proposal__head { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
   .proposal__text { white-space: pre-wrap; font-size: 13.5px; line-height: 1.6; margin-bottom: 12px; }
-  .btn { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 8px;
-         border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
-  .btn--ghost { background: var(--card); color: var(--accent); }
-  .btn--quiet { background: var(--bg); color: var(--muted); border-color: var(--line); font-weight: 400; }
+  /* .btn and its variants come from app.css — declaring them again here is what
+     let the two drift apart, and left every page that did not carry a copy with
+     the browser's own button. */
   .coach { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--cc-mid);
            border-radius: 10px; padding: 16px 20px; margin-top: 26px; }
   .coach__head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }

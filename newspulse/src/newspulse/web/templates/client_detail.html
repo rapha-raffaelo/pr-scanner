@@ -16,7 +16,7 @@
     {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
     <form method="post" action="/coverage/{{ row.analysis_id }}/dismiss" class="feed-item__act">
       <input type="hidden" name="redirect_to" value="/client/{{ client.id }}">
-      <button type="submit" class="linkbtn linkbtn--danger"
+      <button type="submit" class="triage-btn triage-btn--dismiss"
               title="{{ t('Diese Meldung handelt nicht von diesem Mandanten — aus seiner Berichterstattung entfernen') }}">{{ t("nicht relevant") }}</button>
     </form>
   </article>
@@ -40,7 +40,7 @@
 
 {# Share of voice, scoped to this client's own comparison set. A portfolio-wide
    version would average unrelated markets together, which says nothing. #}
-<section class="panel panel--wide sov-panel">
+<section class="panel sov-panel">
   <h2>Share of Voice <span class="colhead__note">{{ t("letzte 30 Tage") }}</span></h2>
   {% if voice | length > 1 %}
     <table class="data sov">

@@ -13,9 +13,11 @@
 {% block content %}
 {% set t = translator(request) %}
 <style>
-  /* Settings-specific layout. Reuses the app-wide CSS custom properties defined
-     in app.css (:root), so this page inherits the dashboard palette without
-     duplicating it. Kept in-page so the settings view owns its own styling. */
+  /* Settings-specific layout only. The shared surfaces this page used to
+     declare — .panel, .notice, table.data, .linkbtn, .cell-name, .table-scroll —
+     now live in app.css. They were never settings-specific: the same class names
+     appear on the client, map and guide views, where declaring them here left
+     them unstyled. Anything below is genuinely this page and nowhere else. */
   .settings h1 { margin: 0 0 1.25rem; font-size: 1.5rem; }
   .settings-grid {
     display: grid;
@@ -24,47 +26,7 @@
     align-items: start;
   }
   @media (max-width: 860px) { .settings-grid { grid-template-columns: 1fr; } }
-  .panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1rem 1.15rem;
-  }
   .panel--wide { grid-column: 1 / -1; }
-  .panel h2 {
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--muted);
-    margin: 0 0 0.85rem;
-  }
-  .panel label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.15rem; }
-  .panel input[type="text"], .panel input[type="file"], .panel select {
-    width: 100%;
-    padding: 0.35rem 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font: inherit;
-    margin-bottom: 0.6rem;
-  }
-  .panel button {
-    font: inherit;
-    font-weight: 600;
-    padding: 0.4rem 0.85rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--accent);
-    color: #fff;
-    cursor: pointer;
-  }
-  .panel button.secondary { background: var(--surface); color: var(--text); }
-  .panel button.danger { background: var(--surface); color: var(--alert); border-color: #fca5a5; }
-  .notice { border-radius: var(--radius); padding: 0.55rem 0.75rem; margin-bottom: 0.8rem; font-size: 0.85rem; }
-  .notice--error { background: var(--alert-bg); border: 1px solid #fca5a5; color: #b91c1c; }
-  .notice--ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #047857; }
-  table.data { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-  table.data th, table.data td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
-  table.data th { color: var(--muted); font-weight: 600; }
 
   /* --- Client portfolio table ------------------------------------------- */
   /* Collapsed add-form: adding is occasional, reading the table is constant. */
@@ -77,11 +39,6 @@
     padding: 0.3rem 0;
   }
   .add-client-toggle .add-client { padding-top: 0.6rem; }
-  .table-caption { margin: 0 0 0.4rem; font-size: 0.75rem; color: var(--muted); }
-  /* A wide table must scroll inside its own box, never the page body. The
-     scroll lives on a wrapper, not the table: `display:block` on a <table>
-     collapses its column layout. */
-  .table-scroll { overflow-x: auto; }
   table.data--clients { white-space: nowrap; }
   table.data--clients thead th {
     position: sticky;
@@ -95,9 +52,6 @@
   table.data--clients td { vertical-align: middle; }
   .client-tr:hover > td { background: #f9fafb; }
   .client-tr--inactive > td { color: var(--muted); }
-  .cell-name { font-weight: 600; }
-  .cell-name a { color: var(--text); text-decoration: none; }
-  .cell-name a:hover { color: var(--accent); text-decoration: underline; }
   /* Capped, because these cells hold whatever the operator typed: one mandate
      carries five aliases and thirty search terms, and on a nowrap table that one
      row pushed the actions column past the right edge of the screen. "Bearbeiten"
@@ -119,28 +73,6 @@
   .col-actions form { display: inline; }
   .tag--inactive { background: #f3f4f6; color: var(--muted); margin-left: 0.35rem; }
   .tag--topic { background: var(--alert-bg); color: #b91c1c; margin-right: 0.25rem; text-transform: none; }
-  /* Row actions read as links, not a row of competing buttons. */
-  .rowlink, .linkbtn {
-    font: inherit;
-    font-size: 0.78rem;
-    background: none;
-    border: none;
-    padding: 0 0.4rem 0 0;
-    color: var(--accent);
-    text-decoration: none;
-    cursor: pointer;
-  }
-  .rowlink:hover, .linkbtn:hover { text-decoration: underline; }
-  /* Must out-specify `.panel button` (0,1,1), which would otherwise repaint
-     these as accent-filled buttons with white — i.e. invisible — label text. */
-  .panel .col-actions button.linkbtn {
-    background: none;
-    border: none;
-    padding: 0 0.4rem 0 0;
-    font-weight: 400;
-    color: var(--accent);
-  }
-  .panel .col-actions button.linkbtn--danger { color: var(--alert); }
   .client-edit-tr > td { background: #f9fafb; white-space: normal; padding: 0.85rem 0.5rem; }
   .client-edit .actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.3rem; }
   .feed-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 1rem; margin-bottom: 0.75rem; }
@@ -160,7 +92,6 @@
   .import-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem 0.75rem; }
   @media (max-width: 620px) { .import-fields { grid-template-columns: 1fr; } }
   .run-errors { margin: 0.25rem 0 0; padding-left: 1rem; color: var(--alert); }
-  .run-form { display: flex; align-items: flex-end; gap: 0.75rem; margin-bottom: 0.5rem; }
   .run-form .filter-field { min-width: 260px; }
   .run-form select { margin-bottom: 0; }
   .panel-subhead { margin-top: 1.25rem; }
