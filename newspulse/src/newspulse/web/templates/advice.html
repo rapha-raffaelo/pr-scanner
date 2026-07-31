@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ translator(request)("Empfehlungen") }} · {{ client.name }} · NewsPulse{% endblock %}
+{% block title %}{{ translator(request)("Impulse") }} · {{ client.name }} · NewsPulse{% endblock %}
 
 {% block content %}
 {% set t = translator(request) %}
@@ -7,15 +7,34 @@
 {% include '_client_tabs.html' %}
 
 <style>
-  .handover { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent);
-              border-radius: 10px; padding: 16px 20px; margin-bottom: 18px; }
-  .handover__lead { font-size: 14px; margin-bottom: 6px; }
-  .handover__why { font-size: 13px; color: var(--muted); margin-bottom: 12px; max-width: 68ch; }
+  /* Two sections, two sources. Positioning comes from the market and works for a
+     mandate nobody writes about; recommendations come from its own press and do
+     not. They looked like one continuous page with controls floating between
+     them, so each is now a panel that carries its own header, explanation and
+     action — and the reader can tell at a glance which half is which. */
+  .sect { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+          padding: 18px 20px; margin-bottom: 18px; }
+  .sect__head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .sect__title { font-size: 15px; font-weight: 700; }
+  .sect__n { font-size: 11px; background: #eef0f3; color: #374151; padding: 2px 8px; border-radius: 20px; }
+  .sect__src { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em;
+               color: var(--muted); font-weight: 600; margin-left: auto; }
+  .sect__lead { font-size: 13px; color: var(--muted); margin-bottom: 14px; max-width: 72ch; }
+  /* The action row sits inside its section, not between two of them. */
+  .sect__act { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+               padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .sect__act .panel-hint { margin: 0; }
+  .sect__body > .item:last-child, .sect__body > .impulse:last-child { margin-bottom: 0; }
+  .sect__empty { font-size: 13px; color: var(--muted); font-style: italic; }
+
+  /* The situation reads as a lead paragraph, not as a second page title. */
+  .situation { font-size: 14px; line-height: 1.6; margin-bottom: 6px; }
+  .sect__meta { font-size: 11.5px; color: var(--muted); }
+  .handover__lead { font-size: 13.5px; margin-bottom: 6px; }
+  .handover__why { font-size: 13px; color: var(--muted); margin-bottom: 10px; max-width: 68ch; }
   .handover__act { font-size: 13px; color: var(--muted); }
   .handover__act a { color: var(--accent); font-weight: 600; }
-  .handover__angle { margin: 0; border-left-color: var(--accent); }
 </style>
-
 
 <div class="client-profile">
   <h1>{{ t("Impulse") }}</h1>
@@ -25,165 +44,189 @@
   </p>
 </div>
 
-{# The positioning drafts first: they come from the market and work for a mandate
-   nobody writes about yet, which is the case the page below cannot serve. #}
-<div class="colhead" style="margin-bottom:10px">
-  {{ t("Positionierung") }}{% if angles %} <span class="n">{{ angles | length }}</span>{% endif %}
-</div>
-{# On demand, and over a wider window than the sweep. The daily run drafts only
-   from what arrived that morning, which leaves a mandate empty on a quiet day even
-   though its field may have had plenty worth saying in the past fortnight. #}
-<form method="post" action="/client/{{ client.id }}/impulse" class="run-form" style="margin-bottom:12px">
-  <button type="submit"{% if drafting or not has_themes %} disabled{% endif %}>
-    {% if angles %}{{ t("Neuen Impuls erzeugen") }}{% else %}{{ t("Impuls erzeugen") }}{% endif %}
-  </button>
-  <span class="panel-hint">
-    {% if not has_themes %}
-      {{ t("Dafür braucht dieser Mandant Themen.") }}
-      <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }} →</a>
-    {% else %}
-      {{ t("Aus dem Themen-Radar der letzten drei Wochen.") }}
-    {% endif %}
-  </span>
-</form>
-{% if drafting %}
-  <div class="notice notice--ok"><span class="spinner" aria-hidden="true"></span>{{ t("Impuls wird erzeugt — die Seite aktualisiert sich, sobald er steht.") }}</div>
-{% endif %}
+{# --- Positioning: from the market ---------------------------------------- #}
+<section class="sect">
+  <div class="sect__head">
+    <span class="sect__title">{{ t("Positionierung") }}</span>
+    {% if angles %}<span class="sect__n">{{ angles | length }}</span>{% endif %}
+    <span class="sect__src">{{ t("aus dem Markt") }}</span>
+  </div>
+  <p class="sect__lead">
+    {{ t("Eine Positionierung zu dem, was im Themenfeld passiert — auch ohne eigene Berichterstattung.") }}
+  </p>
 
-{% if angles %}
-  {% for angle in angles %}
-    <article class="impulse" id="impulse-{{ angle.id }}">
-      <div class="impulse__head">
-        <span class="clichip">{{ angle.generated_at | de_short_date }}</span>
-        <button type="button" class="impulse__copy" data-copy-from="impulse-text-{{ angle.id }}">{{ t("Kopieren") }}</button>
-      </div>
-      {% if angle.subject %}<div class="impulse__subject">{{ angle.subject }}</div>{% endif %}
-      <div class="impulse__text" id="impulse-text-{{ angle.id }}">{{ angle.message }}</div>
-      {% if angle.thesis %}
-        <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ angle.thesis }}</div>
+  <div class="sect__act">
+    <form method="post" action="/client/{{ client.id }}/impulse">
+      <button type="submit" class="btn"{% if drafting or not has_themes %} disabled{% endif %}>
+        {% if angles %}{{ t("Neuen Impuls erzeugen") }}{% else %}{{ t("Impuls erzeugen") }}{% endif %}
+      </button>
+    </form>
+    <span class="panel-hint">
+      {% if not has_themes %}
+        {{ t("Dafür braucht dieser Mandant Themen.") }}
+        <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }} →</a>
+      {% else %}
+        {{ t("Aus dem Themen-Radar der letzten drei Wochen.") }}
       {% endif %}
-      {% if angle.overclaim %}
-        <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
-      {% endif %}
-    </article>
-  {% endfor %}
-{% endif %}
+    </span>
+  </div>
 
-<div class="colhead" style="margin-top:22px;margin-bottom:10px">{{ t("Empfehlungen") }}</div>
-<p class="panel-hint" style="margin-bottom:10px">
-  {{ t("Reagieren auf die eigene Berichterstattung der letzten") }} {{ advisory.covered_days if advisory else 30 }} {{ t("Tage") }}.
-</p>
+  {% if drafting %}
+    <div class="notice notice--ok"><span class="spinner" aria-hidden="true"></span>{{ t("Impuls wird erzeugt — die Seite aktualisiert sich, sobald er steht.") }}</div>
+  {% endif %}
 
-{% if not available and not angles %}
-  {# No coverage, so there is nothing to advise on — and saying only that is true
-     but useless. An advisory reads a client's own press; the impulse reads its
-     market and needs no coverage at all, which is precisely the situation a young
-     mandate is in. So the page hands over rather than shrugging. #}
-  <section class="handover">
-    <p class="handover__lead">
-      {{ t("Über diesen Mandanten wurde im Zeitraum nichts geschrieben — es gibt also nichts zu empfehlen.") }}
-    </p>
-    <p class="handover__why">
-      {{ t("Eine Empfehlung reagiert auf eigene Berichterstattung. Was ohne sie trägt, ist ein Impuls: eine Positionierung zu dem, was im Markt passiert.") }}
-    </p>
-
-    {% if latest_angle %}
-      <article class="impulse handover__angle">
+  <div class="sect__body">
+    {% for angle in angles %}
+      <article class="impulse" id="impulse-{{ angle.id }}">
         <div class="impulse__head">
-          <span class="clichip">{{ t("Impuls") }}</span>
-          <span class="impulse__age">{{ latest_angle.generated_at | de_short_date }}</span>
+          <span class="clichip">{{ angle.generated_at | de_short_date }}</span>
+          <button type="button" class="impulse__copy" data-copy-from="impulse-text-{{ angle.id }}">{{ t("Kopieren") }}</button>
         </div>
-        <div class="impulse__subject">{{ latest_angle.subject }}</div>
-        <div class="impulse__text">{{ latest_angle.message }}</div>
-        {% if latest_angle.thesis %}
-          <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ latest_angle.thesis }}</div>
+        {% if angle.subject %}<div class="impulse__subject">{{ angle.subject }}</div>{% endif %}
+        <div class="impulse__text" id="impulse-text-{{ angle.id }}">{{ angle.message }}</div>
+        {% if angle.thesis %}
+          <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ angle.thesis }}</div>
+        {% endif %}
+        {% if angle.overclaim %}
+          <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
         {% endif %}
       </article>
-    {% elif has_themes %}
-      <p class="handover__act">
-        {% if market_seen %}
+    {% else %}
+      {# Three reasons for an empty section, and they need different answers: the
+         radar has nothing yet, it found nothing worth saying, or it cannot run. #}
+      {% if not has_themes %}
+        <p class="handover__act">
+          {{ t("Für diesen Mandanten läuft noch kein Themen-Radar — ohne hinterlegte Themen entsteht auch kein Impuls.") }}
+          <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }} →</a>
+        </p>
+      {% elif market_seen %}
+        <p class="sect__empty">
           {{ t("Das Themen-Radar hat") }} {{ market_seen }}
           {{ t("Marktmeldung(en) für diesen Mandanten gesammelt, aber noch keinen Anlass daraus gemacht.") }}
-        {% else %}
-          {{ t("Das Themen-Radar für diesen Mandanten hat noch nichts gesammelt — der nächste Lauf holt es.") }}
-        {% endif %}
-      </p>
-    {% else %}
-      <p class="handover__act">
-        {{ t("Für diesen Mandanten läuft noch kein Themen-Radar — ohne hinterlegte Themen entsteht auch kein Impuls.") }}
-        <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }} →</a>
-      </p>
-    {% endif %}
-  </section>
-{% endif %}
-
-<form method="post" action="/client/{{ client.id }}/advice" class="run-form">
-  <div class="filter-field">
-    <label for="days">{{ t("Zeitraum") }}</label>
-    <select id="days" name="days">
-      <option value="7">{{ t("Letzte 7 Tage") }}</option>
-      <option value="30" selected>{{ t("Letzte 30 Tage") }}</option>
-      <option value="90">{{ t("Letzte 90 Tage") }}</option>
-    </select>
-  </div>
-  <button type="submit"{% if running or not available %} disabled{% endif %}>
-    {% if advisory %}{{ t("Neu erzeugen") }}{% else %}{{ t("Empfehlungen erzeugen") }}{% endif %}
-  </button>
-  <span class="panel-hint">{{ available }} {{ t("Artikel") }} {{ t("im Zeitraum") }}</span>
-</form>
-
-{% if running %}
-  <div class="notice notice--ok"><span class="spinner" aria-hidden="true"></span>{{ t("Wird erzeugt — die Seite aktualisiert sich, sobald der Entwurf steht.") }}</div>
-{% endif %}
-
-{% if advisory %}
-  <div class="panel panel--wide">
-    <h2>{{ t("Lage") }}</h2>
-    <p class="situation">{{ advisory.situation }}</p>
-    <p class="panel-hint">
-      {{ t("Erzeugt am") }} {{ advisory.generated_at | de_datetime }} — {{ advisory.article_count }} {{ t("Artikel") }}.
-    </p>
-  </div>
-
-  {% if advisory.suggestions %}
-    <div class="colhead">{{ t("Maßnahmen") }} <span class="n">{{ advisory.suggestions | length }}</span></div>
-    {% for s in advisory.suggestions %}
-      <div class="item advice">
-        <div class="body">
-          <div class="toprow">
-            <span class="tag kind-{{ s.kind }}">{{ t(s.kind) | capitalize }}</span>
-            <span class="tag urgency-{{ s.urgency }}">{{ t(s.urgency | replace('_', ' ')) | capitalize }}</span>
-          </div>
-          <div class="hl">{{ s.title }}</div>
-          <div class="sum">{{ s.rationale }}</div>
-          {% if s.evidence %}
-            <details class="pickup-list">
-              <summary>{{ t("Grundlage") }}: {{ s.evidence | length }} {{ t("Meldung(en)") }}</summary>
-              <ul>
-                {% for idx in s.evidence %}
-                  {% set ref = coverage.get(idx) %}
-                  {% if ref %}
-                    <li>
-                      <a href="{{ ref.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ ref.headline }}</a>
-                      <span class="dot">·</span> {{ ref.source }}
-                      <span class="dot">·</span> {{ ref.published_at | de_short_date }}
-                    </li>
-                  {% endif %}
-                {% endfor %}
-              </ul>
-            </details>
-          {% endif %}
-        </div>
-      </div>
+          <a href="/client/{{ client.id }}/market">{{ t("Marktumfeld ansehen") }} →</a>
+        </p>
+      {% else %}
+        <p class="sect__empty">{{ t("Das Themen-Radar für diesen Mandanten hat noch nichts gesammelt — der nächste Lauf holt es.") }}</p>
+      {% endif %}
     {% endfor %}
-  {% else %}
-    <div class="empty-state">
-      <p>{{ t("Keine Maßnahmen vorgeschlagen — im Zeitraum gab es nichts, das eine Reaktion erfordert.") }}</p>
-    </div>
-  {% endif %}
-{% else %}
-  <div class="empty-state">
-    <p>{{ t("Noch keine Empfehlungen erzeugt.") }}</p>
   </div>
-{% endif %}
+</section>
+
+{# --- Recommendations: from the client's own coverage ---------------------- #}
+<section class="sect">
+  <div class="sect__head">
+    <span class="sect__title">{{ t("Empfehlungen") }}</span>
+    {% if advisory and advisory.suggestions %}<span class="sect__n">{{ advisory.suggestions | length }}</span>{% endif %}
+    <span class="sect__src">{{ t("aus eigener Berichterstattung") }}</span>
+  </div>
+  <p class="sect__lead">
+    {{ t("Reagieren auf das, was über den Mandanten geschrieben wurde.") }}
+  </p>
+
+  <div class="sect__act">
+    <form method="post" action="/client/{{ client.id }}/advice" class="run-form" style="margin:0">
+      <div class="filter-field">
+        <select id="days" name="days" aria-label="{{ t('Zeitraum') }}">
+          <option value="7">{{ t("Letzte 7 Tage") }}</option>
+          <option value="30" selected>{{ t("Letzte 30 Tage") }}</option>
+          <option value="90">{{ t("Letzte 90 Tage") }}</option>
+        </select>
+      </div>
+      <button type="submit" class="btn"{% if running or not available %} disabled{% endif %}>
+        {% if advisory %}{{ t("Neu erzeugen") }}{% else %}{{ t("Empfehlungen erzeugen") }}{% endif %}
+      </button>
+    </form>
+    <span class="panel-hint">{{ available }} {{ t("Artikel") }} {{ t("im Zeitraum") }}</span>
+  </div>
+
+  {% if running %}
+    <div class="notice notice--ok"><span class="spinner" aria-hidden="true"></span>{{ t("Wird erzeugt — die Seite aktualisiert sich, sobald der Entwurf steht.") }}</div>
+  {% endif %}
+
+  <div class="sect__body">
+    {% if not available %}
+      <p class="handover__lead">
+        {{ t("Über diesen Mandanten wurde im Zeitraum nichts geschrieben — es gibt also nichts zu empfehlen.") }}
+      </p>
+      <p class="handover__why">
+        {{ t("Eine Empfehlung reagiert auf eigene Berichterstattung. Was ohne sie trägt, ist ein Impuls: eine Positionierung zu dem, was im Markt passiert.") }}
+      </p>
+    {% elif advisory %}
+      <p class="situation">{{ advisory.situation }}</p>
+      <p class="sect__meta">
+        {{ t("Erzeugt am") }} {{ advisory.generated_at | de_datetime }} — {{ advisory.article_count }} {{ t("Artikel") }}.
+      </p>
+
+      {% for s in advisory.suggestions %}
+        <div class="item advice" style="margin-top:12px">
+          <div class="body">
+            <div class="toprow">
+              <span class="tag kind-{{ s.kind }}">{{ t(s.kind) | capitalize }}</span>
+              <span class="tag urgency-{{ s.urgency }}">{{ t(s.urgency | replace('_', ' ')) | capitalize }}</span>
+            </div>
+            <div class="hl">{{ s.title }}</div>
+            <div class="sum">{{ s.rationale }}</div>
+            {% if s.evidence %}
+              <details class="pickup-list">
+                <summary>{{ t("Grundlage") }}: {{ s.evidence | length }} {{ t("Meldung(en)") }}</summary>
+                <ul>
+                  {% for idx in s.evidence %}
+                    {% set ref = coverage.get(idx) %}
+                    {% if ref %}
+                      <li>
+                        <a href="{{ ref.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ ref.headline }}</a>
+                        <span class="dot">·</span> {{ ref.source }}
+                        <span class="dot">·</span> {{ ref.published_at | de_short_date }}
+                      </li>
+                    {% endif %}
+                  {% endfor %}
+                </ul>
+              </details>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <p class="sect__empty" style="margin-top:10px">{{ t("Keine Maßnahmen vorgeschlagen — im Zeitraum gab es nichts, das eine Reaktion erfordert.") }}</p>
+      {% endfor %}
+    {% else %}
+      <p class="sect__empty">{{ t("Noch keine Empfehlungen erzeugt.") }}</p>
+    {% endif %}
+  </div>
+</section>
+
+<script>
+// The copy button, shared with the Today column: it takes the message only, never
+// the reasoning around it, which must not land in a client's inbox.
+(function () {
+  document.querySelectorAll("[data-copy-from]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var source = document.getElementById(button.dataset.copyFrom);
+      if (!source) return;
+      var text = source.textContent.trim();
+      var done = function () {
+        var previous = button.textContent;
+        button.textContent = "✓";
+        button.classList.add("impulse__copy--done");
+        setTimeout(function () {
+          button.textContent = previous;
+          button.classList.remove("impulse__copy--done");
+        }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+        return;
+      }
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      try { document.execCommand("copy"); done(); } catch (e) {}
+      document.body.removeChild(area);
+    });
+  });
+})();
+</script>
 {% endblock %}

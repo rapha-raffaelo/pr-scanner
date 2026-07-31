@@ -453,7 +453,8 @@ nav.tabs a.active {
    same class names fell back to the browser's default grey — which is what made
    the impulse page look a decade older than the card beside it. They belong here,
    once, where every template can reach them. */
-.btn, .run-form button, .panel button:not(.linkbtn):not(.rolebtn) {
+.btn, .run-form button, .sect__act button,
+.panel button:not(.linkbtn):not(.rolebtn) {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -465,12 +466,12 @@ nav.tabs a.active {
   cursor: pointer;
   transition: filter .12s, box-shadow .12s;
 }
-.btn:hover, .run-form button:hover:not(:disabled),
+.btn:hover, .run-form button:hover:not(:disabled), .sect__act button:hover:not(:disabled),
 .panel button:not(.linkbtn):not(.rolebtn):hover:not(:disabled) {
   filter: brightness(1.08);
   box-shadow: 0 1px 6px rgba(79, 70, 229, .28);
 }
-.btn:disabled, .run-form button:disabled,
+.btn:disabled, .run-form button:disabled, .sect__act button:disabled,
 .panel button:not(.linkbtn):not(.rolebtn):disabled {
   background: var(--bg);
   color: var(--muted);

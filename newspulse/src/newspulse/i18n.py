@@ -155,6 +155,13 @@ _EN: dict[str, str] = {
     "im Archiv": "in archive",
     "Empfehlungen": "Recommendations",
     "Positionierung": "Positioning",
+    "aus dem Markt": "from the market",
+    "aus eigener Berichterstattung": "from own coverage",
+    "Eine Positionierung zu dem, was im Themenfeld passiert — auch ohne eigene Berichterstattung.":
+        "A position on what is happening in the field — with or without coverage "
+        "of your own.",
+    "Reagieren auf das, was über den Mandanten geschrieben wurde.":
+        "Responding to what was written about the client.",
     "Impuls erzeugen": "Draft an opening",
     "Neuen Impuls erzeugen": "Draft another opening",
     "Aus dem Themen-Radar der letzten drei Wochen.":
