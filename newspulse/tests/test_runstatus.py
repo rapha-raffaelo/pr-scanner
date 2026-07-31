@@ -63,7 +63,7 @@ def test_a_running_sweep_turns_the_wheel_on_every_page(client, running):
     for path in ("/", "/clients", "/archive", "/settings"):
         body = client.get(path).text
         assert 'class="spinner"' in body, path
-        assert "Lauf läuft…" in body, path
+        assert "Aktualisierung läuft…" in body, path
 
 
 def test_a_running_sweep_makes_the_header_poll_itself(client, running):

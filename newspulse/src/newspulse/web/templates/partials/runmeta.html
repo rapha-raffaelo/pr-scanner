@@ -18,7 +18,7 @@
   {% if run_active() %}
     {# The one state the header could never show before: the runs row is written
        when a sweep finishes, so "in progress" had to come from the process lock. #}
-    <span class="runbusy"><span class="spinner" aria-hidden="true"></span>{{ t("Lauf läuft…") }}</span>
+    <span class="runbusy"><span class="spinner" aria-hidden="true"></span>{{ t("Aktualisierung läuft…") }}</span>
     {% if last_run %}
       <span class="dot">·</span>
       <span class="runstale">{{ t("Stand von") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}</span>

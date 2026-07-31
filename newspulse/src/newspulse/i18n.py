@@ -40,7 +40,11 @@ _EN: dict[str, str] = {
     "Feeds jetzt abrufen und analysieren — läuft im Hintergrund":
         "Fetch and analyse feeds now — runs in the background",
     "Letzter Lauf": "Last run",
-    "Lauf läuft…": "Run in progress…",
+    # Not "Lauf läuft" — a tautology naming an internal concept — and not
+    # "Caching", which would name a mechanism that does not exist here: the sweep
+    # fetches feeds and has Claude read them, it caches nothing. The word matches
+    # the button that started it, so cause and effect line up on screen.
+    "Aktualisierung läuft…": "Updating…",
     # While a sweep runs the header shows the *previous* run's time, so the
     # counts beside it are not read as the current ones.
     "Stand von": "as of",
