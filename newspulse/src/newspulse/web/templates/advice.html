@@ -66,7 +66,7 @@
         {{ t("Dafür braucht dieser Mandant Themen.") }}
         <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }} →</a>
       {% else %}
-        {{ t("Aus dem Themen-Radar der letzten drei Wochen.") }}
+        {{ t("Aus dem Themen-Radar der letzten") }} {{ impulse_days }} {{ t("Tage") }}.
       {% endif %}
     </span>
   </div>

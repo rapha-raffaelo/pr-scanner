@@ -1049,11 +1049,16 @@ def backfill_client(
     return len(articles)
 
 
-#: How far back an on-demand impulse looks for market material. Wider than the
-#: sweep's "since the last run", because the question being answered is different:
-#: the sweep asks "did something happen overnight", a person clicking the button
-#: asks "is there anything to say at all".
-IMPULSE_LOOKBACK = dt.timedelta(days=21)
+#: How far back an on-demand impulse looks for market material. Wide, because the
+#: question is different from the sweep's: the sweep asks "did something happen
+#: overnight", a person clicking the button asks "is there anything to say at
+#: all" — and three weeks answered "no" for a field that had moved two months ago.
+#:
+#: The width is nearly free. Radar material is stored unanalysed, so a longer
+#: window costs one wider database read and the same single model call; the cap on
+#: developments handed to the model (angles._MAX_DEVELOPMENTS) is what bounds the
+#: prompt, and it takes the newest ones.
+IMPULSE_LOOKBACK = dt.timedelta(days=90)
 
 
 def draft_impulse(

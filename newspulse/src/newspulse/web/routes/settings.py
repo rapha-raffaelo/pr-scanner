@@ -641,10 +641,41 @@ def fetch_logo_route(
     return RedirectResponse("/settings", status_code=_SEE_OTHER)
 
 
+@router.post("/settings/clients/{client_id}/rivals", response_class=HTMLResponse)
+def suggest_rivals_route(
+    request: Request, client_id: int, session: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Propose competitors for one client, rendered back into the settings page.
+
+    Here rather than on the client's own page: competitors are configuration, and
+    they belong beside the aliases, search terms and alert topics — the fields you
+    set when a mandate is created. The client page keeps the accepted ones, where
+    the share of voice they feed is actually read.
+    """
+    client = session.get(Client, client_id)
+    if client is None:
+        return RedirectResponse("/settings", status_code=_SEE_OTHER)
+    try:
+        proposals = rivals.suggest(client)
+    except Exception as exc:  # noqa: BLE001 — one message, whatever failed
+        _log.warning("competitor suggestion for %r failed: %s", client.name, exc)
+        return _render_settings(
+            request, session, rival_error=f"Vorschlag fehlgeschlagen: {exc}"
+        )
+    return _render_settings(
+        request,
+        session,
+        rival_suggestions=proposals,
+        rival_client_id=client_id,
+        rival_client_name=client.name,
+    )
+
+
 @router.post("/client/{client_id}/competitors/accept")
 def accept_rival_route(
     client_id: int,
     name: str = Form(...),
+    redirect_to: str = Form(""),
     session: Session = Depends(get_db),
 ) -> RedirectResponse:
     """Turn one accepted proposal into a monitored competitor and link it.
@@ -654,10 +685,13 @@ def accept_rival_route(
     existing company of the same name is reused rather than duplicated, so a name
     proposed for two mandates ends up as one row watched by both.
     """
+    # Same posture as the run trigger's redirect: only a same-site path is
+    # honoured, so a crafted form cannot bounce the operator off the host.
+    back = redirect_to if redirect_to.startswith("/") else f"/client/{client_id}"
     client = session.get(Client, client_id)
     proposed = (name or "").strip()
     if client is None or not proposed:
-        return RedirectResponse(f"/client/{client_id}", status_code=_SEE_OTHER)
+        return RedirectResponse(back, status_code=_SEE_OTHER)
 
     existing = session.scalars(
         select(Client).where(func.lower(Client.name) == proposed.lower())
@@ -673,7 +707,7 @@ def accept_rival_route(
     if other.id != client.id and other not in client.competitors:
         client.competitors.append(other)
         session.commit()
-    return RedirectResponse(f"/client/{client_id}", status_code=_SEE_OTHER)
+    return RedirectResponse(back, status_code=_SEE_OTHER)
 
 
 @router.post("/client/{client_id}/competitors")

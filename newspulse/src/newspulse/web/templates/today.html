@@ -225,10 +225,20 @@
               <a href="/archive{% if selected_client %}?client={{ selected_client }}{% endif %}">{{ t("im Archiv ansehen") }}</a>
             </p>
           {% else %}
-            <p class="empty-state-hint">
-              {{ t("Noch keine Berichterstattung erfasst. Mandanten anlegen und einen Lauf mit Nachlauf starten:") }}
-              <a href="/settings">{{ t("Einstellungen") }}</a>
-            </p>
+            {# Two very different situations wore the same sentence, and one of
+               them was nonsense: a portfolio with three mandates was told to
+               create mandates. What is missing is coverage, not clients. #}
+            {% if clients %}
+              <p class="empty-state-hint">
+                {{ t("Noch keine Berichterstattung im Archiv. Der tägliche Lauf holt nur Neues — ältere Meldungen brauchen einen Nachlauf:") }}
+                <a href="/settings">{{ t("Einstellungen") }}</a>
+              </p>
+            {% else %}
+              <p class="empty-state-hint">
+                {{ t("Noch keine Mandanten angelegt. Ohne Mandant gibt es nichts zu beobachten:") }}
+                <a href="/settings">{{ t("Einstellungen") }}</a>
+              </p>
+            {% endif %}
           {% endif %}
         </div>
       {% endif %}

@@ -132,6 +132,9 @@ def advice_view(
             # off the hit count, a mandate with twenty-five themes and a radar that
             # has simply not run yet was told it had no radar.
             "has_themes": bool(client.keywords or client.alert_topics),
+            # Rendered rather than written into the template, so the sentence and
+            # the window can never disagree.
+            "impulse_days": job.IMPULSE_LOOKBACK.days,
             "market_seen": session.scalar(
                 select(func.count()).select_from(TopicHit).where(
                     TopicHit.client_id == client_id

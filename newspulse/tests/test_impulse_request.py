@@ -156,7 +156,7 @@ def test_the_model_declining_stores_nothing(session, monkeypatch):
 
 def test_material_older_than_the_window_is_not_used(session, monkeypatch):
     client = _client(session)
-    _stored_market(session, client, "Uralte Meldung", days_ago=60)
+    _stored_market(session, client, "Uralte Meldung", days_ago=200)
     monkeypatch.setattr(
         angles, "suggest", lambda *a, **k: pytest.fail("must not ask the model")
     )

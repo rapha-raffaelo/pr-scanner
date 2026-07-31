@@ -164,8 +164,7 @@ _EN: dict[str, str] = {
         "Responding to what was written about the client.",
     "Impuls erzeugen": "Draft an opening",
     "Neuen Impuls erzeugen": "Draft another opening",
-    "Aus dem Themen-Radar der letzten drei Wochen.":
-        "From the topic radar of the last three weeks.",
+    "Aus dem Themen-Radar der letzten": "From the topic radar of the last",
     "Dafür braucht dieser Mandant Themen.": "This client needs themes for that.",
     "Impuls wird erzeugt — das dauert etwa eine Minute. Seite neu laden.":
         "Drafting — this takes about a minute. Reload the page.",
@@ -228,6 +227,12 @@ _EN: dict[str, str] = {
     "entfernen": "remove",
     "Wettbewerber hinzufügen": "Add competitor",
     "Wettbewerber vorschlagen": "Suggest competitors",
+    "Wettbewerber": "Competitors",
+    "Wettbewerber für": "Competitors for",
+    "In Einstellungen vorschlagen lassen": "Get suggestions under Settings",
+    "Keine Wettbewerber vorgeschlagen — das Modell kennt dieses Unternehmen nicht sicher genug. Lieber keiner als ein erfundener.":
+        "No competitors proposed — the model does not know this company well "
+        "enough. Better none than an invented one.",
     "Das Modell schlägt vor, angelegt wird erst per Klick.":
         "The model proposes; nothing is created until you click.",
     "Vorschläge — noch nichts davon angelegt. Ein Klick legt das Unternehmen als Wettbewerber an und verknüpft es.":

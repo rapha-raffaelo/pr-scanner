@@ -182,14 +182,15 @@ def test_accepting_a_company_that_already_exists_reuses_it(factory, client):
         assert rows[0] in session.get(Client, subject_id).competitors
 
 
-def test_the_page_offers_the_suggestion_button_when_there_are_none(factory, client):
+def test_settings_offers_the_suggestion_per_client(factory, client):
+    """Competitors are configuration, so the proposal sits beside the aliases and
+    search terms rather than on the page where the resulting share is read."""
     with factory() as session:
         subject_id = _client(session).id
 
-    body = client.get(f"/client/{subject_id}").text
+    body = client.get("/settings").text
 
-    assert "Wettbewerber vorschlagen" in body
-    assert f'action="/client/{subject_id}/competitors/suggest"' in body
+    assert f'action="/settings/clients/{subject_id}/rivals"' in body
 
 
 def test_the_proposals_render_as_buttons_that_create_nothing_by_themselves(
@@ -202,10 +203,54 @@ def test_the_proposals_render_as_buttons_that_create_nothing_by_themselves(
         rivals, "suggest", lambda c, **k: rivals._parse(_reply("About You")).rivals
     )
 
-    body = client.post(f"/client/{subject_id}/competitors/suggest").text
+    body = client.post(f"/settings/clients/{subject_id}/rivals").text
 
     assert "About You" in body
     assert f'action="/client/{subject_id}/competitors/accept"' in body
     with factory() as session:
         # Rendered, not created.
         assert session.scalar(select(func.count()).select_from(Client)) == 1
+
+
+def test_an_empty_proposal_says_so_rather_than_looking_broken(
+    factory, client, monkeypatch
+):
+    """The expected answer for a young mandate, and the page must not leave the
+    reader wondering whether the button worked."""
+    with factory() as session:
+        subject_id = _client(session, name="IB-7 Beauty Tech GmbH").id
+
+    monkeypatch.setattr(rivals, "suggest", lambda c, **k: [])
+
+    body = client.post(f"/settings/clients/{subject_id}/rivals").text
+
+    assert "Keine Wettbewerber vorgeschlagen" in body
+
+
+def test_accepting_from_settings_returns_to_settings(factory, client):
+    """The suggestion was made while configuring; the reader belongs back there,
+    not on a page they never asked for."""
+    with factory() as session:
+        subject_id = _client(session).id
+
+    resp = client.post(
+        f"/client/{subject_id}/competitors/accept",
+        data={"name": "About You", "redirect_to": "/settings"},
+        follow_redirects=False,
+    )
+
+    assert resp.headers["location"] == "/settings"
+
+
+def test_an_offsite_redirect_is_refused(factory, client):
+    """Same posture as the run trigger: only a same-site path is honoured."""
+    with factory() as session:
+        subject_id = _client(session).id
+
+    resp = client.post(
+        f"/client/{subject_id}/competitors/accept",
+        data={"name": "About You", "redirect_to": "https://evil.example/"},
+        follow_redirects=False,
+    )
+
+    assert resp.headers["location"] == f"/client/{subject_id}"
