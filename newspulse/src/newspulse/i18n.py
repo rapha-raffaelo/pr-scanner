@@ -155,6 +155,16 @@ _EN: dict[str, str] = {
     "im Archiv": "in archive",
     "Empfehlungen": "Recommendations",
     "Positionierung": "Positioning",
+    "Impuls erzeugen": "Draft an opening",
+    "Neuen Impuls erzeugen": "Draft another opening",
+    "Aus dem Themen-Radar der letzten drei Wochen.":
+        "From the topic radar of the last three weeks.",
+    "Dafür braucht dieser Mandant Themen.": "This client needs themes for that.",
+    "Impuls wird erzeugt — das dauert etwa eine Minute. Seite neu laden.":
+        "Drafting — this takes about a minute. Reload the page.",
+    "Das Themen-Radar für diesen Mandanten hat noch nichts gesammelt — der nächste Lauf holt es.":
+        "The topic radar has collected nothing for this client yet — the next "
+        "sweep will.",
     "Was dieser Mandant sagen oder tun sollte — aus dem Markt und aus seiner eigenen Berichterstattung.":
         "What this client should say or do — from the market and from its own "
         "coverage.",

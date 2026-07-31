@@ -37,3 +37,16 @@ def run_guard_is_free():
 
     yield
     assert not runlock.is_running(), "a test left the run guard held"
+
+
+@pytest.fixture(autouse=True)
+def no_background_impulse(monkeypatch):
+    """Stop the impulse button from starting a real draft in a test run.
+
+    Same reason as the onboarding fetch: it reaches Google News and shells out to
+    `claude`, and it holds the run guard while it does. Exercised explicitly in
+    ``test_impulse_request.py``.
+    """
+    from newspulse.web.routes import advisory
+
+    monkeypatch.setattr(advisory, "_run_impulse", lambda *args, **kwargs: None)

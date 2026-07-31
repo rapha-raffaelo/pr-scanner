@@ -1049,8 +1049,81 @@ def backfill_client(
     return len(articles)
 
 
+#: How far back an on-demand impulse looks for market material. Wider than the
+#: sweep's "since the last run", because the question being answered is different:
+#: the sweep asks "did something happen overnight", a person clicking the button
+#: asks "is there anything to say at all".
+IMPULSE_LOOKBACK = dt.timedelta(days=21)
+
+
+def draft_impulse(
+    session: Session,
+    client: Client,
+    *,
+    fetch: FetchFeed = fetch_feed,
+    now: Callable[[], dt.datetime] | None = None,
+) -> bool:
+    """Fetch this client's market and draft one positioning message from it.
+
+    The sweep only drafts from material that arrived *that morning*, which is right
+    for a daily rhythm and wrong for a person asking the question directly: a
+    mandate whose field was quiet today may still have plenty worth saying from the
+    past fortnight. So this refreshes the radar and then works from everything
+    stored for the client in the window, fresh or not.
+
+    Returns whether a draft was stored. False covers "no themes", "nothing in the
+    market" and the model's own "no opening here" — all three are honest answers
+    to the question, and none of them is an error.
+    """
+    now_fn = now or _utcnow
+    started = now_fn()
+    since = started - IMPULSE_LOOKBACK
+    errors: list[str] = []
+
+    radar = gnews.topic_feeds([client])
+    if not radar:
+        _log.info("no themes for %r; nothing to draft from", client.name)
+        return False
+
+    # Refresh first, so a click picks up what appeared since the last sweep.
+    pairs, _ok = _fetch_topics(radar, [client], since, fetch, started, errors)
+    known_urls, known_hashes = _load_known(session)
+    fresh = deduplicate(
+        _distinct_items(pairs), known_urls=known_urls, known_title_hashes=known_hashes
+    )
+    if fresh:
+        _persist_articles(session, fresh, started)
+        keep = {id(item) for item in fresh}
+        _record_topic_hits(session, [p for p in pairs if id(p.item) in keep], started)
+
+    # Then draw on everything stored for this client in the window — the point of
+    # the button is that a quiet morning must not mean an empty answer.
+    material = [
+        (article, "Themen-Radar")
+        for article in session.scalars(
+            select(Article)
+            .join(TopicHit, TopicHit.article_id == Article.id)
+            .where(TopicHit.client_id == client.id, Article.published_at >= since)
+            .order_by(Article.published_at.desc())
+        ).all()
+    ]
+    if not material:
+        _log.info("no market material for %r in the last %s", client.name, IMPULSE_LOOKBACK)
+        return False
+
+    result = angles.suggest(session, client, material)
+    if result is None:
+        return False
+    draft, numbered = result
+    angles.store(session, client, draft, numbered)
+    _log.info("impulse drafted for %r on request: %s", client.name, draft.subject)
+    return True
+
+
 __all__ = [
+    "IMPULSE_LOOKBACK",
     "ONBOARDING_ARTICLES",
+    "draft_impulse",
     "RunReport",
     "backfill_client",
     "lookback_since",

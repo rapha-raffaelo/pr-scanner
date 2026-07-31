@@ -27,8 +27,30 @@
 
 {# The positioning drafts first: they come from the market and work for a mandate
    nobody writes about yet, which is the case the page below cannot serve. #}
+<div class="colhead" style="margin-bottom:10px">
+  {{ t("Positionierung") }}{% if angles %} <span class="n">{{ angles | length }}</span>{% endif %}
+</div>
+{# On demand, and over a wider window than the sweep. The daily run drafts only
+   from what arrived that morning, which leaves a mandate empty on a quiet day even
+   though its field may have had plenty worth saying in the past fortnight. #}
+<form method="post" action="/client/{{ client.id }}/impulse" class="run-form" style="margin-bottom:12px">
+  <button type="submit"{% if drafting or not has_themes %} disabled{% endif %}>
+    {% if angles %}{{ t("Neuen Impuls erzeugen") }}{% else %}{{ t("Impuls erzeugen") }}{% endif %}
+  </button>
+  <span class="panel-hint">
+    {% if not has_themes %}
+      {{ t("Dafür braucht dieser Mandant Themen.") }}
+      <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }} →</a>
+    {% else %}
+      {{ t("Aus dem Themen-Radar der letzten drei Wochen.") }}
+    {% endif %}
+  </span>
+</form>
+{% if drafting %}
+  <div class="notice notice--ok">{{ t("Impuls wird erzeugt — das dauert etwa eine Minute. Seite neu laden.") }}</div>
+{% endif %}
+
 {% if angles %}
-  <div class="colhead" style="margin-bottom:10px">{{ t("Positionierung") }} <span class="n">{{ angles | length }}</span></div>
   {% for angle in angles %}
     <article class="impulse" id="impulse-{{ angle.id }}">
       <div class="impulse__head">
@@ -77,11 +99,14 @@
           <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ latest_angle.thesis }}</div>
         {% endif %}
       </article>
-    {% elif market_seen %}
+    {% elif has_themes %}
       <p class="handover__act">
-        {{ t("Das Themen-Radar hat") }} {{ market_seen }}
-        {{ t("Marktmeldung(en) für diesen Mandanten gesammelt, aber noch keinen Anlass daraus gemacht.") }}
-        <a href="/client/{{ client.id }}/market">{{ t("Marktumfeld ansehen") }} →</a>
+        {% if market_seen %}
+          {{ t("Das Themen-Radar hat") }} {{ market_seen }}
+          {{ t("Marktmeldung(en) für diesen Mandanten gesammelt, aber noch keinen Anlass daraus gemacht.") }}
+        {% else %}
+          {{ t("Das Themen-Radar für diesen Mandanten hat noch nichts gesammelt — der nächste Lauf holt es.") }}
+        {% endif %}
       </p>
     {% else %}
       <p class="handover__act">
