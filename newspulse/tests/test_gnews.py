@@ -172,3 +172,41 @@ def test_a_client_without_themes_gets_no_radar():
     """Searching an industry label alone would return a general news feed to pitch
     from, which is worse than admitting there is nothing to watch."""
     assert gnews.topic_feeds([_themed("Arrakis", [], [])]) == {}
+
+
+# --- The edition a client is searched in ---------------------------------------
+#
+# Stored on every client since day one and never used: an Austrian mandate was
+# searched in the German edition, which ranks Austrian outlets below German ones
+# and buries the regional press that usually writes about them first.
+
+
+def _in(country: str) -> Client:
+    return Client(name="Beispiel", aliases=[], keywords=["Thema"], alert_topics=[],
+                  country=country, industry=None)
+
+
+def test_the_clients_country_picks_the_edition():
+    assert gnews.edition_for(_in("AT")) == ("de", "AT")
+    assert gnews.edition_for(_in("CH")) == ("de", "CH")
+    assert gnews.edition_for(_in("DE")) == ("de", "DE")
+
+
+def test_an_unmapped_country_falls_back_rather_than_guessing():
+    """A wrong edition is worse than the default: it silently changes what is
+    found, and the analyzer and the registry only serve German-language coverage."""
+    assert gnews.edition_for(_in("FR")) == ("de", "DE")
+    assert gnews.edition_for(_in("")) == ("de", "DE")
+
+
+def test_both_the_name_search_and_the_radar_use_that_edition():
+    client = _in("AT")
+    client.id = 7
+
+    name_feed = gnews.client_feeds([client])[0]
+    radar_feed = gnews.topic_feeds([client])[7]
+
+    for url in (name_feed.url, radar_feed.url):
+        params = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+        assert params["gl"] == ["AT"], url
+        assert params["ceid"] == ["AT:de"], url

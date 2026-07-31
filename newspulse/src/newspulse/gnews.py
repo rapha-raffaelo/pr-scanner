@@ -40,11 +40,36 @@ from .models import Client
 # The public Google News RSS search endpoint.
 _SEARCH_URL = "https://news.google.com/rss/search"
 
-# German-language, German edition. `ceid` is the country:language pair Google
-# uses to pick an edition; it must agree with hl/gl or the edition silently
+# German-language, German edition by default. `ceid` is the country:language pair
+# Google uses to pick an edition; it must agree with hl/gl or the edition silently
 # falls back to US English.
 _LANG = "de"
 _COUNTRY = "DE"
+
+# The editions a client's own country selects. Stored on every client since day
+# one and, until now, never used for anything: an Austrian company was searched in
+# the German edition, which ranks Austrian outlets below German ones and buries the
+# regional coverage that is usually the first to write about them. Measured on a
+# Viennese mandate, the AT edition put Vienna.at and cash.at at the top of the same
+# result set the DE edition had pushed down.
+#
+# Only the German-speaking ones are mapped: an edition for a language the analyzer
+# and the registry do not serve would return coverage nobody here can use.
+_EDITIONS = {
+    "DE": ("de", "DE"),
+    "AT": ("de", "AT"),
+    "CH": ("de", "CH"),
+}
+
+
+def edition_for(client: Client) -> tuple[str, str]:
+    """The (language, country) edition to search for this client.
+
+    Falls back to the German edition for a country with no mapping, rather than
+    guessing a language: a wrong edition is worse than the default one, because it
+    silently changes what is found without saying so.
+    """
+    return _EDITIONS.get((getattr(client, "country", "") or "").upper(), (_LANG, _COUNTRY))
 
 # A query is capped rather than joining every alias: Google truncates very long
 # queries, and a long OR-chain drifts off the client and pulls in noise. The
@@ -117,10 +142,11 @@ def client_feeds(clients: list[Client]) -> list[Feed]:
         terms = client_terms(client)
         if not terms:
             continue
+        lang, country = edition_for(client)
         feeds.append(
             Feed(
                 name=_FEED_LABEL.format(client=client.name),
-                url=query_url(terms),
+                url=query_url(terms, lang=lang, country=country),
                 industry=client.industry,
                 per_entry_source=True,
             )
@@ -171,9 +197,10 @@ def topic_feeds(clients: list[Client]) -> dict[int, Feed]:
         terms = topic_terms(client)
         if not terms:
             continue
+        lang, country = edition_for(client)
         feeds[client.id] = Feed(
             name=_TOPIC_FEED_LABEL.format(client=client.name),
-            url=query_url(terms),
+            url=query_url(terms, lang=lang, country=country),
             industry=client.industry,
             per_entry_source=True,
         )
@@ -182,6 +209,7 @@ def topic_feeds(clients: list[Client]) -> dict[int, Feed]:
 
 __all__ = [
     "client_feeds",
+    "edition_for",
     "client_terms",
     "query_url",
     "topic_feeds",

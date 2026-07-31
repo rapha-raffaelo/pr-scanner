@@ -305,3 +305,64 @@ industry = "startups"
 name = "Netzpolitik"
 url = "https://netzpolitik.org/feed/"
 industry = "tech"
+
+# --- International trade press -------------------------------------------------
+#
+# English-language, and deliberately so: a mandate's field is often covered abroad
+# long before the German press picks it up, and for a company like a DeFi protocol
+# or a beauty-tech startup the trade press *is* the coverage. Every entry below was
+# checked for reachability and volume before it went in — a registry of plausible
+# URLs that return nothing is worse than a short one that works.
+#
+# They are industry-tagged like the German trade feeds, so a client's own searches
+# and the topic radar stay the primary route and these add reach behind them.
+
+[[feeds]]
+name = "The Defiant"
+url = "https://thedefiant.io/api/feed"
+industry = "krypto"
+
+[[feeds]]
+name = "CoinDesk"
+url = "https://www.coindesk.com/arc/outboundfeeds/rss/"
+industry = "krypto"
+
+[[feeds]]
+name = "Cointelegraph"
+url = "https://cointelegraph.com/rss"
+industry = "krypto"
+
+[[feeds]]
+name = "Decrypt"
+url = "https://decrypt.co/feed"
+industry = "krypto"
+
+[[feeds]]
+name = "Cosmetics Business"
+url = "https://www.cosmeticsbusiness.com/rss"
+industry = "kosmetik"
+
+[[feeds]]
+name = "Global Cosmetics News"
+url = "https://www.globalcosmeticsnews.com/feed/"
+industry = "kosmetik"
+
+[[feeds]]
+name = "Business of Fashion"
+url = "https://www.businessoffashion.com/feed/"
+industry = "mode"
+
+[[feeds]]
+name = "TechCrunch"
+url = "https://techcrunch.com/feed/"
+industry = "tech"
+
+[[feeds]]
+name = "The Verge"
+url = "https://www.theverge.com/rss/index.xml"
+industry = "tech"
+
+[[feeds]]
+name = "BBC Business"
+url = "https://feeds.bbci.co.uk/news/business/rss.xml"
+industry = "wirtschaft"
