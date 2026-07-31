@@ -126,17 +126,20 @@
   <div class="sect__act">
     <form method="post" action="/client/{{ client.id }}/advice" class="run-form" style="margin:0">
       <div class="filter-field">
-        <select id="days" name="days" aria-label="{{ t('Zeitraum') }}">
-          <option value="7">{{ t("Letzte 7 Tage") }}</option>
-          <option value="30" selected>{{ t("Letzte 30 Tage") }}</option>
-          <option value="90">{{ t("Letzte 90 Tage") }}</option>
+        <select id="days" name="days" aria-label="{{ t('Zeitraum') }}"
+                onchange="window.location = '/client/{{ client.id }}/advice?days=' + this.value">
+          {% for option in day_options %}
+            <option value="{{ option }}"{% if option == days %} selected{% endif %}>
+              {{ t("Letzte") }} {{ option }} {{ t("Tage") }}
+            </option>
+          {% endfor %}
         </select>
       </div>
       <button type="submit" class="btn"{% if running or not available %} disabled{% endif %}>
         {% if advisory %}{{ t("Neu erzeugen") }}{% else %}{{ t("Empfehlungen erzeugen") }}{% endif %}
       </button>
     </form>
-    <span class="panel-hint">{{ available }} {{ t("Artikel") }} {{ t("im Zeitraum") }}</span>
+    <span class="panel-hint">{{ available }} {{ t("Artikel") }} {{ t("in") }} {{ days }} {{ t("Tagen") }}</span>
   </div>
 
   {% if running %}

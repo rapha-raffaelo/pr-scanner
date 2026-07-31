@@ -624,3 +624,68 @@ def test_the_client_tab_leads_with_its_positioning_drafts(factory, client):
     assert "Zwei Absätze Text." in body
     # And the recommendations keep their own section rather than the whole page.
     assert "Empfehlungen" in body
+
+
+def test_the_advice_period_survives_the_page(factory, client):
+    """Regression: the select always rendered "Letzte 30 Tage".
+
+    Asking for ninety days generated a brief over ninety and then came back
+    reporting "0 Artikel" for thirty — the count, the window and the option
+    disagreed, and the page looked like it had found nothing when it had not
+    looked.
+    """
+    import datetime as dt
+
+    from newspulse.models import Analysis, Article, Category
+
+    with factory() as session:
+        subject = Client(name="IB-7", aliases=[], keywords=[], alert_topics=[])
+        session.add(subject)
+        session.flush()
+        # Forty-four days old: inside ninety, outside thirty.
+        article = Article(
+            title="IB-7 in einer Startup-Sammelmeldung",
+            url="https://ex.de/juni",
+            source="deutsche-startups.de",
+            published_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=44),
+            fetched_at=dt.datetime.now(dt.UTC),
+            summary_text=None,
+            language="de",
+            title_hash="juni0001",
+        )
+        session.add(article)
+        session.flush()
+        session.add(
+            Analysis(
+                article_id=article.id,
+                client_id=subject.id,
+                summary="s",
+                category=Category.SONSTIGES,
+                relevance_score=5,
+                importance_score=4,
+                is_alert=False,
+            )
+        )
+        session.commit()
+        subject_id = subject.id
+
+    thirty = client.get(f"/client/{subject_id}/advice").text
+    ninety = client.get(f"/client/{subject_id}/advice?days=90").text
+
+    assert "0 Artikel in 30 Tagen" in " ".join(thirty.split())
+    assert "1 Artikel in 90 Tagen" in " ".join(ninety.split())
+    # And the select keeps the choice rather than snapping back.
+    assert '<option value="90" selected>' in ninety.replace("\n", "")
+
+
+def test_an_unknown_period_falls_back_instead_of_erroring(factory, client):
+    with factory() as session:
+        subject = Client(name="IB-7", aliases=[], keywords=[], alert_topics=[])
+        session.add(subject)
+        session.commit()
+        subject_id = subject.id
+
+    resp = client.get(f"/client/{subject_id}/advice?days=irgendwas")
+
+    assert resp.status_code == 200
+    assert "30 Tagen" in " ".join(resp.text.split())

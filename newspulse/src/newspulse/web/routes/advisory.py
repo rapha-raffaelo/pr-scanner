@@ -72,17 +72,39 @@ def _run_advisory(client_id: int, days: int) -> None:
             pass
 
 
+#: The windows the page offers. The count beside the button, the window a
+#: generation uses and the option the select shows all read from the same value —
+#: they disagreed before, which is how a page could report "0 Artikel" for thirty
+#: days directly under a brief that had just been generated over ninety.
+ADVICE_DAYS = (7, 30, 90)
+
+
+def _parse_days(raw: str | None) -> int:
+    """One of the offered windows, or the default. An unknown value falls back
+    rather than erroring: a hand-typed or stale URL must not 500 the page."""
+    try:
+        value = int(raw or "")
+    except (TypeError, ValueError):
+        return advisor.DEFAULT_DAYS
+    return value if value in ADVICE_DAYS else advisor.DEFAULT_DAYS
+
+
+
 @router.get("/client/{client_id}/advice", response_class=HTMLResponse)
 def advice_view(
-    request: Request, client_id: int, session: Session = Depends(get_db)
+    request: Request,
+    client_id: int,
+    days: str | None = None,
+    session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """The client's current brief, or an invitation to generate the first one."""
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
 
+    window = _parse_days(days)
     latest = advisor.latest(session, client_id)
-    coverage = advisor.recent_coverage(session, client_id, days=advisor.DEFAULT_DAYS)
+    coverage = advisor.recent_coverage(session, client_id, days=window)
     return templates.TemplateResponse(
         request,
         "advice.html",
@@ -93,6 +115,10 @@ def advice_view(
             # cite, so a recommendation can be checked rather than trusted.
             "coverage": {ref.index: ref for ref in coverage},
             "available": len(coverage),
+            # Echoed back so the select keeps the reader's choice: it always
+            # rendered "Letzte 30 Tage" no matter what had just been asked for.
+            "days": window,
+            "day_options": ADVICE_DAYS,
             "running": _generating.locked(),
             "drafting": _drafting.locked(),
             # What to offer when there is no coverage to advise on. An advisory
@@ -134,7 +160,9 @@ def generate_advice(
             daemon=True,
             name="newspulse-advisory",
         ).start()
-    return RedirectResponse(f"/client/{client_id}/advice", status_code=_SEE_OTHER)
+    return RedirectResponse(
+        f"/client/{client_id}/advice?days={max(1, days)}", status_code=_SEE_OTHER
+    )
 
 
 # One impulse at a time, process-wide: the draft shells out to `claude` and a

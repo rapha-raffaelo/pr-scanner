@@ -297,6 +297,7 @@ _EN: dict[str, str] = {
     "Seit letztem Lauf (Standard)": "Since last run (default)",
     "Jetzt aktualisieren": "Refresh now",
     "Letzte": "Last",
+    "in": "in",
     "Tage nachladen": "days backfill",
     "Letzte Läufe": "Recent runs",
     "Start": "Start",
@@ -438,6 +439,7 @@ _EN: dict[str, str] = {
         "This is the material the openings are drafted from, and it shows who "
         "writes about the subject.",
     "Letzte": "Last",
+    "in": "in",
     "Das Themen-Radar hat in diesem Zeitraum nichts gefunden.":
         "The topic radar found nothing in this period.",
     "Die hinterlegten Themen sind womöglich zu eng gefasst — zwei bis drei "
