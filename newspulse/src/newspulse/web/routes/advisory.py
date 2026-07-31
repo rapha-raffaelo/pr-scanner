@@ -76,7 +76,10 @@ def _run_advisory(client_id: int, days: int) -> None:
 #: generation uses and the option the select shows all read from the same value —
 #: they disagreed before, which is how a page could report "0 Artikel" for thirty
 #: days directly under a brief that had just been generated over ninety.
-ADVICE_DAYS = (7, 30, 90)
+# The windows the reader can choose. Half a year is included because a mandate
+# with sparse coverage still has a pattern — it just takes longer to see, and the
+# alternative on offer was an empty page.
+ADVICE_DAYS = (7, 30, 90, 180)
 
 
 def _parse_days(raw: str | None) -> int:
@@ -114,7 +117,12 @@ def advice_view(
             # Resolve each suggestion's evidence ids back to the coverage they
             # cite, so a recommendation can be checked rather than trusted.
             "coverage": {ref.index: ref for ref in coverage},
-            "available": len(coverage),
+            # What the window holds, not what the prompt was handed: the two
+            # differ once the cap bites, and the label sits next to the control
+            # for choosing the window. Reporting the cap made 30, 90 and 180 days
+            # all read "40 Artikel", so widening looked like it did nothing.
+            "available": advisor.coverage_count(session, client_id, days=window),
+            "shown": len(coverage),
             # Echoed back so the select keeps the reader's choice: it always
             # rendered "Letzte 30 Tage" no matter what had just been asked for.
             "days": window,

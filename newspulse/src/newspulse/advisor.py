@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from importlib import resources
 from string import Template
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import config, guide
@@ -54,8 +54,12 @@ _log = logging.getLogger(__name__)
 _PROMPT_RESOURCE = "prompts/advisory.txt"
 
 # How much coverage the brief is based on. A month is the reporting rhythm of an
-# agency, and enough for a pattern to be visible rather than a single day's noise.
-DEFAULT_DAYS = 30
+# agency — but it is the wrong default for the mandates that need the brief most.
+# A young or quiet company is covered a few times a quarter, so a thirty-day
+# window opened on "0 Artikel in 30 Tagen" and offered nothing, while its actual
+# coverage sat six weeks back in the archive. Ninety days matches the impulse's
+# own lookback, so both halves of the page speak about the same period.
+DEFAULT_DAYS = 90
 
 # Ceiling on the coverage handed to the model. Ranked by importance first, so the
 # cap drops the least consequential items rather than an arbitrary tail — and it
@@ -129,6 +133,30 @@ def recent_coverage(
         )
         for i, (article, analysis) in enumerate(rows)
     ]
+
+
+def coverage_count(session: Session, client_id: int, *, days: int = DEFAULT_DAYS) -> int:
+    """How much coverage the window actually holds, uncapped.
+
+    :func:`recent_coverage` stops at :data:`_MAX_COVERAGE_ITEMS`, which is right
+    for the prompt and wrong for the label beside the window picker: it read
+    "40 Artikel" for thirty days, ninety and a hundred and eighty alike, so the
+    control the reader uses to widen the window reported no change when they did.
+    """
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(days=days)
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(Analysis)
+            .join(Article, Article.id == Analysis.article_id)
+            .where(
+                Analysis.client_id == client_id,
+                visible_coverage(),
+                Article.published_at >= since,
+            )
+        )
+        or 0
+    )
 
 
 def _render_coverage(items: list[CoverageRef]) -> str:
@@ -240,6 +268,7 @@ __all__ = [
     "BackendError",
     "CoverageRef",
     "DEFAULT_DAYS",
+    "coverage_count",
     "ParseError",
     "advise",
     "latest",

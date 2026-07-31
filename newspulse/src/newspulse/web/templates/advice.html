@@ -166,7 +166,10 @@
         {% if advisory %}{{ t("Neu erzeugen") }}{% else %}{{ t("Empfehlungen erzeugen") }}{% endif %}
       </button>
     </form>
-    <span class="panel-hint">{{ available }} {{ t("Artikel") }} {{ t("in") }} {{ days }} {{ t("Tagen") }}</span>
+    <span class="panel-hint">
+      {{ available }} {{ t("Artikel") }} {{ t("in") }} {{ days }} {{ t("Tagen") }}{% if shown < available %},
+      {{ t("die") }} {{ shown }} {{ t("wichtigsten davon gehen in den Entwurf") }}{% endif %}
+    </span>
   </div>
 
   {% if running %}

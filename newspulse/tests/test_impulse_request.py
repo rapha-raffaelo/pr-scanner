@@ -9,6 +9,7 @@ this the answer to "give me something to send" was an empty column.
 from __future__ import annotations
 
 import datetime as dt
+import urllib.parse
 
 import pytest
 from sqlalchemy import func, select
@@ -172,6 +173,138 @@ def test_a_story_the_archive_already_holds_still_links_to_this_client(session, m
     # Linked to this client, and no second copy of the article.
     assert session.scalar(select(func.count()).select_from(TopicHit)) == 1
     assert session.scalar(select(func.count()).select_from(Article)) == 1
+
+
+def test_an_empty_field_scoped_radar_widens_once_rather_than_going_dark(session, monkeypatch):
+    """Scoping the radar to the client's field is what keeps "Wachstum" from
+    returning Canada's GDP — but for a mandate whose themes are already narrow
+    phrases the AND can intersect to nothing. Measured live: "KI in der Kosmetik"
+    AND "Beauty Tech" returns zero. So an empty field-scoped result widens once.
+    """
+    client = _client(session, keywords=["KI in der Kosmetik"])
+    client.industry = "Beauty Tech"
+    session.commit()
+    asked: list[str] = []
+
+    def _fetch(url, since, *, source=None, **_):
+        asked.append(url)
+        if "AND" in urllib.parse.unquote_plus(url):
+            return []  # the field-scoped query finds nothing
+        return [
+            FeedItem(
+                title="L'Oréal startet Kampagne für nachfüllbare Kosmetik",
+                link="https://ex.de/loreal",
+                source="Horizont",
+                published_at=_NOW - dt.timedelta(days=1),
+                summary="Ein Satz.",
+                language="de",
+            )
+        ]
+
+    monkeypatch.setattr(angles, "suggest", _draft())
+
+    assert job.draft_impulse(session, client, fetch=_fetch, now=lambda: _NOW) is True
+    assert len(asked) == 2, "the scoped query is tried first, then widened"
+    assert "AND" in urllib.parse.unquote_plus(asked[0])
+    assert "AND" not in urllib.parse.unquote_plus(asked[1])
+
+
+def test_a_radar_that_finds_something_in_its_field_is_not_widened(session, monkeypatch):
+    """The widening is a fallback, not a second query on every run: doubling
+    every radar fetch would double the cost to remove the precision."""
+    client = _client(session, keywords=["Kosmetik"])
+    client.industry = "Beauty Tech"
+    session.commit()
+    asked: list[str] = []
+
+    def _fetch(url, since, *, source=None, **_):
+        asked.append(url)
+        return [
+            FeedItem(
+                title="Kosmetikbranche diskutiert KI-Rezepturen",
+                link="https://ex.de/treffer",
+                source="Cosmetics Business",
+                published_at=_NOW - dt.timedelta(days=1),
+                summary="Ein Satz.",
+                language="de",
+            )
+        ]
+
+    monkeypatch.setattr(angles, "suggest", _draft())
+
+    assert job.draft_impulse(session, client, fetch=_fetch, now=lambda: _NOW) is True
+    assert len(asked) == 1
+
+
+def test_the_clients_own_coverage_is_not_offered_as_market_material(session, monkeypatch):
+    """A theme search finds the mandate's own press too.
+
+    Handing that back as "a development to position against" asks for a statement
+    about itself. The model saw through it and refused — "both items report on the
+    mandate itself; a text about that would be self-promotion, not analysis" — but
+    only after a full call had been spent, and the reader was left with an empty
+    section. The radar is coverage the client can speak *to*, never coverage *of*
+    the client.
+    """
+    from newspulse.models import Analysis, Category
+
+    client = _client(session)
+    own = _stored_market(session, client, "IB-7 eröffnet neues Werk")
+    session.add(
+        Analysis(
+            article_id=own.id,
+            client_id=client.id,
+            summary="Berichterstattung über den Mandanten.",
+            category=Category.SONSTIGES,
+            relevance_score=8,
+            importance_score=6,
+            is_alert=False,
+        )
+    )
+    session.commit()
+    monkeypatch.setattr(
+        angles, "suggest", lambda *a, **k: pytest.fail("must not ask about its own press")
+    )
+    said: list[str] = []
+
+    assert (
+        job.draft_impulse(session, client, fetch=_no_fetch, now=lambda: _NOW, note=said.append)
+        is False
+    )
+    # And the reason names the fixable cause rather than shrugging.
+    assert "Themen" in said[0]
+
+
+def test_market_material_survives_beside_the_clients_own_coverage(session, monkeypatch):
+    """The filter must remove the mandate's own press, not the radar's findings."""
+    from newspulse.models import Analysis, Category
+
+    client = _client(session)
+    own = _stored_market(session, client, "IB-7 eröffnet neues Werk")
+    session.add(
+        Analysis(
+            article_id=own.id,
+            client_id=client.id,
+            summary="Über den Mandanten.",
+            category=Category.SONSTIGES,
+            relevance_score=8,
+            importance_score=6,
+            is_alert=False,
+        )
+    )
+    _stored_market(session, client, "Kosmetikbranche diskutiert KI-Rezepturen")
+    session.commit()
+
+    seen: list[int] = []
+
+    def _capture(sess, cli, material, **kw):
+        seen.append(len(material))
+        return _draft()(sess, cli, material, **kw)
+
+    monkeypatch.setattr(angles, "suggest", _capture)
+
+    assert job.draft_impulse(session, client, fetch=_no_fetch, now=lambda: _NOW) is True
+    assert seen == [1]
 
 
 def test_a_client_without_themes_yields_nothing_and_costs_nothing(session, monkeypatch):

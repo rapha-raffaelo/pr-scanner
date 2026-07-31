@@ -61,7 +61,15 @@ from .matching import (
     match_candidates,
     title_hash,
 )
-from .models import Analysis, Article, Client, Run, RunStatus, TopicHit
+from .models import (
+    Analysis,
+    Article,
+    Client,
+    Run,
+    RunStatus,
+    TopicHit,
+    visible_coverage,
+)
 from .schemas import Analysis as AnalysisSchema
 
 _log = logging.getLogger(__name__)
@@ -279,6 +287,13 @@ def _fetch_topics(
 
     Fault-isolated per feed like :func:`_fetch_all`, and returns the number of
     radar feeds that fetched cleanly so a run's feed count stays truthful.
+
+    A radar query is scoped to the client's field (:func:`gnews.topic_feeds`),
+    which is what keeps a theme like "Wachstum" from returning Canada's GDP. For
+    a mandate whose themes are already narrow phrases that scope can intersect to
+    nothing — measured: ``"KI in der Kosmetik" AND "Beauty Tech"`` returns zero —
+    so an empty result falls back to the unscoped query once. Precision where it
+    helps, coverage where it would otherwise go dark.
     """
     by_id = {client.id: client for client in clients}
     pairs: list[Candidate] = []
@@ -295,6 +310,20 @@ def _fetch_topics(
                 fetched_at=fetched_at,
                 per_entry_source=feed.per_entry_source,
             )
+            if not batch:
+                widened = gnews.unscoped_topic_url(client)
+                if widened is not None and widened != feed.url:
+                    _log.info(
+                        "topic radar for %r found nothing in its field; widening",
+                        client.name,
+                    )
+                    batch = fetch(
+                        widened,
+                        since,
+                        source=feed.name,
+                        fetched_at=fetched_at,
+                        per_entry_source=feed.per_entry_source,
+                    )
         except Exception as exc:  # noqa: BLE001 — per-feed fault-isolation boundary
             _log.warning("topic radar %r failed to fetch: %s; skipping", feed.name, exc)
             errors.append(f"feed {feed.name!r}: {exc}")
@@ -1138,12 +1167,30 @@ def draft_impulse(
 
     # Then draw on everything stored for this client in the window — the point of
     # the button is that a quiet morning must not mean an empty answer.
+    #
+    # Minus the client's own coverage. A theme search finds the mandate's own
+    # press too, and offering that back as "a market development to position
+    # against" asks for a statement about itself: the model's exact words were
+    # "both items report on the mandate itself — a text about that would be
+    # self-promotion, not analysis". The radar is defined as coverage the client
+    # can speak to, not coverage *of* the client; this enforces that definition
+    # where it is read. Dismissed and irrelevant matches are not coverage, so
+    # visible_coverage() is the right predicate rather than "has any analysis".
+    own_coverage = (
+        select(Analysis.article_id)
+        .where(Analysis.client_id == client.id, visible_coverage())
+        .scalar_subquery()
+    )
     material = [
         (article, "Themen-Radar")
         for article in session.scalars(
             select(Article)
             .join(TopicHit, TopicHit.article_id == Article.id)
-            .where(TopicHit.client_id == client.id, Article.published_at >= since)
+            .where(
+                TopicHit.client_id == client.id,
+                Article.published_at >= since,
+                Article.id.not_in(own_coverage),
+            )
             .order_by(Article.published_at.desc())
         ).all()
     ]
@@ -1151,8 +1198,10 @@ def draft_impulse(
         _log.info("no market material for %r in the last %s", client.name, IMPULSE_LOOKBACK)
         _say(
             f"Das Themen-Radar hat in den letzten {IMPULSE_LOOKBACK.days} Tagen "
-            "nichts zu den hinterlegten Themen gefunden. Oft sind die Themen zu "
-            "eng oder zu allgemein formuliert."
+            "keine Marktmeldung gefunden, die nicht schon Berichterstattung über "
+            "den Mandanten selbst ist. Meist sind die hinterlegten Themen zu eng "
+            "am Unternehmen formuliert — ein Impuls braucht ein Thema, über das "
+            "auch ohne den Mandanten geschrieben wird."
         )
         return False
 

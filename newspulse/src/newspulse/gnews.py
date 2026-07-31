@@ -230,6 +230,23 @@ def context_terms(client: Client) -> list[str]:
     return terms
 
 
+def unscoped_topic_url(client: Client) -> str | None:
+    """The same radar query without its field constraint, or ``None``.
+
+    ``None`` when the client has no themes (there is no query to widen) or no
+    industry (the query was never narrowed). The caller uses this only when the
+    scoped query came back empty: an AND between a narrow theme phrase and a
+    narrow industry label can intersect to nothing, and a radar that goes dark is
+    worse than one that returns a few loosely related stories the drafting model
+    is free to refuse.
+    """
+    terms = topic_terms(client)
+    if not terms or not context_terms(client):
+        return None
+    lang, country = edition_for(client)
+    return query_url(terms, lang=lang, country=country)
+
+
 def topic_feeds(clients: list[Client]) -> dict[int, Feed]:
     """One topic-radar feed per client that has themes, keyed by client id.
 

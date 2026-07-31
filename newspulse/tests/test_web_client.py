@@ -669,13 +669,15 @@ def test_the_advice_period_survives_the_page(factory, client):
         session.commit()
         subject_id = subject.id
 
-    thirty = client.get(f"/client/{subject_id}/advice").text
-    ninety = client.get(f"/client/{subject_id}/advice?days=90").text
+    # The default window is ninety days, so the forty-four-day-old article is in
+    # it; a week is not. Same article, two windows, two honest counts.
+    default = client.get(f"/client/{subject_id}/advice").text
+    week = client.get(f"/client/{subject_id}/advice?days=7").text
 
-    assert "0 Artikel in 30 Tagen" in " ".join(thirty.split())
-    assert "1 Artikel in 90 Tagen" in " ".join(ninety.split())
+    assert "1 Artikel in 90 Tagen" in " ".join(default.split())
+    assert "0 Artikel in 7 Tagen" in " ".join(week.split())
     # And the select keeps the choice rather than snapping back.
-    assert '<option value="90" selected>' in ninety.replace("\n", "")
+    assert '<option value="7" selected>' in week.replace("\n", "")
 
 
 def test_a_running_draft_makes_the_page_fetch_its_own_result(factory, client):
@@ -724,4 +726,68 @@ def test_an_unknown_period_falls_back_instead_of_erroring(factory, client):
     resp = client.get(f"/client/{subject_id}/advice?days=irgendwas")
 
     assert resp.status_code == 200
-    assert "30 Tagen" in " ".join(resp.text.split())
+    assert "90 Tagen" in " ".join(resp.text.split())
+
+
+def test_the_count_beside_the_window_is_the_window_not_the_prompts_cap(factory, client):
+    """Widening the window has to change the number the reader is shown.
+
+    The label reported how much coverage went into the prompt, which stops at
+    forty — so thirty days, ninety and a hundred and eighty all read "40 Artikel"
+    and the control looked broken. It now reports what the window holds, and says
+    separately how much of it the draft uses.
+    """
+    import datetime as dt
+
+    from newspulse.models import Analysis, Article, Category
+
+    with factory() as session:
+        subject = Client(name="Vielbeachtet", aliases=[], keywords=[], alert_topics=[])
+        session.add(subject)
+        session.flush()
+        for i in range(45):
+            article = Article(
+                title=f"Meldung {i}",
+                url=f"https://ex.de/{i}",
+                source="Handelsblatt",
+                published_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=2),
+                fetched_at=dt.datetime.now(dt.UTC),
+                summary_text=None,
+                language="de",
+                title_hash=f"h{i:04d}",
+            )
+            session.add(article)
+            session.flush()
+            session.add(
+                Analysis(
+                    article_id=article.id,
+                    client_id=subject.id,
+                    summary="s",
+                    category=Category.SONSTIGES,
+                    relevance_score=5,
+                    importance_score=4,
+                    is_alert=False,
+                )
+            )
+        session.commit()
+        subject_id = subject.id
+
+    body = " ".join(client.get(f"/client/{subject_id}/advice").text.split())
+
+    assert "45 Artikel in 90 Tagen" in body
+    assert "40" in body, "and it says how many of them reach the draft"
+
+
+def test_half_a_year_is_offered_for_a_sparsely_covered_mandate(factory, client):
+    """A young company is written about a few times a quarter. Thirty days told
+    it "0 Artikel" and offered nothing; the window has to reach its coverage."""
+    with factory() as session:
+        subject = Client(name="IB-7", aliases=[], keywords=[], alert_topics=[])
+        session.add(subject)
+        session.commit()
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/advice?days=180").text
+
+    assert '<option value="180" selected>' in body.replace("\n", "")
+    assert "180 Tagen" in " ".join(body.split())

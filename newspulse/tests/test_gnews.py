@@ -221,6 +221,30 @@ def test_without_an_industry_the_query_stays_unscoped():
     assert _q(gnews.topic_feeds([client])[client.id].url) == '"Thema"'
 
 
+def test_a_narrow_query_can_be_widened_when_its_field_finds_nothing():
+    """Measured against live Google News: "KI in der Kosmetik" AND "Beauty Tech"
+    returns zero. Precision that empties the radar is not precision."""
+    client = _themed("IB-7", ["KI in der Kosmetik"])
+    client.industry = "Beauty Tech"
+
+    scoped = _q(gnews.topic_feeds([client])[client.id].url)
+    widened = _q(gnews.unscoped_topic_url(client))
+
+    assert scoped == '("KI in der Kosmetik") AND ("Beauty Tech")'
+    assert widened == '"KI in der Kosmetik"'
+
+
+def test_there_is_nothing_to_widen_without_a_field_or_without_themes():
+    """No industry means the query was never narrowed; no themes means there is
+    no query at all. Either way the caller must not fetch twice."""
+    no_field = _themed("Ohne", ["Thema"])
+    no_field.industry = None
+    no_themes = _themed("Leer", [], [])
+
+    assert gnews.unscoped_topic_url(no_field) is None
+    assert gnews.unscoped_topic_url(no_themes) is None
+
+
 def test_the_name_search_is_never_scoped_by_industry():
     """Coverage *of* the client is found by its name; requiring an industry word
     as well would drop the very mentions the mandate exists to catch."""
