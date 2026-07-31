@@ -22,7 +22,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
 
-from ...models import Analysis, Article, Category, Client, TopicHit
+from ...models import Analysis, Article, Category, Client, TopicHit, visible_coverage
 from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
 from ..app import get_db, templates
@@ -47,17 +47,15 @@ _PAGE_SIZE = 50
 # Exchange format for the date-range inputs and the ?date_from=/?date_to= params.
 _DATE_FORMAT = "%Y-%m-%d"
 
-# Only coverage the analyzer judged relevant belongs in a client's archive; a
-# relevance of 0 means "this story does not concern this client" (a non-matching
-# pair the analyzer may still persist). Same gate as the Today view, so the
-# archive and the daily view agree on what counts as this client's coverage.
-_MIN_RELEVANCE = 1
 
 
 @dataclass(frozen=True, slots=True)
 class ArchiveRow:
     """One rendered archive row — the same field set as a Today coverage row."""
 
+    # Carried so a row can be dismissed from here: the client's own archive is
+    # where a wrong match is most obvious, since every row claims to be about them.
+    analysis_id: int
     headline: str
     url: str
     source: str
@@ -160,7 +158,7 @@ def _archive_conditions(
     Archiv view needs — instead of scoping to one client's detail page.
     """
     conditions: list[ColumnElement[bool]] = [
-        Analysis.relevance_score >= _MIN_RELEVANCE,
+        visible_coverage(),
     ]
     if client_id is not None:
         conditions.append(Analysis.client_id == client_id)
@@ -215,6 +213,7 @@ def _fetch_page(
     )
     return [
         ArchiveRow(
+            analysis_id=analysis.id,
             headline=article.title,
             url=article.url,
             source=article.source,
@@ -240,7 +239,7 @@ def _archive_sources(session: Session, client_id: int) -> list[str]:
         .join(Analysis, Analysis.article_id == Article.id)
         .where(
             Analysis.client_id == client_id,
-            Analysis.relevance_score >= _MIN_RELEVANCE,
+            visible_coverage(),
         )
         .distinct()
         .order_by(Article.source)
@@ -369,7 +368,7 @@ def clients_index(
     day = dt.datetime.now(_local_tz()).date()
     start, end = _day_bounds_utc(day)
 
-    relevant = Analysis.relevance_score >= _MIN_RELEVANCE
+    relevant = visible_coverage()
     totals = dict(
         session.execute(
             select(Analysis.client_id, func.count())

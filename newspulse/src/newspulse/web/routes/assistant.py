@@ -27,14 +27,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ... import guide, i18n
-from ...models import Analysis, Article, Client
+from ...models import Analysis, Article, Client, visible_coverage
 from ...streaming import StreamEvent, stream_assistant
 from ..app import get_db
 from .today import _day_bounds_utc, _local_tz, _parse_day
 
 router = APIRouter()
 
-_MIN_RELEVANCE = 1
 
 # Enough coverage for a grounded answer, few enough to keep one call inside the
 # stream timeout. Ranked by importance, so the cap drops trivia and not the news.
@@ -130,7 +129,7 @@ def _coverage_lines(
     coverage — the context should match what is on screen, or the answer will
     describe a different set of articles than the reader can see.
     """
-    conditions = [Analysis.relevance_score >= _MIN_RELEVANCE]
+    conditions = [visible_coverage()]
     label_parts: list[str] = []
 
     if client_id is not None:

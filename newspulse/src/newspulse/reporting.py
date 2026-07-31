@@ -28,11 +28,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import config
-from .models import Analysis, Article, Client
+from .models import Analysis, Article, Client, visible_coverage
 
-# Same gate the dashboard applies: relevance 0 means "does not concern this
-# client", so it is not coverage and must never reach a client-facing number.
-_MIN_RELEVANCE = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +80,7 @@ def share_of_voice(
         .join(Article, Article.id == Analysis.article_id)
         .where(
             Analysis.client_id.in_(by_id),
-            Analysis.relevance_score >= _MIN_RELEVANCE,
+            visible_coverage(),
             Article.published_at >= since,
         )
         .group_by(Analysis.client_id)
@@ -119,7 +116,7 @@ def _coverage_frame(
         .join(Analysis, Analysis.article_id == Article.id)
         .where(
             Analysis.client_id == client_id,
-            Analysis.relevance_score >= _MIN_RELEVANCE,
+            visible_coverage(),
             Article.published_at >= since,
         )
         .order_by(Article.published_at.desc())

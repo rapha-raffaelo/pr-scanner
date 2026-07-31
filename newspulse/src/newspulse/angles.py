@@ -50,7 +50,7 @@ from .analyzer import (
     invoke_with_fallback,
     strip_code_fence,
 )
-from .models import Analysis, Angle, Article, Client
+from .models import Analysis, Angle, Article, Client, visible_coverage
 from .schemas import AngleDraft
 
 _log = logging.getLogger(__name__)
@@ -67,7 +67,6 @@ _MAX_DEVELOPMENTS = 12
 _OWN_COVERAGE_DAYS = 7
 _MAX_OWN_COVERAGE = 8
 
-_MIN_RELEVANCE = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,7 +150,7 @@ def _own_coverage_block(session: Session, client_id: int) -> str:
         .join(Analysis, Analysis.article_id == Article.id)
         .where(
             Analysis.client_id == client_id,
-            Analysis.relevance_score >= _MIN_RELEVANCE,
+            visible_coverage(),
             Article.published_at >= since,
         )
         .order_by(Analysis.importance_score.desc(), Article.published_at.desc())

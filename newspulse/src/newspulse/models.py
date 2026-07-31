@@ -277,6 +277,27 @@ class Client(Base):
     )
 
 
+#: The floor for "this analysis concerns its client". A relevance of 0 is the
+#: analyzer's way of saying a matched pair does not actually concern the client.
+MIN_RELEVANCE = 1
+
+
+def visible_coverage():
+    """The one condition every view of a client's coverage must apply.
+
+    There were nine copies of ``relevance_score >= 1`` across as many modules, and
+    adding a second reason to hide a row — a human dismissing it — would have meant
+    finding all of them and never missing one. One predicate cannot drift, and a
+    dismissed article cannot survive in the corner nobody remembered.
+    """
+    from sqlalchemy import and_
+
+    return and_(
+        Analysis.relevance_score >= MIN_RELEVANCE,
+        Analysis.dismissed_at.is_(None),
+    )
+
+
 class Article(Base):
     """One deduped feed story. Not per client.
 
@@ -361,6 +382,18 @@ class Analysis(Base):
     # Claude's reasoning is kept on every analysis so a later "why was this
     # flagged?" has an answer and the alert threshold can be tuned.
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Set when a human said "this is not about my client". The matcher favours
+    # recall on purpose, so a company named after a fictional planet — or one with
+    # a namesake in another industry — collects articles that simply are not about
+    # it, and until now there was no way to take them out.
+    #
+    # Dated rather than flagged, so the decision carries when it was made. And the
+    # row *stays*: deleting the analysis would let the next sweep re-match the pair
+    # and analyse it again, and the article would be back by morning. This row is
+    # exactly what stops that.
+    dismissed_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, index=True
+    )
     # Operator workflow state, per (article, client): the same story can be
     # handled for one mandate and still open for another. Defaults to NEU at the
     # DB level so a raw INSERT (or an older code path) can never leave it null.
@@ -606,6 +639,8 @@ __all__ = [
     "Run",
     "Setting",
     "DEFAULT_COUNTRY",
+    "MIN_RELEVANCE",
+    "visible_coverage",
     "SCORE_MIN",
     "SCORE_MAX",
 ]

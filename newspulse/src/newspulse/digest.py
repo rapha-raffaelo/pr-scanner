@@ -21,14 +21,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import config
-from .models import Analysis, Article, Client
+from .models import Analysis, Article, Client, visible_coverage
 from .notify import SmtpConfig, _send_email
 from .schemas import Analysis as _AnalysisSchema  # noqa: F401  (keeps schema import parity)
 from .stories import cluster
 
 _log = logging.getLogger(__name__)
 
-_MIN_RELEVANCE = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +83,7 @@ def build_digest(
         .join(Analysis, Analysis.client_id == Client.id)
         .join(Article, Article.id == Analysis.article_id)
         .where(
-            Analysis.relevance_score >= _MIN_RELEVANCE,
+            visible_coverage(),
             Article.published_at >= start,
             Article.published_at < end,
             Client.is_competitor.is_(False),

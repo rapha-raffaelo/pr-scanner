@@ -71,6 +71,12 @@ header.top {
 
 .runbusy { color: var(--accent); font-weight: 600; }
 
+/* "Not relevant" is not a triage state — it removes the row from this client's
+   coverage — so it sits apart from the three that merely mark progress. */
+.triage-btn--dismiss { margin-left: auto; color: var(--muted); }
+.triage-btn--dismiss:hover { color: var(--alert); border-color: #fca5a5; }
+.feed-item__act { margin-top: 6px; }
+
 /* --- Empty state: the "nothing was ever found" variant -------------------- */
 /* A checklist, not a dead link. A mandate with no coverage at all is nearly
    always a configuration problem, and the archive has nothing to show it. */

@@ -23,10 +23,9 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
-from ...models import Analysis, Article, Category, Client
+from ...models import Analysis, Article, Category, Client, visible_coverage
 from ..app import get_db, templates
 from .client import (
-    _MIN_RELEVANCE,
     _PAGE_SIZE,
     _archive_conditions,
     _parse_category,
@@ -136,7 +135,7 @@ def _available_months(session: Session, *, with_competitors: bool) -> list[Month
         select(Article.published_at)
         .join(Analysis, Analysis.article_id == Article.id)
         .where(
-            Analysis.relevance_score >= _MIN_RELEVANCE,
+            visible_coverage(),
             Analysis.client_id.in_(_monitored_scope(with_competitors)),
         )
         .distinct()
@@ -152,7 +151,7 @@ def _available_sources(session: Session, *, with_competitors: bool) -> list[str]
             select(Article.source)
             .join(Analysis, Analysis.article_id == Article.id)
             .where(
-                Analysis.relevance_score >= _MIN_RELEVANCE,
+                visible_coverage(),
                 Analysis.client_id.in_(_monitored_scope(with_competitors)),
             )
             .distinct()

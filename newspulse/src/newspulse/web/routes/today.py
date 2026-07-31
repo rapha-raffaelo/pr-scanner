@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ... import angles, config
-from ...models import Analysis, Article, Client, Run, TopicHit
+from ...models import Analysis, Article, Client, Run, TopicHit, visible_coverage
 from ...outlets import tier_for
 from ...stories import cluster
 from ..app import get_db, templates
@@ -27,12 +27,6 @@ router = APIRouter()
 # The date-picker exchange format; also how a prior day is passed as ?date=.
 _DATE_FORMAT = "%Y-%m-%d"
 
-# Only surface analyses the analyzer judged relevant to the client. A relevance
-# of 0 means "this story does not concern this client" — a row the future
-# analyzer may still persist for a non-matching (article, client) pair — so it
-# must never appear as coverage. Importance ordering is applied on top of this
-# gate. (The analyzer contract is not yet built; this pins the include rule.)
-_MIN_RELEVANCE = 1
 
 # Above this many mandates the filter strip becomes a dropdown: a row of cards
 # is faster to hit while you can still take it in at a glance, and unusable once
@@ -185,7 +179,7 @@ def _recent_coverage_count(
                 # The same relevance gate _fetch_items uses, not the is_relevant
                 # column: the count has to describe the rows the archive will
                 # actually show, or the hint promises coverage that isn't there.
-                Analysis.relevance_score >= _MIN_RELEVANCE,
+                visible_coverage(),
                 # Mandates only: competitor coverage is context inside a client's
                 # own view, and offering to navigate to it here would contradict
                 # the rule that competitors are not listed as clients.
@@ -209,7 +203,7 @@ def _client_has_any_coverage(session: Session, client_id: int | None) -> bool:
             select(Analysis.id)
             .where(
                 Analysis.client_id == client_id,
-                Analysis.relevance_score >= _MIN_RELEVANCE,
+                visible_coverage(),
             )
             .limit(1)
         ).first()
@@ -242,7 +236,7 @@ def _fetch_items(session: Session, day: dt.date) -> list[TodayItem]:
         .where(
             Article.published_at >= start_utc,
             Article.published_at < end_utc,
-            Analysis.relevance_score >= _MIN_RELEVANCE,
+            visible_coverage(),
             # Mandates only. A competitor is monitored so its volume can be
             # compared, not so it lands in the morning triage queue — coverage
             # of a rival is not work, and mixing the two makes the day look

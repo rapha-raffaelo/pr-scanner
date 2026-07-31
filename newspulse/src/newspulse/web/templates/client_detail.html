@@ -14,6 +14,11 @@
       <span class="importance" title="Importance score">{{ row.importance }}/10</span>
     </div>
     {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
+    <form method="post" action="/coverage/{{ row.analysis_id }}/dismiss" class="feed-item__act">
+      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}">
+      <button type="submit" class="linkbtn linkbtn--danger"
+              title="{{ t('Diese Meldung handelt nicht von diesem Mandanten — aus seiner Berichterstattung entfernen') }}">{{ t("nicht relevant") }}</button>
+    </form>
   </article>
 {% endmacro %}
 

@@ -94,6 +94,9 @@ _EN: dict[str, str] = {
     "gelesen": "read",
     "für Mandant": "for client",
     "erledigt": "done",
+    "nicht relevant": "not relevant",
+    "Diese Meldung handelt nicht von diesem Mandanten — aus seiner Berichterstattung entfernen":
+        "This item is not about this client — remove it from their coverage",
     "aufgegriffen": "pickups",
     "auch bei": "also in",
     "weiteren": "more",

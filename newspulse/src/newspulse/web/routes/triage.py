@@ -13,6 +13,8 @@ the state.
 
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.orm import Session
@@ -59,3 +61,47 @@ def set_triage_state(
     # an absolute URL here would make the endpoint an open redirect.
     target = redirect_to if redirect_to.startswith("/") else "/"
     return RedirectResponse(target, status_code=_SEE_OTHER)
+
+
+@router.post("/coverage/{analysis_id}/dismiss")
+def dismiss_coverage(
+    analysis_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Take one article out of a client's coverage: it is not about them.
+
+    Distinct from ``erledigt``, which means "dealt with" and still counts. This
+    means "the matcher was wrong" — the article stays in the archive as an
+    article, but stops being *this client's* coverage: out of Heute, the archive,
+    the counts, the share of voice, the digest, the exports and every prompt, all
+    through one shared predicate (``models.visible_coverage``).
+
+    Marked, never deleted. Deleting the analysis would leave the pair unanalysed,
+    the next sweep would re-match and re-analyse it, and the article would be back
+    by morning; this row is what tells the sweep it has already been judged.
+    """
+    analysis = session.get(Analysis, analysis_id)
+    if analysis is not None and analysis.dismissed_at is None:
+        analysis.dismissed_at = dt.datetime.now(dt.UTC)
+        session.commit()
+    return RedirectResponse(_safe_back(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/coverage/{analysis_id}/restore")
+def restore_coverage(
+    analysis_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Undo a dismissal. The scores were never touched, so nothing to rebuild."""
+    analysis = session.get(Analysis, analysis_id)
+    if analysis is not None:
+        analysis.dismissed_at = None
+        session.commit()
+    return RedirectResponse(_safe_back(redirect_to), status_code=_SEE_OTHER)
+
+
+def _safe_back(target: str) -> str:
+    """Only a same-site path, so a crafted form cannot bounce the reader off-host."""
+    return target if target.startswith("/") else "/"

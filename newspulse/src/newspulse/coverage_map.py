@@ -18,9 +18,8 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import Analysis, Article, Client
+from .models import Analysis, Article, Client, visible_coverage
 
-_MIN_RELEVANCE = 1
 
 # An outlet that wrote about a rival once is not a pattern; the gap list is a
 # pitch list, and a pitch aimed at a one-off mention wastes the relationship.
@@ -125,7 +124,7 @@ def build(
         .join(Analysis, Analysis.article_id == Article.id)
         .where(
             Analysis.client_id.in_(names),
-            Analysis.relevance_score >= _MIN_RELEVANCE,
+            visible_coverage(),
             Article.published_at >= since,
         )
         .group_by(Article.source, Analysis.client_id)

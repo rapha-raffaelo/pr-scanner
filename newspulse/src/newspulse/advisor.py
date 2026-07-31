@@ -46,7 +46,7 @@ from .analyzer import (
     invoke_with_fallback,
     strip_code_fence,
 )
-from .models import Advisory, Analysis, Article, Client
+from .models import Advisory, Analysis, Article, Client, visible_coverage
 from .schemas import AdvisoryBrief
 
 _log = logging.getLogger(__name__)
@@ -62,7 +62,6 @@ DEFAULT_DAYS = 30
 # keeps one call inside the same wall-clock budget as an analysis batch.
 _MAX_COVERAGE_ITEMS = 40
 
-_MIN_RELEVANCE = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +110,7 @@ def recent_coverage(
         .join(Analysis, Analysis.article_id == Article.id)
         .where(
             Analysis.client_id == client_id,
-            Analysis.relevance_score >= _MIN_RELEVANCE,
+            visible_coverage(),
             Article.published_at >= since,
         )
         .order_by(Analysis.importance_score.desc(), Article.published_at.desc())
