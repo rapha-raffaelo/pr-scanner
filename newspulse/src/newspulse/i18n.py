@@ -240,6 +240,21 @@ _EN: dict[str, str] = {
     "Meldung(en)": "item(s)",
     "Keine Maßnahmen vorgeschlagen — im Zeitraum gab es nichts, das eine Reaktion erfordert.":
         "No actions proposed — nothing in this period requires a response.",
+    # The advisory page when a mandate has no press of its own: it hands over to
+    # the impulse rather than reporting emptiness, because the impulse is the tool
+    # that works without coverage.
+    "Über diesen Mandanten wurde im Zeitraum nichts geschrieben — es gibt also nichts zu empfehlen.":
+        "Nothing was written about this client in the period, so there is nothing "
+        "to recommend.",
+    "Eine Empfehlung reagiert auf eigene Berichterstattung. Was ohne sie trägt, ist ein Impuls: eine Positionierung zu dem, was im Markt passiert.":
+        "A recommendation responds to a client's own coverage. What works without "
+        "it is an opening: a position on what is happening in the market.",
+    "Impuls": "Opening",
+    "Marktmeldung(en) für diesen Mandanten gesammelt, aber noch keinen Anlass daraus gemacht.":
+        "market item(s) for this client, but has not made an opening of them yet.",
+    "Für diesen Mandanten läuft noch kein Themen-Radar — ohne hinterlegte Themen entsteht auch kein Impuls.":
+        "No topic radar is running for this client — without themes there is no "
+        "opening either.",
     "Noch keine Empfehlungen erzeugt.": "No recommendations generated yet.",
     "reaktiv": "reactive",
     "proaktiv": "proactive",

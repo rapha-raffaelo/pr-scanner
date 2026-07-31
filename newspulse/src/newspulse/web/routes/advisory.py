@@ -17,11 +17,12 @@ import threading
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import advisor
+from ... import advisor, angles
 from ...db import get_session
-from ...models import Client
+from ...models import Client, TopicHit
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
 
@@ -79,6 +80,16 @@ def advice_view(
             "coverage": {ref.index: ref for ref in coverage},
             "available": len(coverage),
             "running": _generating.locked(),
+            # What to offer when there is no coverage to advise on. An advisory
+            # reads a client's own press; a young mandate has none, and telling it
+            # "nothing to recommend" is true but useless. The impulse works off the
+            # market instead, which is exactly the case this page cannot serve.
+            "latest_angle": angles.latest(session, client_id),
+            "market_seen": session.scalar(
+                select(func.count()).select_from(TopicHit).where(
+                    TopicHit.client_id == client_id
+                )
+            ) or 0,
             "last_run": _fetch_last_run(session),
             "header_date": dt.datetime.now(_local_tz()).date(),
         },

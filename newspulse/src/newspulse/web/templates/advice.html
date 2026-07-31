@@ -6,6 +6,17 @@
 {% set active = 'advice' %}
 {% include '_client_tabs.html' %}
 
+<style>
+  .handover { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+              border-radius: 10px; padding: 16px 20px; margin-bottom: 18px; }
+  .handover__lead { font-size: 14px; margin-bottom: 6px; }
+  .handover__why { font-size: 13px; color: var(--muted); margin-bottom: 12px; max-width: 68ch; }
+  .handover__act { font-size: 13px; color: var(--muted); }
+  .handover__act a { color: var(--accent); font-weight: 600; }
+  .handover__angle { margin: 0; border-left-color: var(--accent); }
+</style>
+
+
 <div class="client-profile">
   <h1>{{ t("Empfehlungen") }}</h1>
   <p class="panel-hint">
@@ -13,6 +24,46 @@
     <strong>{{ t("Entwurf, keine Entscheidung") }}</strong> — {{ t("jede Maßnahme nennt die Meldungen, auf die sie sich stützt, damit die Begründung nachprüfbar bleibt. Die Bewertung stützt sich nur auf Schlagzeilen und Kurzfassungen, nicht auf die vollständigen Artikel.") }}
   </p>
 </div>
+
+{% if not available %}
+  {# No coverage, so there is nothing to advise on — and saying only that is true
+     but useless. An advisory reads a client's own press; the impulse reads its
+     market and needs no coverage at all, which is precisely the situation a young
+     mandate is in. So the page hands over rather than shrugging. #}
+  <section class="handover">
+    <p class="handover__lead">
+      {{ t("Über diesen Mandanten wurde im Zeitraum nichts geschrieben — es gibt also nichts zu empfehlen.") }}
+    </p>
+    <p class="handover__why">
+      {{ t("Eine Empfehlung reagiert auf eigene Berichterstattung. Was ohne sie trägt, ist ein Impuls: eine Positionierung zu dem, was im Markt passiert.") }}
+    </p>
+
+    {% if latest_angle %}
+      <article class="impulse handover__angle">
+        <div class="impulse__head">
+          <span class="clichip">{{ t("Impuls") }}</span>
+          <span class="impulse__age">{{ latest_angle.generated_at | de_short_date }}</span>
+        </div>
+        <div class="impulse__subject">{{ latest_angle.subject }}</div>
+        <div class="impulse__text">{{ latest_angle.message }}</div>
+        {% if latest_angle.thesis %}
+          <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ latest_angle.thesis }}</div>
+        {% endif %}
+      </article>
+    {% elif market_seen %}
+      <p class="handover__act">
+        {{ t("Das Themen-Radar hat") }} {{ market_seen }}
+        {{ t("Marktmeldung(en) für diesen Mandanten gesammelt, aber noch keinen Anlass daraus gemacht.") }}
+        <a href="/client/{{ client.id }}/market">{{ t("Marktumfeld ansehen") }} →</a>
+      </p>
+    {% else %}
+      <p class="handover__act">
+        {{ t("Für diesen Mandanten läuft noch kein Themen-Radar — ohne hinterlegte Themen entsteht auch kein Impuls.") }}
+        <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }} →</a>
+      </p>
+    {% endif %}
+  </section>
+{% endif %}
 
 <form method="post" action="/client/{{ client.id }}/advice" class="run-form">
   <div class="filter-field">
@@ -23,7 +74,7 @@
       <option value="90">{{ t("Letzte 90 Tage") }}</option>
     </select>
   </div>
-  <button type="submit"{% if running %} disabled{% endif %}>
+  <button type="submit"{% if running or not available %} disabled{% endif %}>
     {% if advisory %}{{ t("Neu erzeugen") }}{% else %}{{ t("Empfehlungen erzeugen") }}{% endif %}
   </button>
   <span class="panel-hint">{{ available }} {{ t("Artikel") }} {{ t("im Zeitraum") }}</span>
