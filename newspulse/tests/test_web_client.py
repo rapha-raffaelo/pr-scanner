@@ -588,3 +588,39 @@ def test_with_no_competitor_anywhere_the_page_says_where_they_come_from(factory,
     assert 'id="competitor_id"' not in body
     assert "Kein Unternehmen ist als Wettbewerber angelegt" in body
     assert 'href="/settings"' in body
+
+
+def test_the_client_tab_leads_with_its_positioning_drafts(factory, client):
+    """The tab is called Impulse and has to contain some.
+
+    It used to be "Empfehlungen", which reads a client's own press — and a mandate
+    nobody writes about yet has none, so the page was empty for exactly the client
+    that needed it most. The drafts come from the market and do not.
+    """
+    import datetime as dt
+
+    from newspulse.models import Angle
+
+    with factory() as session:
+        subject = Client(name="Arrakis", aliases=[], keywords=[], alert_topics=[])
+        session.add(subject)
+        session.flush()
+        session.add(
+            Angle(
+                client_id=subject.id,
+                generated_at=dt.datetime.now(dt.UTC),
+                subject="Börsenschließungen: Liquidität als Infrastruktur",
+                message="Zwei Absätze Text.",
+                context="c",
+                thesis="Der Markt konsolidiert.",
+            )
+        )
+        session.commit()
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/advice").text
+
+    assert "Börsenschließungen: Liquidität als Infrastruktur" in body
+    assert "Zwei Absätze Text." in body
+    # And the recommendations keep their own section rather than the whole page.
+    assert "Empfehlungen" in body

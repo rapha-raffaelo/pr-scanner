@@ -305,6 +305,23 @@ def recent(session: Session, until: dt.datetime, *, days: int = COLUMN_DAYS) -> 
     return latest
 
 
+def for_client(session: Session, client_id: int, *, limit: int = 5) -> list[Angle]:
+    """This client's recent drafts, newest first.
+
+    The Today column keeps one per mandate so it stays scannable; the client's own
+    page is where the others remain reachable, which is the promise that column
+    makes when it drops them.
+    """
+    return list(
+        session.scalars(
+            select(Angle)
+            .where(Angle.client_id == client_id)
+            .order_by(Angle.generated_at.desc(), Angle.id.desc())
+            .limit(limit)
+        ).all()
+    )
+
+
 def latest(session: Session, client_id: int) -> Angle | None:
     """The most recent draft for one client, whenever it was generated."""
     return session.scalars(
@@ -321,6 +338,7 @@ __all__ = [
     "ParseError",
     "developments",
     "COLUMN_DAYS",
+    "for_client",
     "recent",
     "latest",
     "store",

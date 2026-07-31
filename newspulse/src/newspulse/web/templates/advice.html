@@ -18,14 +18,41 @@
 
 
 <div class="client-profile">
-  <h1>{{ t("Empfehlungen") }}</h1>
+  <h1>{{ t("Impulse") }}</h1>
   <p class="panel-hint">
-    {{ t("Vorschläge auf Basis der Berichterstattung der letzten") }} {{ advisory.covered_days if advisory else 30 }} {{ t("Tage") }}.
-    <strong>{{ t("Entwurf, keine Entscheidung") }}</strong> — {{ t("jede Maßnahme nennt die Meldungen, auf die sie sich stützt, damit die Begründung nachprüfbar bleibt. Die Bewertung stützt sich nur auf Schlagzeilen und Kurzfassungen, nicht auf die vollständigen Artikel.") }}
+    {{ t("Was dieser Mandant sagen oder tun sollte — aus dem Markt und aus seiner eigenen Berichterstattung.") }}
+    <strong>{{ t("Entwurf, keine Entscheidung") }}</strong> — {{ t("jede Aussage nennt die Meldungen, auf die sie sich stützt, damit die Begründung nachprüfbar bleibt.") }}
   </p>
 </div>
 
-{% if not available %}
+{# The positioning drafts first: they come from the market and work for a mandate
+   nobody writes about yet, which is the case the page below cannot serve. #}
+{% if angles %}
+  <div class="colhead" style="margin-bottom:10px">{{ t("Positionierung") }} <span class="n">{{ angles | length }}</span></div>
+  {% for angle in angles %}
+    <article class="impulse" id="impulse-{{ angle.id }}">
+      <div class="impulse__head">
+        <span class="clichip">{{ angle.generated_at | de_short_date }}</span>
+        <button type="button" class="impulse__copy" data-copy-from="impulse-text-{{ angle.id }}">{{ t("Kopieren") }}</button>
+      </div>
+      {% if angle.subject %}<div class="impulse__subject">{{ angle.subject }}</div>{% endif %}
+      <div class="impulse__text" id="impulse-text-{{ angle.id }}">{{ angle.message }}</div>
+      {% if angle.thesis %}
+        <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ angle.thesis }}</div>
+      {% endif %}
+      {% if angle.overclaim %}
+        <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
+      {% endif %}
+    </article>
+  {% endfor %}
+{% endif %}
+
+<div class="colhead" style="margin-top:22px;margin-bottom:10px">{{ t("Empfehlungen") }}</div>
+<p class="panel-hint" style="margin-bottom:10px">
+  {{ t("Reagieren auf die eigene Berichterstattung der letzten") }} {{ advisory.covered_days if advisory else 30 }} {{ t("Tage") }}.
+</p>
+
+{% if not available and not angles %}
   {# No coverage, so there is nothing to advise on — and saying only that is true
      but useless. An advisory reads a client's own press; the impulse reads its
      market and needs no coverage at all, which is precisely the situation a young

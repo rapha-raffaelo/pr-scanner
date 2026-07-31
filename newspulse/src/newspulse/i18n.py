@@ -154,6 +154,15 @@ _EN: dict[str, str] = {
     "heute": "today",
     "im Archiv": "in archive",
     "Empfehlungen": "Recommendations",
+    "Positionierung": "Positioning",
+    "Was dieser Mandant sagen oder tun sollte — aus dem Markt und aus seiner eigenen Berichterstattung.":
+        "What this client should say or do — from the market and from its own "
+        "coverage.",
+    "jede Aussage nennt die Meldungen, auf die sie sich stützt, damit die Begründung nachprüfbar bleibt.":
+        "every statement names the items it rests on, so the reasoning stays "
+        "checkable.",
+    "Reagieren auf die eigene Berichterstattung der letzten":
+        "Responding to the client's own coverage of the last",
     "Coverage Map": "Coverage map",
     "Übersicht": "Overview",
     "Gespräch zurücksetzen": "Reset conversation",
@@ -381,9 +390,8 @@ _EN: dict[str, str] = {
         "The extracted text is stored, not the file.",
     "Speichern": "Save",
     "Wirkt auf": "Feeds into",
-    "Das Budget ist hart: dieser Text geht in jeden Aufruf, jeden Tag, für jeden Mandanten.":
-        "The budget is hard: this text goes into every call, every day, for every "
-        "client.",
+    "Kurz halten: der Guide wird jedem erzeugten Text vorangestellt.":
+        "Keep it short: the guide precedes every generated text.",
     "Positionierung: … · Kernbotschaften: … · Nie: …":
         "Positioning: … · Key messages: … · Never: …",
     "Keine Datei gewählt.": "No file selected.",

@@ -16,7 +16,7 @@
     <a href="/client/{{ client.id }}">{{ client.name }}</a>
   </div>
   <a href="/client/{{ client.id }}"{% if active == 'overview' %} class="active" aria-current="page"{% endif %}>{{ t("Übersicht") }}</a>
-  <a href="/client/{{ client.id }}/advice"{% if active == 'advice' %} class="active" aria-current="page"{% endif %}>{{ t("Empfehlungen") }}</a>
+  <a href="/client/{{ client.id }}/advice"{% if active == 'advice' %} class="active" aria-current="page"{% endif %}>{{ t("Impulse") }}</a>
   <a href="/client/{{ client.id }}/guide"{% if active == 'guide' %} class="active" aria-current="page"{% endif %}>{{ t("Guide") }}</a>
   <a href="/client/{{ client.id }}/market"{% if active == 'market' %} class="active" aria-current="page"{% endif %}>{{ t("Marktumfeld") }}</a>
   <a href="/client/{{ client.id }}/map"{% if active == 'map' %} class="active" aria-current="page"{% endif %}>{{ t("Coverage Map") }}</a>

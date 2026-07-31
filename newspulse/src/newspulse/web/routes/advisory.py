@@ -84,6 +84,7 @@ def advice_view(
             # reads a client's own press; a young mandate has none, and telling it
             # "nothing to recommend" is true but useless. The impulse works off the
             # market instead, which is exactly the case this page cannot serve.
+            "angles": angles.for_client(session, client_id),
             "latest_angle": angles.latest(session, client_id),
             "market_seen": session.scalar(
                 select(func.count()).select_from(TopicHit).where(
