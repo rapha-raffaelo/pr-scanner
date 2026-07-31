@@ -36,12 +36,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from ... import config, job
+from ... import config, job, rivals
 from ...analyzer import get_analyzer
 from ...db import get_session
 from ...clients import (
@@ -639,6 +639,41 @@ def fetch_logo_route(
         else:
             _log.info("no usable logo found at %s", client.website)
     return RedirectResponse("/settings", status_code=_SEE_OTHER)
+
+
+@router.post("/client/{client_id}/competitors/accept")
+def accept_rival_route(
+    client_id: int,
+    name: str = Form(...),
+    session: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Turn one accepted proposal into a monitored competitor and link it.
+
+    Creates the company as a competitor — monitored exactly like a mandate, which
+    is what makes its mention count comparable — and links it to this client. An
+    existing company of the same name is reused rather than duplicated, so a name
+    proposed for two mandates ends up as one row watched by both.
+    """
+    client = session.get(Client, client_id)
+    proposed = (name or "").strip()
+    if client is None or not proposed:
+        return RedirectResponse(f"/client/{client_id}", status_code=_SEE_OTHER)
+
+    existing = session.scalars(
+        select(Client).where(func.lower(Client.name) == proposed.lower())
+    ).first()
+    other = existing
+    if other is None:
+        # create_client owns the name/uniqueness rules; the role is a separate
+        # field it does not take, so it is set immediately after — before the
+        # company can appear anywhere as a mandate.
+        other = create_client(session, name=proposed)
+        update_client(session, other.id, is_competitor=True)
+        _log.info("created %r as a competitor of %r", proposed, client.name)
+    if other.id != client.id and other not in client.competitors:
+        client.competitors.append(other)
+        session.commit()
+    return RedirectResponse(f"/client/{client_id}", status_code=_SEE_OTHER)
 
 
 @router.post("/client/{client_id}/competitors")

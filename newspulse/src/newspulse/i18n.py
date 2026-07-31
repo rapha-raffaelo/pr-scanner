@@ -227,6 +227,12 @@ _EN: dict[str, str] = {
     "Wettbewerber": "Competitor",
     "entfernen": "remove",
     "Wettbewerber hinzufügen": "Add competitor",
+    "Wettbewerber vorschlagen": "Suggest competitors",
+    "Das Modell schlägt vor, angelegt wird erst per Klick.":
+        "The model proposes; nothing is created until you click.",
+    "Vorschläge — noch nichts davon angelegt. Ein Klick legt das Unternehmen als Wettbewerber an und verknüpft es.":
+        "Proposals — none of them created yet. One click adds the company as a "
+        "competitor and links it.",
     "Hinzufügen": "Add",
     "Noch keine Wettbewerber hinterlegt — ohne Vergleichsgruppe ist ein Anteil immer 100 % und damit ohne Aussage.":
         "No competitors set — without a comparison group a share is always 100% "

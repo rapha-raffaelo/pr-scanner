@@ -94,6 +94,34 @@
       <a href="/settings">{{ t("In Einstellungen anlegen") }}</a>
     </p>
   {% endif %}
+
+  {# Proposals. Nothing here exists yet: each chip is a button that creates the
+     company and links it. A wrong competitor does not merely look odd — it lands
+     in the share-of-voice arithmetic — so the model proposes and a person picks. #}
+  {% if rival_error %}
+    <div class="notice notice--error">{{ rival_error }}</div>
+  {% endif %}
+  {% if rival_suggestions %}
+    <p class="rivals__lead">
+      {{ t("Vorschläge — noch nichts davon angelegt. Ein Klick legt das Unternehmen als Wettbewerber an und verknüpft es.") }}
+    </p>
+    <div class="rivals">
+      {% for rival in rival_suggestions %}
+        <form method="post" action="/client/{{ client.id }}/competitors/accept" class="rivals__one">
+          <input type="hidden" name="name" value="{{ rival.name }}">
+          <button type="submit" class="rival" title="{{ rival.reason }}">
+            <span class="rival__name">+ {{ rival.name }}</span>
+            {% if rival.reason %}<span class="rival__why">{{ rival.reason }}</span>{% endif %}
+          </button>
+        </form>
+      {% endfor %}
+    </div>
+  {% else %}
+    <form method="post" action="/client/{{ client.id }}/competitors/suggest" style="margin-top:10px">
+      <button type="submit" class="btn btn--ghost">{{ t("Wettbewerber vorschlagen") }}</button>
+      <span class="panel-hint">{{ t("Das Modell schlägt vor, angelegt wird erst per Klick.") }}</span>
+    </form>
+  {% endif %}
 </section>
 
 {# All filters live in one form, so submitting sends every value together and the

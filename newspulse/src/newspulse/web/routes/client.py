@@ -23,7 +23,8 @@ from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
 
 from ...models import Analysis, Article, Category, Client, TopicHit
-from ... import coverage_map
+from ... import coverage_map, rivals
+from ...analyzer import AnalyzerError
 from ...reporting import client_workbook, share_of_voice
 from ..app import get_db, templates
 
@@ -420,23 +421,45 @@ def clients_index(
     )
 
 
-@router.get("/client/{client_id}", response_class=HTMLResponse)
-def client_detail(
+@router.post("/client/{client_id}/competitors/suggest", response_class=HTMLResponse)
+def suggest_rivals(
+    request: Request, client_id: int, session: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Propose competitors for this client, for a human to accept or ignore.
+
+    Share of voice needs a comparison group, and the picker only offers companies
+    already marked as competitors — so the first one has to be created by hand,
+    which is the step nobody does. The model proposes; the consultant clicks.
+    """
+    client = session.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    try:
+        proposals = rivals.suggest(client)
+    except AnalyzerError as exc:
+        return _render_detail(
+            request, session, client, rival_error=f"Vorschlag fehlgeschlagen: {exc}"
+        )
+    return _render_detail(request, session, client, rival_suggestions=proposals)
+
+
+def _render_detail(
     request: Request,
-    client_id: int,
+    session: Session,
+    client: Client,
+    *,
     date_from: str | None = None,
     date_to: str | None = None,
     source: str | None = None,
     category: str | None = None,
     q: str | None = None,
     page: int = 1,
-    session: Session = Depends(get_db),
+    rival_suggestions: list | None = None,
+    rival_error: str | None = None,
 ) -> HTMLResponse:
-    """Render a client's profile and their filtered, paginated archive page."""
-    client = session.get(Client, client_id)
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-
+    """Render the client page. Shared, so a POST that has something to show can
+    render the same page rather than redirecting and losing it."""
+    client_id = client.id
     parsed_from = _parse_date(date_from)
     parsed_to = _parse_date(date_to)
     parsed_category = _parse_category(category)
@@ -491,11 +514,46 @@ def client_detail(
                 if c.id != client.id and c not in client.competitors
             ],
             "competitors": list(client.competitors),
+            # Transient: proposals are rendered, never stored. Clicking one creates
+            # the company; not clicking leaves no trace. That matters more here
+            # than elsewhere — a wrong competitor does not just look odd, it lands
+            # in the share-of-voice arithmetic and changes a reported number.
+            "rival_suggestions": rival_suggestions or [],
+            "rival_error": rival_error,
             "last_run": _fetch_last_run(session),
             # The shared header dates every page; the archive view spans many
             # days, so it shows today.
             "header_date": dt.datetime.now(_local_tz()).date(),
         },
+    )
+
+
+@router.get("/client/{client_id}", response_class=HTMLResponse)
+def client_detail(
+    request: Request,
+    client_id: int,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    source: str | None = None,
+    category: str | None = None,
+    q: str | None = None,
+    page: int = 1,
+    session: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Render a client's profile and their filtered, paginated archive page."""
+    client = session.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return _render_detail(
+        request,
+        session,
+        client,
+        date_from=date_from,
+        date_to=date_to,
+        source=source,
+        category=category,
+        q=q,
+        page=page,
     )
 
 

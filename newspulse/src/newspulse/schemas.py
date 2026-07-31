@@ -208,3 +208,28 @@ class CoachReport(BaseModel):
 
     # Capped: past five the report stops being a briefing and becomes an audit.
     findings: list[CoachFinding] = Field(default_factory=list, max_length=5)
+
+
+# --- Competitor suggestions -----------------------------------------------------
+
+
+class RivalSuggestion(BaseModel):
+    """One proposed competitor. Nothing is created from it without a click."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+    reason: str = ""
+
+
+class RivalSuggestions(BaseModel):
+    """The model's proposals for one client.
+
+    An empty list is the expected answer for a small or very young company, and
+    the prompt says so: a competitor invented to fill the list would end up in a
+    share-of-voice calculation as if it were real.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    rivals: list[RivalSuggestion] = Field(default_factory=list, max_length=6)
