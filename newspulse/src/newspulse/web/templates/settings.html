@@ -116,10 +116,67 @@
   .panel .rival:hover { border-color: var(--accent); border-style: solid; }
   .rival__name { font-size: 0.85rem; font-weight: 600; color: var(--accent); }
   .rival__why { font-size: 0.75rem; color: var(--muted); }
+  /* A theme the press does not write is still offered — the operator may know
+     something the search does not — but it must not look like the ones that
+     work. Measurement visible, not hidden behind a filter. */
+  .panel .rival--empty { opacity: 0.55; border-style: dotted; }
+  .panel .rival--empty .rival__name { color: var(--muted); }
+  .rival__why strong { color: #047857; font-size: 0.8rem; }
 </style>
 
 <div class="settings">
   <h1>{{ t("Einstellungen") }}</h1>
+
+  {# --- Theme proposals, with what each one actually returns ----------------
+     A proposed theme reads plausible whether or not the press covers it, and the
+     operator had no way to tell the difference until they had added it, waited a
+     day and found the radar still empty. Every chip carries its measurement:
+     hits that are about the market, and hits that are only the mandate's own
+     press — the second kind is the failure this whole panel exists to prevent. #}
+  {% for cid, state in themes.items() %}
+    {% if state.state == 'läuft' %}
+      <div class="notice notice--ok"
+           hx-get="/settings" hx-trigger="every 4s"
+           hx-select="#themepanel" hx-target="#themepanel" hx-swap="outerHTML">
+        <span id="themepanel">
+          <span class="spinner" aria-hidden="true"></span>
+          {{ t("Themen für") }} {{ state.client }} {{ t("werden vorgeschlagen und gegen die echte Suche geprüft — das dauert eine Minute.") }}
+        </span>
+      </div>
+    {% elif state.state == 'fehler' %}
+      <div class="notice notice--error" id="themepanel">
+        {{ t("Themenvorschlag fehlgeschlagen") }}: {{ state.error }}
+      </div>
+    {% elif state.state == 'fertig' %}
+      <div class="panel panel--wide" id="themepanel">
+        <h2>{{ t("Themen für") }} {{ state.client }}</h2>
+        <p class="panel-hint">
+          {{ t("Vorschläge — noch nichts übernommen. Die Zahl ist gemessen: so viele Marktmeldungen fand die echte Radar-Abfrage damit in den letzten 90 Tagen. Ein Klick übernimmt das Thema und sucht sofort danach.") }}
+        </p>
+        <div class="rivals">
+          {% for probe in state.probes %}
+            <form method="post" action="/settings/clients/{{ cid }}/themes/accept" class="rivals__one">
+              <input type="hidden" name="term" value="{{ probe.term }}">
+              <button type="submit" class="rival {% if not probe.usable %}rival--empty{% endif %}"
+                      title="{{ probe.reason }}">
+                <span class="rival__name">+ {{ probe.term }}</span>
+                <span class="rival__why">
+                  {% if probe.usable %}
+                    <strong>{{ probe.external }}</strong> {{ t("Marktmeldung(en)") }}{% if probe.own %} · {{ probe.own }} {{ t("über den Mandanten selbst") }}{% endif %}{% if probe.widened %} · {{ t("ohne Branchenfilter") }}{% endif %}
+                  {% else %}
+                    {{ t("keine Treffer — die Presse schreibt diesen Begriff nicht") }}
+                  {% endif %}
+                </span>
+                {% if probe.samples %}<span class="rival__why">{{ probe.samples[0][:70] }}</span>{% endif %}
+              </button>
+            </form>
+          {% else %}
+            <p class="panel-hint">{{ t("Keine Themen vorgeschlagen.") }}</p>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
 
   {% if rival_error %}<div class="notice notice--error">{{ rival_error }}</div>{% endif %}
   {% if rival_suggestions is defined and rival_suggestions %}
@@ -312,6 +369,12 @@
                        page where the resulting share of voice is read. #}
                     <form method="post" action="/settings/clients/{{ client.id }}/rivals">
                       <button type="submit" class="linkbtn">{{ t("Wettbewerber") }}</button>
+                    </form>
+                    {# Themes belong here for the same reason: they are what the
+                       radar searches, and searching the wrong thing is why a
+                       mandate can sit for months with nothing to say. #}
+                    <form method="post" action="/settings/clients/{{ client.id }}/themes">
+                      <button type="submit" class="linkbtn" title="{{ t('Marktthemen vorschlagen und gegen die echte Suche prüfen') }}">{{ t("Themen") }}</button>
                     </form>
                   {% endif %}
                   {% if client.active %}

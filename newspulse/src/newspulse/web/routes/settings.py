@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from ... import config, job, rivals
+from ... import config, job, rivals, themes
 from ...analyzer import get_analyzer
 from ...db import get_session
 from ...clients import (
@@ -545,6 +545,9 @@ def _page_context(session: Session) -> dict[str, object]:
         # its own row instead of leaving the reader to infer it from a global
         # spinner that means several different things.
         "onboarding": dict(_onboarding),
+        # The theme proposal for whichever client was last asked about, with the
+        # measurement behind each one.
+        "themes": dict(_theme_state),
         "map_fields": _MAP_FIELDS,
         "map_values": {},
         "client_error": None,
@@ -689,6 +692,111 @@ def fetch_logo_route(
         else:
             _log.info("no usable logo found at %s", client.website)
     return RedirectResponse("/settings", status_code=_SEE_OTHER)
+
+
+# --- Theme suggestions ----------------------------------------------------------
+# What a mandate's radar searches decides whether it ever has anything to say, and
+# the terms an operator types describe the company rather than its field: a
+# beauty-tech mandate carried "KI in der Kosmetik", which reads perfectly and
+# returns nothing, because no journalist writes that phrase. Proposing themes is
+# only half the answer — a proposal reads plausible whether or not the press
+# covers it — so each one is put through the real radar query before it is offered,
+# and the operator sees what it actually returns.
+#
+# The work is a model call plus one feed fetch per proposal, which is far too long
+# to hold a form submission open. It runs on a worker thread and the page polls,
+# the same shape the impulse uses.
+_theme_lock = threading.Lock()
+_theme_state: dict[int, dict[str, object]] = {}
+
+
+def _probe_themes(client_id: int) -> None:
+    """Propose themes for one client and measure each against live search."""
+    try:
+        with get_session() as session:
+            client = session.get(Client, client_id)
+            if client is None:
+                _theme_state.pop(client_id, None)
+                return
+            proposals = themes.suggest(client)
+            probes = themes.probe(client, proposals)
+            _theme_state[client_id] = {
+                "state": "fertig",
+                "client": client.name,
+                "probes": probes,
+            }
+    except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
+        # A failed suggestion must not read as "this field has no themes".
+        _theme_state[client_id] = {"state": "fehler", "error": str(exc)}
+        _log.exception("theme suggestion for client %s failed", client_id)
+    finally:
+        _theme_lock.release()
+
+
+@router.post("/settings/clients/{client_id}/themes")
+def suggest_themes_route(
+    client_id: int, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Start the theme proposal for one client and return to the page."""
+    client = session.get(Client, client_id)
+    if client is not None and _theme_lock.acquire(blocking=False):
+        _theme_state[client_id] = {"state": "läuft", "client": client.name}
+        threading.Thread(
+            target=_probe_themes,
+            args=(client_id,),
+            daemon=True,
+            name=f"newspulse-themes-{client_id}",
+        ).start()
+    return RedirectResponse("/settings", status_code=_SEE_OTHER)
+
+
+@router.post("/settings/clients/{client_id}/themes/accept")
+def accept_theme_route(
+    client_id: int, term: str = Form(...), session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Add one proposed theme to the client's search terms and search it now.
+
+    Immediately rather than at the next nightly sweep: the person just decided
+    this theme is worth watching, and making them wait a day to find out whether
+    it brought anything back is how a configuration screen stops being trusted.
+    """
+    client = session.get(Client, client_id)
+    chosen = (term or "").strip()
+    if client is None or not chosen:
+        return RedirectResponse("/settings", status_code=_SEE_OTHER)
+    if chosen.casefold() not in {k.casefold() for k in (client.keywords or [])}:
+        update_client(session, client_id, keywords=[*(client.keywords or []), chosen])
+
+    # Drop it from the offered list so the panel reflects what is left to decide.
+    stored = _theme_state.get(client_id)
+    if stored and stored.get("state") == "fertig":
+        stored["probes"] = [
+            probe
+            for probe in stored.get("probes", [])  # type: ignore[union-attr]
+            if probe.term.casefold() != chosen.casefold()
+        ]
+
+    threading.Thread(
+        target=_run_theme_radar,
+        args=(client_id,),
+        daemon=True,
+        name=f"newspulse-radar-{client_id}",
+    ).start()
+    return RedirectResponse("/settings", status_code=_SEE_OTHER)
+
+
+def _run_theme_radar(client_id: int) -> None:
+    """Search a newly added theme straight away, so its hits are there to see."""
+    try:
+        with runlock.guard:
+            with get_session() as session:
+                client = session.get(Client, client_id)
+                if client is None:
+                    return
+                linked = job.refresh_radar(session, client)
+                _log.info("radar refresh for %r linked %d item(s)", client.name, linked)
+    except Exception:  # noqa: BLE001 — a worker thread must never die silently
+        _log.exception("radar refresh for client %s failed", client_id)
 
 
 @router.post("/settings/clients/{client_id}/rivals", response_class=HTMLResponse)

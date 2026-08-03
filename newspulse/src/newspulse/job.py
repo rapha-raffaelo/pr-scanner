@@ -601,6 +601,41 @@ def _generate_angles(
     return written
 
 
+def refresh_radar(
+    session: Session,
+    client: Client,
+    *,
+    fetch: FetchFeed = fetch_feed,
+    now: Callable[[], dt.datetime] | None = None,
+) -> int:
+    """Fetch this client's topic radar and link what it finds. No model call.
+
+    What a newly added theme is for: the search runs immediately instead of at the
+    next nightly sweep, so the person who just added it can see whether it brought
+    anything back. Returns the number of (article, client) links that are new —
+    the honest measure of what the theme added, since the articles themselves may
+    well have been in the archive already.
+    """
+    now_fn = now or _utcnow
+    started = now_fn()
+    since = started - IMPULSE_LOOKBACK
+    errors: list[str] = []
+
+    radar = gnews.topic_feeds([client])
+    if not radar:
+        return 0
+    pairs, _ok = _fetch_topics(radar, [client], since, fetch, started, errors)
+    if not pairs:
+        return 0
+    known_urls, known_hashes = _load_known(session)
+    fresh = deduplicate(
+        _distinct_items(pairs), known_urls=known_urls, known_title_hashes=known_hashes
+    )
+    if fresh:
+        _persist_articles(session, fresh, started)
+    return _record_topic_hits(session, pairs, started)
+
+
 def market_material(
     session: Session, client: Client, since: dt.datetime
 ) -> list[tuple[Article, str]]:

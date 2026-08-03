@@ -337,6 +337,23 @@ _EN: dict[str, str] = {
     "Keine eigene Presseschau: „Rückruf“ löst nur dann Alarm aus, wenn die Meldung ohnehin über Name, Alias oder Suchbegriff erkannt wurde.":
         "Not a press scan of its own: \u201cRecall\u201d raises an alert only if "
         "the item was already recognised via the name, an alias or a search term.",
+    "Themen": "Themes",
+    "Marktthemen vorschlagen und gegen die echte Suche prüfen":
+        "Propose market themes and test them against the real search",
+    "Themen für": "Themes for",
+    "werden vorgeschlagen und gegen die echte Suche geprüft — das dauert eine Minute.":
+        "are being proposed and tested against the real search \u2014 this takes a minute.",
+    "Themenvorschlag fehlgeschlagen": "Theme suggestion failed",
+    "Vorschläge — noch nichts übernommen. Die Zahl ist gemessen: so viele Marktmeldungen fand die echte Radar-Abfrage damit in den letzten 90 Tagen. Ein Klick übernimmt das Thema und sucht sofort danach.":
+        "Proposals \u2014 nothing adopted yet. The number is measured: that is how "
+        "many market items the real radar query found with it over the last 90 "
+        "days. One click adopts the theme and searches for it straight away.",
+    "Marktmeldung(en)": "market item(s)",
+    "über den Mandanten selbst": "about the client itself",
+    "ohne Branchenfilter": "without the field filter",
+    "keine Treffer — die Presse schreibt diesen Begriff nicht":
+        "no hits \u2014 the press does not write this term",
+    "Keine Themen vorgeschlagen.": "No themes proposed.",
     "Einrichtung wartet auf den laufenden Lauf": "Setup is waiting for the current run",
     "wird eingerichtet": "being set up",
     "eingerichtet": "set up",
