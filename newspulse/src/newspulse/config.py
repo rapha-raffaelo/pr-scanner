@@ -274,6 +274,52 @@ def local_zone() -> dt.tzinfo:
     return LOCAL_ZONE
 
 
+# The daily sweep, and whether anything runs it. Both are read per call rather
+# than at import so a platform variable set after start-up is still seen.
+#
+# This exists because nothing on the deployed host was running the sweep at all:
+# the compose file's cron container and the launchd/Windows entries under
+# schedule/ are all host-side, and the platform's start command is the web
+# process alone. Everything the tool produces unattended — coverage, digest,
+# positioning drafts — therefore waited for somebody to press a button.
+ENV_SCHEDULER = "NEWSPULSE_SCHEDULER"
+ENV_DAILY_AT = "NEWSPULSE_DAILY_AT"
+
+# Early enough that the day is ready before the first person opens it, late
+# enough that the night's coverage is syndicated. The same time the compose cron
+# used, so a host that already had one does not shift its rhythm.
+_DEFAULT_DAILY_AT = "06:10"
+
+
+def scheduler_enabled() -> bool:
+    """Whether the web process should run the daily sweep itself.
+
+    On by default: the deployment that needs it is the one where nobody thought
+    about it, and a scheduler that has to be switched on is a scheduler that is
+    off. Set NEWSPULSE_SCHEDULER=0 where an external cron already does the job.
+    """
+    raw = os.environ.get(ENV_SCHEDULER, "").strip().lower()
+    return raw not in {"0", "false", "off", "no"}
+
+
+def daily_run_at() -> tuple[int, int]:
+    """The local (hour, minute) for the daily sweep. Falls back on a bad value.
+
+    A malformed variable must not stop the sweep from ever running — that is the
+    exact failure this module was added to fix — so it is logged by the caller
+    through the default rather than raised.
+    """
+    raw = os.environ.get(ENV_DAILY_AT, _DEFAULT_DAILY_AT).strip()
+    try:
+        hour, _, minute = raw.partition(":")
+        at = (int(hour), int(minute or 0))
+    except ValueError:
+        return (6, 10)
+    if not (0 <= at[0] <= 23 and 0 <= at[1] <= 59):
+        return (6, 10)
+    return at
+
+
 def gemini_configured() -> bool:
     """Whether the fallback provider can be used at all.
 

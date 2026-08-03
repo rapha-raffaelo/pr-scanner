@@ -293,10 +293,16 @@ def main() -> None:
     import uvicorn
 
     from .. import config
+    from . import scheduler
 
     # Before the socket opens, not after: a public bind with no credentials is
     # the one mistake that cannot be undone by noticing it later.
     require_auth_for_public_bind(config.WEB_HOST)
+    # Here rather than in create_app(): the tests build the app hundreds of times
+    # and none of them wants a thread that fetches feeds and shells out to a
+    # model. The deployed platform starts exactly one process — this one — so
+    # without this nothing ever runs the daily sweep.
+    scheduler.start()
     uvicorn.run(
         create_app(),
         host=config.WEB_HOST,

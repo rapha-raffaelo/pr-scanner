@@ -44,6 +44,26 @@ Then open <http://127.0.0.1:8000/>. The bind address defaults to loopback
 because this is a single-user local tool; override with `NEWSPULSE_WEB_HOST` /
 `NEWSPULSE_WEB_PORT` if needed.
 
+### The daily sweep
+
+The web process runs the sweep itself, once a day at **06:10 local time**, and
+sends the digest after it. Everything the tool produces unattended — the
+morning's coverage, the digest, and the positioning drafts a mandate is supposed
+to have waiting — comes from that sweep; without it the tool only does something
+when somebody presses "Aktualisieren".
+
+It lives in the web process because that is the only process a hosted deployment
+starts. The state is the `runs` table, not the thread's memory, so a restart, a
+redeploy or a second replica cannot make the day's sweep run twice.
+
+| Variable | Default | |
+| --- | --- | --- |
+| `NEWSPULSE_DAILY_AT` | `06:10` | Local time of the sweep. |
+| `NEWSPULSE_SCHEDULER` | on | Set `0` where an external cron already runs it. |
+
+`docker-compose.yml` has its own cron container; set `NEWSPULSE_SCHEDULER=0`
+there, or drop the container and let the web process do it.
+
 ## Configuration
 
 All tunables load from environment variables with sane defaults (see

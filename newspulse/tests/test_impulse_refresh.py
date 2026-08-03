@@ -208,3 +208,31 @@ def test_a_model_failure_never_marks_the_sweep_broken(session, monkeypatch):
 
     assert job._refresh_impulses(session, [client], errors, now=_NOW) == 0
     assert errors == []
+
+
+def test_the_daily_run_actually_calls_the_refresh(session, monkeypatch):
+    """The wiring, not just the function.
+
+    The refresh had unit tests and no test that it was reached — which is exactly
+    the gap that lets a feature be "built" and still never happen. A mandate with
+    stored market material and no current draft must come out of an ordinary
+    sweep with one.
+    """
+    client = _client(session)
+    _market(session, client, "Clean Beauty wird Pflicht im Handel")
+    monkeypatch.setattr(angles, "suggest", _draft())
+
+    class _Analyzer:
+        def analyze(self, client, articles):
+            return []
+
+    report = job.run(
+        session,
+        feeds=[],  # no fetching: the point is what the sweep does with the archive
+        fetch=lambda *a, **k: [],
+        analyzer=_Analyzer(),
+        now=lambda: _NOW,
+    )
+
+    assert report.angles_written == 1
+    assert session.scalar(select(func.count()).select_from(Angle)) == 1

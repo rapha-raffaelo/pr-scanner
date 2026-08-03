@@ -15,3 +15,4 @@
 2026-07-28 18:53:40,557 INFO newspulse.job run start: 4 active client(s), 62 feed(s) (58 registry + 4 client search), since=2026-07-28T12:39:22.727767+00:00
 2026-07-28 18:54:39,194 INFO newspulse.job run done: status=ok, 11 new article(s), 11 analysis(es), 0 error(s)
 2026-07-28 18:54:39,199 INFO newspulse.web.routes.settings dashboard-triggered run finished: status=ok new_articles=11
+2026-08-03 21:54:41,530 INFO newspulse.job run start: 4 active client(s), 73 feed(s) (68 registry + 4 client search + 1 topic radar), since=2026-07-28T16:53:40.547572+00:00
