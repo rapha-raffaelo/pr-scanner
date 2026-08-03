@@ -59,6 +59,8 @@ from .matching import (
     dedup_title_hash,
     deduplicate,
     match_candidates,
+    mentions_client,
+    name_matcher,
     title_hash,
 )
 from .models import (
@@ -292,8 +294,15 @@ def _fetch_topics(
     which is what keeps a theme like "Wachstum" from returning Canada's GDP. For
     a mandate whose themes are already narrow phrases that scope can intersect to
     nothing — measured: ``"KI in der Kosmetik" AND "Beauty Tech"`` returns zero —
-    so an empty result falls back to the unscoped query once. Precision where it
-    helps, coverage where it would otherwise go dark.
+    so a result with nothing usable in it falls back to the unscoped query once.
+
+    "Nothing usable" rather than "nothing at all", because the failure that
+    matters looks different from the outside. A young company dominates its own
+    niche: measured for a beauty-tech mandate, the scoped query returned three
+    items, two of them its own launch coverage. Non-empty, so the old fallback
+    never fired — and the one remaining item was all that stood between the
+    mandate and an impulse page that said "no market news" for months. A radar
+    that only finds the client is a radar that found nothing.
     """
     by_id = {client.id: client for client in clients}
     pairs: list[Candidate] = []
@@ -310,20 +319,30 @@ def _fetch_topics(
                 fetched_at=fetched_at,
                 per_entry_source=feed.per_entry_source,
             )
-            if not batch:
+            about_client = name_matcher(client)
+            usable = [i for i in batch if not mentions_client(i, about_client)]
+            if not usable:
                 widened = gnews.unscoped_topic_url(client)
                 if widened is not None and widened != feed.url:
                     _log.info(
-                        "topic radar for %r found nothing in its field; widening",
+                        "topic radar for %r found %d item(s) in its field, all about "
+                        "the client itself; widening",
                         client.name,
+                        len(batch),
                     )
-                    batch = fetch(
-                        widened,
-                        since,
-                        source=feed.name,
-                        fetched_at=fetched_at,
-                        per_entry_source=feed.per_entry_source,
-                    )
+                    # Added to, not replacing: an item naming the client is still a
+                    # real radar hit, and the material query filters it later on the
+                    # stronger evidence of an actual analysis.
+                    batch = [
+                        *batch,
+                        *fetch(
+                            widened,
+                            since,
+                            source=feed.name,
+                            fetched_at=fetched_at,
+                            per_entry_source=feed.per_entry_source,
+                        ),
+                    ]
         except Exception as exc:  # noqa: BLE001 — per-feed fault-isolation boundary
             _log.warning("topic radar %r failed to fetch: %s; skipping", feed.name, exc)
             errors.append(f"feed {feed.name!r}: {exc}")

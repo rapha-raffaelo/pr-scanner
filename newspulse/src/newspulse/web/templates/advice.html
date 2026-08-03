@@ -128,6 +128,50 @@
         <p class="sect__empty sect__refusal">
           <strong>{{ t("Kein Impuls erzeugt.") }}</strong> {{ impulse_refusal }}
         </p>
+        {# A message that names a cause has to carry its remedy. This one said the
+           themes were written too close to the company and then left the reader to
+           find a button on another screen — so the same report came back three
+           times while the fix sat one page away. #}
+        {% if theme_work and theme_work.state == 'läuft' %}
+          <div class="notice notice--ok"
+               hx-get="/client/{{ client.id }}/advice" hx-trigger="every 4s"
+               hx-select="#positioning" hx-target="#positioning" hx-swap="outerHTML">
+            <span class="spinner" aria-hidden="true"></span>
+            {{ t("Themen werden vorgeschlagen und gegen die echte Suche geprüft — das dauert eine Minute.") }}
+          </div>
+        {% elif theme_work and theme_work.state == 'fehler' %}
+          <p class="sect__empty">{{ t("Themenvorschlag fehlgeschlagen") }}: {{ theme_work.error }}</p>
+        {% elif theme_work and theme_work.state == 'fertig' %}
+          <p class="sect__lead" style="margin-top:14px">
+            {{ t("Gemessen an der echten Suche: so viele Marktmeldungen brächte jedes Thema in 90 Tagen. Ein Klick übernimmt es und sucht sofort.") }}
+          </p>
+          <div class="rivals">
+            {% for probe in theme_work.probes %}
+              <form method="post" action="/settings/clients/{{ client.id }}/themes/accept" class="rivals__one">
+                <input type="hidden" name="term" value="{{ probe.term }}">
+                <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/advice">
+                <button type="submit" class="rival {% if not probe.usable %}rival--empty{% endif %}" title="{{ probe.reason }}">
+                  <span class="rival__name">+ {{ probe.term }}</span>
+                  <span class="rival__why">
+                    {% if probe.usable %}<strong>{{ probe.external }}</strong> {{ t("Marktmeldung(en)") }}{% else %}{{ t("keine Treffer — die Presse schreibt diesen Begriff nicht") }}{% endif %}
+                  </span>
+                  {# The headline it actually found. The count alone says "not about
+                     this client", which is the failure it was built to catch — it
+                     cannot say "in this field". A sample can, at a glance: a theme
+                     whose example is a fish-transport story is one to skip. #}
+                  {% for sample in probe.samples[:1] %}
+                    <span class="rival__why rival__sample">„{{ sample[:64] }}“</span>
+                  {% endfor %}
+                </button>
+              </form>
+            {% endfor %}
+          </div>
+        {% else %}
+          <form method="post" action="/client/{{ client.id }}/themes" class="sect__act" style="border:0;padding:0;margin-top:10px">
+            <button type="submit" class="btn btn--ghost">{{ t("Passende Themen vorschlagen") }}</button>
+            <span class="panel-hint">{{ t("Schlägt Themen des Marktumfelds vor und prüft jedes an der echten Suche, bevor es angeboten wird.") }}</span>
+          </form>
+        {% endif %}
       {% elif not has_themes %}
         <p class="handover__act">
           {{ t("Für diesen Mandanten läuft noch kein Themen-Radar — ohne hinterlegte Themen entsteht auch kein Impuls.") }}

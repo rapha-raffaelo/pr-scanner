@@ -437,12 +437,46 @@ def _item_source(item: FeedItem) -> str:
     return getattr(item, "source", "") or ""
 
 
+def name_matcher(client: Client) -> re.Pattern[str] | None:
+    """Match a client's *name and aliases* — never its themes.
+
+    Deliberately not :func:`_compile_client_matcher`, which also folds in the
+    keywords because its job is "does this article concern the client at all".
+    This one answers a different question, asked by the topic radar: is this hit
+    about the client, or about its market? A theme found the item, so the theme is
+    present in both kinds by construction and would classify everything as "about
+    the client".
+
+    Returns ``None`` for a client with no usable name, so callers can treat
+    "cannot tell" as "not about the client" rather than crashing.
+    """
+    terms: list[str] = []
+    for raw in [getattr(client, "name", ""), *(getattr(client, "aliases", None) or [])]:
+        for variant in company_names.variants((raw or "").strip()):
+            if variant:
+                terms.append(variant)
+    if not terms:
+        return None
+    alternation = "|".join(_term_pattern(t) for t in dict.fromkeys(terms))
+    return re.compile(rf"(?<!\w)(?:{alternation})(?!\w)")
+
+
+def mentions_client(item, matcher: re.Pattern[str] | None) -> bool:
+    """Whether ``item``'s feed-provided text names the client ``matcher`` was built
+    from. Only syndicated text is searched — no body is fetched (no-scrape rule)."""
+    if matcher is None:
+        return False
+    return matcher.search(_haystack(item).casefold()) is not None
+
+
 __all__ = [
     "Candidate",
     "canonical_url",
     "dedup_title_hash",
     "deduplicate",
     "match_candidates",
+    "mentions_client",
+    "name_matcher",
     "normalize_title",
     "title_hash",
 ]

@@ -27,6 +27,7 @@ from newspulse.ingest import FeedItem
 from newspulse.models import Base, Client
 from newspulse.schemas import ThemeSuggestion
 from newspulse.web.app import create_app, get_db
+from newspulse.web import themework
 from newspulse.web.routes import settings as settings_routes
 
 _NOW = dt.datetime(2026, 8, 3, 9, 0, tzinfo=dt.UTC)
@@ -58,9 +59,9 @@ def client(factory):
 
 @pytest.fixture(autouse=True)
 def clean_state():
-    settings_routes._theme_state.clear()
+    themework.state.clear()
     yield
-    settings_routes._theme_state.clear()
+    themework.state.clear()
 
 
 def _client(**over) -> Client:
@@ -233,7 +234,7 @@ def test_the_panel_shows_the_measurement_and_marks_the_empty_ones(factory, clien
         session.commit()
         client_id = subject.id
 
-    settings_routes._theme_state[client_id] = {
+    themework.state[client_id] = {
         "state": "fertig",
         "client": "IB-7 Beauty Tech",
         "probes": [
@@ -262,7 +263,7 @@ def test_a_failed_suggestion_says_so_rather_than_showing_an_empty_list(factory, 
         session.commit()
         client_id = subject.id
 
-    settings_routes._theme_state[client_id] = {
+    themework.state[client_id] = {
         "state": "fehler",
         "error": "claude ist weg",
     }
@@ -271,3 +272,72 @@ def test_a_failed_suggestion_says_so_rather_than_showing_an_empty_list(factory, 
 
     assert "Themenvorschlag fehlgeschlagen" in body
     assert "claude ist weg" in body
+
+
+# --- The remedy where the problem appears ---------------------------------------
+
+
+def test_the_impulse_page_offers_themes_when_the_radar_found_nothing(factory, client):
+    """The report came back three times — "es funktioniert immer noch nicht" —
+    while the fix sat one page away. A message that names a cause has to carry
+    its remedy."""
+    from newspulse.web.routes import advisory
+
+    with factory() as session:
+        subject = _client()
+        session.add(subject)
+        session.commit()
+        client_id = subject.id
+
+    advisory._last_refusal[client_id] = (
+        "Das Themen-Radar hat keine Marktmeldung gefunden, die nicht schon "
+        "Berichterstattung über den Mandanten selbst ist."
+    )
+    try:
+        body = client.get(f"/client/{client_id}/advice").text
+    finally:
+        advisory._last_refusal.pop(client_id, None)
+
+    assert "Passende Themen vorschlagen" in body
+    assert f'action="/client/{client_id}/themes"' in body
+
+
+def test_the_measured_proposals_appear_on_the_impulse_page_itself(factory, client):
+    from newspulse.web.routes import advisory
+
+    with factory() as session:
+        subject = _client()
+        session.add(subject)
+        session.commit()
+        client_id = subject.id
+
+    advisory._last_refusal[client_id] = "Kein Marktmaterial."
+    themework.state[client_id] = {
+        "state": "fertig",
+        "client": "IB-7 Beauty Tech",
+        "probes": [
+            themes.ThemeProbe(term="Clean Beauty", reason="r", external=5, own=0),
+            themes.ThemeProbe(term="KI-Hautpflege", reason="r", external=0, own=9),
+        ],
+    }
+    try:
+        body = " ".join(client.get(f"/client/{client_id}/advice").text.split())
+    finally:
+        advisory._last_refusal.pop(client_id, None)
+
+    assert "Clean Beauty" in body
+    assert "<strong>5</strong> Marktmeldung(en)" in body
+    assert "rival--empty" in body
+
+
+def test_no_remedy_is_offered_when_there_was_no_refusal(factory, client):
+    """The offer belongs to the failure, not to the page."""
+    with factory() as session:
+        subject = _client()
+        session.add(subject)
+        session.commit()
+        client_id = subject.id
+
+    body = client.get(f"/client/{client_id}/advice").text
+
+    assert "Passende Themen vorschlagen" not in body

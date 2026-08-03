@@ -344,6 +344,16 @@ _EN: dict[str, str] = {
     "stummgeschaltet": "muted",
     "anzeigen": "show",
     "stummgeschaltete wieder ausblenden": "hide muted again",
+    "Passende Themen vorschlagen": "Suggest themes that fit",
+    "Schlägt Themen des Marktumfelds vor und prüft jedes an der echten Suche, bevor es angeboten wird.":
+        "Proposes themes from the client's market and tests each against the real "
+        "search before offering it.",
+    "Themen werden vorgeschlagen und gegen die echte Suche geprüft — das dauert eine Minute.":
+        "Themes are being proposed and tested against the real search \u2014 this "
+        "takes a minute.",
+    "Gemessen an der echten Suche: so viele Marktmeldungen brächte jedes Thema in 90 Tagen. Ein Klick übernimmt es und sucht sofort.":
+        "Measured against the real search: that is how many market items each theme "
+        "would bring in over 90 days. One click adopts it and searches straight away.",
     "Themen": "Themes",
     "Marktthemen vorschlagen und gegen die echte Suche prüfen":
         "Propose market themes and test them against the real search",

@@ -527,6 +527,29 @@ nav.tabs a.active {
 .col-actions .rowlink, .col-actions .linkbtn { padding: 0 0.4rem 0 0; font-size: 0.78rem; }
 .col-actions .linkbtn--danger { color: var(--alert); }
 
+/* --- Proposal chips ------------------------------------------------------- */
+/* Competitors in settings and themes on both settings and the impulse page. The
+   same control on two pages, so it is defined once — the lesson of .linkbtn. */
+.rivals { display: flex; flex-wrap: wrap; gap: 8px; }
+.rivals__one { display: inline; }
+.rival {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  text-align: left; font: inherit; cursor: pointer;
+  background: var(--card); color: var(--ink); font-weight: 400;
+  border: 1px dashed var(--line); border-radius: 10px; padding: 8px 12px;
+  max-width: 280px;
+}
+.rival:hover { border-color: var(--accent); border-style: solid; }
+.rival__name { font-size: 0.85rem; font-weight: 600; color: var(--accent); }
+.rival__why { font-size: 0.75rem; color: var(--muted); }
+/* A theme the press does not write is still offered — the operator may know
+   something the search does not — but it must not look like the ones that work.
+   The measurement stays visible rather than hidden behind a filter. */
+.rival--empty { opacity: 0.55; border-style: dotted; }
+.rival--empty .rival__name { color: var(--muted); }
+.rival__why strong { color: #047857; font-size: 0.8rem; }
+.rival__sample { font-style: italic; opacity: .85; }
+
 /* --- Shared surfaces ------------------------------------------------------ */
 /* Card, table and status box. Every one of these was declared only in
    settings.html, so the same markup produced a card on one page and a bare run

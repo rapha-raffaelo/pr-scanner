@@ -25,15 +25,14 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from dataclasses import dataclass
 from importlib import resources
 from string import Template
 
-from . import company_names, config, gnews
+from . import config, gnews
 from .analyzer import AnalyzerError, ParseError, invoke_with_fallback, strip_code_fence
-from .ingest import FeedItem, fetch_feed
-from .matching import _term_pattern
+from .ingest import fetch_feed
+from .matching import mentions_client, name_matcher
 from .models import Client
 from .schemas import ThemeSuggestions
 
@@ -122,31 +121,6 @@ def suggest(client: Client, *, invoke=invoke_with_fallback) -> list:
     ]
 
 
-def _client_matcher(client: Client) -> re.Pattern[str] | None:
-    """Match the client's *name*, never its themes.
-
-    Deliberately not :func:`matching._compile_client_matcher`, which also folds in
-    the keywords: here a hit is being classified as "about the client" or "about
-    the market", and the theme that found it is by definition present in both.
-    """
-    terms: list[str] = []
-    for raw in [client.name, *(client.aliases or [])]:
-        for variant in company_names.variants((raw or "").strip()):
-            if variant:
-                terms.append(variant)
-    if not terms:
-        return None
-    alternation = "|".join(_term_pattern(t) for t in dict.fromkeys(terms))
-    return re.compile(rf"(?<!\w)(?:{alternation})(?!\w)")
-
-
-def _mentions_client(item: FeedItem, matcher: re.Pattern[str] | None) -> bool:
-    if matcher is None:
-        return False
-    haystack = f"{item.title or ''}\n{getattr(item, 'summary', '') or ''}".casefold()
-    return matcher.search(haystack) is not None
-
-
 def probe(
     client: Client,
     proposals: list,
@@ -172,7 +146,7 @@ def probe(
     since = reference - dt.timedelta(days=days)
     lang, country = gnews.edition_for(client)
     field = gnews.context_terms(client)
-    matcher = _client_matcher(client)
+    matcher = name_matcher(client)
 
     probes: list[ThemeProbe] = []
     for proposal in proposals[:MAX_PROBED]:
@@ -200,7 +174,7 @@ def probe(
             _log.warning("theme probe %r failed: %s", term, exc)
             probes.append(ThemeProbe(term=term, reason=proposal.reason, external=0, own=0))
             continue
-        own = [i for i in items if _mentions_client(i, matcher)]
+        own = [i for i in items if mentions_client(i, matcher)]
         external = [i for i in items if i not in own]
         probes.append(
             ThemeProbe(

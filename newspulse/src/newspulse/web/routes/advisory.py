@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from ... import advisor, angles, job
 from ...db import get_session
 from ..runlock import guard as _run_guard
+from .. import themework
 from ...models import Client, TopicHit
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
@@ -133,6 +134,9 @@ def advice_view(
             # generic "the radar has collected nothing", which was wrong as often
             # as it was right.
             "impulse_refusal": _last_refusal.get(client_id),
+            # The remedy for the commonest refusal, offered where the refusal is
+            # read rather than on a settings screen the reader has never opened.
+            "theme_work": themework.state.get(client_id),
             # What to offer when there is no coverage to advise on. An advisory
             # reads a client's own press; a young mandate has none, and telling it
             # "nothing to recommend" is true but useless. The impulse works off the
@@ -228,6 +232,24 @@ def _run_impulse(client_id: int) -> None:
         _log.exception("impulse request failed")
     finally:
         _drafting.release()
+
+
+@router.post("/client/{client_id}/themes")
+def suggest_themes_here(
+    client_id: int, session: Session = Depends(get_db)
+) -> Response:
+    """Propose themes for this client, from the page where their absence hurts.
+
+    The refusal above names the cause — "the themes are written too close to the
+    company" — and a message that names a cause has to carry its remedy. Sending
+    the reader to the settings screen to find a button they have never seen is how
+    a fix goes unused: the same report came back three times while the remedy sat
+    one page away.
+    """
+    if session.get(Client, client_id) is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    themework.start(session, client_id)
+    return RedirectResponse(f"/client/{client_id}/advice", status_code=_SEE_OTHER)
 
 
 @router.post("/client/{client_id}/impulse")

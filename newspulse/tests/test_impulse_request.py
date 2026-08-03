@@ -398,3 +398,75 @@ def test_material_older_than_the_window_is_not_used(session, monkeypatch):
     )
 
     assert job.draft_impulse(session, client, fetch=_no_fetch, now=lambda: _NOW) is False
+
+
+def test_a_radar_that_finds_only_the_client_itself_widens(session, monkeypatch):
+    """The gap that kept a young mandate empty for months.
+
+    The field-scoped query returned three items and two were the mandate's own
+    launch coverage — non-empty, so the old fallback never fired, and after the
+    own-coverage filter there was nothing to draft from. A radar that only finds
+    the client is a radar that found nothing, and has to widen the same way an
+    empty one does.
+    """
+    client = _client(session, keywords=["Hautpflege"])
+    client.industry = "Beauty Tech"
+    session.commit()
+    asked: list[str] = []
+
+    def _fetch(url, since, *, source=None, **_):
+        asked.append(url)
+        if "AND" in urllib.parse.unquote_plus(url):
+            # Everything the field-scoped query finds is about the mandate.
+            return [
+                FeedItem(
+                    title="IB-7 Beauty Tech GmbH launcht KI-Hautpflege",
+                    link="https://ex.de/eigen",
+                    source="cash.at",
+                    published_at=_NOW - dt.timedelta(days=2),
+                    summary="Ein Satz.",
+                    language="de",
+                )
+            ]
+        return [
+            FeedItem(
+                title="L'Oréal und OpenAI kooperieren bei Hautanalyse",
+                link="https://ex.de/loreal",
+                source="Horizont",
+                published_at=_NOW - dt.timedelta(days=1),
+                summary="Ein Satz.",
+                language="de",
+            )
+        ]
+
+    monkeypatch.setattr(angles, "suggest", _draft())
+
+    assert job.draft_impulse(session, client, fetch=_fetch, now=lambda: _NOW) is True
+    assert len(asked) == 2, "the scoped query found only the client, so it widened"
+    assert "AND" not in urllib.parse.unquote_plus(asked[1])
+
+
+def test_a_radar_with_real_market_news_is_not_widened(session, monkeypatch):
+    """The widening is a fallback, not a second query on every run."""
+    client = _client(session, keywords=["Hautpflege"])
+    client.industry = "Beauty Tech"
+    session.commit()
+    asked: list[str] = []
+
+    def _fetch(url, since, *, source=None, **_):
+        asked.append(url)
+        return [
+            FeedItem(
+                title="Kosmetikbranche diskutiert KI-Rezepturen",
+                link="https://ex.de/markt",
+                source="Cosmetics Business",
+                published_at=_NOW - dt.timedelta(days=1),
+                summary="Ein Satz.",
+                language="de",
+            )
+        ]
+
+    monkeypatch.setattr(angles, "suggest", _draft())
+
+    assert job.draft_impulse(session, client, fetch=_fetch, now=lambda: _NOW) is True
+    assert len(asked) == 1
