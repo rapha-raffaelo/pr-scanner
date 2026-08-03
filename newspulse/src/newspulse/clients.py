@@ -398,7 +398,12 @@ def update_client(session: Session, client_id: int, **fields) -> Client:
     client = session.get(Client, client_id)
     if client is None:
         raise LookupError(f"No client with id {client_id}")
-    unknown = set(fields) - _IMPORTABLE_FIELDS - {"active", "is_competitor", "website", "logo_url"}
+    # ``muted_categories`` is editable but deliberately not importable: it is a
+    # reading preference someone forms after living with a mandate's feed, not a
+    # fact about the company that belongs in a spreadsheet of them.
+    unknown = set(fields) - _IMPORTABLE_FIELDS - {
+        "active", "is_competitor", "website", "logo_url", "muted_categories",
+    }
     if unknown:
         raise ValueError(f"Unknown client field(s): {sorted(unknown)}")
     if "name" in fields and not str(fields["name"]).strip():

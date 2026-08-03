@@ -239,6 +239,18 @@ class Client(Base):
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
     )
+    # Categories this mandate never wants in its daily feed. Per client, because
+    # "finanzen" is three near-identical ticker items a day for a listed retailer
+    # and the entire mandate for a bank. Hiding, not discarding: the articles stay
+    # in the archive, in the counts and in the export — a muted category is a
+    # reading preference, and a number that silently changed with one would be a
+    # different and much worse problem.
+    muted_categories: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1")
     )

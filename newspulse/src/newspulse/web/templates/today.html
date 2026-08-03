@@ -88,6 +88,24 @@
     {% if hidden_count %}
       <span class="filter-note">{{ hidden_count }} {{ t("ausgeblendet") }}</span>
     {% endif %}
+    {# A standing preference, not the dropdown the reader just used — so it says
+       what it did and offers the way back in one click, rather than leaving a
+       silently shorter day. #}
+    {% if muted_count %}
+      <a class="filter-note filter-note--muted"
+         href="/?show_muted=1{% if selected_client %}&client={{ selected_client }}{% endif %}{% if day_iso %}&date={{ day_iso }}{% endif %}"
+         hx-get="/?show_muted=1{% if selected_client %}&client={{ selected_client }}{% endif %}{% if day_iso %}&date={{ day_iso }}{% endif %}"
+         hx-target="#today-root" hx-select="#today-root" hx-swap="outerHTML" hx-push-url="true">
+        {{ muted_count }} {{ t("stummgeschaltet") }} · {{ t("anzeigen") }}
+      </a>
+    {% elif show_muted %}
+      <a class="filter-note filter-note--muted"
+         href="/{% if selected_client %}?client={{ selected_client }}{% endif %}"
+         hx-get="/{% if selected_client %}?client={{ selected_client }}{% endif %}"
+         hx-target="#today-root" hx-select="#today-root" hx-swap="outerHTML" hx-push-url="true">
+        {{ t("stummgeschaltete wieder ausblenden") }}
+      </a>
+    {% endif %}
     <label for="date">{{ t("Tag") }}:</label>
     {# When HTMX is loaded it handles the change and swaps only #today-root out of
        the response (hx-select), so the full document is never nested inside body.

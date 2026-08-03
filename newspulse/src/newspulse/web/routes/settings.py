@@ -56,7 +56,15 @@ from ...clients import (
 from ...feeds import load_feeds
 from ...outlets import tier_for
 from ...logos import fetch_logo, normalize_website
-from ...models import DEFAULT_COUNTRY, SCORE_MAX, SCORE_MIN, Client, Run, Setting
+from ...models import (
+    DEFAULT_COUNTRY,
+    SCORE_MAX,
+    SCORE_MIN,
+    Category,
+    Client,
+    Run,
+    Setting,
+)
 from .. import runlock
 from ..app import get_db, templates
 
@@ -106,6 +114,10 @@ BACKFILL_DAYS = (10, 15, 30, 90)
 # route to get it). Re-exported under the old name so the tests and call sites
 # that reach for ``settings._run_guard`` keep working.
 _run_guard = runlock.guard
+
+# The categories a mandate may mute, as the analyzer stores them. Read off the
+# enum so a new category cannot quietly become unmutable.
+_CATEGORY_VALUES = tuple(c.value for c in Category)
 
 
 # Which mandates are still being set up, and what happened to the ones that
@@ -548,6 +560,8 @@ def _page_context(session: Session) -> dict[str, object]:
         # The theme proposal for whichever client was last asked about, with the
         # measurement behind each one.
         "themes": dict(_theme_state),
+        # Offered as mutable categories in the edit form.
+        "categories": _CATEGORY_VALUES,
         "map_fields": _MAP_FIELDS,
         "map_values": {},
         "client_error": None,
@@ -950,6 +964,7 @@ def edit_client_route(
     country: str = Form(""),
     keywords: str = Form(""),
     alert_topics: str = Form(""),
+    muted_categories: list[str] = Form(default=[]),
     session: Session = Depends(get_db),
 ) -> Response:
     """Edit an existing client through the NP-02 CRUD service."""
@@ -962,6 +977,11 @@ def edit_client_route(
             keywords=keywords,
             alert_topics=alert_topics,
         )
+        # Checkboxes: an unchecked box sends nothing, so the empty list is a real
+        # answer ("mute nothing") and must be written rather than skipped.
+        fields["muted_categories"] = [
+            value for value in muted_categories if value in _CATEGORY_VALUES
+        ]
         update_client(session, client_id, **fields)
     except (ValueError, LookupError) as exc:
         # Keep this row open so the rejected edit is still on screen to correct,

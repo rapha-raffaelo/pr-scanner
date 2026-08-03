@@ -337,6 +337,13 @@ _EN: dict[str, str] = {
     "Keine eigene Presseschau: „Rückruf“ löst nur dann Alarm aus, wenn die Meldung ohnehin über Name, Alias oder Suchbegriff erkannt wurde.":
         "Not a press scan of its own: \u201cRecall\u201d raises an alert only if "
         "the item was already recognised via the name, an alias or a search term.",
+    "Im Tagesfeed ausblenden": "Hide in the daily feed",
+    "Nur die Ansicht: die Artikel bleiben im Archiv, in den Zahlen und im Export.":
+        "The view only \u2014 the articles stay in the archive, in the counts and in "
+        "the export.",
+    "stummgeschaltet": "muted",
+    "anzeigen": "show",
+    "stummgeschaltete wieder ausblenden": "hide muted again",
     "Themen": "Themes",
     "Marktthemen vorschlagen und gegen die echte Suche prüfen":
         "Propose market themes and test them against the real search",

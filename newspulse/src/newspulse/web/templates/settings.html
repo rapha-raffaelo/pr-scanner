@@ -84,6 +84,12 @@
   .tag--topic { background: var(--alert-bg); color: #b91c1c; margin-right: 0.25rem; text-transform: none; }
   .client-edit-tr > td { background: #f9fafb; white-space: normal; padding: 0.85rem 0.5rem; }
   .client-edit .actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.3rem; }
+  .mutebox { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--border); }
+  .mutebox__label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+                    letter-spacing: 0.04em; color: var(--muted); margin-right: 0.75rem; }
+  .mutebox__one { display: inline-flex; gap: 0.3rem; align-items: baseline;
+                  margin-right: 0.9rem; font-size: 0.78rem; color: var(--text); }
+  .mutebox .fieldhint { margin: 0.35rem 0 0; }
   .feed-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 1rem; margin-bottom: 0.75rem; }
   @media (max-width: 620px) { .feed-list { grid-template-columns: 1fr; } }
   .feed-list label { display: flex; gap: 0.4rem; align-items: baseline; color: var(--text); margin: 0; }
@@ -407,6 +413,20 @@
                           <input id="e-topics-{{ client.id }}" type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}" placeholder="Komma/Semikolon">
                           <p class="fieldhint">{{ t("stufen hoch, was schon gefunden wurde") }}</p>
                         </div>
+                      </div>
+                      {# The standing noise filter. A listed retailer's ticker is
+                         three near-identical items a day; the category dropdown
+                         could hide them but forgot the choice every morning. #}
+                      <div class="mutebox">
+                        <span class="mutebox__label">{{ t("Im Tagesfeed ausblenden") }}</span>
+                        {% for c in categories %}
+                          <label class="mutebox__one">
+                            <input type="checkbox" name="muted_categories" value="{{ c }}"
+                                   {% if c in (client.muted_categories or []) %}checked{% endif %}>
+                            {{ t(c) | capitalize }}
+                          </label>
+                        {% endfor %}
+                        <p class="fieldhint">{{ t("Nur die Ansicht: die Artikel bleiben im Archiv, in den Zahlen und im Export.") }}</p>
                       </div>
                       <div class="actions">
                         <button type="submit">{{ t("Speichern") }}</button>

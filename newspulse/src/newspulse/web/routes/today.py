@@ -389,6 +389,7 @@ def today_view(
     date: str | None = None,
     category: str | None = None,
     client: int | None = None,
+    show_muted: bool = False,
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Render the Today view for the current local day (or ``?date=``).
@@ -400,6 +401,32 @@ def today_view(
     """
     day = _parse_day(date)
     all_items = _fetch_items(session, day)
+
+    # Each mandate's own muted categories, applied before anything else is
+    # counted. A listed retailer's ticker produces three near-identical items a
+    # day, each scored 4-5 out of 10 and therefore filed beside a real event; the
+    # category filter could hide them but forgot the choice on every page load, so
+    # the same decision had to be made every morning. That is the point at which a
+    # sixty-second triage stops being sixty seconds.
+    #
+    # Hidden, never discarded: the count below says how many and offers them back
+    # in one click, and the archive, the exports and every number keep all of it.
+    muted = {
+        client_id: set(cats)
+        for client_id, cats in session.execute(
+            select(Client.id, Client.muted_categories)
+        ).all()
+        if cats
+    }
+    muted_count = 0
+    if muted and not show_muted:
+        kept = [
+            item
+            for item in all_items
+            if item.category not in muted.get(item.client_id, ())
+        ]
+        muted_count = len(all_items) - len(kept)
+        all_items = kept
 
     # Mandates only, and only those that exist — the filter strip is a way into
     # the day, not a client manager.
@@ -489,6 +516,12 @@ def today_view(
             "categories": present,
             "selected_category": selected,
             "hidden_count": len(all_items) - len(items),
+            # Separate from hidden_count: that one is the category dropdown the
+            # reader just chose, this one is a standing preference they may have
+            # forgotten setting. Conflating them would make a remembered decision
+            # look like the one they made a second ago.
+            "muted_count": muted_count,
+            "show_muted": show_muted,
             "last_run": _fetch_last_run(session),
         },
     )
