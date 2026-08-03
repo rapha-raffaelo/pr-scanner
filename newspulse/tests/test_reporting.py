@@ -71,6 +71,30 @@ def test_share_of_voice_covers_the_client_and_its_own_competitors(session, portf
     assert by_name["Alpha AG"].alerts == 1
 
 
+def test_more_than_one_alert_is_counted_as_more_than_one(session):
+    """Regression: the alert column could never read higher than 1.
+
+    ``func.sum`` over a Boolean column inherits that column's result processor,
+    so SQLAlchemy handed a total of 40 back as ``True`` and ``int(True)`` is 1.
+    Every fixture here happened to have exactly one alert, which is precisely the
+    value the bug produces — so the tests agreed with it. Measured on the dev
+    database, a client with 40 alerts reported 1, on screen and in the client
+    report both.
+    """
+    mandate = Client(name="Viel Alarm AG")
+    session.add(mandate)
+    session.flush()
+    for i in range(4):
+        _add(session, mandate, f"X{i}", alert=True)
+    _add(session, mandate, "ruhig")
+    session.commit()
+
+    voice = {v.name: v for v in share_of_voice(session, mandate, days=30)}
+
+    assert voice["Viel Alarm AG"].mentions == 5
+    assert voice["Viel Alarm AG"].alerts == 4
+
+
 def test_an_unrelated_mandate_never_enters_the_comparison(session, portfolio):
     """Share of voice is a statement about a market. "Zalando vs Siemens" is not
     a fact about anything, so a client outside the set must not appear."""
@@ -157,14 +181,55 @@ def test_a_company_cannot_be_its_own_competitor(session):
     session.rollback()
 
 
-def test_workbook_has_the_report_and_summary_sheets(session, portfolio):
+def test_workbook_leads_with_the_answers_then_the_evidence(session, portfolio):
+    """The three questions a client actually asks — how are we doing against the
+    competition, where should we be and are not, what should we say — used to
+    live on three screens and leave the tool only as screenshots. They are the
+    first sheets now, ahead of the raw list they are drawn from."""
     mandate, _, _ = portfolio
     book = load_workbook(io.BytesIO(client_workbook(session, mandate, days=30)))
-    assert book.sheetnames == ["Berichterstattung", "Nach Kategorie", "Nach Publisher"]
+    assert book.sheetnames == [
+        "Überblick",
+        "Share of Voice",
+        "Pitch-Lücken",
+        "Impulse",
+        "Berichterstattung",
+        "Nach Kategorie",
+        "Nach Publisher",
+    ]
     sheet = book["Berichterstattung"]
     headers = [cell.value for cell in sheet[1]]
     assert "Schlagzeile" in headers and "Autor" in headers and "Link" in headers
     assert sheet.max_row == 4  # header + three articles
+
+
+def test_the_workbooks_share_of_voice_matches_the_dashboards(session, portfolio):
+    """A number in the meeting and the same number on screen must not disagree."""
+    mandate, _, _ = portfolio
+    on_screen = {v.name: v.mentions for v in share_of_voice(session, mandate, days=30)}
+
+    book = load_workbook(io.BytesIO(client_workbook(session, mandate, days=30)))
+    sheet = book["Share of Voice"]
+    rows = list(sheet.iter_rows(min_row=2, values_only=True))
+    in_document = {row[0]: row[2] for row in rows if row[0]}
+
+    assert in_document == on_screen
+
+
+def test_the_overview_sheet_states_the_period_it_covers(session, portfolio):
+    """A document that leaves the tool has to carry its own window: a reader in
+    a meeting cannot ask the dashboard which month this was."""
+    mandate, _, _ = portfolio
+    book = load_workbook(io.BytesIO(client_workbook(session, mandate, days=30)))
+    values = {
+        row[0]: row[1]
+        for row in book["Überblick"].iter_rows(min_row=2, values_only=True)
+        if row[0]
+    }
+
+    assert values["Mandant"] == mandate.name
+    assert values["Zeitraum"] == "letzte 30 Tage"
+    assert values["Meldungen"] == 3
 
 
 def test_workbook_for_an_empty_month_is_still_a_readable_sheet(session):
