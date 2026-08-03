@@ -194,9 +194,12 @@ def test_header_shows_last_run_status(factory, client):
         s.commit()
 
     body = client.get("/").text
-    assert "137 Artikel geprüft" in body
-    assert "Feeds ok" in body
-    assert "ok" in body
+    # "geprüft" claimed the run had examined 137 articles; the number is what it
+    # newly stored, and on a day of pure duplicates it is zero while every feed
+    # was in fact fetched and matched. "Lauf ok" rather than "Feeds ok" because
+    # the error count behind it covers matching and analysis failures too.
+    assert "137 neue Artikel" in body
+    assert "Lauf ok" in body
 
 
 def test_header_without_any_run_shows_placeholder(client):

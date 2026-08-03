@@ -233,3 +233,28 @@ class RivalSuggestions(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     rivals: list[RivalSuggestion] = Field(default_factory=list, max_length=6)
+
+
+# --- Theme suggestions ----------------------------------------------------------
+
+
+class ThemeSuggestion(BaseModel):
+    """One proposed market theme for the topic radar."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    term: str
+    reason: str = ""
+
+
+class ThemeSuggestions(BaseModel):
+    """The model's proposed themes for one client.
+
+    Proposals only: what makes a theme usable is not that the model likes it but
+    that the press actually writes about it without naming the client, and that
+    is measured (:func:`newspulse.themes.probe`) before any of these is offered.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    themes: list[ThemeSuggestion] = Field(default_factory=list, max_length=8)

@@ -19,7 +19,7 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from ...models import Analysis, Article, Category, Client, TopicHit, visible_coverage
@@ -631,23 +631,23 @@ def _nominations(session: Session, client_id: int, *, days: int) -> dict[str, li
 
     topic_join = (TopicHit, TopicHit.article_id == Article.id)
     own_join = (Analysis, Analysis.article_id == Article.id)
+    # Coverage *of* the client has to pass the same gate as everywhere else.
+    # Without it an outlet kept credit for stories a human had already marked
+    # "nicht relevant", and for matches the analyzer scored as not about this
+    # client at all — so the ranking that decides who to pitch was built partly
+    # from coverage the rest of the app had agreed to forget.
+    own_is_coverage = and_(Analysis.client_id == client_id, visible_coverage())
     return {
         "market_outlets": _rank(
             _by(Article.source, topic_join, TopicHit.client_id == client_id),
             about_client=False,
         ),
-        "own_outlets": _rank(
-            _by(Article.source, own_join, Analysis.client_id == client_id),
-            about_client=True,
-        ),
+        "own_outlets": _rank(_by(Article.source, own_join, own_is_coverage), about_client=True),
         "market_authors": _rank(
             _by(Article.author, topic_join, TopicHit.client_id == client_id),
             about_client=False,
         ),
-        "own_authors": _rank(
-            _by(Article.author, own_join, Analysis.client_id == client_id),
-            about_client=True,
-        ),
+        "own_authors": _rank(_by(Article.author, own_join, own_is_coverage), about_client=True),
     }
 
 

@@ -143,6 +143,16 @@ class _BaseClaudeAnalyzer:
         # FallbackAnalyzer, which cannot learn this from a raised exception
         # because the protocol requires analyze() to swallow batch failures.
         self.quota_exhausted = False
+        # Batches that were dropped because the backend failed, and the last
+        # reason. The protocol says analyze() must never raise — a failing batch
+        # must not sink the sweep — but "never raise" was implemented as "never
+        # tell anyone": a `claude` CLI that is missing, unauthenticated or timing
+        # out produced zero analyses, an empty error list, and therefore a run
+        # recorded as OK. The dashboard then showed "Feeds ok" over an empty day,
+        # which is indistinguishable from a quiet one. The caller reads these to
+        # put the failure in the run's errors, where it belongs.
+        self.failed_batches = 0
+        self.last_error: str | None = None
 
     # -- Subclass hook ----------------------------------------------------------
 
@@ -189,6 +199,8 @@ class _BaseClaudeAnalyzer:
                     # spends another timeout, and the retry loop would do that
                     # once per batch for the rest of the sweep.
                     self.quota_exhausted = True
+                    self.failed_batches += 1
+                    self.last_error = str(exc)
                     _log.error(
                         "analysis batch for client %r hit the provider's usage limit: %s; "
                         "dropping %d article(s)",
@@ -201,6 +213,8 @@ class _BaseClaudeAnalyzer:
                         label, attempt, _MAX_ATTEMPTS, exc,
                     )
                     continue
+                self.failed_batches += 1
+                self.last_error = str(exc)
                 _log.error(
                     "analysis batch for client %r gave up after %d attempts: %s; "
                     "dropping %d article(s), run continues",
@@ -545,6 +559,23 @@ class FallbackAnalyzer:
     @property
     def batch_size(self) -> int:
         return self.primary.batch_size
+
+    @property
+    def failed_batches(self) -> int:
+        """Failures of whichever backend is actually answering.
+
+        Not the sum: a run that switched to the fallback and then worked is a
+        successful run, and reporting the primary's exhausted quota as a run
+        error would mark every fallback day as degraded. What the caller needs to
+        know is whether analyses are being produced *now*.
+        """
+        active = self.secondary if self.switched else self.primary
+        return getattr(active, "failed_batches", 0)
+
+    @property
+    def last_error(self) -> str | None:
+        active = self.secondary if self.switched else self.primary
+        return getattr(active, "last_error", None)
 
     def analyze(self, client: Client, articles: Sequence[Article]) -> list[Analysis]:
         """Analyse with the primary; on exhausted quota, redo it with the fallback.

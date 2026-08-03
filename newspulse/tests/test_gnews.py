@@ -147,8 +147,20 @@ def test_a_long_theme_list_is_capped_in_the_query_in_theme_order():
     )
 
     assert gnews.topic_terms(client) == ["eins", "zwei", "drei", "vier", "fünf"]
+    # Scoped to a field, so the longer cap applies: measured against live feeds,
+    # six themes AND a field returned 11 on-topic hits where three returned 6,
+    # while the same six unscoped returned 100 and drifted off the client's market
+    # entirely. The field clause is what prevents drift, not the cap.
     query = _q(gnews.topic_feeds([client])[client.id].url)
-    assert query == '("eins" OR "zwei" OR "drei") AND ("Krypto")'
+    assert query == '("eins" OR "zwei" OR "drei" OR "vier" OR "fünf") AND ("Krypto")'
+
+
+def test_an_unscoped_theme_list_keeps_the_short_cap():
+    """Without a field to hold it, a long OR-chain is exactly what drifts."""
+    client = _themed("Ohne", ["eins", "zwei", "drei", "vier", "fünf"])
+    client.industry = None
+
+    assert _q(gnews.topic_feeds([client])[client.id].url) == '"eins" OR "zwei" OR "drei"'
 
 
 def test_topic_feeds_are_keyed_by_client_so_provenance_survives():

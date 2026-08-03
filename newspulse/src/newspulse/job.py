@@ -652,11 +652,27 @@ def _analyze_and_persist(
     written.
     """
     name = getattr(client, "name", "?")
+    # Read before the call so only this client's failures are attributed to it.
+    before = getattr(analyzer, "failed_batches", 0)
     try:
         analyses = analyzer.analyze(client, articles)
         for verdict in analyses:
             session.add(_to_orm_analysis(verdict))
         session.commit()
+        # analyze() is contractually forbidden from raising — a failing batch
+        # must not sink the sweep — so the except clause below never sees the
+        # ordinary backend failure. That left the worst outage silent: an
+        # unreachable or unauthenticated `claude` dropped every batch, wrote no
+        # error, and the run was recorded OK, so the dashboard showed a healthy
+        # header over an empty day. Asking the analyzer what it dropped turns
+        # that back into something the run reports.
+        dropped = getattr(analyzer, "failed_batches", 0) - before
+        if dropped > 0:
+            reason = getattr(analyzer, "last_error", None) or "unbekannter Fehler"
+            _log.error(
+                "analysis backend dropped %d batch(es) for client %r: %s", dropped, name, reason
+            )
+            errors.append(f"analysis {name!r}: {dropped} batch(es) dropped: {reason}")
         return len(analyses)
     except Exception as exc:  # noqa: BLE001 — per-client fault-isolation boundary
         session.rollback()

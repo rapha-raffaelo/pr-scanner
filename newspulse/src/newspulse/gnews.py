@@ -83,6 +83,21 @@ _MAX_TERMS = 3
 # what it is for.
 _MAX_CONTEXT_TERMS = 2
 
+# How many themes the radar may search at once. Higher than the name search
+# because the two queries fail differently: three terms is what identifies a
+# company, while a mandate's themes are a list of a dozen and the ones past the
+# cap were simply never searched — an operator could add a theme and see nothing
+# change, forever.
+#
+# The number depends on whether the query is constrained, because measurement
+# says the field clause is what prevents drift, not the cap. Against live feeds
+# for a fashion retailer: three themes AND "Fashion" returned 6 on-topic hits,
+# six themes AND "Fashion" returned 11 on-topic hits, and the same six themes
+# with no field returned 100 — Rhine water levels and French logistics among
+# them. So: a scoped query may be long, an unscoped one may not.
+_MAX_TOPIC_TERMS_SCOPED = 6
+_MAX_TOPIC_TERMS_UNSCOPED = 3
+
 # Feeds are labelled so a run's logs and the settings view make it obvious which
 # results came from a search rather than a subscribed publication.
 _FEED_LABEL = "Google News: {client}"
@@ -98,6 +113,7 @@ def query_url(
     lang: str = _LANG,
     country: str = _COUNTRY,
     context: list[str] | None = None,
+    max_terms: int | None = None,
 ) -> str:
     """Build the Google News RSS search URL for ``terms``.
 
@@ -113,11 +129,16 @@ def query_url(
     correctly refused to build a statement out of them. The client's own industry
     is the missing half of the question: not "who wrote about growth" but "who
     wrote about growth *in this field*".
+
+    ``max_terms`` overrides how many terms survive the cap. The name search wants
+    three (a name and two aliases is what identifies a company); the topic radar
+    wants more, because a mandate's themes are a list of a dozen and the ones past
+    the cap were never searched at all.
     """
     cleaned = [t.strip() for t in terms if t and t.strip()]
     if not cleaned:
         raise ValueError("at least one search term is required")
-    query = " OR ".join(f'"{term}"' for term in cleaned[:_MAX_TERMS])
+    query = " OR ".join(f'"{term}"' for term in cleaned[: max_terms or _MAX_TERMS])
     scope = [t.strip() for t in (context or []) if t and t.strip()][:_MAX_CONTEXT_TERMS]
     if scope:
         field = " OR ".join(f'"{term}"' for term in scope)
@@ -244,7 +265,12 @@ def unscoped_topic_url(client: Client) -> str | None:
     if not terms or not context_terms(client):
         return None
     lang, country = edition_for(client)
-    return query_url(terms, lang=lang, country=country)
+    # Shorter than the scoped query on purpose: without the field clause a long
+    # OR-chain is exactly what drifts (measured: six unscoped themes returned a
+    # hundred items, among them Rhine water levels for a fashion retailer).
+    return query_url(
+        terms, lang=lang, country=country, max_terms=_MAX_TOPIC_TERMS_UNSCOPED
+    )
 
 
 def topic_feeds(clients: list[Client]) -> dict[int, Feed]:
@@ -267,10 +293,17 @@ def topic_feeds(clients: list[Client]) -> dict[int, Feed]:
         if not terms:
             continue
         lang, country = edition_for(client)
+        field = context_terms(client)
         feeds[client.id] = Feed(
             name=_TOPIC_FEED_LABEL.format(client=client.name),
             url=query_url(
-                terms, lang=lang, country=country, context=context_terms(client)
+                terms,
+                lang=lang,
+                country=country,
+                context=field,
+                max_terms=(
+                    _MAX_TOPIC_TERMS_SCOPED if field else _MAX_TOPIC_TERMS_UNSCOPED
+                ),
             ),
             industry=client.industry,
             per_entry_source=True,

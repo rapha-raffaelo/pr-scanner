@@ -26,12 +26,17 @@
   {% elif last_run %}
     {{ t("Letzter Lauf") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}
     <span class="dot">·</span>
+    {# "Feed-Fehler" was the label on a count that also carries matching and
+       analysis failures, so an unreachable model backend pointed the reader at
+       their feed subscriptions. And "Artikel geprüft" was the count of articles
+       newly *stored* — zero on a day where every feed was fetched and every item
+       turned out to be a duplicate, which reads as "nothing was checked". #}
     {% if last_run.feed_errors == 0 %}
-      <span class="runok">{{ t("Feeds ok") }}</span>
+      <span class="runok">{{ t("Lauf ok") }}</span>
     {% else %}
-      <span class="runbad">{{ last_run.feed_errors }} {{ t("Feed-Fehler") }}</span>
+      <span class="runbad" title="{{ t('Fehler aus Feed-Abruf, Zuordnung oder Analyse — Details im Log') }}">{{ last_run.feed_errors }} {{ t("Fehler im Lauf") }}</span>
     {% endif %}
-    <span class="dot">·</span> {{ last_run.articles_checked }} {{ t("Artikel geprüft") }}
+    <span class="dot">·</span> {{ last_run.articles_checked }} {{ t("neue Artikel") }}
   {% else %}
     <span class="runempty">{{ t("Noch kein Lauf") }}</span>
   {% endif %}
