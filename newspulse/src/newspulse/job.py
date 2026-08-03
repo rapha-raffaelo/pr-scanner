@@ -601,6 +601,92 @@ def _generate_angles(
     return written
 
 
+def market_material(
+    session: Session, client: Client, since: dt.datetime
+) -> list[tuple[Article, str]]:
+    """What the radar has stored for ``client`` since ``since`` — minus its own press.
+
+    A theme search finds the mandate's own coverage too, and offering that back as
+    "a market development to position against" asks for a statement about itself.
+    The model's own words for it were "both items report on the mandate itself — a
+    text about that would be self-promotion, not analysis". The radar is defined
+    as coverage the client can speak *to*, never coverage *of* it, and this is
+    where that definition has to hold, because this is where the material is read.
+
+    Dismissed and irrelevant matches are not coverage, so ``visible_coverage()``
+    is the right gate rather than "has any analysis": an article the analyzer
+    scored as not about this client is market material like any other.
+    """
+    own_coverage = (
+        select(Analysis.article_id)
+        .where(Analysis.client_id == client.id, visible_coverage())
+        .scalar_subquery()
+    )
+    return [
+        (article, "Themen-Radar")
+        for article in session.scalars(
+            select(Article)
+            .join(TopicHit, TopicHit.article_id == Article.id)
+            .where(
+                TopicHit.client_id == client.id,
+                Article.published_at >= since,
+                Article.id.not_in(own_coverage),
+            )
+            .order_by(Article.published_at.desc())
+        ).all()
+    ]
+
+
+def _refresh_impulses(
+    session: Session,
+    clients: Sequence[Client],
+    errors: list[str],
+    *,
+    now: dt.datetime,
+) -> int:
+    """Make sure every mandate has a current positioning draft, not only the ones
+    whose radar happened to move today.
+
+    :func:`_generate_angles` drafts from *fresh* radar items, which is right for
+    "react to what arrived this morning" and wrong as the only source of drafts: a
+    mandate whose field was quiet for a fortnight had an empty Impulse column for a
+    fortnight, and that is exactly the mandate whose consultant most needs
+    something to say. So after the sweep, any mandate whose newest draft has aged
+    out gets one built from everything the radar has stored in the window.
+
+    Bounded by construction rather than by a cap: a client is only asked about
+    once its previous draft is ``IMPULSE_REFRESH_AFTER`` old, so the steady state
+    is a handful of calls a day, and a client with no market material costs
+    nothing at all. Failures are logged, never appended to the run's errors — a
+    missing draft is a missed opportunity, not a broken sweep.
+    """
+    cutoff = now - IMPULSE_REFRESH_AFTER
+    since = now - IMPULSE_LOOKBACK
+    written = 0
+    for client in clients:
+        if client.is_competitor:
+            continue
+        current = angles.latest(session, client.id)
+        if current is not None and current.generated_at >= cutoff:
+            continue
+        material = market_material(session, client, since)
+        if not material:
+            continue
+        try:
+            result = angles.suggest(session, client, material)
+        except Exception as exc:  # noqa: BLE001 — per-client fault-isolation boundary
+            _log.warning("impulse refresh for %r failed: %s; skipping", client.name, exc)
+            continue
+        if result is None:
+            _log.info("impulse refresh for %r: no opening in stored material", client.name)
+            continue
+        draft, numbered = result
+        angles.store(session, client, draft, numbered)
+        written += 1
+        _log.info("impulse refreshed for %r: %s", client.name, draft.subject)
+    return written
+
+
 def _analysis_targets(
     session: Session,
     candidates: Sequence[Candidate],
@@ -958,6 +1044,11 @@ def _run_real(
     # confident text in front of the reader on the strength of partial data.
     if status is not RunStatus.FAILED:
         angles_written = _generate_angles(session, topic_pairs, errors)
+        # And then top up the mandates the radar did not move today. Drafting only
+        # from fresh material meant a quiet fortnight showed an empty Impulse
+        # column for a fortnight — for exactly the mandate whose consultant most
+        # needs something to say.
+        angles_written += _refresh_impulses(session, clients, errors, now=now_fn())
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), %d error(s)",
         status.value,
@@ -1119,6 +1210,15 @@ def backfill_client(
 #: prompt, and it takes the newest ones.
 IMPULSE_LOOKBACK = dt.timedelta(days=90)
 
+#: How long a positioning draft counts as current. Past this the sweep builds a
+#: new one from stored material rather than waiting for the radar to move.
+#:
+#: Seven days, to match the window the Today column reads (angles.COLUMN_DAYS):
+#: anything longer and that column empties out while a draft still exists, which
+#: is the state that reads as "the feature is broken". Shorter would re-pitch the
+#: same development to a mandate whose field simply had a quiet week.
+IMPULSE_REFRESH_AFTER = dt.timedelta(days=7)
+
 
 def draft_impulse(
     session: Session,
@@ -1183,33 +1283,7 @@ def draft_impulse(
 
     # Then draw on everything stored for this client in the window — the point of
     # the button is that a quiet morning must not mean an empty answer.
-    #
-    # Minus the client's own coverage. A theme search finds the mandate's own
-    # press too, and offering that back as "a market development to position
-    # against" asks for a statement about itself: the model's exact words were
-    # "both items report on the mandate itself — a text about that would be
-    # self-promotion, not analysis". The radar is defined as coverage the client
-    # can speak to, not coverage *of* the client; this enforces that definition
-    # where it is read. Dismissed and irrelevant matches are not coverage, so
-    # visible_coverage() is the right predicate rather than "has any analysis".
-    own_coverage = (
-        select(Analysis.article_id)
-        .where(Analysis.client_id == client.id, visible_coverage())
-        .scalar_subquery()
-    )
-    material = [
-        (article, "Themen-Radar")
-        for article in session.scalars(
-            select(Article)
-            .join(TopicHit, TopicHit.article_id == Article.id)
-            .where(
-                TopicHit.client_id == client.id,
-                Article.published_at >= since,
-                Article.id.not_in(own_coverage),
-            )
-            .order_by(Article.published_at.desc())
-        ).all()
-    ]
+    material = market_material(session, client, since)
     if not material:
         _log.info("no market material for %r in the last %s", client.name, IMPULSE_LOOKBACK)
         _say(
