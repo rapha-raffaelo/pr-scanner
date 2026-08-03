@@ -108,6 +108,16 @@ BACKFILL_DAYS = (10, 15, 30, 90)
 _run_guard = runlock.guard
 
 
+# Which mandates are still being set up, and what happened to the ones that
+# finished. Onboarding runs on a worker thread and takes minutes; the only signal
+# was the global "Läuft…" in the header, which does not distinguish "the nightly
+# sweep is running" from "the client I just created is being filled in". A person
+# who has just submitted a form and sees nothing about it concludes the form did
+# nothing. In memory rather than a schema change: it describes one background
+# job, and forgetting it on restart is correct.
+_onboarding: dict[int, str] = {}
+
+
 def _onboard(client_id: int, name: str) -> None:
     """Fetch a newly created client's recent coverage on a worker thread.
 
@@ -116,16 +126,22 @@ def _onboard(client_id: int, name: str) -> None:
     later. Blocking is safe here — this is a daemon thread, and the only thing
     waiting on it is the archive filling in.
     """
-    with runlock.guard:
-        try:
+    _onboarding[client_id] = "wartet"
+    try:
+        with runlock.guard:
+            _onboarding[client_id] = "läuft"
             with get_session() as session:
                 client = session.get(Client, client_id)
                 if client is None:  # deleted between creation and this thread
+                    _onboarding.pop(client_id, None)
                     return
                 stored = job.backfill_client(session, client)
                 _log.info("onboarding fetch for %r stored %d article(s)", name, stored)
-        except Exception:  # noqa: BLE001 — a worker thread must never die silently
-            _log.exception("onboarding fetch for %r failed", name)
+                _onboarding[client_id] = f"fertig:{stored}"
+    except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
+        # A failed setup must not read as "this mandate simply has no press".
+        _onboarding[client_id] = f"fehler:{exc}"
+        _log.exception("onboarding fetch for %r failed", name)
 
 
 def _start_onboarding(client_id: int, name: str) -> None:
@@ -357,13 +373,43 @@ def _split_list(raw: str) -> list[str]:
     return [part.strip() for part in _LIST_DELIMITER.split(raw or "") if part.strip()]
 
 
+# The country names an operator actually types instead of the code, in both
+# interface languages. Rejecting "Deutschland" is technically correct and
+# practically silly: the field wants a fact, the person supplied it, and only the
+# encoding differed. Deliberately short — the editions the tool supports plus the
+# neighbours it is likeliest to be asked for, not a world atlas whose long tail
+# would be maintained by nobody.
+_COUNTRY_NAMES = {
+    "deutschland": "DE", "germany": "DE",
+    "österreich": "AT", "oesterreich": "AT", "austria": "AT",
+    "schweiz": "CH", "switzerland": "CH", "suisse": "CH",
+    "frankreich": "FR", "france": "FR",
+    "italien": "IT", "italy": "IT",
+    "niederlande": "NL", "netherlands": "NL",
+    "spanien": "ES", "spain": "ES",
+    "polen": "PL", "poland": "PL",
+    "vereinigtes königreich": "GB", "grossbritannien": "GB",
+    "großbritannien": "GB", "united kingdom": "GB", "england": "GB",
+    "usa": "US", "vereinigte staaten": "US", "united states": "US",
+}
+
+
 def _clean_country(raw: str) -> str:
     """Normalize a country field to an uppercase 2-letter ISO code (default DE).
 
-    Raises ``ValueError`` (surfaced inline) on a non-ISO value so a full name like
-    "Deutschland" can't silently overflow the ``String(2)`` column on SQLite.
+    Accepts the country's name as well as its code: typing "Deutschland" into a
+    field labelled "Land" is the obvious thing to do, and being told after
+    submitting that it is "kein 2-Buchstaben-ISO-Code" is a rule the form never
+    stated. Anything still unrecognised raises ``ValueError`` (surfaced inline)
+    so a full name cannot silently overflow the ``String(2)`` column on SQLite.
     """
-    code = (raw or "").strip().upper() or DEFAULT_COUNTRY
+    value = (raw or "").strip()
+    if not value:
+        return DEFAULT_COUNTRY
+    named = _COUNTRY_NAMES.get(value.casefold())
+    if named:
+        return named
+    code = value.upper()
     if len(code) != _COUNTRY_CODE_LEN or not code.isalpha():
         raise ValueError(f"Land {raw!r} ist kein 2-Buchstaben-ISO-Code (z. B. 'DE').")
     return code
@@ -495,6 +541,10 @@ def _page_context(session: Session) -> dict[str, object]:
         "fallback_model": config.GEMINI_MODEL,
         "score_range": list(range(SCORE_MIN, SCORE_MAX + 1)),
         "default_country": DEFAULT_COUNTRY,
+        # Per-client setup status, so a mandate created a minute ago says so on
+        # its own row instead of leaving the reader to infer it from a global
+        # spinner that means several different things.
+        "onboarding": dict(_onboarding),
         "map_fields": _MAP_FIELDS,
         "map_values": {},
         "client_error": None,

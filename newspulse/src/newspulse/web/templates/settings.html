@@ -72,6 +72,15 @@
   .client-tr:hover > .col-actions { background: #f9fafb; }
   .col-actions form { display: inline; }
   .tag--inactive { background: #f3f4f6; color: var(--muted); margin-left: 0.35rem; }
+  /* Setup status on the client's own row. Normal weight and small: it is a
+     transient fact about one mandate, not a second name for it. */
+  .setup {
+    display: inline-block; margin-left: 0.5rem; font-size: 0.7rem;
+    font-weight: 400; color: var(--muted); white-space: nowrap;
+  }
+  .setup--busy { color: var(--accent); }
+  .setup--done { color: #047857; }
+  .setup--bad { color: var(--alert); font-weight: 600; }
   .tag--topic { background: var(--alert-bg); color: #b91c1c; margin-right: 0.25rem; text-transform: none; }
   .client-edit-tr > td { background: #f9fafb; white-space: normal; padding: 0.85rem 0.5rem; }
   .client-edit .actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.3rem; }
@@ -191,12 +200,48 @@
           <div class="import-fields">
             <div><label for="new-name">{{ t("Name") }}*</label><input type="text" id="new-name" name="name" required></div>
             <div><label for="new-industry">{{ t("Branche") }}</label><input type="text" id="new-industry" name="industry"></div>
-            <div><label for="new-country">{{ t("Land") }}</label><input type="text" id="new-country" name="country" value="{{ default_country }}" maxlength="2"></div>
-            <div><label for="new-aliases">{{ t("Aliasse") }}</label><input type="text" id="new-aliases" name="aliases" placeholder="Komma/Semikolon"></div>
-            <div><label for="new-keywords">{{ t("Suchbegriffe") }}</label><input type="text" id="new-keywords" name="keywords" placeholder="Komma/Semikolon"></div>
-            <div><label for="new-topics">{{ t("Alarm-Themen") }}</label><input type="text" id="new-topics" name="alert_topics" placeholder="Komma/Semikolon"></div>
-            <div><label for="new-website">{{ t("Website") }}</label><input type="text" id="new-website" name="website" placeholder="zalando.de — für das Logo"></div>
+            <div>
+              <label for="new-country">{{ t("Land") }}</label>
+              {# No maxlength="2": it silently truncated "Deutschland" to "De"
+                 while the person was still typing, which looks like the field
+                 fighting them. The name is accepted and normalised on the way in. #}
+              <input type="text" id="new-country" name="country" value="{{ default_country }}" placeholder="DE">
+              <p class="fieldhint">{{ t("Kürzel oder Name — „DE“ oder „Deutschland“. Bestimmt die Nachrichtenausgabe.") }}</p>
+            </div>
+            <div>
+              <label for="new-aliases">{{ t("Aliasse") }}</label>
+              <input type="text" id="new-aliases" name="aliases" placeholder="Komma/Semikolon">
+              <p class="fieldhint">{{ t("Andere Schreibweisen des Unternehmens: „Zalando SE“, „About You“.") }}</p>
+            </div>
+            {# The two fields do different things and the difference is invisible.
+               A consultant who read the source to find out summed up the cost:
+               entering "Rückruf" only as an alert topic means the alarm never
+               fires, and nothing on screen would ever explain why. #}
+            <div>
+              <label for="new-keywords">{{ t("Suchbegriffe") }}</label>
+              <input type="text" id="new-keywords" name="keywords" placeholder="Komma/Semikolon">
+              <p class="fieldhint">
+                <strong>{{ t("entscheiden, was gefunden wird.") }}</strong>
+                {{ t("Zusammen mit Name und Aliassen: fehlt hier der richtige Begriff, wird die Meldung diesem Mandanten gar nicht erst zugeordnet.") }}
+              </p>
+            </div>
+            <div>
+              <label for="new-topics">{{ t("Alarm-Themen") }}</label>
+              <input type="text" id="new-topics" name="alert_topics" placeholder="Komma/Semikolon">
+              <p class="fieldhint">
+                <strong>{{ t("stufen hoch, was schon gefunden wurde.") }}</strong>
+                {{ t("Keine eigene Presseschau: „Rückruf“ löst nur dann Alarm aus, wenn die Meldung ohnehin über Name, Alias oder Suchbegriff erkannt wurde.") }}
+              </p>
+            </div>
+            <div>
+              <label for="new-website">{{ t("Website") }}</label>
+              <input type="text" id="new-website" name="website" placeholder="zalando.de">
+              <p class="fieldhint">{{ t("Für das Logo und als Kontext für Vorschläge.") }}</p>
+            </div>
           </div>
+          <p class="panel-hint">
+            {{ t("Beide Felder speisen außerdem das Themen-Radar, aus dem die Impulse entstehen. Ein Thema taugt dafür nur, wenn die Presse darüber schreibt, ohne den Mandanten zu nennen.") }}
+          </p>
           <button type="submit">{{ t("+ Client hinzufügen") }}</button>
         </form>
       </details>
@@ -223,6 +268,20 @@
                 <td class="cell-name">
                   <a href="/client/{{ client.id }}">{{ client.name }}</a>
                   {% if not client.active %}<span class="tag tag--inactive">{{ t("inaktiv") }}</span>{% endif %}
+                  {# Setup runs for minutes on a worker thread. Without this the
+                     only sign was the global header spinner, which also means
+                     "the nightly sweep is running" — so submitting the form and
+                     seeing nothing looked like the form had failed. #}
+                  {% set state = onboarding.get(client.id) %}
+                  {% if state == 'wartet' %}
+                    <span class="setup">{{ t("Einrichtung wartet auf den laufenden Lauf") }}</span>
+                  {% elif state == 'läuft' %}
+                    <span class="setup setup--busy"><span class="spinner" aria-hidden="true"></span>{{ t("wird eingerichtet") }}</span>
+                  {% elif state and state.startswith('fertig:') %}
+                    <span class="setup setup--done">{{ t("eingerichtet") }} · {{ state.split(':', 1)[1] }} {{ t("Artikel") }}</span>
+                  {% elif state and state.startswith('fehler:') %}
+                    <span class="setup setup--bad" title="{{ state.split(':', 1)[1] }}">{{ t("Einrichtung fehlgeschlagen") }}</span>
+                  {% endif %}
                 </td>
                 <td>
                   {# One click flips the role. A competitor is monitored the same
@@ -273,10 +332,18 @@
                       <div class="import-fields">
                         <div><label for="e-name-{{ client.id }}">Name*</label><input id="e-name-{{ client.id }}" type="text" name="name" value="{{ client.name }}" required></div>
                         <div><label for="e-industry-{{ client.id }}">Branche</label><input id="e-industry-{{ client.id }}" type="text" name="industry" value="{{ client.industry or '' }}"></div>
-                        <div><label for="e-country-{{ client.id }}">Land</label><input id="e-country-{{ client.id }}" type="text" name="country" value="{{ client.country }}" maxlength="2"></div>
+                        <div><label for="e-country-{{ client.id }}">Land</label><input id="e-country-{{ client.id }}" type="text" name="country" value="{{ client.country }}" placeholder="DE"></div>
                         <div><label for="e-aliases-{{ client.id }}">Aliasse</label><input id="e-aliases-{{ client.id }}" type="text" name="aliases" value="{{ client.aliases | join(', ') }}" placeholder="Komma/Semikolon"></div>
-                        <div><label for="e-keywords-{{ client.id }}">Suchbegriffe</label><input id="e-keywords-{{ client.id }}" type="text" name="keywords" value="{{ client.keywords | join(', ') }}" placeholder="Komma/Semikolon"></div>
-                        <div><label for="e-topics-{{ client.id }}">Alarm-Themen</label><input id="e-topics-{{ client.id }}" type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}" placeholder="Komma/Semikolon"></div>
+                        <div>
+                          <label for="e-keywords-{{ client.id }}">Suchbegriffe</label>
+                          <input id="e-keywords-{{ client.id }}" type="text" name="keywords" value="{{ client.keywords | join(', ') }}" placeholder="Komma/Semikolon">
+                          <p class="fieldhint">{{ t("entscheiden, was gefunden wird") }}</p>
+                        </div>
+                        <div>
+                          <label for="e-topics-{{ client.id }}">Alarm-Themen</label>
+                          <input id="e-topics-{{ client.id }}" type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}" placeholder="Komma/Semikolon">
+                          <p class="fieldhint">{{ t("stufen hoch, was schon gefunden wurde") }}</p>
+                        </div>
                       </div>
                       <div class="actions">
                         <button type="submit">{{ t("Speichern") }}</button>

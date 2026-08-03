@@ -51,9 +51,14 @@ _EN: dict[str, str] = {
     "Läuft…": "Running…",
     "Ein Lauf läuft bereits": "A run is already in progress",
     "Uhr": "",
-    "Feeds ok": "Feeds ok",
-    "Feed-Fehler": "feed errors",
-    "Artikel geprüft": "articles checked",
+    # Not "Feeds ok"/"Feed-Fehler": the count behind it also carries matching and
+    # analysis failures, so the old label pointed at the wrong thing. And the
+    # number is what the run newly stored, not what it examined.
+    "Lauf ok": "Run ok",
+    "Fehler im Lauf": "errors in run",
+    "Fehler aus Feed-Abruf, Zuordnung oder Analyse — Details im Log":
+        "Errors from feed fetching, matching or analysis — details in the log",
+    "neue Artikel": "new articles",
     "Noch kein Lauf": "No run yet",
     "Sprache": "Language",
     # --- Today ---------------------------------------------------------------
@@ -214,8 +219,6 @@ _EN: dict[str, str] = {
     "Branche": "Industry",
     "Land": "Country",
     "Aliase": "Aliases",
-    "Keywords": "Keywords",
-    "Alert-Themen": "Alert topics",
     "Von": "From",
     "Bis": "To",
     "Quelle": "Source",
@@ -321,9 +324,32 @@ _EN: dict[str, str] = {
     "+ Client hinzufügen": "+ Add client",
     "Name": "Name",
     "Aliasse": "Aliases",
-    "Suchbegriffe": "Keywords",
+    "Suchbegriffe": "Search terms",
     "Alarm-Themen": "Alert topics",
     "Website": "Website",
+    "Andere Schreibweisen des Unternehmens: „Zalando SE“, „About You“.":
+        "Other spellings of the company: \u201cZalando SE\u201d, \u201cAbout You\u201d.",
+    "entscheiden, was gefunden wird.": "decide what gets found.",
+    "Zusammen mit Name und Aliassen: fehlt hier der richtige Begriff, wird die Meldung diesem Mandanten gar nicht erst zugeordnet.":
+        "Together with the name and aliases: if the right term is missing here, "
+        "the item is never matched to this client at all.",
+    "stufen hoch, was schon gefunden wurde.": "escalate what was already found.",
+    "Keine eigene Presseschau: „Rückruf“ löst nur dann Alarm aus, wenn die Meldung ohnehin über Name, Alias oder Suchbegriff erkannt wurde.":
+        "Not a press scan of its own: \u201cRecall\u201d raises an alert only if "
+        "the item was already recognised via the name, an alias or a search term.",
+    "Einrichtung wartet auf den laufenden Lauf": "Setup is waiting for the current run",
+    "wird eingerichtet": "being set up",
+    "eingerichtet": "set up",
+    "Einrichtung fehlgeschlagen": "Setup failed",
+    "Kürzel oder Name — „DE“ oder „Deutschland“. Bestimmt die Nachrichtenausgabe.":
+        "Code or name \u2014 \u201cDE\u201d or \u201cGermany\u201d. Selects the news edition.",
+    "Für das Logo und als Kontext für Vorschläge.":
+        "For the logo, and as context for suggestions.",
+    "Beide Felder speisen außerdem das Themen-Radar, aus dem die Impulse entstehen. Ein Thema taugt dafür nur, wenn die Presse darüber schreibt, ohne den Mandanten zu nennen.":
+        "Both fields also feed the topic radar the openings are drawn from. A theme "
+        "only works there if the press writes about it without naming the client.",
+    "entscheiden, was gefunden wird": "decide what gets found",
+    "stufen hoch, was schon gefunden wurde": "escalate what was already found",
     "Aktionen": "Actions",
     "Bearbeiten": "Edit",
     "Schließen": "Close",
@@ -406,9 +432,9 @@ _EN: dict[str, str] = {
     # --- Client: the communications guide ------------------------------------
     "Guide": "Guide",
     "Kommunikations-Guide": "Communications guide",
-    "Keywords sagen, worüber berichtet wird. Der Guide sagt, was dieser Mandant sagen will, was er nie sagt und in welchem Ton — und geht jedem erzeugten Text voran.":
-        "Keywords say what is written about. The guide says what this client wants "
-        "to say, what it never says and in what tone — and it precedes every "
+    "Suchbegriffe sagen, worüber berichtet wird. Der Guide sagt, was dieser Mandant sagen will, was er nie sagt und in welchem Ton — und geht jedem erzeugten Text voran.":
+        "Search terms say what is written about. The guide says what this client "
+        "wants to say, what it never says and in what tone — and it precedes every "
         "generated text.",
     "Guide gespeichert.": "Guide saved.",
     "Vorschlag aus den Unterlagen — noch nicht gespeichert":

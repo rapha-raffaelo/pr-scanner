@@ -33,8 +33,11 @@
     {% if client.industry %}<div><dt>{{ t("Branche") }}</dt><dd>{{ client.industry }}</dd></div>{% endif %}
     <div><dt>{{ t("Land") }}</dt><dd>{{ client.country }}</dd></div>
     {% if client.aliases %}<div><dt>{{ t("Aliase") }}</dt><dd>{{ client.aliases | join(', ') }}</dd></div>{% endif %}
-    {% if client.keywords %}<div><dt>{{ t("Keywords") }}</dt><dd>{{ client.keywords | join(', ') }}</dd></div>{% endif %}
-    {% if client.alert_topics %}<div><dt>{{ t("Alert-Themen") }}</dt><dd>{{ client.alert_topics | join(', ') }}</dd></div>{% endif %}
+    {# Same words as everywhere else. These two fields carried three names across
+       the app — "Keywords" here, "Suchbegriffe" in settings and the portfolio —
+       which reads as three concepts to anyone who did not write the code. #}
+    {% if client.keywords %}<div><dt>{{ t("Suchbegriffe") }}</dt><dd>{{ client.keywords | join(', ') }}</dd></div>{% endif %}
+    {% if client.alert_topics %}<div><dt>{{ t("Alarm-Themen") }}</dt><dd>{{ client.alert_topics | join(', ') }}</dd></div>{% endif %}
   </dl>
 </section>
 

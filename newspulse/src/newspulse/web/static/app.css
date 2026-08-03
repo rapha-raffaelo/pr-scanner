@@ -575,6 +575,15 @@ input[type="file"]::file-selector-button {
 }
 input[type="file"]::file-selector-button:hover { border-color: var(--accent); }
 
+/* The sentence under a form field that says what it actually does. Sits tight
+   under its input and takes the margin the input would otherwise carry, so a
+   field with an explanation is not spaced differently from one without. */
+.fieldhint {
+  font-size: 0.72rem; line-height: 1.45; color: var(--muted);
+  margin: -0.35rem 0 0.6rem;
+}
+.fieldhint strong { color: var(--ink); font-weight: 600; }
+
 .notice { border-radius: var(--radius); padding: 0.55rem 0.75rem; margin-bottom: 0.8rem; font-size: 0.85rem; }
 .notice--error { background: var(--alert-bg); border: 1px solid #fca5a5; color: #b91c1c; }
 .notice--ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #047857; }
