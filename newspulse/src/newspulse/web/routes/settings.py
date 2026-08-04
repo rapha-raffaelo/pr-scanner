@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from ... import config, job, rivals, themes
+from ... import config, industry, job, rivals, themes
 from ...analyzer import get_analyzer
 from ...db import get_session
 from ...clients import (
@@ -137,6 +137,12 @@ def _onboard(client_id: int, name: str) -> None:
     daily sweep is running should still arrive with coverage, just a few minutes
     later. Blocking is safe here — this is a daemon thread, and the only thing
     waiting on it is the archive filling in.
+
+    The industry is settled first, because everything after it depends on the
+    field: the topic radar scopes its query with it, and the archive linking
+    refuses to run without it. A mandate created with the field blank would
+    otherwise be onboarded into exactly the state that produces no market
+    material and no impulses.
     """
     _onboarding[client_id] = "wartet"
     try:
@@ -147,6 +153,7 @@ def _onboard(client_id: int, name: str) -> None:
                 if client is None:  # deleted between creation and this thread
                     _onboarding.pop(client_id, None)
                     return
+                _settle_industry(session, client)
                 stored = job.backfill_client(session, client)
                 _log.info("onboarding fetch for %r stored %d article(s)", name, stored)
                 _onboarding[client_id] = f"fertig:{stored}"
@@ -154,6 +161,30 @@ def _onboard(client_id: int, name: str) -> None:
         # A failed setup must not read as "this mandate simply has no press".
         _onboarding[client_id] = f"fehler:{exc}"
         _log.exception("onboarding fetch for %r failed", name)
+
+
+def _settle_industry(session: Session, client: Client) -> None:
+    """Give a new mandate a searchable industry if it arrived without one.
+
+    Measured, not guessed: the term is a filter, and one the press does not write
+    filters everything away. Failures are logged and swallowed — a mandate must
+    still be onboarded if the classifier is unavailable.
+    """
+    if (client.industry or "").strip():
+        return
+    try:
+        best = industry.classify(client)
+    except Exception as exc:  # noqa: BLE001 — onboarding must not depend on it
+        _log.warning("industry classification for %r failed: %s", client.name, exc)
+        return
+    if best is None:
+        _log.info("no usable industry term found for %r", client.name)
+        return
+    update_client(session, client.id, industry=best.term)
+    _log.info(
+        "classified %r as %r (%d item(s) of press use the word)",
+        client.name, best.term, best.hits,
+    )
 
 
 def _start_onboarding(client_id: int, name: str) -> None:
@@ -561,6 +592,7 @@ def _page_context(session: Session) -> dict[str, object]:
         # measurement behind each one.
         "themes": dict(themework.state),
         "rival_work": dict(themework.rivals_job.state),
+        "industry_work": dict(themework.industry_job.state),
         # Offered as mutable categories in the edit form.
         "categories": _CATEGORY_VALUES,
         "map_fields": _MAP_FIELDS,
@@ -783,6 +815,42 @@ def _run_theme_radar(client_id: int) -> None:
                 _log.info("radar refresh for %r linked %d item(s)", client.name, linked)
     except Exception:  # noqa: BLE001 — a worker thread must never die silently
         _log.exception("radar refresh for client %s failed", client_id)
+
+
+@router.post("/settings/clients/{client_id}/industry")
+def suggest_industry_route(
+    client_id: int, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Propose a better industry term for one client, measured before offered."""
+    themework.industry_job.start(session, client_id)
+    return RedirectResponse(f"/settings?edit={client_id}", status_code=_SEE_OTHER)
+
+
+@router.post("/settings/clients/{client_id}/industry/accept")
+def accept_industry_route(
+    client_id: int,
+    term: str = Form(...),
+    session: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Adopt a measured industry term — added to what is there, never replacing it.
+
+    Additive because the operator's own word is usually the accurate one and the
+    measured one is merely the searchable one: "Beauty Tech" describes the mandate
+    better than "Kosmetikindustrie" does, and the field takes both (it is split on
+    semicolons and OR-joined). Overwriting what someone typed to make a search
+    work is a trade they never agreed to.
+    """
+    client = session.get(Client, client_id)
+    chosen = (term or "").strip()
+    if client is not None and chosen:
+        existing = [t for t in (client.industry or "").split(";") if t.strip()]
+        if chosen.casefold() not in {t.strip().casefold() for t in existing}:
+            update_client(
+                session,
+                client_id,
+                industry="; ".join([*(t.strip() for t in existing), chosen]),
+            )
+    return RedirectResponse(f"/settings?edit={client_id}", status_code=_SEE_OTHER)
 
 
 @router.post("/settings/clients/{client_id}/rivals")

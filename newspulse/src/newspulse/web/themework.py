@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import threading
 
-from .. import rivals, themes
+from .. import industry, rivals, themes
 from ..db import get_session
 from ..models import Client
 
@@ -84,8 +84,14 @@ def _rivals_for(client: Client) -> dict[str, object]:
     return {"rivals": rivals.suggest(client)}
 
 
+def _industry_for(client: Client) -> dict[str, object]:
+    """Propose and measure industry terms; the caller decides what to store."""
+    return {"candidates": industry.measure(client, industry.propose(client))}
+
+
 themes_job = Proposal("themes", _themes_for)
 rivals_job = Proposal("rivals", _rivals_for)
+industry_job = Proposal("industry", _industry_for)
 
 # The theme proposal keeps its old module-level names: two route modules and the
 # tests reach for them, and the indirection is not worth renaming at every site.
@@ -101,4 +107,13 @@ def running_for(client_id: int) -> bool:
     return themes_job.running_for(client_id)
 
 
-__all__ = ["Proposal", "lock", "rivals_job", "running_for", "start", "state", "themes_job"]
+__all__ = [
+    "Proposal",
+    "industry_job",
+    "lock",
+    "rivals_job",
+    "running_for",
+    "start",
+    "state",
+    "themes_job",
+]

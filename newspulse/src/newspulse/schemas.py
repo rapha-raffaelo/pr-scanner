@@ -235,6 +235,22 @@ class RivalSuggestions(BaseModel):
     rivals: list[RivalSuggestion] = Field(default_factory=list, max_length=6)
 
 
+# --- Industry classification ----------------------------------------------------
+
+
+class IndustryTerms(BaseModel):
+    """Candidate industry terms, ordered from most specific to broadest.
+
+    The order is load-bearing: the caller takes the first that the press actually
+    writes, so the narrowest field that exists in print wins over a safe but
+    useless umbrella term.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    terms: list[str] = Field(default_factory=list, max_length=3)
+
+
 # --- Theme suggestions ----------------------------------------------------------
 
 

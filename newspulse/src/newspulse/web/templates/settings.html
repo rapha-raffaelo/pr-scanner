@@ -399,6 +399,47 @@
                       </div>
                     </form>
 
+                    {# --- Industry ----------------------------------------- #}
+                    {# The field is a filter now, not a label: it decides which
+                       market news counts as this mandate's. A word the press does
+                       not write filters everything away — measured, "Beauty Tech"
+                       is nearly absent from German text while "Kosmetikindustrie"
+                       returns 8 items and "Kosmetik" 62. So the proposals carry
+                       their measurement, and adopting one adds it rather than
+                       replacing what somebody typed. #}
+                    <div class="editblock">
+                      <span class="editblock__label">{{ t("Branche als Suchfilter") }}</span>
+                      {% set iwork = industry_work.get(client.id) %}
+                      {% if iwork and iwork.state == 'läuft' %}
+                        <p class="fieldhint" hx-get="/settings?edit={{ client.id }}" hx-trigger="every 4s"
+                           hx-select="#client-edit-{{ client.id }}" hx-target="#client-edit-{{ client.id }}" hx-swap="outerHTML">
+                          <span class="spinner" aria-hidden="true"></span>
+                          {{ t("Branchenbegriffe werden vorgeschlagen und an der echten Suche gemessen.") }}
+                        </p>
+                      {% elif iwork and iwork.state == 'fehler' %}
+                        <p class="fieldhint">{{ t("Vorschlag fehlgeschlagen") }}: {{ iwork.error }}</p>
+                      {% elif iwork and iwork.state == 'fertig' %}
+                        <div class="rivals">
+                          {% for cand in iwork.candidates %}
+                            <form method="post" action="/settings/clients/{{ client.id }}/industry/accept" class="rivals__one">
+                              <input type="hidden" name="term" value="{{ cand.term }}">
+                              <button type="submit" class="rival {% if not cand.usable %}rival--empty{% endif %}">
+                                <span class="rival__name">+ {{ cand.term }}</span>
+                                <span class="rival__why">
+                                  {% if cand.usable %}<strong>{{ cand.hits }}</strong> {{ t("Meldungen in 90 Tagen") }}{% else %}{{ t("kaum Presse — als Filter unbrauchbar") }}{% endif %}
+                                </span>
+                              </button>
+                            </form>
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        <form method="post" action="/settings/clients/{{ client.id }}/industry">
+                          <button type="submit" class="btn btn--ghost">{{ t("Branche vorschlagen") }}</button>
+                        </form>
+                        <p class="fieldhint">{{ t("Der Begriff filtert Markt-Meldungen. Nur was die Presse auch schreibt, taugt dafür.") }}</p>
+                      {% endif %}
+                    </div>
+
                     {# --- Competitors -------------------------------------- #}
                     {# The map itself is the good part; it just had nowhere to
                        live and nothing to show for a click. Outside the edit

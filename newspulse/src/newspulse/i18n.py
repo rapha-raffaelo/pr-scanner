@@ -232,6 +232,14 @@ _EN: dict[str, str] = {
     "Wettbewerber": "Competitor",
     "entfernen": "remove",
     "Wettbewerber hinzufügen": "Add competitor",
+    "Branche als Suchfilter": "Industry as a search filter",
+    "Branche vorschlagen": "Suggest an industry",
+    "Branchenbegriffe werden vorgeschlagen und an der echten Suche gemessen.":
+        "Industry terms are being proposed and measured against the real search.",
+    "Meldungen in 90 Tagen": "items in 90 days",
+    "kaum Presse — als Filter unbrauchbar": "barely any press \u2014 useless as a filter",
+    "Der Begriff filtert Markt-Meldungen. Nur was die Presse auch schreibt, taugt dafür.":
+        "The term filters market news. Only a word the press actually writes will do.",
     "Wettbewerber vorschlagen": "Suggest competitors",
     "Wettbewerber": "Competitors",
     "Wettbewerber für": "Competitors for",
