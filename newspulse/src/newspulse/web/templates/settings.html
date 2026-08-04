@@ -90,6 +90,15 @@
   .mutebox__one { display: inline-flex; gap: 0.3rem; align-items: baseline;
                   margin-right: 0.9rem; font-size: 0.78rem; color: var(--text); }
   .mutebox .fieldhint { margin: 0.35rem 0 0; }
+  /* A block inside the edit row: competitors, themes. Same weight as the
+     fields above them, because they configure the same mandate. */
+  .editblock { margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px dashed var(--border); }
+  .editblock__label { display: block; font-size: 0.72rem; font-weight: 700;
+                      text-transform: uppercase; letter-spacing: 0.04em;
+                      color: var(--muted); margin-bottom: 0.4rem; }
+  .editblock .rivals { margin-bottom: 0.5rem; }
+  .editblock .rivals__one { display: inline-flex; align-items: center; gap: 2px; }
+  .tag--rival { background: #eef0fb; color: var(--accent); margin-right: 0.25rem; text-transform: none; }
   .feed-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 1rem; margin-bottom: 0.75rem; }
   @media (max-width: 620px) { .feed-list { grid-template-columns: 1fr; } }
   .feed-list label { display: flex; gap: 0.4rem; align-items: baseline; color: var(--text); margin: 0; }
@@ -165,35 +174,6 @@
       </div>
     {% endif %}
   {% endfor %}
-
-  {% if rival_error %}<div class="notice notice--error">{{ rival_error }}</div>{% endif %}
-  {% if rival_suggestions is defined and rival_suggestions %}
-    {# Nothing here exists yet: each chip is a button that creates the company and
-       links it. A wrong competitor does not merely look odd — it lands in the
-       share-of-voice arithmetic — so the model proposes and a person picks. #}
-    <div class="panel panel--wide">
-      <h2>{{ t("Wettbewerber für") }} {{ rival_client_name }}</h2>
-      <p class="panel-hint">
-        {{ t("Vorschläge — noch nichts davon angelegt. Ein Klick legt das Unternehmen als Wettbewerber an und verknüpft es.") }}
-      </p>
-      <div class="rivals">
-        {% for rival in rival_suggestions %}
-          <form method="post" action="/client/{{ rival_client_id }}/competitors/accept" class="rivals__one">
-            <input type="hidden" name="name" value="{{ rival.name }}">
-            <input type="hidden" name="redirect_to" value="/settings">
-            <button type="submit" class="rival" title="{{ rival.reason }}">
-              <span class="rival__name">+ {{ rival.name }}</span>
-              {% if rival.reason %}<span class="rival__why">{{ rival.reason }}</span>{% endif %}
-            </button>
-          </form>
-        {% endfor %}
-      </div>
-    </div>
-  {% elif rival_suggestions is defined %}
-    <div class="notice notice--ok">
-      {{ t("Keine Wettbewerber vorgeschlagen — das Modell kennt dieses Unternehmen nicht sicher genug. Lieber keiner als ein erfundener.") }}
-    </div>
-  {% endif %}
 
   <div class="settings-grid">
     <!-- ── Sweep trigger: the one daily action, so it leads the page ── -->
@@ -304,6 +284,7 @@
               <th scope="col">{{ t("Aliasse") }}</th>
               <th scope="col">{{ t("Suchbegriffe") }}</th>
               <th scope="col">{{ t("Alarm-Themen") }}</th>
+              <th scope="col">{{ t("Wettbewerber") }}</th>
               <th scope="col" class="col-actions">{{ t("Aktionen") }}</th>
             </tr>
           </thead>
@@ -347,17 +328,19 @@
                     {% for topic in client.alert_topics %}<span class="tag tag--topic">{{ topic }}</span>{% endfor %}
                   {% else %}—{% endif %}
                 </td>
+                {# Accepting a proposal wrote the link and showed nothing for it:
+                   the panel closed, the table said nothing, and "gespeichert" was
+                   indistinguishable from "verworfen". This is the evidence. #}
+                <td class="cell-list" title="{{ client.competitors | map(attribute='name') | join(', ') }}">
+                  {% if client.competitors %}
+                    {% for rival in client.competitors %}<span class="tag tag--rival">{{ rival.name }}</span>{% endfor %}
+                  {% else %}—{% endif %}
+                </td>
                 <td class="col-actions">
                   {% if edit_id == client.id %}
                     <a class="rowlink" href="/settings">{{ t("Schließen") }}</a>
                   {% else %}
                     <a class="rowlink" href="/settings?edit={{ client.id }}#client-{{ client.id }}">{{ t("Bearbeiten") }}</a>
-                    {# Competitors are configuration, so the proposal lives beside
-                       the aliases and search terms rather than on the evaluation
-                       page where the resulting share of voice is read. #}
-                    <form method="post" action="/settings/clients/{{ client.id }}/rivals">
-                      <button type="submit" class="linkbtn">{{ t("Wettbewerber") }}</button>
-                    </form>
                     {# Themes belong here for the same reason: they are what the
                        radar searches, and searching the wrong thing is why a
                        mandate can sit for months with nothing to say. #}
@@ -377,8 +360,8 @@
                 </td>
               </tr>
               {% if edit_id == client.id %}
-                <tr class="client-edit-tr">
-                  <td colspan="8">
+                <tr class="client-edit-tr" id="client-edit-{{ client.id }}">
+                  <td colspan="9">
                     <form method="post" action="/settings/clients/{{ client.id }}" class="client-edit">
                       <div class="import-fields">
                         <div><label for="e-name-{{ client.id }}">Name*</label><input id="e-name-{{ client.id }}" type="text" name="name" value="{{ client.name }}" required></div>
@@ -415,6 +398,63 @@
                         <a class="rowlink" href="/settings">{{ t("Abbrechen") }}</a>
                       </div>
                     </form>
+
+                    {# --- Competitors -------------------------------------- #}
+                    {# The map itself is the good part; it just had nowhere to
+                       live and nothing to show for a click. Outside the edit
+                       form on purpose: a form inside a form is invalid HTML, and
+                       the inner one silently never submits. #}
+                    <div class="editblock">
+                      <span class="editblock__label">{{ t("Wettbewerber") }}</span>
+                      {% if client.competitors %}
+                        <div class="rivals">
+                          {% for rival in client.competitors %}
+                            <form method="post" action="/client/{{ client.id }}/competitors/{{ rival.id }}/remove" class="rivals__one">
+                              <input type="hidden" name="redirect_to" value="/settings?edit={{ client.id }}">
+                              <span class="tag tag--rival">{{ rival.name }}</span>
+                              <button type="submit" class="linkbtn linkbtn--danger" title="{{ t('Verknüpfung lösen') }}">×</button>
+                            </form>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                      {% set work = rival_work.get(client.id) %}
+                      {% if work and work.state == 'läuft' %}
+                        <p class="fieldhint" hx-get="/settings?edit={{ client.id }}" hx-trigger="every 4s"
+                           hx-select="#client-edit-{{ client.id }}" hx-target="#client-edit-{{ client.id }}" hx-swap="outerHTML">
+                          <span class="spinner" aria-hidden="true"></span>
+                          {{ t("Wettbewerber werden vorgeschlagen — das dauert einen Moment.") }}
+                        </p>
+                      {% elif work and work.state == 'fehler' %}
+                        <p class="fieldhint">{{ t("Vorschlag fehlgeschlagen") }}: {{ work.error }}</p>
+                      {% elif work and work.state == 'fertig' and work.rivals %}
+                        <div class="rivals">
+                          {% for rival in work.rivals %}
+                            <form method="post" action="/client/{{ client.id }}/competitors/accept" class="rivals__one">
+                              <input type="hidden" name="name" value="{{ rival.name }}">
+                              <input type="hidden" name="redirect_to" value="/settings?edit={{ client.id }}">
+                              <button type="submit" class="rival" title="{{ rival.reason }}">
+                                <span class="rival__name">+ {{ rival.name }}</span>
+                                {% if rival.reason %}<span class="rival__why">{{ rival.reason }}</span>{% endif %}
+                              </button>
+                            </form>
+                          {% endfor %}
+                        </div>
+                      {% elif work and work.state == 'fertig' %}
+                        <p class="fieldhint">{{ t("Keine Wettbewerber vorgeschlagen — das Modell kennt dieses Unternehmen nicht sicher genug. Lieber keiner als ein erfundener.") }}</p>
+                      {% else %}
+                        <form method="post" action="/settings/clients/{{ client.id }}/rivals">
+                          <button type="submit" class="btn btn--ghost">{{ t("Wettbewerber vorschlagen") }}</button>
+                        </form>
+                      {% endif %}
+                    </div>
+
+                    {# --- Themes ------------------------------------------- #}
+                    <div class="editblock">
+                      <span class="editblock__label">{{ t("Themen") }}</span>
+                      <form method="post" action="/settings/clients/{{ client.id }}/themes">
+                        <button type="submit" class="btn btn--ghost">{{ t("Passende Themen vorschlagen") }}</button>
+                      </form>
+                    </div>
                   </td>
                 </tr>
               {% endif %}

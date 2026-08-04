@@ -354,6 +354,11 @@ _EN: dict[str, str] = {
     "Gemessen an der echten Suche: so viele Marktmeldungen brächte jedes Thema in 90 Tagen. Ein Klick übernimmt es und sucht sofort.":
         "Measured against the real search: that is how many market items each theme "
         "would bring in over 90 days. One click adopts it and searches straight away.",
+    "Wettbewerber vorschlagen": "Suggest competitors",
+    "Wettbewerber werden vorgeschlagen — das dauert einen Moment.":
+        "Competitors are being proposed \u2014 this takes a moment.",
+    "Vorschlag fehlgeschlagen": "Proposal failed",
+    "Verknüpfung lösen": "Unlink",
     "Themen": "Themes",
     "Marktthemen vorschlagen und gegen die echte Suche prüfen":
         "Propose market themes and test them against the real search",

@@ -560,6 +560,7 @@ def _page_context(session: Session) -> dict[str, object]:
         # The theme proposal for whichever client was last asked about, with the
         # measurement behind each one.
         "themes": dict(themework.state),
+        "rival_work": dict(themework.rivals_job.state),
         # Offered as mutable categories in the edit form.
         "categories": _CATEGORY_VALUES,
         "map_fields": _MAP_FIELDS,
@@ -784,34 +785,22 @@ def _run_theme_radar(client_id: int) -> None:
         _log.exception("radar refresh for client %s failed", client_id)
 
 
-@router.post("/settings/clients/{client_id}/rivals", response_class=HTMLResponse)
+@router.post("/settings/clients/{client_id}/rivals")
 def suggest_rivals_route(
-    request: Request, client_id: int, session: Session = Depends(get_db)
-) -> HTMLResponse:
-    """Propose competitors for one client, rendered back into the settings page.
+    client_id: int, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Propose competitors for one client, on a worker thread.
 
-    Here rather than on the client's own page: competitors are configuration, and
-    they belong beside the aliases, search terms and alert topics — the fields you
-    set when a mandate is created. The client page keeps the accepted ones, where
-    the share of voice they feed is actually read.
+    Synchronous before, which meant a `claude -p` call inside the request: tens
+    of seconds of a page doing nothing, and the operator's verdict was that it
+    "funktioniert im Grunde gar nicht". The panel polls itself instead.
+
+    The proposal opens beside the client's own edit row, because that is where
+    everything else about a mandate is set — aliases, search terms, alert topics —
+    and a competitor is configuration like the rest of them.
     """
-    client = session.get(Client, client_id)
-    if client is None:
-        return RedirectResponse("/settings", status_code=_SEE_OTHER)
-    try:
-        proposals = rivals.suggest(client)
-    except Exception as exc:  # noqa: BLE001 — one message, whatever failed
-        _log.warning("competitor suggestion for %r failed: %s", client.name, exc)
-        return _render_settings(
-            request, session, rival_error=f"Vorschlag fehlgeschlagen: {exc}"
-        )
-    return _render_settings(
-        request,
-        session,
-        rival_suggestions=proposals,
-        rival_client_id=client_id,
-        rival_client_name=client.name,
-    )
+    themework.rivals_job.start(session, client_id)
+    return RedirectResponse(f"/settings?edit={client_id}", status_code=_SEE_OTHER)
 
 
 @router.post("/client/{client_id}/competitors/accept")
@@ -876,17 +865,30 @@ def add_competitor_route(
 
 @router.post("/client/{client_id}/competitors/{competitor_id}/remove")
 def remove_competitor_route(
-    client_id: int, competitor_id: int, session: Session = Depends(get_db)
+    client_id: int,
+    competitor_id: int,
+    redirect_to: str = Form(""),
+    session: Session = Depends(get_db),
 ) -> RedirectResponse:
     """Remove a company from this client's comparison set. The company itself and
-    its archive are untouched — only the link is dropped."""
+    its archive are untouched — only the link is dropped.
+
+    Returns to wherever the link was cut: the client page reads share of voice,
+    the settings row configures it, and being thrown to the other one is a small
+    but real way to lose your place. Same-site paths only.
+    """
+    back = (
+        redirect_to
+        if redirect_to.startswith("/") and "//" not in redirect_to
+        else f"/client/{client_id}"
+    )
     client = session.get(Client, client_id)
     if client is not None:
         other = session.get(Client, competitor_id)
         if other is not None and other in client.competitors:
             client.competitors.remove(other)
             session.commit()
-    return RedirectResponse(f"/client/{client_id}", status_code=_SEE_OTHER)
+    return RedirectResponse(back, status_code=_SEE_OTHER)
 
 
 @router.post("/settings/clients")

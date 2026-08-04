@@ -182,34 +182,81 @@ def test_accepting_a_company_that_already_exists_reuses_it(factory, client):
         assert rows[0] in session.get(Client, subject_id).competitors
 
 
-def test_settings_offers_the_suggestion_per_client(factory, client):
-    """Competitors are configuration, so the proposal sits beside the aliases and
-    search terms rather than on the page where the resulting share is read."""
+def test_the_proposal_lives_in_the_clients_own_edit_row(factory, client):
+    """Competitors are configuration, so the proposal sits beside the aliases,
+    search terms and alert topics — everything else about a mandate is set in
+    that row, and a panel floating above the table was a second place to look."""
     with factory() as session:
         subject_id = _client(session).id
 
+    closed = client.get("/settings").text
+    open_row = client.get(f"/settings?edit={subject_id}").text
+
+    assert f'action="/settings/clients/{subject_id}/rivals"' not in closed
+    assert f'action="/settings/clients/{subject_id}/rivals"' in open_row
+
+
+def test_an_accepted_competitor_is_visible_in_the_table(factory, client):
+    """It was saved all along and nothing showed it: the panel closed, the table
+    had no column for it, and "gespeichert" was indistinguishable from
+    "verworfen"."""
+    with factory() as session:
+        subject_id = _client(session).id
+
+    client.post(
+        f"/client/{subject_id}/competitors/accept",
+        data={"name": "About You", "redirect_to": "/settings"},
+    )
     body = client.get("/settings").text
 
-    assert f'action="/settings/clients/{subject_id}/rivals"' in body
+    assert "About You" in body
+    assert "tag--rival" in body
 
 
 def test_the_proposals_render_as_buttons_that_create_nothing_by_themselves(
-    factory, client, monkeypatch
+    factory, client
 ):
+    """The proposal now runs on a worker thread — synchronous, it was a model
+    call inside the request, "lädt extrem schwer und langsam" — so the page is
+    rendered from the finished result rather than from the POST."""
+    from newspulse.web import themework
+
     with factory() as session:
         subject_id = _client(session).id
 
-    monkeypatch.setattr(
-        rivals, "suggest", lambda c, **k: rivals._parse(_reply("About You")).rivals
-    )
-
-    body = client.post(f"/settings/clients/{subject_id}/rivals").text
+    themework.rivals_job.state[subject_id] = {
+        "state": "fertig",
+        "client": "Zalando",
+        "rivals": rivals._parse(_reply("About You")).rivals,
+    }
+    try:
+        body = client.get(f"/settings?edit={subject_id}").text
+    finally:
+        themework.rivals_job.state.clear()
 
     assert "About You" in body
     assert f'action="/client/{subject_id}/competitors/accept"' in body
     with factory() as session:
         # Rendered, not created.
         assert session.scalar(select(func.count()).select_from(Client)) == 1
+
+
+def test_a_running_proposal_says_so_and_fetches_its_own_result(factory, client):
+    """A model call takes tens of seconds. Holding the request open for it is
+    what made this read as broken."""
+    from newspulse.web import themework
+
+    with factory() as session:
+        subject_id = _client(session).id
+
+    themework.rivals_job.state[subject_id] = {"state": "läuft", "client": "Zalando"}
+    try:
+        body = client.get(f"/settings?edit={subject_id}").text
+    finally:
+        themework.rivals_job.state.clear()
+
+    assert "Wettbewerber werden vorgeschlagen" in body
+    assert f'hx-target="#client-edit-{subject_id}"' in body
 
 
 def test_an_empty_proposal_says_so_rather_than_looking_broken(
@@ -220,9 +267,17 @@ def test_an_empty_proposal_says_so_rather_than_looking_broken(
     with factory() as session:
         subject_id = _client(session, name="IB-7 Beauty Tech GmbH").id
 
-    monkeypatch.setattr(rivals, "suggest", lambda c, **k: [])
+    from newspulse.web import themework
 
-    body = client.post(f"/settings/clients/{subject_id}/rivals").text
+    themework.rivals_job.state[subject_id] = {
+        "state": "fertig",
+        "client": "IB-7 Beauty Tech GmbH",
+        "rivals": [],
+    }
+    try:
+        body = client.get(f"/settings?edit={subject_id}").text
+    finally:
+        themework.rivals_job.state.clear()
 
     assert "Keine Wettbewerber vorgeschlagen" in body
 
