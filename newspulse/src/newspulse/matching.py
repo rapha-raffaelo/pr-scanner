@@ -450,15 +450,44 @@ def name_matcher(client: Client) -> re.Pattern[str] | None:
     Returns ``None`` for a client with no usable name, so callers can treat
     "cannot tell" as "not about the client" rather than crashing.
     """
-    terms: list[str] = []
-    for raw in [getattr(client, "name", ""), *(getattr(client, "aliases", None) or [])]:
-        for variant in company_names.variants((raw or "").strip()):
-            if variant:
-                terms.append(variant)
-    if not terms:
+    return terms_matcher(
+        [
+            variant
+            for raw in [getattr(client, "name", ""), *(getattr(client, "aliases", None) or [])]
+            for variant in company_names.variants((raw or "").strip())
+        ]
+    )
+
+
+def terms_matcher(terms: Sequence[str]) -> re.Pattern[str] | None:
+    """One case-folded, word-boundary matcher over ``terms``, or ``None`` if empty.
+
+    The shared shape behind the name, theme and field matchers: the lookarounds
+    are what stop "Mode" matching "Modernisierung", and every caller wants that.
+    """
+    cleaned = [term.strip() for term in terms if term and term.strip()]
+    if not cleaned:
         return None
-    alternation = "|".join(_term_pattern(t) for t in dict.fromkeys(terms))
+    alternation = "|".join(_term_pattern(t) for t in dict.fromkeys(cleaned))
     return re.compile(rf"(?<!\w)(?:{alternation})(?!\w)")
+
+
+def theme_matcher(client: Client) -> re.Pattern[str] | None:
+    """Match a client's *themes* — its keywords and alert topics, never its name.
+
+    The mirror image of :func:`name_matcher`, and the pair is the whole point: one
+    asks "is this about the client", the other "is this about the client's field".
+    Market material is what answers yes to the second and no to the first.
+
+    Same word-boundary lookarounds as the client matcher, so "Mode" matches "Mode
+    im Wandel" and never "Modernisierung".
+    """
+    return terms_matcher(
+        [
+            *(getattr(client, "keywords", None) or []),
+            *(getattr(client, "alert_topics", None) or []),
+        ]
+    )
 
 
 def mentions_client(item, matcher: re.Pattern[str] | None) -> bool:
@@ -477,6 +506,8 @@ __all__ = [
     "match_candidates",
     "mentions_client",
     "name_matcher",
+    "terms_matcher",
+    "theme_matcher",
     "normalize_title",
     "title_hash",
 ]

@@ -61,6 +61,8 @@ from .matching import (
     match_candidates,
     mentions_client,
     name_matcher,
+    terms_matcher,
+    theme_matcher,
     title_hash,
 )
 from .models import (
@@ -691,6 +693,100 @@ def market_material(
     ]
 
 
+def link_archive_to_themes(
+    session: Session,
+    clients: Sequence[Client],
+    since: dt.datetime,
+    found_at: dt.datetime,
+) -> int:
+    """Link stored articles that match a client's themes as market material.
+
+    The gap this closes is the largest one in the feature. Market material had
+    exactly one source — a Google News search per client — while the registry's
+    68 subscribed feeds fetched the German trade press every morning and left it
+    attached to nobody. Measured on a real archive: 397 articles in the ninety-day
+    window, **6** of them linked as market material, with 38 carrying "Logistik"
+    in the headline and 18 carrying "Mode" — precisely what a fashion mandate
+    would position on, already paid for, already stored, and invisible.
+
+    So a mandate's radar could return nothing while the answer sat in its own
+    archive. That is why "keine Marktmeldung gefunden" kept appearing after every
+    fix upstream of it: the search was never the only place to look.
+
+    Costs nothing new: no fetch, no model call, one bounded query per client. The
+    client's own coverage is excluded — an article about the mandate belongs in
+    its coverage, and offering it back as a market development to position
+    against asks for a statement about itself.
+
+    Scoped to the client's field, exactly as the radar query is, and for the same
+    measured reason. Without it this reproduces the failure the field clause was
+    invented to prevent: matching Zalando's themes against the archive unscoped
+    linked 129 articles, among them "Wirtschaft in Kanada: Wachstum 3,4 %" and
+    "Apple Watch: 21 % Wachstum". A mandate with no industry is therefore skipped
+    rather than filled with noise — a theme like "Wachstum" means nothing without
+    a field to read it in, and guessing one would change what the tool finds
+    without saying so.
+    """
+    written = 0
+    for client in clients:
+        if client.is_competitor:
+            continue
+        matcher = theme_matcher(client)
+        field = terms_matcher(gnews.context_terms(client))
+        if matcher is None or field is None:
+            if matcher is not None:
+                _log.info(
+                    "no industry for %r; skipping archive linking rather than "
+                    "matching its themes against everything",
+                    client.name,
+                )
+            continue
+        about_client = name_matcher(client)
+        own = (
+            select(Analysis.article_id)
+            .where(Analysis.client_id == client.id, visible_coverage())
+            .scalar_subquery()
+        )
+        already = (
+            select(TopicHit.article_id)
+            .where(TopicHit.client_id == client.id)
+            .scalar_subquery()
+        )
+        candidates = session.scalars(
+            select(Article).where(
+                Article.published_at >= since,
+                Article.id.not_in(own),
+                Article.id.not_in(already),
+            )
+        ).all()
+        hits = []
+        for article in candidates:
+            text = _article_text(article)
+            # Theme AND field, the same conjunction the search URL builds.
+            if not (matcher.search(text) and field.search(text)):
+                continue
+            if mentions_client(article, about_client):
+                continue
+            hits.append(article)
+        if not hits:
+            continue
+        session.add_all(
+            TopicHit(article_id=article.id, client_id=client.id, found_at=found_at)
+            for article in hits
+        )
+        session.commit()
+        written += len(hits)
+        _log.info(
+            "linked %d archived article(s) to %r's themes", len(hits), client.name
+        )
+    return written
+
+
+def _article_text(article: Article) -> str:
+    """Title plus feed summary, case-folded. Only syndicated text — no body."""
+    return f"{article.title or ''}\n{article.summary_text or ''}".casefold()
+
+
 def _refresh_impulses(
     session: Session,
     clients: Sequence[Client],
@@ -1097,6 +1193,15 @@ def _run_real(
     # through: pitching a positioning message off a half-fetched radar would put a
     # confident text in front of the reader on the strength of partial data.
     if status is not RunStatus.FAILED:
+        # The archive first: the registry feeds fetched the trade press this
+        # morning and nothing linked it to the mandates whose field it is. Doing
+        # this before drafting means today's material is available to today's
+        # draft rather than tomorrow's.
+        linked = link_archive_to_themes(
+            session, clients, started - IMPULSE_LOOKBACK, started
+        )
+        if linked:
+            _log.info("linked %d archived article(s) as market material", linked)
         angles_written = _generate_angles(session, topic_pairs, errors)
         # And then top up the mandates the radar did not move today. Drafting only
         # from fresh material meant a quiet fortnight showed an empty Impulse
