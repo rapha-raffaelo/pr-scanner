@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from ... import config, industry, job, rivals, themes
+from ... import advisor, config, industry, job, rivals, themes
 from ...analyzer import get_analyzer
 from ...db import get_session
 from ...clients import (
@@ -156,6 +156,8 @@ def _onboard(client_id: int, name: str) -> None:
                 _settle_industry(session, client)
                 stored = job.backfill_client(session, client)
                 _log.info("onboarding fetch for %r stored %d article(s)", name, stored)
+                _onboarding[client_id] = "entwürfe"
+                _first_drafts(session, client)
                 _onboarding[client_id] = f"fertig:{stored}"
     except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
         # A failed setup must not read as "this mandate simply has no press".
@@ -185,6 +187,52 @@ def _settle_industry(session: Session, client: Client) -> None:
         "classified %r as %r (%d item(s) of press use the word)",
         client.name, best.term, best.hits,
     )
+
+
+def _first_drafts(session: Session, client: Client) -> None:
+    """Give a brand-new mandate something on both halves of its Impulse page.
+
+    "Sobald ein Mandant angelegt ist, sollte eigentlich immer ein Impuls und eine
+    Empfehlung platziert sein — das sollte nie leer sein."
+
+    Until now the page was empty until the next nightly sweep, which is a poor
+    first impression of a tool whose whole promise is "here is what to say". Both
+    halves are attempted here, in the order their inputs arrive: the archive is
+    linked to the client's themes first (the backfill has just stored coverage and
+    the industry is settled, so there is finally something to match against), then
+    the positioning from that market material, then the recommendation from the
+    client's own press.
+
+    Attempted, not guaranteed. With no market material the model has nothing to
+    position against and says so, and manufacturing an opening to fill the panel
+    is the one thing this feature must never do. Each half is isolated: a mandate
+    must still arrive if one of them fails.
+    """
+    now = dt.datetime.now(dt.UTC)
+    try:
+        linked = job.link_archive_to_themes(
+            session, [client], now - job.IMPULSE_LOOKBACK, now
+        )
+        _log.info("onboarding linked %d archived article(s) for %r", linked, client.name)
+    except Exception:  # noqa: BLE001 — one half must not take the other with it
+        _log.exception("archive linking during onboarding failed for %r", client.name)
+
+    try:
+        job._refresh_impulses(session, [client], [], now=now)
+    except Exception:  # noqa: BLE001
+        _log.exception("first impulse for %r failed", client.name)
+
+    try:
+        # Only with coverage to react to: an advisory reads the client's own press,
+        # and asking the model about an empty window spends a call to be told so.
+        if advisor.recent_coverage(session, client.id):
+            brief, coverage = advisor.advise(session, client)
+            advisor.store(session, client, brief, coverage, days=advisor.DEFAULT_DAYS)
+            _log.info(
+                "first advisory for %r: %d suggestion(s)", client.name, len(brief.suggestions)
+            )
+    except Exception:  # noqa: BLE001
+        _log.exception("first advisory for %r failed", client.name)
 
 
 def _start_onboarding(client_id: int, name: str) -> None:

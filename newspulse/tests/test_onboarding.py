@@ -418,3 +418,133 @@ def test_a_rejected_client_starts_nothing(monkeypatch):
     TestClient(app).post("/settings/clients", data={"name": "Arrakis Finance"})
 
     assert started == []
+
+
+# --- A new mandate must not open on two empty panels -----------------------------
+
+
+def test_onboarding_drafts_both_halves(monkeypatch):
+    """"Sobald ein Mandant angelegt ist, sollte immer ein Impuls und eine
+    Empfehlung platziert sein — das sollte nie leer sein."
+
+    Both were only produced by the nightly sweep, so a mandate created at ten in
+    the morning showed two empty panels until the next day — a poor first
+    impression of a tool whose whole promise is "here is what to say".
+    """
+    import datetime as dt
+
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import advisor, job
+    from newspulse.db import make_engine
+    from newspulse.models import Analysis, Article, Base, Category, Client
+    from newspulse.schemas import AdvisoryBrief
+    from newspulse.web.routes import settings as settings_routes
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    called: list[str] = []
+
+    with factory() as session:
+        client = Client(
+            name="Neu AG", aliases=[], industry="Modehandel",
+            keywords=["Retouren"], alert_topics=[], country="DE",
+        )
+        session.add(client)
+        session.flush()
+        article = Article(
+            title="Neu AG senkt Retouren", url="https://ex.de/neu",
+            source="Textilwirtschaft", published_at=dt.datetime.now(dt.UTC),
+            fetched_at=dt.datetime.now(dt.UTC), summary_text=None,
+            language="de", title_hash="neu00001",
+        )
+        session.add(article)
+        session.flush()
+        session.add(
+            Analysis(
+                article_id=article.id, client_id=client.id, summary="s",
+                category=Category.PRODUKT, relevance_score=6,
+                importance_score=6, is_alert=False,
+            )
+        )
+        session.commit()
+
+        monkeypatch.setattr(
+            job, "link_archive_to_themes",
+            lambda *a, **k: called.append("linked") or 0,
+        )
+        monkeypatch.setattr(
+            job, "_refresh_impulses", lambda *a, **k: called.append("impulse") or 1
+        )
+        monkeypatch.setattr(
+            advisor, "advise",
+            lambda *a, **k: (
+                called.append("advise")
+                or (AdvisoryBrief(situation="Lage", suggestions=[]), []),
+            )[0],
+        )
+        monkeypatch.setattr(advisor, "store", lambda *a, **k: called.append("stored"))
+
+        settings_routes._first_drafts(session, client)
+
+    assert called == ["linked", "impulse", "advise", "stored"]
+
+
+def test_a_failing_half_never_takes_the_other_with_it(monkeypatch):
+    """A mandate must still arrive if one draft fails."""
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import advisor, job
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.web.routes import settings as settings_routes
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    reached: list[str] = []
+
+    def _boom(*a, **k):
+        raise RuntimeError("claude ist weg")
+
+    with factory() as session:
+        client = Client(name="Neu AG", aliases=[], keywords=[], alert_topics=[])
+        session.add(client)
+        session.commit()
+        monkeypatch.setattr(job, "link_archive_to_themes", _boom)
+        monkeypatch.setattr(
+            job, "_refresh_impulses", lambda *a, **k: reached.append("impulse") or 0
+        )
+        monkeypatch.setattr(advisor, "recent_coverage", lambda *a, **k: [])
+
+        settings_routes._first_drafts(session, client)  # must not raise
+
+    assert reached == ["impulse"]
+
+
+def test_no_advisory_is_asked_for_without_coverage(monkeypatch):
+    """An advisory reads the client's own press; asking about an empty window
+    spends a model call to be told it is empty."""
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import advisor, job
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.web.routes import settings as settings_routes
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with factory() as session:
+        client = Client(name="Still AG", aliases=[], keywords=[], alert_topics=[])
+        session.add(client)
+        session.commit()
+        monkeypatch.setattr(job, "link_archive_to_themes", lambda *a, **k: 0)
+        monkeypatch.setattr(job, "_refresh_impulses", lambda *a, **k: 0)
+        monkeypatch.setattr(
+            advisor, "advise", lambda *a, **k: pytest.fail("must not ask the model")
+        )
+
+        settings_routes._first_drafts(session, client)

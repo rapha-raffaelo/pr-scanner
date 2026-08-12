@@ -388,6 +388,7 @@ _EN: dict[str, str] = {
     "Keine Themen vorgeschlagen.": "No themes proposed.",
     "Einrichtung wartet auf den laufenden Lauf": "Setup is waiting for the current run",
     "wird eingerichtet": "being set up",
+    "Impuls und Empfehlung werden erzeugt": "drafting an opening and a recommendation",
     "eingerichtet": "set up",
     "Einrichtung fehlgeschlagen": "Setup failed",
     "Kürzel oder Name — „DE“ oder „Deutschland“. Bestimmt die Nachrichtenausgabe.":

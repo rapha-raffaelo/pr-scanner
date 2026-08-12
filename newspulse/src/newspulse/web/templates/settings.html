@@ -303,6 +303,8 @@
                     <span class="setup">{{ t("Einrichtung wartet auf den laufenden Lauf") }}</span>
                   {% elif state == 'läuft' %}
                     <span class="setup setup--busy"><span class="spinner" aria-hidden="true"></span>{{ t("wird eingerichtet") }}</span>
+                  {% elif state == 'entwürfe' %}
+                    <span class="setup setup--busy"><span class="spinner" aria-hidden="true"></span>{{ t("Impuls und Empfehlung werden erzeugt") }}</span>
                   {% elif state and state.startswith('fertig:') %}
                     <span class="setup setup--done">{{ t("eingerichtet") }} · {{ state.split(':', 1)[1] }} {{ t("Artikel") }}</span>
                   {% elif state and state.startswith('fehler:') %}
