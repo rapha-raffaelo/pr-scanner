@@ -118,6 +118,48 @@
         {% if angle.overclaim %}
           <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
         {% endif %}
+
+        {# Where to send it. Strongest signal first: whoever wrote the story this
+           draft answers is on the subject this week. Every row names the headline
+           it came from, so the suggestion can be checked rather than trusted.
+
+           No email addresses. Feeds carry a byline sometimes and a contact never
+           — measured, 22 of 291 articles had an author at all — and a plausible
+           "vorname.nachname@medium.de" is worse than an empty field, because it
+           gets used and reaches the wrong person. #}
+        {% set targets = pitch_targets.get(angle.id) %}
+        {% if targets %}
+          <div class="pitchlist">
+            <span class="pitchlist__label">{{ t("Wohin damit") }}</span>
+            <ul>
+              {% for target in targets %}
+                <li>
+                  <span class="pitchlist__who">
+                    {% if target.journalist %}{{ target.journalist }} <span class="dot">·</span> {% endif %}{{ target.outlet }}
+                  </span>
+                  {% if target.is_new_contact %}<span class="pitchlist__new">{{ t("noch kein Kontakt") }}</span>{% endif %}
+                  <span class="pitchlist__why">{{ target.reason }}</span>
+                  {% for headline in target.evidence %}
+                    <span class="pitchlist__ev">„{{ headline[:80] }}“</span>
+                  {% endfor %}
+                </li>
+              {% endfor %}
+            </ul>
+            <p class="pitchlist__caveat">
+              {{ t("Aus den Meldungen der letzten") }} {{ pitch_days }} {{ t("Tage. Namen stehen nur dort, wo der Feed einen Autor mitgeliefert hat — Kontaktdaten führt das Tool nicht.") }}
+            </p>
+          </div>
+        {% else %}
+          {# Never a silent gap: an absent list has to say which of the two
+             reasons it is, because they need opposite responses. #}
+          <div class="pitchlist">
+            <span class="pitchlist__label">{{ t("Wohin damit") }}</span>
+            <p class="pitchlist__caveat">
+              {{ t("Noch keine Empfängerliste: kein Medium berichtet regelmäßig genug über dieses Themenfeld, als dass eine Empfehlung belastbar wäre.") }}
+              <a href="/client/{{ client.id }}/map">{{ t("Coverage Map ansehen") }} →</a>
+            </p>
+          </div>
+        {% endif %}
       </article>
     {% else %}
       {# Three reasons for an empty section, and they need different answers: the

@@ -20,7 +20,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import advisor, angles, job
+from ... import advisor, angles, job, pitch
 from ...db import get_session
 from ..runlock import guard as _run_guard
 from .. import themework
@@ -142,6 +142,13 @@ def advice_view(
             # "nothing to recommend" is true but useless. The impulse works off the
             # market instead, which is exactly the case this page cannot serve.
             "angles": angles.for_client(session, client_id),
+            # Who to send each draft to, keyed by angle id. Computed per draft
+            # because the strongest signal is specific to it: the bylines on the
+            # very stories it answers.
+            "pitch_targets": {
+                a.id: pitch.targets_for(session, client, a)
+                for a in angles.for_client(session, client_id)
+            },
             "latest_angle": angles.latest(session, client_id),
             # Whether a radar is possible at all, which is a question about the
             # client's themes — not about whether it has found anything yet. Read
@@ -151,6 +158,7 @@ def advice_view(
             # Rendered rather than written into the template, so the sentence and
             # the window can never disagree.
             "impulse_days": job.IMPULSE_LOOKBACK.days,
+            "pitch_days": pitch.LOOKBACK_DAYS,
             "market_seen": session.scalar(
                 select(func.count()).select_from(TopicHit).where(
                     TopicHit.client_id == client_id

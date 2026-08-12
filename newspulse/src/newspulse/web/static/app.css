@@ -570,6 +570,29 @@ nav.tabs a.active {
 .rival__why strong { color: #047857; font-size: 0.8rem; }
 .rival__sample { font-style: italic; opacity: .85; }
 
+/* --- Where to send a draft ------------------------------------------------ */
+/* Under the message, because that is the moment the question arises. Names only
+   where a feed supplied one; the tool holds no contact details and says so. */
+.pitchlist { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pitchlist__label {
+  display: block; font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted); margin-bottom: 8px;
+}
+.pitchlist ul { list-style: none; margin: 0; padding: 0; }
+.pitchlist li {
+  padding: 7px 0; border-top: 1px solid var(--line); font-size: 12.5px;
+}
+.pitchlist li:first-child { border-top: 0; }
+.pitchlist__who { font-weight: 600; margin-right: 6px; }
+.pitchlist__new {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.03em; color: #a16207; background: #fffbeb;
+  border: 1px solid #fde68a; border-radius: 20px; padding: 1px 7px; margin-right: 6px;
+}
+.pitchlist__why { color: var(--muted); }
+.pitchlist__ev { display: block; color: var(--muted); font-style: italic; margin-top: 2px; }
+.pitchlist__caveat { font-size: 11.5px; color: var(--muted); margin-top: 8px; max-width: 70ch; }
+
 /* --- Shared surfaces ------------------------------------------------------ */
 /* Card, table and status box. Every one of these was declared only in
    settings.html, so the same markup produced a card on one page and a bare run

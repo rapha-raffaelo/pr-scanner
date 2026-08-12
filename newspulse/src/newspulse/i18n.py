@@ -369,6 +369,16 @@ _EN: dict[str, str] = {
         "Competitors are being proposed \u2014 this takes a moment.",
     "Vorschlag fehlgeschlagen": "Proposal failed",
     "Verknüpfung lösen": "Unlink",
+    "Wohin damit": "Where to send it",
+    "Noch keine Empfängerliste: kein Medium berichtet regelmäßig genug über dieses Themenfeld, als dass eine Empfehlung belastbar wäre.":
+        "No recipients yet: no publication covers this field regularly enough for "
+        "a recommendation to hold.",
+    "Coverage Map ansehen": "See the coverage map",
+    "noch kein Kontakt": "no contact yet",
+    "Aus den Meldungen der letzten": "From the items of the last",
+    "Tage. Namen stehen nur dort, wo der Feed einen Autor mitgeliefert hat — Kontaktdaten führt das Tool nicht.":
+        "days. Names appear only where the feed supplied an author \u2014 the tool "
+        "holds no contact details.",
     "Themen": "Themes",
     "Marktthemen vorschlagen und gegen die echte Suche prüfen":
         "Propose market themes and test them against the real search",
