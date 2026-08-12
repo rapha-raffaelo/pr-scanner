@@ -757,12 +757,33 @@ def test_a_draft_older_than_the_window_is_gone(factory, client):
 
 
 def test_todays_draft_is_marked_as_todays(factory, client):
+    """The age sits on the collapsed line now, so it is one word rather than a
+    phrase — the rail has to fit a whole portfolio at a glance."""
     with factory() as session:
         _seed_angle(session, generated_at=_noon_utc(_TEST_DAY), subject="HEUTE")
 
     body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
 
-    assert "aus dem Radar von heute" in body
+    assert "impulse__age--today" in body
+
+
+def test_a_draft_is_collapsed_to_its_subject_until_it_is_opened(factory, client):
+    """Measured with eight mandates before this: the rail ran to 2458px in a
+    913px viewport and two of eight drafts were reachable without scrolling. A
+    consultant with a real portfolio never saw the rest.
+
+    The subject line was written for exactly this — its schema comment says "so a
+    column of drafts can be scanned without opening each one" — and was then
+    buried under the text it was meant to stand in for."""
+    with factory() as session:
+        _seed_angle(session, generated_at=_noon_utc(_TEST_DAY), subject="HEUTE")
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    # The scannable line is in the summary; the message is behind the fold.
+    assert "impulse__fold" in body
+    assert "<summary class=\"impulse__summary\">" in body
+    assert "HEUTE" in body
 
 
 def test_a_mandate_without_a_draft_reports_what_the_radar_saw(factory, client):

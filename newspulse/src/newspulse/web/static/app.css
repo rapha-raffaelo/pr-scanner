@@ -187,8 +187,28 @@ nav.tabs a.active {
 .impulse__copy--done { color: #15803d; border-color: #86efac; background: #f0fdf4; }
 
 /* The age of a draft, always visible: a card may stand for a week. */
-.impulse__age { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+.impulse__age { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 .impulse__age--today { color: #16a34a; font-weight: 600; }
+/* --- The rail, folded ----------------------------------------------------- */
+/* Collapsed, a draft is three lines: whose it is, how old, and what it is about.
+   Measured with eight mandates before this, the column ran to 2458px in a 913px
+   viewport and two of eight drafts were reachable without scrolling. */
+.impulse__fold > summary { list-style: none; cursor: pointer; }
+.impulse__fold > summary::-webkit-details-marker { display: none; }
+.impulse__line { display: flex; align-items: center; gap: 8px; }
+.impulse__line .impulse__copy { margin-left: auto; }
+.impulse__summary .impulse__subject {
+  display: block; margin: 6px 0 0;
+  /* The whole subject, wrapped — it is the one line that has to be readable
+     without opening the card, so truncating it would defeat the fold. */
+  font-weight: 600; font-size: 13.5px; line-height: 1.4;
+}
+.impulse__fold[open] > summary .impulse__subject { margin-bottom: 10px; }
+.impulse__fold[open] > summary { border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 10px; }
+.impulse__fold > summary:hover .impulse__subject { color: var(--accent); }
+/* A collapsed card is one row of the rail, not a panel. */
+.impulse:has(.impulse__fold:not([open])) { padding: 10px 12px; margin-bottom: 8px; }
+
 .impulse__subject { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
 
 /* The honest empty card: no accent bar, because there is nothing to act on — but

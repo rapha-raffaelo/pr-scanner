@@ -275,56 +275,73 @@
      reader copies, edits, decides. #}
   <aside class="anglecol" aria-label="{{ t('Impulse') }}">
     <div class="colhead">{{ t("Impulse") }} <span class="n">{{ angles | length }}</span></div>
+    {# One line per mandate, opened on demand.
+
+       Every card used to render its full message — two paragraphs of prose in a
+       380px rail. Measured with eight mandates: the column ran to 2458px in a
+       913px viewport and two of the eight drafts were reachable without
+       scrolling. A consultant with a real portfolio simply never saw the rest.
+
+       The subject line exists for exactly this; its own schema comment says so
+       ("a line for the consultant … so a column of drafts can be scanned without
+       opening each one"). It was written and then buried under the text it was
+       meant to stand in for. #}
     {% for angle in angles %}
       <article class="impulse" id="impulse-{{ angle.id }}">
-        <div class="impulse__head">
-          <span class="clichip">{{ angle.client_name }}</span>
-          <button type="button" class="impulse__copy" data-copy-from="impulse-text-{{ angle.id }}">{{ t("Kopieren") }}</button>
-        </div>
-        {# The age, always. A draft may stand for a week, and without this a card
-           from Monday reads as this morning's work every morning until it goes. #}
-        <div class="impulse__age{% if angle.age_days == 0 %} impulse__age--today{% endif %}">
-          {%- if angle.age_days == 0 %}{{ t("aus dem Radar von heute") }}
-          {%- elif angle.age_days == 1 %}{{ t("von gestern") }}
-          {%- else %}{{ t("vor") }} {{ angle.age_days }} {{ t("Tagen") }}{% endif -%}
-        </div>
-        {% if angle.subject %}<div class="impulse__subject">{{ angle.subject }}</div>{% endif %}
+        <details class="impulse__fold">
+          <summary class="impulse__summary">
+            <div class="impulse__line">
+              <span class="clichip">{{ angle.client_name }}</span>
+              {# The age, always. A draft may stand for a week, and without this a
+                 card from Monday reads as this morning's work every morning. #}
+              <span class="impulse__age{% if angle.age_days == 0 %} impulse__age--today{% endif %}">
+                {%- if angle.age_days == 0 %}{{ t("heute") }}
+                {%- elif angle.age_days == 1 %}{{ t("gestern") }}
+                {%- else %}{{ t("vor") }} {{ angle.age_days }} {{ t("Tagen") }}{% endif -%}
+              </span>
+              {# Copies without opening, so a draft already read can be sent from
+                 the collapsed row. preventDefault keeps the click off the fold. #}
+              <button type="button" class="impulse__copy" data-copy-from="impulse-text-{{ angle.id }}">{{ t("Kopieren") }}</button>
+            </div>
+            {% if angle.subject %}<span class="impulse__subject">{{ angle.subject }}</span>{% endif %}
+          </summary>
 
-        {# The sendable text, and only that, inside the copy target — the reader
-           must never paste our internal reasoning into a client mail. #}
-        <div class="impulse__text" id="impulse-text-{{ angle.id }}">{{ angle.message }}</div>
+          {# The sendable text, and only that, inside the copy target — the reader
+             must never paste our internal reasoning into a client mail. #}
+          <div class="impulse__text" id="impulse-text-{{ angle.id }}">{{ angle.message }}</div>
 
-        {% if angle.thesis %}
-          <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ angle.thesis }}</div>
-        {% endif %}
-        {% if angle.overclaim %}
-          {# Shown, not hidden: it is the check on the draft. If the message drifts
-             into this sentence, it is the wrong message. #}
-          <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
-        {% endif %}
+          {% if angle.thesis %}
+            <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ angle.thesis }}</div>
+          {% endif %}
+          {% if angle.overclaim %}
+            {# Shown, not hidden: it is the check on the draft. If the message drifts
+               into this sentence, it is the wrong message. #}
+            <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
+          {% endif %}
 
-        <details class="impulse__more">
-          <summary>{{ t("Grundlage") }}{% if angle.sources %} · {{ angle.sources | length }} {{ t("Meldung(en)") }}{% endif %}</summary>
-          {% if angle.context %}
-            <p class="impulse__block"><span class="impulse__label">{{ t("Kontext") }}</span> {{ angle.context }}</p>
-          {% endif %}
-          {% if angle.credibility %}
-            <p class="impulse__block"><span class="impulse__label">{{ t("Glaubwürdigkeit") }}</span> {{ angle.credibility }}</p>
-          {% endif %}
-          {% if angle.statements %}
-            <p class="impulse__block"><span class="impulse__label">{{ t("Ableitbare Aussagen") }}</span></p>
-            <ol class="impulse__statements">
-              {% for statement in angle.statements %}<li>{{ statement }}</li>{% endfor %}
-            </ol>
-          {% endif %}
-          {% if angle.sources %}
-            <ul class="impulse__sources">
-              {% for title, source, url in angle.sources %}
-                <li><a href="{{ url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ title }}</a> <span class="dot">·</span> {{ source }}</li>
-              {% endfor %}
-            </ul>
-          {% endif %}
-          <p class="impulse__caveat">{{ t("Entwurf aus Schlagzeilen und Feed-Anrissen, nicht aus den vollständigen Artikeln. Vor dem Versand prüfen.") }}</p>
+          <details class="impulse__more">
+            <summary>{{ t("Grundlage") }}{% if angle.sources %} · {{ angle.sources | length }} {{ t("Meldung(en)") }}{% endif %}</summary>
+            {% if angle.context %}
+              <p class="impulse__block"><span class="impulse__label">{{ t("Kontext") }}</span> {{ angle.context }}</p>
+            {% endif %}
+            {% if angle.credibility %}
+              <p class="impulse__block"><span class="impulse__label">{{ t("Glaubwürdigkeit") }}</span> {{ angle.credibility }}</p>
+            {% endif %}
+            {% if angle.statements %}
+              <p class="impulse__block"><span class="impulse__label">{{ t("Ableitbare Aussagen") }}</span></p>
+              <ol class="impulse__statements">
+                {% for statement in angle.statements %}<li>{{ statement }}</li>{% endfor %}
+              </ol>
+            {% endif %}
+            {% if angle.sources %}
+              <ul class="impulse__sources">
+                {% for title, source, url in angle.sources %}
+                  <li><a href="{{ url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ title }}</a> <span class="dot">·</span> {{ source }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+            <p class="impulse__caveat">{{ t("Entwurf aus Schlagzeilen und Feed-Anrissen, nicht aus den vollständigen Artikeln. Vor dem Versand prüfen.") }}</p>
+          </details>
         </details>
       </article>
     {% endfor %}
@@ -371,7 +388,11 @@
 // over plain HTTP on a LAN, where navigator.clipboard is undefined.
 (function () {
   document.querySelectorAll("[data-copy-from]").forEach(function (button) {
-    button.addEventListener("click", function () {
+    button.addEventListener("click", function (event) {
+      // Inside a <summary>: a bare click would toggle the fold instead of
+      // copying, so the card must not open just because someone sent it on.
+      event.preventDefault();
+      event.stopPropagation();
       var source = document.getElementById(button.dataset.copyFrom);
       if (!source) return;
       var text = source.textContent.trim();

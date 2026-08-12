@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sips -g pixelWidth -g pixelHeight before.png)",
+      "Bash(sips --cropToHeightWidth 1000 1500 before.png --out before_top.png)",
+      "Bash(sips -Z 1400 before_top.png --out before_view.png)",
+      "Bash(sips -g pixelWidth -g pixelHeight before_view.png)"
+    ]
+  }
+}

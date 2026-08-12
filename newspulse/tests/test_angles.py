@@ -28,7 +28,11 @@ from newspulse.models import (
     Client,
 )
 
-_WHEN = dt.datetime(2026, 7, 30, 6, 0, tzinfo=dt.UTC)
+# Relative to now, not a fixed calendar date. The prompt's own-coverage block
+# asks for the *last seven days* against the real clock, so a hard-coded date made
+# this file pass for a fortnight and then fail for reasons that had nothing to do
+# with the code — which is how a suite stops being believed.
+_WHEN = dt.datetime.now(dt.UTC) - dt.timedelta(days=1)
 
 
 @pytest.fixture
