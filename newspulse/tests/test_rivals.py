@@ -309,3 +309,56 @@ def test_an_offsite_redirect_is_refused(factory, client):
     )
 
     assert resp.headers["location"] == f"/client/{subject_id}"
+
+
+def test_a_competitor_from_another_industry_is_grouped_apart(factory, client):
+    """Every monitored competitor used to be offered to every mandate, so a
+    finance platform was invited to benchmark itself against ASOS and H&M —
+    fashion brands that exist in the portfolio only because a fashion mandate
+    needed them. Share of voice is a statement about *a market*, and a number
+    computed across two of them is not a fact about anything.
+
+    Grouped rather than hidden: an operator may know a cross-industry rival the
+    labels cannot see.
+    """
+    with factory() as session:
+        broker = Client(
+            name="Freedom24", aliases=[], industry="Neobroker",
+            keywords=[], alert_topics=[],
+        )
+        peer = Client(
+            name="Trade Republic", aliases=[], industry="Neobroker",
+            keywords=[], alert_topics=[], is_competitor=True,
+        )
+        unrelated = Client(
+            name="H&M", aliases=[], industry="Modehandel",
+            keywords=[], alert_topics=[], is_competitor=True,
+        )
+        session.add_all([broker, peer, unrelated])
+        session.commit()
+        broker_id = broker.id
+
+    body = client.get(f"/client/{broker_id}").text
+
+    assert "Gleiches Feld" in body
+    assert "Andere Branche" in body
+    # The peer is offered ahead of the fashion brand, not filtered out with it.
+    assert body.index("Trade Republic") < body.index("Andere Branche")
+
+
+def test_without_an_industry_every_competitor_is_still_offered(factory, client):
+    """No field, no grouping — and no silent narrowing of the reader's options."""
+    with factory() as session:
+        subject = Client(name="Ohne Feld", aliases=[], industry=None,
+                         keywords=[], alert_topics=[])
+        rival = Client(name="H&M", aliases=[], industry="Modehandel",
+                       keywords=[], alert_topics=[], is_competitor=True)
+        session.add_all([subject, rival])
+        session.commit()
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}").text
+
+    # Escaped in the rendered page, so match what the browser actually receives.
+    assert "H&amp;M" in body
+    assert "Andere Branche" not in body

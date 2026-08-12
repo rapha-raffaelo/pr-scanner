@@ -251,6 +251,18 @@ def context_terms(client: Client) -> list[str]:
     return terms
 
 
+def same_field(one: Client, other: Client) -> bool:
+    """Whether two companies name the same field.
+
+    Used to group the competitor picker. Share of voice is a statement about *a
+    market*: every monitored competitor used to be offered to every mandate, so a
+    finance platform was invited to benchmark itself against fashion brands that
+    exist in the portfolio only because a fashion mandate needed them.
+    """
+    field = {t.casefold() for t in context_terms(one)}
+    return bool(field & {t.casefold() for t in context_terms(other)})
+
+
 def unscoped_topic_url(client: Client) -> str | None:
     """The same radar query without its field constraint, or ``None``.
 

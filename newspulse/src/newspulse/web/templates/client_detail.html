@@ -80,10 +80,37 @@
     <form method="post" action="/client/{{ client.id }}/competitors" class="run-form">
       <div class="filter-field">
         <label for="competitor_id">{{ t("Wettbewerber hinzufügen") }}</label>
+        {# Grouped, not filtered. Every monitored competitor used to be offered to
+           every mandate, so a finance platform was invited to benchmark itself
+           against ASOS and H&M — fashion brands that exist here only because a
+           fashion mandate needed them. Share of voice is a statement about *a
+           market*, and a number computed across two of them says nothing.
+
+           The other field stays reachable: an operator may know a cross-industry
+           rival the labels cannot see, and hiding a real option to prevent a
+           silly one trades an embarrassment for a wrong answer. #}
         <select id="competitor_id" name="competitor_id">
+          {# No industry, nothing to compare against: grouping everything under
+             "another industry" would be a judgement the data cannot support. #}
+          {% if not client.industry %}
+            {% for c in candidates %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+          {% else %}
+          {% set matching = [] %}
+          {% set other = [] %}
           {% for c in candidates %}
-            <option value="{{ c.id }}">{{ c.name }}</option>
+            {% if shares_field(client, c) %}{{ matching.append(c) or '' }}{% else %}{{ other.append(c) or '' }}{% endif %}
           {% endfor %}
+          {% if matching %}
+            <optgroup label="{{ t('Gleiches Feld') }}">
+              {% for c in matching %}<option value="{{ c.id }}">{{ c.name }}{% if c.industry %} · {{ c.industry }}{% endif %}</option>{% endfor %}
+            </optgroup>
+          {% endif %}
+          {% if other %}
+            <optgroup label="{{ t('Andere Branche — selten sinnvoll') }}">
+              {% for c in other %}<option value="{{ c.id }}">{{ c.name }}{% if c.industry %} · {{ c.industry }}{% endif %}</option>{% endfor %}
+            </optgroup>
+          {% endif %}
+          {% endif %}
         </select>
       </div>
       <button type="submit">{{ t("Hinzufügen") }}</button>

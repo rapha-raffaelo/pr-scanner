@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
+from ... import gnews
 from ...models import Analysis, Article, Category, Client, TopicHit, visible_coverage
 from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
@@ -478,15 +479,7 @@ def _render_detail(
             # startup proposed as Zalando's benchmark. A mandate is work to be done;
             # a competitor is a yardstick, and the two are not interchangeable just
             # because both happen to be monitored.
-            "candidates": [
-                c
-                for c in session.scalars(
-                    select(Client)
-                    .where(Client.is_competitor.is_(True))
-                    .order_by(Client.name)
-                ).all()
-                if c.id != client.id and c not in client.competitors
-            ],
+            "candidates": _competitor_candidates(session, client),
             "competitors": list(client.competitors),
             "last_run": _fetch_last_run(session),
             # The shared header dates every page; the archive view spans many
@@ -601,6 +594,38 @@ def _rank(rows, *, about_client: bool) -> list[Nomination]:
             )
         )
     return out
+
+
+def _competitor_candidates(session: Session, client: Client) -> list[Client]:
+    """Companies that could be this client's benchmark, its own field first.
+
+    Every monitored competitor used to be offered to every mandate, so a finance
+    platform was invited to benchmark itself against ASOS and H&M — fashion
+    brands that exist in the portfolio only because a fashion mandate needed
+    them. Share of voice is a statement about *a market*; a number computed
+    across two of them is not a fact about anything.
+
+    Sorted rather than filtered: the operator may know a cross-industry rival the
+    labels cannot see, and hiding a real option to prevent a silly one trades a
+    small embarrassment for a wrong answer. The template groups the two.
+    """
+    field = {t.casefold() for t in gnews.context_terms(client)}
+    others = [
+        c
+        for c in session.scalars(
+            select(Client).where(Client.is_competitor.is_(True)).order_by(Client.name)
+        ).all()
+        if c.id != client.id and c not in client.competitors
+    ]
+    if not field:
+        return others
+    return sorted(
+        others,
+        key=lambda c: (
+            not (field & {t.casefold() for t in gnews.context_terms(c)}),
+            c.name,
+        ),
+    )
 
 
 def _nominations(session: Session, client_id: int, *, days: int) -> dict[str, list[Nomination]]:

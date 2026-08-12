@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .. import branding, config, i18n
+from .. import branding, config, gnews, i18n
 from ..db import get_session
 from . import runlock
 from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
@@ -214,6 +214,10 @@ templates.env.globals["assistant_ctx"] = assistant_context
 # with one page that never shows the spinner. Called per render, so it reflects
 # the moment the page was built.
 templates.env.globals["run_active"] = runlock.is_running
+# Used by the competitor picker to group "same field" from "another industry".
+# A template global rather than page context: the grouping is a property of the
+# two companies, not of the view, and it must not pull a route module in here.
+templates.env.globals["shares_field"] = gnews.same_field
 templates.env.globals["translator"] = translator
 templates.env.globals["request_language"] = request_language
 templates.env.globals["LANGUAGES"] = i18n.LANGUAGES

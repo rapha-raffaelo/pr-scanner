@@ -240,6 +240,8 @@ _EN: dict[str, str] = {
     "kaum Presse — als Filter unbrauchbar": "barely any press \u2014 useless as a filter",
     "Der Begriff filtert Markt-Meldungen. Nur was die Presse auch schreibt, taugt dafür.":
         "The term filters market news. Only a word the press actually writes will do.",
+    "Gleiches Feld": "Same field",
+    "Andere Branche — selten sinnvoll": "Another industry \u2014 rarely useful",
     "Wettbewerber vorschlagen": "Suggest competitors",
     "Wettbewerber": "Competitors",
     "Wettbewerber für": "Competitors for",
