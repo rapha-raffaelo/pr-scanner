@@ -545,3 +545,75 @@ def test_an_offsite_run_redirect_is_refused(client, monkeypatch):
         follow_redirects=False,
     )
     assert resp.headers["location"].startswith("/settings")
+
+
+# --- Mandates and yardsticks are different kinds of thing ------------------------
+
+
+def test_the_portfolio_separates_mandates_from_yardsticks(factory, client):
+    """"Die Wettbewerber sollten zwischen den Mandanten getrennt sein."
+
+    They were rows of the same table, so a portfolio of one client and four
+    competitors read as five clients — and that flat reading is the same habit
+    that had a finance platform offered fashion brands as peers.
+    """
+    with factory() as session:
+        mandate = Client(name="Zalando", aliases=[], industry="Modehandel",
+                         keywords=[], alert_topics=[])
+        rival = Client(name="H&M", aliases=[], industry="Modehandel",
+                       keywords=[], alert_topics=[], is_competitor=True)
+        session.add_all([mandate, rival])
+        session.flush()
+        mandate.competitors.append(rival)
+        session.commit()
+
+    body = client.get("/settings").text
+
+    assert "Mandanten gesamt" in body
+    assert "Maßstab für" in body
+    # Two tables, so the mandate's own list of competitors and the yardstick's
+    # list of owners are different columns rather than one ambiguous one.
+    assert body.count('class="data data--clients"') == 2
+
+
+def test_a_yardstick_row_says_whose_yardstick_it_is(factory, client):
+    with factory() as session:
+        mandate = Client(name="Zalando", aliases=[], keywords=[], alert_topics=[])
+        rival = Client(name="H&M", aliases=[], keywords=[], alert_topics=[],
+                       is_competitor=True)
+        session.add_all([mandate, rival])
+        session.flush()
+        mandate.competitors.append(rival)
+        session.commit()
+
+    body = client.get("/settings").text
+    yardsticks = body.split("Maßstab für", 1)[1]
+
+    assert "Zalando" in yardsticks
+
+
+def test_a_yardstick_linked_to_nobody_is_flagged(factory, client):
+    """Monitored and attached to no one: its coverage is fetched, analysed and
+    counted towards nothing. That is worth saying out loud, because it is the
+    state an accidental role toggle leaves behind."""
+    with factory() as session:
+        session.add(
+            Client(name="Verwaist AG", aliases=[], keywords=[], alert_topics=[],
+                   is_competitor=True)
+        )
+        session.commit()
+
+    body = client.get("/settings").text
+
+    assert "keinem Mandanten" in body
+
+
+def test_a_portfolio_of_only_mandates_shows_no_yardstick_table(factory, client):
+    with factory() as session:
+        session.add(Client(name="Zalando", aliases=[], keywords=[], alert_topics=[]))
+        session.commit()
+
+    body = client.get("/settings").text
+
+    assert "Maßstab für" not in body
+    assert body.count('class="data data--clients"') == 1

@@ -294,6 +294,21 @@ class Client(Base):
         lazy="selectin",
     )
 
+    # The mandates this company is a yardstick for — the same table read the
+    # other way. Not a backref on ``competitors``: both directions are stored
+    # explicitly (see the table's own comment), so "X is measured against Y" must
+    # not silently imply the reverse. This is only for saying, on a competitor's
+    # row, whose comparison set it belongs to — a portfolio where every company
+    # looks alike is how a finance platform ended up beside fashion brands.
+    benchmark_for: Mapped[list["Client"]] = relationship(
+        "Client",
+        secondary=client_competitors,
+        primaryjoin=lambda: Client.id == client_competitors.c.competitor_id,
+        secondaryjoin=lambda: Client.id == client_competitors.c.client_id,
+        viewonly=True,
+        lazy="selectin",
+    )
+
     analyses: Mapped[list["Analysis"]] = relationship(
         back_populates="client", cascade="all, delete-orphan"
     )

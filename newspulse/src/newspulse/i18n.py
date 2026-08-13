@@ -255,6 +255,13 @@ _EN: dict[str, str] = {
     "ohne Branche": "no industry",
     "Andere Branche — selten sinnvoll": "Another industry \u2014 rarely useful",
     "Wettbewerber vorschlagen": "Suggest competitors",
+    "Mandanten gesamt": "clients in total",
+    "Maßstab für": "Yardstick for",
+    "Werden überwacht, damit Anteile vergleichbar sind — nie an sie berichtet, nie im Digest.":
+        "Monitored so shares are comparable \u2014 never reported to, never in the digest.",
+    "keinem Mandanten": "no client",
+    "Wird überwacht, aber keinem Mandanten zugeordnet — die Meldungen zählen nirgends.":
+        "Monitored but linked to no client \u2014 its items count towards nothing.",
     "Wettbewerber": "Competitors",
     "Wettbewerber für": "Competitors for",
     "In Einstellungen vorschlagen lassen": "Get suggestions under Settings",

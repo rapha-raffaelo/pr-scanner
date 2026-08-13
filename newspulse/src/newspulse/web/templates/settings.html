@@ -10,6 +10,239 @@
   {%- endif -%}
 {% endmacro %}
 
+{# One portfolio row plus its expanded edit form. A macro because the table
+   is rendered twice: mandates and yardsticks are different kinds of thing,
+   and reading them as one list made a five-row portfolio look like five
+   clients when only one was. #}
+{% macro client_row(client, t, onboarding, categories, rival_work, industry_work) %}
+              <tr id="client-{{ client.id }}" class="client-tr{% if not client.active %} client-tr--inactive{% endif %}">
+                <td class="cell-name">
+                  <a href="/client/{{ client.id }}">{{ client.name }}</a>
+                  {% if not client.active %}<span class="tag tag--inactive">{{ t("inaktiv") }}</span>{% endif %}
+                  {# Setup runs for minutes on a worker thread. Without this the
+                     only sign was the global header spinner, which also means
+                     "the nightly sweep is running" — so submitting the form and
+                     seeing nothing looked like the form had failed. #}
+                  {% set state = onboarding.get(client.id) %}
+                  {% if state == 'wartet' %}
+                    <span class="setup">{{ t("Einrichtung wartet auf den laufenden Lauf") }}</span>
+                  {% elif state == 'läuft' %}
+                    <span class="setup setup--busy"><span class="spinner" aria-hidden="true"></span>{{ t("wird eingerichtet") }}</span>
+                  {% elif state == 'entwürfe' %}
+                    <span class="setup setup--busy"><span class="spinner" aria-hidden="true"></span>{{ t("Impuls und Empfehlung werden erzeugt") }}</span>
+                  {% elif state and state.startswith('fertig:') %}
+                    <span class="setup setup--done">{{ t("eingerichtet") }} · {{ state.split(':', 1)[1] }} {{ t("Artikel") }}</span>
+                  {% elif state and state.startswith('fehler:') %}
+                    <span class="setup setup--bad" title="{{ state.split(':', 1)[1] }}">{{ t("Einrichtung fehlgeschlagen") }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {# One click flips the role. A competitor is monitored the same
+                     way but never reported to, and never appears in Heute. #}
+                  <form method="post" action="/settings/clients/{{ client.id }}/competitor">
+                    <button type="submit" class="rolebtn {{ 'rolebtn--rival' if client.is_competitor else 'rolebtn--mandate' }}"
+                            title="Umschalten — ein Wettbewerber wird beobachtet, aber nie an ihn berichtet">
+                      {{ t('Wettbewerb') if client.is_competitor else t('Mandant') }}
+                    </button>
+                  </form>
+                </td>
+                <td>{{ client.industry or '—' }}</td>
+                <td>{{ client.country }}</td>
+                <td class="cell-list" title="{{ client.aliases | join(', ') }}">{{ client.aliases | join(', ') or '—' }}</td>
+                <td class="cell-list" title="{{ client.keywords | join(', ') }}">{{ client.keywords | join(', ') }}{{ '—' if not client.keywords }}</td>
+                <td class="cell-list">
+                  {% if client.alert_topics %}
+                    {% for topic in client.alert_topics %}<span class="tag tag--topic">{{ topic }}</span>{% endfor %}
+                  {% else %}—{% endif %}
+                </td>
+                {# Accepting a proposal wrote the link and showed nothing for it:
+                   the panel closed, the table said nothing, and "gespeichert" was
+                   indistinguishable from "verworfen". This is the evidence.
+
+                   Read in whichever direction the row is: a mandate shows who it
+                   is measured against, a yardstick shows whom it is a yardstick
+                   for. Same table, same column, opposite question. #}
+                {% if client.is_competitor %}
+                  <td class="cell-list" title="{{ client.benchmark_for | map(attribute='name') | join(', ') }}">
+                    {% if client.benchmark_for %}
+                      {% for owner in client.benchmark_for %}<span class="tag tag--rival">{{ owner.name }}</span>{% endfor %}
+                    {% else %}
+                      <span class="setup setup--bad" title="{{ t('Wird überwacht, aber keinem Mandanten zugeordnet — die Meldungen zählen nirgends.') }}">{{ t("keinem Mandanten") }}</span>
+                    {% endif %}
+                  </td>
+                {% else %}
+                  <td class="cell-list" title="{{ client.competitors | map(attribute='name') | join(', ') }}">
+                    {% if client.competitors %}
+                      {% for rival in client.competitors %}<span class="tag tag--rival">{{ rival.name }}</span>{% endfor %}
+                    {% else %}—{% endif %}
+                  </td>
+                {% endif %}
+                <td class="col-actions">
+                  {% if edit_id == client.id %}
+                    <a class="rowlink" href="/settings">{{ t("Schließen") }}</a>
+                  {% else %}
+                    <a class="rowlink" href="/settings?edit={{ client.id }}#client-{{ client.id }}">{{ t("Bearbeiten") }}</a>
+                    {# Themes belong here for the same reason: they are what the
+                       radar searches, and searching the wrong thing is why a
+                       mandate can sit for months with nothing to say. #}
+                    <form method="post" action="/settings/clients/{{ client.id }}/themes">
+                      <button type="submit" class="linkbtn" title="{{ t('Marktthemen vorschlagen und gegen die echte Suche prüfen') }}">{{ t("Themen") }}</button>
+                    </form>
+                  {% endif %}
+                  {% if client.active %}
+                    <form method="post" action="/settings/clients/{{ client.id }}/deactivate">
+                      <button type="submit" class="linkbtn linkbtn--danger">{{ t("Deaktivieren") }}</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="/settings/clients/{{ client.id }}/reactivate">
+                      <button type="submit" class="linkbtn">{{ t("Reaktivieren") }}</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% if edit_id == client.id %}
+                <tr class="client-edit-tr" id="client-edit-{{ client.id }}">
+                  <td colspan="9">
+                    <form method="post" action="/settings/clients/{{ client.id }}" class="client-edit">
+                      <div class="import-fields">
+                        <div><label for="e-name-{{ client.id }}">Name*</label><input id="e-name-{{ client.id }}" type="text" name="name" value="{{ client.name }}" required></div>
+                        <div><label for="e-industry-{{ client.id }}">Branche</label><input id="e-industry-{{ client.id }}" type="text" name="industry" value="{{ client.industry or '' }}"></div>
+                        <div><label for="e-country-{{ client.id }}">Land</label><input id="e-country-{{ client.id }}" type="text" name="country" value="{{ client.country }}" placeholder="DE"></div>
+                        <div><label for="e-aliases-{{ client.id }}">Aliasse</label><input id="e-aliases-{{ client.id }}" type="text" name="aliases" value="{{ client.aliases | join(', ') }}" placeholder="Komma/Semikolon"></div>
+                        <div>
+                          <label for="e-keywords-{{ client.id }}">Suchbegriffe</label>
+                          <input id="e-keywords-{{ client.id }}" type="text" name="keywords" value="{{ client.keywords | join(', ') }}" placeholder="Komma/Semikolon">
+                          <p class="fieldhint">{{ t("entscheiden, was gefunden wird") }}</p>
+                        </div>
+                        <div>
+                          <label for="e-topics-{{ client.id }}">Alarm-Themen</label>
+                          <input id="e-topics-{{ client.id }}" type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}" placeholder="Komma/Semikolon">
+                          <p class="fieldhint">{{ t("stufen hoch, was schon gefunden wurde") }}</p>
+                        </div>
+                      </div>
+                      {# The standing noise filter. A listed retailer's ticker is
+                         three near-identical items a day; the category dropdown
+                         could hide them but forgot the choice every morning. #}
+                      <div class="mutebox">
+                        <span class="mutebox__label">{{ t("Im Tagesfeed ausblenden") }}</span>
+                        {% for c in categories %}
+                          <label class="mutebox__one">
+                            <input type="checkbox" name="muted_categories" value="{{ c }}"
+                                   {% if c in (client.muted_categories or []) %}checked{% endif %}>
+                            {{ t(c) | capitalize }}
+                          </label>
+                        {% endfor %}
+                        <p class="fieldhint">{{ t("Nur die Ansicht: die Artikel bleiben im Archiv, in den Zahlen und im Export.") }}</p>
+                      </div>
+                      <div class="actions">
+                        <button type="submit">{{ t("Speichern") }}</button>
+                        <a class="rowlink" href="/settings">{{ t("Abbrechen") }}</a>
+                      </div>
+                    </form>
+
+                    {# --- Industry ----------------------------------------- #}
+                    {# The field is a filter now, not a label: it decides which
+                       market news counts as this mandate's. A word the press does
+                       not write filters everything away — measured, "Beauty Tech"
+                       is nearly absent from German text while "Kosmetikindustrie"
+                       returns 8 items and "Kosmetik" 62. So the proposals carry
+                       their measurement, and adopting one adds it rather than
+                       replacing what somebody typed. #}
+                    <div class="editblock">
+                      <span class="editblock__label">{{ t("Branche als Suchfilter") }}</span>
+                      {% set iwork = industry_work.get(client.id) %}
+                      {% if iwork and iwork.state == 'läuft' %}
+                        <p class="fieldhint" hx-get="/settings?edit={{ client.id }}" hx-trigger="every 4s"
+                           hx-select="#client-edit-{{ client.id }}" hx-target="#client-edit-{{ client.id }}" hx-swap="outerHTML">
+                          <span class="spinner" aria-hidden="true"></span>
+                          {{ t("Branchenbegriffe werden vorgeschlagen und an der echten Suche gemessen.") }}
+                        </p>
+                      {% elif iwork and iwork.state == 'fehler' %}
+                        <p class="fieldhint">{{ t("Vorschlag fehlgeschlagen") }}: {{ iwork.error }}</p>
+                      {% elif iwork and iwork.state == 'fertig' %}
+                        <div class="rivals">
+                          {% for cand in iwork.candidates %}
+                            <form method="post" action="/settings/clients/{{ client.id }}/industry/accept" class="rivals__one">
+                              <input type="hidden" name="term" value="{{ cand.term }}">
+                              <button type="submit" class="rival {% if not cand.usable %}rival--empty{% endif %}">
+                                <span class="rival__name">+ {{ cand.term }}</span>
+                                <span class="rival__why">
+                                  {% if cand.usable %}<strong>{{ cand.hits }}</strong> {{ t("Meldungen in 90 Tagen") }}{% else %}{{ t("kaum Presse — als Filter unbrauchbar") }}{% endif %}
+                                </span>
+                              </button>
+                            </form>
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        <form method="post" action="/settings/clients/{{ client.id }}/industry">
+                          <button type="submit" class="btn btn--ghost">{{ t("Branche vorschlagen") }}</button>
+                        </form>
+                        <p class="fieldhint">{{ t("Der Begriff filtert Markt-Meldungen. Nur was die Presse auch schreibt, taugt dafür.") }}</p>
+                      {% endif %}
+                    </div>
+
+                    {# --- Competitors -------------------------------------- #}
+                    {# The map itself is the good part; it just had nowhere to
+                       live and nothing to show for a click. Outside the edit
+                       form on purpose: a form inside a form is invalid HTML, and
+                       the inner one silently never submits. #}
+                    <div class="editblock">
+                      <span class="editblock__label">{{ t("Wettbewerber") }}</span>
+                      {% if client.competitors %}
+                        <div class="rivals">
+                          {% for rival in client.competitors %}
+                            <form method="post" action="/client/{{ client.id }}/competitors/{{ rival.id }}/remove" class="rivals__one">
+                              <input type="hidden" name="redirect_to" value="/settings?edit={{ client.id }}">
+                              <span class="tag tag--rival">{{ rival.name }}</span>
+                              <button type="submit" class="linkbtn linkbtn--danger" title="{{ t('Verknüpfung lösen') }}">×</button>
+                            </form>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                      {% set work = rival_work.get(client.id) %}
+                      {% if work and work.state == 'läuft' %}
+                        <p class="fieldhint" hx-get="/settings?edit={{ client.id }}" hx-trigger="every 4s"
+                           hx-select="#client-edit-{{ client.id }}" hx-target="#client-edit-{{ client.id }}" hx-swap="outerHTML">
+                          <span class="spinner" aria-hidden="true"></span>
+                          {{ t("Wettbewerber werden vorgeschlagen — das dauert einen Moment.") }}
+                        </p>
+                      {% elif work and work.state == 'fehler' %}
+                        <p class="fieldhint">{{ t("Vorschlag fehlgeschlagen") }}: {{ work.error }}</p>
+                      {% elif work and work.state == 'fertig' and work.rivals %}
+                        <div class="rivals">
+                          {% for rival in work.rivals %}
+                            <form method="post" action="/client/{{ client.id }}/competitors/accept" class="rivals__one">
+                              <input type="hidden" name="name" value="{{ rival.name }}">
+                              <input type="hidden" name="redirect_to" value="/settings?edit={{ client.id }}">
+                              <button type="submit" class="rival" title="{{ rival.reason }}">
+                                <span class="rival__name">+ {{ rival.name }}</span>
+                                {% if rival.reason %}<span class="rival__why">{{ rival.reason }}</span>{% endif %}
+                              </button>
+                            </form>
+                          {% endfor %}
+                        </div>
+                      {% elif work and work.state == 'fertig' %}
+                        <p class="fieldhint">{{ t("Keine Wettbewerber vorgeschlagen — das Modell kennt dieses Unternehmen nicht sicher genug. Lieber keiner als ein erfundener.") }}</p>
+                      {% else %}
+                        <form method="post" action="/settings/clients/{{ client.id }}/rivals">
+                          <button type="submit" class="btn btn--ghost">{{ t("Wettbewerber vorschlagen") }}</button>
+                        </form>
+                      {% endif %}
+                    </div>
+
+                    {# --- Themes ------------------------------------------- #}
+                    <div class="editblock">
+                      <span class="editblock__label">{{ t("Themen") }}</span>
+                      <form method="post" action="/settings/clients/{{ client.id }}/themes">
+                        <button type="submit" class="btn btn--ghost">{{ t("Passende Themen vorschlagen") }}</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              {% endif %}
+{% endmacro %}
+
+
 {% block content %}
 {% set t = translator(request) %}
 <style>
@@ -256,7 +489,14 @@
       </details>
 
       {% if clients %}
-        <p class="table-caption">{{ clients | selectattr('active') | list | length }} {{ t("aktiv") }} · {{ clients | length }} {{ t("gesamt") }}</p>
+      {% set mandates = clients | rejectattr('is_competitor') | list %}
+      {% set yardsticks = clients | selectattr('is_competitor') | list %}
+
+      {% if mandates %}
+        <p class="table-caption">
+          {{ mandates | selectattr('active') | list | length }} {{ t("aktiv") }} ·
+          {{ mandates | length }} {{ t("Mandanten gesamt") }}
+        </p>
         <div class="table-scroll">
         <table class="data data--clients">
           <thead>
@@ -273,222 +513,41 @@
             </tr>
           </thead>
           <tbody>
-            {% for client in clients %}
-              <tr id="client-{{ client.id }}" class="client-tr{% if not client.active %} client-tr--inactive{% endif %}">
-                <td class="cell-name">
-                  <a href="/client/{{ client.id }}">{{ client.name }}</a>
-                  {% if not client.active %}<span class="tag tag--inactive">{{ t("inaktiv") }}</span>{% endif %}
-                  {# Setup runs for minutes on a worker thread. Without this the
-                     only sign was the global header spinner, which also means
-                     "the nightly sweep is running" — so submitting the form and
-                     seeing nothing looked like the form had failed. #}
-                  {% set state = onboarding.get(client.id) %}
-                  {% if state == 'wartet' %}
-                    <span class="setup">{{ t("Einrichtung wartet auf den laufenden Lauf") }}</span>
-                  {% elif state == 'läuft' %}
-                    <span class="setup setup--busy"><span class="spinner" aria-hidden="true"></span>{{ t("wird eingerichtet") }}</span>
-                  {% elif state == 'entwürfe' %}
-                    <span class="setup setup--busy"><span class="spinner" aria-hidden="true"></span>{{ t("Impuls und Empfehlung werden erzeugt") }}</span>
-                  {% elif state and state.startswith('fertig:') %}
-                    <span class="setup setup--done">{{ t("eingerichtet") }} · {{ state.split(':', 1)[1] }} {{ t("Artikel") }}</span>
-                  {% elif state and state.startswith('fehler:') %}
-                    <span class="setup setup--bad" title="{{ state.split(':', 1)[1] }}">{{ t("Einrichtung fehlgeschlagen") }}</span>
-                  {% endif %}
-                </td>
-                <td>
-                  {# One click flips the role. A competitor is monitored the same
-                     way but never reported to, and never appears in Heute. #}
-                  <form method="post" action="/settings/clients/{{ client.id }}/competitor">
-                    <button type="submit" class="rolebtn {{ 'rolebtn--rival' if client.is_competitor else 'rolebtn--mandate' }}"
-                            title="Umschalten — ein Wettbewerber wird beobachtet, aber nie an ihn berichtet">
-                      {{ t('Wettbewerb') if client.is_competitor else t('Mandant') }}
-                    </button>
-                  </form>
-                </td>
-                <td>{{ client.industry or '—' }}</td>
-                <td>{{ client.country }}</td>
-                <td class="cell-list" title="{{ client.aliases | join(', ') }}">{{ client.aliases | join(', ') or '—' }}</td>
-                <td class="cell-list" title="{{ client.keywords | join(', ') }}">{{ client.keywords | join(', ') }}{{ '—' if not client.keywords }}</td>
-                <td class="cell-list">
-                  {% if client.alert_topics %}
-                    {% for topic in client.alert_topics %}<span class="tag tag--topic">{{ topic }}</span>{% endfor %}
-                  {% else %}—{% endif %}
-                </td>
-                {# Accepting a proposal wrote the link and showed nothing for it:
-                   the panel closed, the table said nothing, and "gespeichert" was
-                   indistinguishable from "verworfen". This is the evidence. #}
-                <td class="cell-list" title="{{ client.competitors | map(attribute='name') | join(', ') }}">
-                  {% if client.competitors %}
-                    {% for rival in client.competitors %}<span class="tag tag--rival">{{ rival.name }}</span>{% endfor %}
-                  {% else %}—{% endif %}
-                </td>
-                <td class="col-actions">
-                  {% if edit_id == client.id %}
-                    <a class="rowlink" href="/settings">{{ t("Schließen") }}</a>
-                  {% else %}
-                    <a class="rowlink" href="/settings?edit={{ client.id }}#client-{{ client.id }}">{{ t("Bearbeiten") }}</a>
-                    {# Themes belong here for the same reason: they are what the
-                       radar searches, and searching the wrong thing is why a
-                       mandate can sit for months with nothing to say. #}
-                    <form method="post" action="/settings/clients/{{ client.id }}/themes">
-                      <button type="submit" class="linkbtn" title="{{ t('Marktthemen vorschlagen und gegen die echte Suche prüfen') }}">{{ t("Themen") }}</button>
-                    </form>
-                  {% endif %}
-                  {% if client.active %}
-                    <form method="post" action="/settings/clients/{{ client.id }}/deactivate">
-                      <button type="submit" class="linkbtn linkbtn--danger">{{ t("Deaktivieren") }}</button>
-                    </form>
-                  {% else %}
-                    <form method="post" action="/settings/clients/{{ client.id }}/reactivate">
-                      <button type="submit" class="linkbtn">{{ t("Reaktivieren") }}</button>
-                    </form>
-                  {% endif %}
-                </td>
-              </tr>
-              {% if edit_id == client.id %}
-                <tr class="client-edit-tr" id="client-edit-{{ client.id }}">
-                  <td colspan="9">
-                    <form method="post" action="/settings/clients/{{ client.id }}" class="client-edit">
-                      <div class="import-fields">
-                        <div><label for="e-name-{{ client.id }}">Name*</label><input id="e-name-{{ client.id }}" type="text" name="name" value="{{ client.name }}" required></div>
-                        <div><label for="e-industry-{{ client.id }}">Branche</label><input id="e-industry-{{ client.id }}" type="text" name="industry" value="{{ client.industry or '' }}"></div>
-                        <div><label for="e-country-{{ client.id }}">Land</label><input id="e-country-{{ client.id }}" type="text" name="country" value="{{ client.country }}" placeholder="DE"></div>
-                        <div><label for="e-aliases-{{ client.id }}">Aliasse</label><input id="e-aliases-{{ client.id }}" type="text" name="aliases" value="{{ client.aliases | join(', ') }}" placeholder="Komma/Semikolon"></div>
-                        <div>
-                          <label for="e-keywords-{{ client.id }}">Suchbegriffe</label>
-                          <input id="e-keywords-{{ client.id }}" type="text" name="keywords" value="{{ client.keywords | join(', ') }}" placeholder="Komma/Semikolon">
-                          <p class="fieldhint">{{ t("entscheiden, was gefunden wird") }}</p>
-                        </div>
-                        <div>
-                          <label for="e-topics-{{ client.id }}">Alarm-Themen</label>
-                          <input id="e-topics-{{ client.id }}" type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}" placeholder="Komma/Semikolon">
-                          <p class="fieldhint">{{ t("stufen hoch, was schon gefunden wurde") }}</p>
-                        </div>
-                      </div>
-                      {# The standing noise filter. A listed retailer's ticker is
-                         three near-identical items a day; the category dropdown
-                         could hide them but forgot the choice every morning. #}
-                      <div class="mutebox">
-                        <span class="mutebox__label">{{ t("Im Tagesfeed ausblenden") }}</span>
-                        {% for c in categories %}
-                          <label class="mutebox__one">
-                            <input type="checkbox" name="muted_categories" value="{{ c }}"
-                                   {% if c in (client.muted_categories or []) %}checked{% endif %}>
-                            {{ t(c) | capitalize }}
-                          </label>
-                        {% endfor %}
-                        <p class="fieldhint">{{ t("Nur die Ansicht: die Artikel bleiben im Archiv, in den Zahlen und im Export.") }}</p>
-                      </div>
-                      <div class="actions">
-                        <button type="submit">{{ t("Speichern") }}</button>
-                        <a class="rowlink" href="/settings">{{ t("Abbrechen") }}</a>
-                      </div>
-                    </form>
-
-                    {# --- Industry ----------------------------------------- #}
-                    {# The field is a filter now, not a label: it decides which
-                       market news counts as this mandate's. A word the press does
-                       not write filters everything away — measured, "Beauty Tech"
-                       is nearly absent from German text while "Kosmetikindustrie"
-                       returns 8 items and "Kosmetik" 62. So the proposals carry
-                       their measurement, and adopting one adds it rather than
-                       replacing what somebody typed. #}
-                    <div class="editblock">
-                      <span class="editblock__label">{{ t("Branche als Suchfilter") }}</span>
-                      {% set iwork = industry_work.get(client.id) %}
-                      {% if iwork and iwork.state == 'läuft' %}
-                        <p class="fieldhint" hx-get="/settings?edit={{ client.id }}" hx-trigger="every 4s"
-                           hx-select="#client-edit-{{ client.id }}" hx-target="#client-edit-{{ client.id }}" hx-swap="outerHTML">
-                          <span class="spinner" aria-hidden="true"></span>
-                          {{ t("Branchenbegriffe werden vorgeschlagen und an der echten Suche gemessen.") }}
-                        </p>
-                      {% elif iwork and iwork.state == 'fehler' %}
-                        <p class="fieldhint">{{ t("Vorschlag fehlgeschlagen") }}: {{ iwork.error }}</p>
-                      {% elif iwork and iwork.state == 'fertig' %}
-                        <div class="rivals">
-                          {% for cand in iwork.candidates %}
-                            <form method="post" action="/settings/clients/{{ client.id }}/industry/accept" class="rivals__one">
-                              <input type="hidden" name="term" value="{{ cand.term }}">
-                              <button type="submit" class="rival {% if not cand.usable %}rival--empty{% endif %}">
-                                <span class="rival__name">+ {{ cand.term }}</span>
-                                <span class="rival__why">
-                                  {% if cand.usable %}<strong>{{ cand.hits }}</strong> {{ t("Meldungen in 90 Tagen") }}{% else %}{{ t("kaum Presse — als Filter unbrauchbar") }}{% endif %}
-                                </span>
-                              </button>
-                            </form>
-                          {% endfor %}
-                        </div>
-                      {% else %}
-                        <form method="post" action="/settings/clients/{{ client.id }}/industry">
-                          <button type="submit" class="btn btn--ghost">{{ t("Branche vorschlagen") }}</button>
-                        </form>
-                        <p class="fieldhint">{{ t("Der Begriff filtert Markt-Meldungen. Nur was die Presse auch schreibt, taugt dafür.") }}</p>
-                      {% endif %}
-                    </div>
-
-                    {# --- Competitors -------------------------------------- #}
-                    {# The map itself is the good part; it just had nowhere to
-                       live and nothing to show for a click. Outside the edit
-                       form on purpose: a form inside a form is invalid HTML, and
-                       the inner one silently never submits. #}
-                    <div class="editblock">
-                      <span class="editblock__label">{{ t("Wettbewerber") }}</span>
-                      {% if client.competitors %}
-                        <div class="rivals">
-                          {% for rival in client.competitors %}
-                            <form method="post" action="/client/{{ client.id }}/competitors/{{ rival.id }}/remove" class="rivals__one">
-                              <input type="hidden" name="redirect_to" value="/settings?edit={{ client.id }}">
-                              <span class="tag tag--rival">{{ rival.name }}</span>
-                              <button type="submit" class="linkbtn linkbtn--danger" title="{{ t('Verknüpfung lösen') }}">×</button>
-                            </form>
-                          {% endfor %}
-                        </div>
-                      {% endif %}
-                      {% set work = rival_work.get(client.id) %}
-                      {% if work and work.state == 'läuft' %}
-                        <p class="fieldhint" hx-get="/settings?edit={{ client.id }}" hx-trigger="every 4s"
-                           hx-select="#client-edit-{{ client.id }}" hx-target="#client-edit-{{ client.id }}" hx-swap="outerHTML">
-                          <span class="spinner" aria-hidden="true"></span>
-                          {{ t("Wettbewerber werden vorgeschlagen — das dauert einen Moment.") }}
-                        </p>
-                      {% elif work and work.state == 'fehler' %}
-                        <p class="fieldhint">{{ t("Vorschlag fehlgeschlagen") }}: {{ work.error }}</p>
-                      {% elif work and work.state == 'fertig' and work.rivals %}
-                        <div class="rivals">
-                          {% for rival in work.rivals %}
-                            <form method="post" action="/client/{{ client.id }}/competitors/accept" class="rivals__one">
-                              <input type="hidden" name="name" value="{{ rival.name }}">
-                              <input type="hidden" name="redirect_to" value="/settings?edit={{ client.id }}">
-                              <button type="submit" class="rival" title="{{ rival.reason }}">
-                                <span class="rival__name">+ {{ rival.name }}</span>
-                                {% if rival.reason %}<span class="rival__why">{{ rival.reason }}</span>{% endif %}
-                              </button>
-                            </form>
-                          {% endfor %}
-                        </div>
-                      {% elif work and work.state == 'fertig' %}
-                        <p class="fieldhint">{{ t("Keine Wettbewerber vorgeschlagen — das Modell kennt dieses Unternehmen nicht sicher genug. Lieber keiner als ein erfundener.") }}</p>
-                      {% else %}
-                        <form method="post" action="/settings/clients/{{ client.id }}/rivals">
-                          <button type="submit" class="btn btn--ghost">{{ t("Wettbewerber vorschlagen") }}</button>
-                        </form>
-                      {% endif %}
-                    </div>
-
-                    {# --- Themes ------------------------------------------- #}
-                    <div class="editblock">
-                      <span class="editblock__label">{{ t("Themen") }}</span>
-                      <form method="post" action="/settings/clients/{{ client.id }}/themes">
-                        <button type="submit" class="btn btn--ghost">{{ t("Passende Themen vorschlagen") }}</button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              {% endif %}
-            {% endfor %}
+            {% for client in mandates %}{{ client_row(client, t, onboarding, categories, rival_work, industry_work) }}{% endfor %}
           </tbody>
         </table>
         </div>
+      {% endif %}
+
+      {# Kept apart, and labelled for whom. A competitor is monitored exactly like
+         a mandate — that is what makes its mention count comparable — but it is a
+         yardstick, not work to be done. #}
+      {% if yardsticks %}
+        <h2 class="panel-subhead">{{ yardsticks | length }} {{ t("Wettbewerber") }}</h2>
+        <p class="table-caption">
+          {{ t("Werden überwacht, damit Anteile vergleichbar sind — nie an sie berichtet, nie im Digest.") }}
+        </p>
+        <div class="table-scroll">
+        <table class="data data--clients">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("Name") }}</th>
+              <th scope="col">{{ t("Rolle") }}</th>
+              <th scope="col">{{ t("Branche") }}</th>
+              <th scope="col">{{ t("Land") }}</th>
+              <th scope="col">{{ t("Aliasse") }}</th>
+              <th scope="col">{{ t("Suchbegriffe") }}</th>
+              <th scope="col">{{ t("Alarm-Themen") }}</th>
+              <th scope="col">{{ t("Maßstab für") }}</th>
+              <th scope="col" class="col-actions">{{ t("Aktionen") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for client in yardsticks %}{{ client_row(client, t, onboarding, categories, rival_work, industry_work) }}{% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% endif %}
       {% else %}
         <p class="rail__empty">{{ t("Noch keine Clients. Über das Formular oder den Import anlegen.") }}</p>
       {% endif %}
