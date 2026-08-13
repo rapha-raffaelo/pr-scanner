@@ -115,6 +115,13 @@ _EN: dict[str, str] = {
     # opened up — where a literal "impulse" would read as a mood.
     "Impulse": "Openings",
     "Kein Anlass heute.": "No opening today.",
+    "Mandant ohne Impuls": "client with no opening",
+    "Mandanten ohne Impuls": "clients with no opening",
+    "Marktmeldung(en) gesichtet — keine davon trug.":
+        "market item(s) \u2014 none of them held up.",
+    "Kein Themen-Radar — ohne hinterlegte Themen lässt sich nicht bestimmen, welche Marktmeldung ihn angeht.":
+        "No topic radar \u2014 without themes there is no way to tell which market "
+        "item concerns them.",
     # The age of a draft. It may stand for a week, so every card says how old it
     # is — otherwise Monday's work reads as this morning's every morning.
     "aus dem Radar von heute": "from today's radar",
@@ -293,6 +300,17 @@ _EN: dict[str, str] = {
     "Vollständige Tabelle": "Full table",
     "Medien": "outlets",
     "Medium": "Outlet",
+    # A map with nothing to plot used to render as an empty white box with a
+    # legend across it, which reads as a broken page rather than as an answer.
+    "Noch kein Wettbewerber hinterlegt.": "No competitor recorded yet.",
+    "Diese Karte vergleicht, welche Medien über den Wettbewerb schreiben und über diesen Mandanten nicht — ohne Vergleichsgruppe gibt es nichts zu vergleichen.":
+        "This map compares which outlets write about the competition and not "
+        "about this client — with no peer group there is nothing to compare.",
+    "Vergleichsgruppe festlegen": "Set the peer group",
+    "Zu wenig Berichterstattung im Zeitraum.": "Too little coverage in the period.",
+    "Tagen kam für Mandant und Wettbewerb zusammen zu wenig zusammen, um Medien gegeneinander zu stellen":
+        "days there was too little coverage of client and competition combined to "
+        "set outlets against each other",
     # --- Advice --------------------------------------------------------------
     "Zeitraum": "Period",
     "Letzte 7 Tage": "Last 7 days",
@@ -328,6 +346,33 @@ _EN: dict[str, str] = {
     "Impuls": "Opening",
     "Marktmeldung(en) für diesen Mandanten gesammelt, aber noch keinen Anlass daraus gemacht.":
         "market item(s) for this client, but has not made an opening of them yet.",
+    # --- From a position to a message ----------------------------------------
+    # The "Empfehlungen" panel became a button on the impulse: the difference
+    # between the two panels was never legible, and only one of them produced
+    # something sendable.
+    "Personalisierte Nachricht erzeugen": "Write a personalised message",
+    "Als Anschreiben an": "As a letter to",
+    ", mit dem, was über den Mandanten geschrieben wurde.":
+        ", drawing on what has been written about the client.",
+    "Macht aus der Positionierung ein Anschreiben — an eine Fachredaktion Ihrer Wahl.":
+        "Turns the position into a letter — to a trade desk of your choosing.",
+    "Die Nachricht wird geschrieben — die Seite aktualisiert sich, sobald sie steht.":
+        "Writing the message — the page will refresh itself once it is ready.",
+    "Keine Nachricht erzeugt.": "No message written.",
+    "Nachricht": "Message",
+    "An": "To",
+    "Betreff": "Subject",
+    "Fachredaktion": "trade desk",
+    "Warum diese:r": "Why them",
+    "verwertbare Marktmeldung(en) für diesen Mandanten — daraus ist noch kein Impuls entstanden. Der Knopf oben fragt direkt.":
+        "usable market item(s) for this client — no opening has been made of them "
+        "yet. The button above asks directly.",
+    "Kein verwertbares Marktmaterial.": "No usable market material.",
+    "Treffer gesammelt, aber keiner davon liegt in den letzten":
+        "hits, but none of them falls within the last",
+    "Tagen und handelt von etwas anderem als vom Mandanten selbst. Ein Impuls braucht ein Thema, über das auch ohne ihn geschrieben wird.":
+        "days while being about something other than the client itself. An opening "
+        "needs a theme the press writes about without them.",
     "Für diesen Mandanten läuft noch kein Themen-Radar — ohne hinterlegte Themen entsteht auch kein Impuls.":
         "No topic radar is running for this client — without themes there is no "
         "opening either.",

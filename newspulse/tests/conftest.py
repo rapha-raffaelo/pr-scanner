@@ -49,4 +49,49 @@ def no_background_impulse(monkeypatch):
     """
     from newspulse.web.routes import advisory
 
-    monkeypatch.setattr(advisory, "_run_impulse", lambda *args, **kwargs: None)
+    monkeypatch.setattr(advisory, "_run_impulse", _stub(advisory, "_drafting"))
+
+
+@pytest.fixture(autouse=True)
+def no_background_message(monkeypatch):
+    """Same for the "write me the message" button, for the same two reasons: it
+    shells out to `claude` and it holds the run guard while it does.
+
+    Yields the real worker, so the one test that is *about* the worker
+    (``test_runstatus``) can call it deliberately rather than reaching around the
+    patch this fixture just installed.
+    """
+    from newspulse.web.routes import advisory
+
+    original = advisory._run_outreach
+    monkeypatch.setattr(advisory, "_run_outreach", _stub(advisory, "_writing"))
+    return original
+
+
+def _stub(module, lock_name: str):
+    """A stand-in worker that releases its lock the way the real one does.
+
+    Both routes acquire before starting the thread and rely on the worker's
+    ``finally`` to let go. A stub that only returns leaves the lock held for the
+    rest of the process — which is invisible until some later test tries to take
+    it and the whole run hangs there instead of failing. Ask how long that took to
+    find once.
+    """
+
+    def _release(*args, **kwargs):
+        try:
+            getattr(module, lock_name).release()
+        except RuntimeError:  # called without the route having acquired it
+            pass
+
+    return _release
+
+
+@pytest.fixture(autouse=True)
+def background_locks_are_free():
+    """Fail the test that leaked one, rather than the innocent test that waits."""
+    from newspulse.web.routes import advisory
+
+    yield
+    for name in ("_drafting", "_writing"):
+        assert not getattr(advisory, name).locked(), f"a test left {name} held"

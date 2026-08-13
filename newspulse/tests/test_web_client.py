@@ -629,62 +629,12 @@ def test_the_client_tab_leads_with_its_positioning_drafts(factory, client):
 
     assert "Börsenschließungen: Liquidität als Infrastruktur" in body
     assert "Zwei Absätze Text." in body
-    # And the recommendations keep their own section rather than the whole page.
-    assert "Empfehlungen" in body
+    # And the position offers the one thing you can do with it. The second panel
+    # this replaced was called "Empfehlungen" and nobody could say how it differed
+    # from the draft above it — it differed by not being sendable.
+    assert "Personalisierte Nachricht erzeugen" in body
+    assert "Empfehlungen" not in body
 
-
-def test_the_advice_period_survives_the_page(factory, client):
-    """Regression: the select always rendered "Letzte 30 Tage".
-
-    Asking for ninety days generated a brief over ninety and then came back
-    reporting "0 Artikel" for thirty — the count, the window and the option
-    disagreed, and the page looked like it had found nothing when it had not
-    looked.
-    """
-    import datetime as dt
-
-    from newspulse.models import Analysis, Article, Category
-
-    with factory() as session:
-        subject = Client(name="IB-7", aliases=[], keywords=[], alert_topics=[])
-        session.add(subject)
-        session.flush()
-        # Forty-four days old: inside ninety, outside thirty.
-        article = Article(
-            title="IB-7 in einer Startup-Sammelmeldung",
-            url="https://ex.de/juni",
-            source="deutsche-startups.de",
-            published_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=44),
-            fetched_at=dt.datetime.now(dt.UTC),
-            summary_text=None,
-            language="de",
-            title_hash="juni0001",
-        )
-        session.add(article)
-        session.flush()
-        session.add(
-            Analysis(
-                article_id=article.id,
-                client_id=subject.id,
-                summary="s",
-                category=Category.SONSTIGES,
-                relevance_score=5,
-                importance_score=4,
-                is_alert=False,
-            )
-        )
-        session.commit()
-        subject_id = subject.id
-
-    # The default window is ninety days, so the forty-four-day-old article is in
-    # it; a week is not. Same article, two windows, two honest counts.
-    default = client.get(f"/client/{subject_id}/advice").text
-    week = client.get(f"/client/{subject_id}/advice?days=7").text
-
-    assert "1 Artikel in 90 Tagen" in " ".join(default.split())
-    assert "0 Artikel in 7 Tagen" in " ".join(week.split())
-    # And the select keeps the choice rather than snapping back.
-    assert '<option value="7" selected>' in week.replace("\n", "")
 
 
 def test_a_running_draft_makes_the_page_fetch_its_own_result(factory, client):
@@ -723,78 +673,5 @@ def test_a_running_draft_makes_the_page_fetch_its_own_result(factory, client):
     assert f'hx-get="/client/{subject_id}/advice"' in busy
 
 
-def test_an_unknown_period_falls_back_instead_of_erroring(factory, client):
-    with factory() as session:
-        subject = Client(name="IB-7", aliases=[], keywords=[], alert_topics=[])
-        session.add(subject)
-        session.commit()
-        subject_id = subject.id
-
-    resp = client.get(f"/client/{subject_id}/advice?days=irgendwas")
-
-    assert resp.status_code == 200
-    assert "90 Tagen" in " ".join(resp.text.split())
 
 
-def test_the_count_beside_the_window_is_the_window_not_the_prompts_cap(factory, client):
-    """Widening the window has to change the number the reader is shown.
-
-    The label reported how much coverage went into the prompt, which stops at
-    forty — so thirty days, ninety and a hundred and eighty all read "40 Artikel"
-    and the control looked broken. It now reports what the window holds, and says
-    separately how much of it the draft uses.
-    """
-    import datetime as dt
-
-    from newspulse.models import Analysis, Article, Category
-
-    with factory() as session:
-        subject = Client(name="Vielbeachtet", aliases=[], keywords=[], alert_topics=[])
-        session.add(subject)
-        session.flush()
-        for i in range(45):
-            article = Article(
-                title=f"Meldung {i}",
-                url=f"https://ex.de/{i}",
-                source="Handelsblatt",
-                published_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=2),
-                fetched_at=dt.datetime.now(dt.UTC),
-                summary_text=None,
-                language="de",
-                title_hash=f"h{i:04d}",
-            )
-            session.add(article)
-            session.flush()
-            session.add(
-                Analysis(
-                    article_id=article.id,
-                    client_id=subject.id,
-                    summary="s",
-                    category=Category.SONSTIGES,
-                    relevance_score=5,
-                    importance_score=4,
-                    is_alert=False,
-                )
-            )
-        session.commit()
-        subject_id = subject.id
-
-    body = " ".join(client.get(f"/client/{subject_id}/advice").text.split())
-
-    assert "45 Artikel in 90 Tagen" in body
-    assert "40" in body, "and it says how many of them reach the draft"
-
-
-def test_half_a_year_is_offered_for_a_sparsely_covered_mandate(factory, client):
-    """A young company is written about a few times a quarter. Thirty days told
-    it "0 Artikel" and offered nothing; the window has to reach its coverage."""
-    with factory() as session:
-        subject = Client(name="IB-7", aliases=[], keywords=[], alert_topics=[])
-        session.add(subject)
-        session.commit()
-        subject_id = subject.id
-
-    body = client.get(f"/client/{subject_id}/advice?days=180").text
-
-    assert '<option value="180" selected>' in body.replace("\n", "")
-    assert "180 Tagen" in " ".join(body.split())

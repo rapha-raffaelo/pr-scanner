@@ -346,35 +346,41 @@
       </article>
     {% endfor %}
 
-    {# Mandates with no draft. The column has to say something, or an empty rail
-       reads as a broken feature instead of a market that gave nothing away — and
-       what it says has to be true: a radar that ran and found no opening is
-       working, a mandate with no themes is not set up. #}
-    {% for quiet in quiet_clients %}
-      <article class="impulse impulse--quiet">
-        <div class="impulse__head"><span class="clichip">{{ quiet.client_name }}</span></div>
-        {% if quiet.has_themes %}
-          <p class="impulse__lead">{{ t("Kein Anlass in den letzten") }} {{ angle_days }} {{ t("Tagen") }}.</p>
-          <p class="impulse__why">
-            {% if quiet.seen %}
-              {{ t("Das Themen-Radar hat") }} {{ quiet.seen }}
-              {{ t("Marktmeldung(en) gesichtet — keine davon berührt den Kern des Mandanten stark genug für eine Positionierung.") }}
-            {% else %}
-              {{ t("Das Themen-Radar hat in diesem Zeitraum nichts gefunden.") }}
+    {# Only actual openings in the column called Openings.
+
+       Every mandate without one used to get a card of the same size saying so,
+       so a portfolio of eight put two drafts among six explanations and the
+       reader had to sort them out. The explanations still exist — a rail that
+       goes quiet without saying why reads as a broken feature — but they belong
+       under the drafts, folded, not beside them. #}
+    {% if quiet_clients %}
+      <details class="quietfold">
+        <summary>
+          {{ quiet_clients | length }}
+          {% if quiet_clients | length == 1 %}{{ t("Mandant ohne Impuls") }}{% else %}{{ t("Mandanten ohne Impuls") }}{% endif %}
+        </summary>
+        {% for quiet in quiet_clients %}
+          <div class="quietrow">
+            <a class="quietrow__who" href="/client/{{ quiet.client_id }}/advice">{{ quiet.client_name }}</a>
+            <span class="quietrow__why">
+              {% if quiet.note %}
+                {{ quiet.note }}
+              {% elif not quiet.has_themes %}
+                {{ t("Kein Themen-Radar — ohne hinterlegte Themen lässt sich nicht bestimmen, welche Marktmeldung ihn angeht.") }}
+              {% elif quiet.seen %}
+                {{ t("Das Themen-Radar hat") }} {{ quiet.seen }}
+                {{ t("Marktmeldung(en) gesichtet — keine davon trug.") }}
+              {% else %}
+                {{ t("Das Themen-Radar hat in diesem Zeitraum nichts gefunden.") }}
+              {% endif %}
+            </span>
+            {% if not quiet.has_themes %}
+              <a class="quietrow__act" href="/settings?edit={{ quiet.client_id }}">{{ t("Themen hinterlegen") }} →</a>
             {% endif %}
-          </p>
-          <p class="impulse__act">
-            <a href="/client/{{ quiet.client_id }}/market">{{ t("Marktumfeld ansehen") }} →</a>
-          </p>
-        {% else %}
-          <p class="impulse__lead">{{ t("Kein Themen-Radar für diesen Mandanten.") }}</p>
-          <p class="impulse__why">{{ t("Ohne hinterlegte Themen lässt sich nicht bestimmen, welche Marktmeldung ihn angeht. Zwei bis drei Begriffe genügen.") }}</p>
-          <p class="impulse__act">
-            <a href="/settings?edit={{ quiet.client_id }}">{{ t("Themen hinterlegen") }} →</a>
-          </p>
-        {% endif %}
-      </article>
-    {% endfor %}
+          </div>
+        {% endfor %}
+      </details>
+    {% endif %}
 
     {% if not angles and not quiet_clients %}
       <p class="rail__empty">{{ t("Kein Anlass heute.") }}</p>

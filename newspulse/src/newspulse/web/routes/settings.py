@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from ... import advisor, config, industry, job, rivals, themes
+from ... import angles, config, industry, job, outreach, pitch, rivals, themes
 from ...analyzer import get_analyzer
 from ...db import get_session
 from ...clients import (
@@ -190,22 +190,26 @@ def _settle_industry(session: Session, client: Client) -> None:
 
 
 def _first_drafts(session: Session, client: Client) -> None:
-    """Give a brand-new mandate something on both halves of its Impulse page.
+    """Give a brand-new mandate a position and a message to send it as.
 
     "Sobald ein Mandant angelegt ist, sollte eigentlich immer ein Impuls und eine
     Empfehlung platziert sein — das sollte nie leer sein."
 
     Until now the page was empty until the next nightly sweep, which is a poor
-    first impression of a tool whose whole promise is "here is what to say". Both
-    halves are attempted here, in the order their inputs arrive: the archive is
-    linked to the client's themes first (the backfill has just stored coverage and
-    the industry is settled, so there is finally something to match against), then
-    the positioning from that market material, then the recommendation from the
-    client's own press.
+    first impression of a tool whose whole promise is "here is what to say". The
+    steps run in the order their inputs arrive: the archive is linked to the
+    client's themes first (the backfill has just stored coverage and the industry
+    is settled, so there is finally something to match against), then the
+    positioning from that market material, then the letter that carries it to the
+    first recipient the pitch list can name.
+
+    That last step used to be a separate "recommendation" read off the client's
+    own press. It is the same material — the coverage is what makes a stranger's
+    pitch credible — doing a job instead of describing one.
 
     Attempted, not guaranteed. With no market material the model has nothing to
     position against and says so, and manufacturing an opening to fill the panel
-    is the one thing this feature must never do. Each half is isolated: a mandate
+    is the one thing this feature must never do. Each step is isolated: a mandate
     must still arrive if one of them fails.
     """
     now = dt.datetime.now(dt.UTC)
@@ -214,7 +218,7 @@ def _first_drafts(session: Session, client: Client) -> None:
             session, [client], now - job.IMPULSE_LOOKBACK, now
         )
         _log.info("onboarding linked %d archived article(s) for %r", linked, client.name)
-    except Exception:  # noqa: BLE001 — one half must not take the other with it
+    except Exception:  # noqa: BLE001 — one step must not take the others with it
         _log.exception("archive linking during onboarding failed for %r", client.name)
 
     try:
@@ -223,16 +227,20 @@ def _first_drafts(session: Session, client: Client) -> None:
         _log.exception("first impulse for %r failed", client.name)
 
     try:
-        # Only with coverage to react to: an advisory reads the client's own press,
-        # and asking the model about an empty window spends a call to be told so.
-        if advisor.recent_coverage(session, client.id):
-            brief, coverage = advisor.advise(session, client)
-            advisor.store(session, client, brief, coverage, days=advisor.DEFAULT_DAYS)
-            _log.info(
-                "first advisory for %r: %d suggestion(s)", client.name, len(brief.suggestions)
+        # Only if there is a position to carry. Without an impulse there is
+        # nothing to personalise, and a letter with no thesis in it is a form.
+        first = angles.latest(session, client.id)
+        if first is not None:
+            targets = pitch.targets_for(session, client, first)
+            message = outreach.draft(
+                session, client, first, targets[0] if targets else None
             )
+            outreach.store(
+                session, client, first, message, targets[0] if targets else None
+            )
+            _log.info("first message for %r written", client.name)
     except Exception:  # noqa: BLE001
-        _log.exception("first advisory for %r failed", client.name)
+        _log.exception("first message for %r failed", client.name)
 
 
 def _start_onboarding(client_id: int, name: str) -> None:

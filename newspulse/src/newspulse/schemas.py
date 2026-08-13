@@ -186,6 +186,29 @@ class AngleDraft(BaseModel):
     evidence: list[int] = Field(default_factory=list)
 
 
+# --- Outreach: the impulse, written at one recipient -----------------------------
+
+
+class PersonalMessage(BaseModel):
+    """A sendable message to one journalist, built from a positioning draft.
+
+    The impulse is the position; this is the letter. It is what the old
+    "Empfehlung" panel was reaching for and never quite delivered — that one
+    described work ("react to the coverage") where this one does it.
+
+    ``hook`` is for the consultant only and never for the recipient: it says what
+    the journalist wrote that this answers, so the pitch can be checked before it
+    goes out. Keeping it out of ``message`` is what lets the copy button take the
+    text and nothing around it.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    subject: str = ""
+    message: str
+    hook: str = ""
+
+
 # --- Coach: does the guide hold up against the actual coverage? ------------------
 
 

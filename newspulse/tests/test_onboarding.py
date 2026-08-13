@@ -423,22 +423,26 @@ def test_a_rejected_client_starts_nothing(monkeypatch):
 # --- A new mandate must not open on two empty panels -----------------------------
 
 
-def test_onboarding_drafts_both_halves(monkeypatch):
+def test_onboarding_drafts_a_position_and_the_message_for_it(monkeypatch):
     """"Sobald ein Mandant angelegt ist, sollte immer ein Impuls und eine
     Empfehlung platziert sein — das sollte nie leer sein."
 
     Both were only produced by the nightly sweep, so a mandate created at ten in
     the morning showed two empty panels until the next day — a poor first
     impression of a tool whose whole promise is "here is what to say".
+
+    The second half is no longer a "recommendation" panel: it is the letter that
+    carries the position to a named recipient, which is the same material doing a
+    job instead of describing one.
     """
     import datetime as dt
 
     from sqlalchemy.orm import sessionmaker
 
-    from newspulse import advisor, job
+    from newspulse import job, outreach
     from newspulse.db import make_engine
-    from newspulse.models import Analysis, Article, Base, Category, Client
-    from newspulse.schemas import AdvisoryBrief
+    from newspulse.models import Angle, Base, Client
+    from newspulse.schemas import PersonalMessage
     from newspulse.web.routes import settings as settings_routes
 
     engine = make_engine("sqlite:///:memory:")
@@ -453,19 +457,11 @@ def test_onboarding_drafts_both_halves(monkeypatch):
         )
         session.add(client)
         session.flush()
-        article = Article(
-            title="Neu AG senkt Retouren", url="https://ex.de/neu",
-            source="Textilwirtschaft", published_at=dt.datetime.now(dt.UTC),
-            fetched_at=dt.datetime.now(dt.UTC), summary_text=None,
-            language="de", title_hash="neu00001",
-        )
-        session.add(article)
-        session.flush()
         session.add(
-            Analysis(
-                article_id=article.id, client_id=client.id, summary="s",
-                category=Category.PRODUKT, relevance_score=6,
-                importance_score=6, is_alert=False,
+            Angle(
+                client_id=client.id, generated_at=dt.datetime.now(dt.UTC),
+                subject="Retouren als Kostenfrage", message="Zwei Absätze.",
+                context="c", thesis="Die Quote ist eine Prozessfrage.",
             )
         )
         session.commit()
@@ -478,24 +474,23 @@ def test_onboarding_drafts_both_halves(monkeypatch):
             job, "_refresh_impulses", lambda *a, **k: called.append("impulse") or 1
         )
         monkeypatch.setattr(
-            advisor, "advise",
+            outreach, "draft",
             lambda *a, **k: (
-                called.append("advise")
-                or (AdvisoryBrief(situation="Lage", suggestions=[]), []),
-            )[0],
+                called.append("wrote") or PersonalMessage(message="Sehr geehrte…")
+            ),
         )
-        monkeypatch.setattr(advisor, "store", lambda *a, **k: called.append("stored"))
+        monkeypatch.setattr(outreach, "store", lambda *a, **k: called.append("stored"))
 
         settings_routes._first_drafts(session, client)
 
-    assert called == ["linked", "impulse", "advise", "stored"]
+    assert called == ["linked", "impulse", "wrote", "stored"]
 
 
 def test_a_failing_half_never_takes_the_other_with_it(monkeypatch):
     """A mandate must still arrive if one draft fails."""
     from sqlalchemy.orm import sessionmaker
 
-    from newspulse import advisor, job
+    from newspulse import job
     from newspulse.db import make_engine
     from newspulse.models import Base, Client
     from newspulse.web.routes import settings as settings_routes
@@ -516,19 +511,18 @@ def test_a_failing_half_never_takes_the_other_with_it(monkeypatch):
         monkeypatch.setattr(
             job, "_refresh_impulses", lambda *a, **k: reached.append("impulse") or 0
         )
-        monkeypatch.setattr(advisor, "recent_coverage", lambda *a, **k: [])
 
         settings_routes._first_drafts(session, client)  # must not raise
 
     assert reached == ["impulse"]
 
 
-def test_no_advisory_is_asked_for_without_coverage(monkeypatch):
-    """An advisory reads the client's own press; asking about an empty window
-    spends a model call to be told it is empty."""
+def test_no_message_is_written_without_a_position_to_carry(monkeypatch):
+    """The letter personalises a thesis. With no impulse there is no thesis, and
+    a letter with none in it is a form — so the model is never asked."""
     from sqlalchemy.orm import sessionmaker
 
-    from newspulse import advisor, job
+    from newspulse import job, outreach
     from newspulse.db import make_engine
     from newspulse.models import Base, Client
     from newspulse.web.routes import settings as settings_routes
@@ -544,7 +538,8 @@ def test_no_advisory_is_asked_for_without_coverage(monkeypatch):
         monkeypatch.setattr(job, "link_archive_to_themes", lambda *a, **k: 0)
         monkeypatch.setattr(job, "_refresh_impulses", lambda *a, **k: 0)
         monkeypatch.setattr(
-            advisor, "advise", lambda *a, **k: pytest.fail("must not ask the model")
+            outreach, "draft", lambda *a, **k: pytest.fail("must not ask the model")
         )
 
         settings_routes._first_drafts(session, client)
+

@@ -54,7 +54,7 @@
 <div class="client-profile">
   <h1>{{ t("Impulse") }}</h1>
   <p class="panel-hint">
-    {{ t("Was dieser Mandant sagen oder tun sollte — aus dem Markt und aus seiner eigenen Berichterstattung.") }}
+    {{ t("Was dieser Mandant sagen sollte, wenn sich sein Markt bewegt — und als Nachricht an die Journalisten, die darüber schreiben.") }}
     <strong>{{ t("Entwurf, keine Entscheidung") }}</strong> — {{ t("jede Aussage nennt die Meldungen, auf die sie sich stützt, damit die Begründung nachprüfbar bleibt.") }}
   </p>
 </div>
@@ -120,6 +120,67 @@
           <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
         {% endif %}
 
+        {# The position is not the deliverable — the message is. This used to be a
+           second panel called "Empfehlungen", and nobody could say how it differed
+           from the one above it. It differed by being unsendable: it described
+           work instead of doing it. One button on the position itself, and the
+           mandate's own coverage does its work inside the text. #}
+        {% set written = messages.get(angle.id, []) %}
+        <div class="makemsg">
+          <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/message">
+            {% set first = (pitch_targets.get(angle.id) or [])[:1] | first %}
+            {% if first %}
+              <input type="hidden" name="journalist" value="{{ first.journalist or '' }}">
+              <input type="hidden" name="outlet" value="{{ first.outlet }}">
+            {% endif %}
+            <button type="submit" class="btn btn--big"{% if writing %} disabled{% endif %}>
+              {{ t("Personalisierte Nachricht erzeugen") }}
+            </button>
+          </form>
+          <span class="panel-hint">
+            {% if first %}
+              {{ t("Als Anschreiben an") }} {% if first.journalist %}{{ first.journalist }} · {% endif %}{{ first.outlet }}{{ t(", mit dem, was über den Mandanten geschrieben wurde.") }}
+            {% else %}
+              {{ t("Macht aus der Positionierung ein Anschreiben — an eine Fachredaktion Ihrer Wahl.") }}
+            {% endif %}
+          </span>
+        </div>
+
+        {% if writing %}
+          <div class="notice notice--ok"
+               hx-get="/client/{{ client.id }}/advice"
+               hx-trigger="every 3s"
+               hx-select="#positioning"
+               hx-target="#positioning"
+               hx-swap="outerHTML">
+            <span class="spinner" aria-hidden="true"></span>{{ t("Die Nachricht wird geschrieben — die Seite aktualisiert sich, sobald sie steht.") }}
+          </div>
+        {% elif message_error %}
+          <p class="sect__empty sect__refusal"><strong>{{ t("Keine Nachricht erzeugt.") }}</strong> {{ message_error }}</p>
+        {% endif %}
+
+        {% for msg in written %}
+          <article class="letter">
+            <div class="letter__head">
+              <span class="letter__to">
+                {{ t("An") }}:
+                {% if msg.journalist %}
+                  <a href="/contacts?name={{ msg.journalist | urlencode }}&outlet={{ msg.outlet | urlencode }}">{{ msg.journalist }}</a>
+                  <span class="dot">·</span>
+                {% endif %}
+                {{ msg.outlet or t("Fachredaktion") }}
+              </span>
+              <button type="button" class="impulse__copy" data-copy-from="letter-text-{{ msg.id }}">{{ t("Kopieren") }}</button>
+            </div>
+            {# Subject and body inside the copy target, the reasoning outside it:
+               the hook is for the consultant and must never reach an inbox. #}
+            <div class="letter__body" id="letter-text-{{ msg.id }}">{% if msg.subject %}<div class="letter__subject">{{ t("Betreff") }}: {{ msg.subject }}</div>{% endif %}{{ msg.message }}</div>
+            {% if msg.hook %}
+              <div class="letter__hook"><span class="impulse__label">{{ t("Warum diese:r") }}</span> {{ msg.hook }}</div>
+            {% endif %}
+          </article>
+        {% endfor %}
+
         {# Where to send it. Strongest signal first: whoever wrote the story this
            draft answers is on the subject this week. Every row names the headline
            it came from, so the suggestion can be checked rather than trusted.
@@ -150,6 +211,14 @@
                     <a class="pitchlist__add" href="/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}">{{ t("Kontakt hinterlegen") }}</a>
                   {% endif %}
                   {% if target.is_new_contact %}<span class="pitchlist__new">{{ t("noch kein Kontakt") }}</span>{% endif %}
+                  {# One recipient, one message: the same position reads
+                     differently to the reporter who covered the story it answers
+                     than to a trade title that never has. #}
+                  <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/message" class="pitchlist__write">
+                    <input type="hidden" name="journalist" value="{{ target.journalist or '' }}">
+                    <input type="hidden" name="outlet" value="{{ target.outlet }}">
+                    <button type="submit" class="linkbtn"{% if writing %} disabled{% endif %}>{{ t("Nachricht") }}</button>
+                  </form>
                   <span class="pitchlist__why">{{ target.reason }}</span>
                   {% for headline in target.evidence %}
                     <span class="pitchlist__ev">„{{ headline[:80] }}“</span>
@@ -234,156 +303,29 @@
           {{ t("Für diesen Mandanten läuft noch kein Themen-Radar — ohne hinterlegte Themen entsteht auch kein Impuls.") }}
           <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }} →</a>
         </p>
-      {% elif market_seen %}
+      {% elif market_usable %}
         <p class="sect__empty">
-          {{ t("Das Themen-Radar hat") }} {{ market_seen }}
-          {{ t("Marktmeldung(en) für diesen Mandanten gesammelt, aber noch keinen Anlass daraus gemacht.") }}
+          {{ t("Das Themen-Radar hat") }} {{ market_usable }}
+          {{ t("verwertbare Marktmeldung(en) für diesen Mandanten — daraus ist noch kein Impuls entstanden. Der Knopf oben fragt direkt.") }}
           <a href="/client/{{ client.id }}/market">{{ t("Marktumfeld ansehen") }} →</a>
         </p>
+      {% elif market_seen %}
+        {# The distinction that was missing: hits exist, but none of them is
+           material. A theme written too close to the company finds the company,
+           and a mandate cannot position against its own press. #}
+        <p class="sect__empty sect__refusal">
+          <strong>{{ t("Kein verwertbares Marktmaterial.") }}</strong>
+          {{ t("Das Themen-Radar hat") }} {{ market_seen }} {{ t("Treffer gesammelt, aber keiner davon liegt in den letzten") }}
+          {{ impulse_days }} {{ t("Tagen und handelt von etwas anderem als vom Mandanten selbst. Ein Impuls braucht ein Thema, über das auch ohne ihn geschrieben wird.") }}
+        </p>
+        <form method="post" action="/client/{{ client.id }}/themes" class="sect__act" style="border:0;padding:0;margin-top:10px">
+          <button type="submit" class="btn btn--ghost">{{ t("Passende Themen vorschlagen") }}</button>
+          <span class="panel-hint">{{ t("Schlägt Themen des Marktumfelds vor und prüft jedes an der echten Suche, bevor es angeboten wird.") }}</span>
+        </form>
       {% else %}
         <p class="sect__empty">{{ t("Das Themen-Radar für diesen Mandanten hat noch nichts gesammelt — der nächste Lauf holt es.") }}</p>
       {% endif %}
     {% endfor %}
-  </div>
-</section>
-
-{# --- Recommendations: from the client's own coverage ---------------------- #}
-<section class="sect" id="recommendations">
-  <div class="sect__head">
-    <span class="sect__title">{{ t("Empfehlungen") }}</span>
-    {% if advisory and advisory.suggestions %}<span class="sect__n">{{ advisory.suggestions | length }}</span>{% endif %}
-    <span class="sect__src">{{ t("aus eigener Berichterstattung") }}</span>
-  </div>
-  <p class="sect__lead">
-    {{ t("Reagieren auf das, was über den Mandanten geschrieben wurde.") }}
-  </p>
-
-  <div class="sect__act">
-    <form method="post" action="/client/{{ client.id }}/advice" class="run-form" style="margin:0">
-      <div class="filter-field">
-        <select id="days" name="days" aria-label="{{ t('Zeitraum') }}"
-                onchange="window.location = '/client/{{ client.id }}/advice?days=' + this.value">
-          {% for option in day_options %}
-            <option value="{{ option }}"{% if option == days %} selected{% endif %}>
-              {{ t("Letzte") }} {{ option }} {{ t("Tage") }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <button type="submit" class="btn"{% if running or not available %} disabled{% endif %}>
-        {% if advisory %}{{ t("Neu erzeugen") }}{% else %}{{ t("Empfehlungen erzeugen") }}{% endif %}
-      </button>
-    </form>
-    <span class="panel-hint">
-      {{ available }} {{ t("Artikel") }} {{ t("in") }} {{ days }} {{ t("Tagen") }}{% if shown < available %},
-      {{ t("die") }} {{ shown }} {{ t("wichtigsten davon gehen in den Entwurf") }}{% endif %}
-    </span>
-  </div>
-
-  {% if running %}
-    <div class="notice notice--ok"
-         hx-get="/client/{{ client.id }}/advice?days={{ days }}"
-         hx-trigger="every 3s"
-         hx-select="#recommendations"
-         hx-target="#recommendations"
-         hx-swap="outerHTML">
-      <span class="spinner" aria-hidden="true"></span>{{ t("Wird erzeugt — die Seite aktualisiert sich, sobald der Entwurf steht.") }}
-    </div>
-  {% endif %}
-
-  <div class="sect__body">
-    {% if not available %}
-      <p class="handover__lead">
-        {{ t("Über diesen Mandanten wurde im Zeitraum nichts geschrieben — es gibt also nichts zu empfehlen.") }}
-      </p>
-      <p class="handover__why">
-        {{ t("Eine Empfehlung reagiert auf eigene Berichterstattung. Was ohne sie trägt, ist ein Impuls: eine Positionierung zu dem, was im Markt passiert.") }}
-      </p>
-    {% elif advisory %}
-      {# The stored brief carries the window it was made from. Until now the page
-         showed only its date and article count, so a brief drawn over seven days
-         sat under a picker reading "Letzte 90 Tage" and looked like an answer to
-         the window on screen. It is not — say which window it is, and say plainly
-         when that is no longer the one selected. #}
-      {% if advisory.covered_days != days %}
-        <p class="sect__stale">
-          {{ t("Dieser Entwurf stammt aus einem anderen Zeitraum") }} —
-          <strong>{{ t("letzte") }} {{ advisory.covered_days }} {{ t("Tage") }}</strong>,
-          {{ t("nicht die hier gewählten") }} {{ days }}.
-          {{ t("Neu erzeugen, um ihn auf den gewählten Zeitraum zu stellen.") }}
-        </p>
-      {% endif %}
-      <p class="situation">{{ advisory.situation }}</p>
-      <p class="sect__meta">
-        {{ t("Erzeugt am") }} {{ advisory.generated_at | de_datetime }} —
-        {{ advisory.article_count }} {{ t("Artikel") }} {{ t("aus") }} {{ advisory.covered_days }} {{ t("Tagen") }}.
-      </p>
-
-      {# Same shape as a positioning draft, because the reader wants the same
-         thing from both halves: a text they can send, and who to send it to.
-         This section used to hand over an imperative and a rationale and leave
-         the writing to them — "für mich sind Empfehlungen Beispiel-Pressemeldungen
-         … und unten die Tags der jeweiligen Magazine". #}
-      {% for s in advisory.suggestions %}
-        <div class="item advice" style="margin-top:12px">
-          <div class="body">
-            <div class="toprow">
-              <span class="tag kind-{{ s.kind }}">{{ t(s.kind) | capitalize }}</span>
-              <span class="tag urgency-{{ s.urgency }}">{{ t(s.urgency | replace('_', ' ')) | capitalize }}</span>
-              {% if s.draft %}
-                <button type="button" class="impulse__copy" data-copy-from="advice-text-{{ loop.index0 }}">{{ t("Kopieren") }}</button>
-              {% endif %}
-            </div>
-            <div class="hl">{{ s.title }}</div>
-            {% if s.draft %}
-              {# The sendable text, and only that, inside the copy target — the
-                 rationale below is for the consultant, never for a recipient. #}
-              <div class="impulse__text" id="advice-text-{{ loop.index0 }}">{{ s.draft }}</div>
-            {% endif %}
-            <div class="sum">{{ s.rationale }}</div>
-            {% if s.evidence %}
-              <details class="pickup-list">
-                <summary>{{ t("Grundlage") }}: {{ s.evidence | length }} {{ t("Meldung(en)") }}</summary>
-                <ul>
-                  {% for idx in s.evidence %}
-                    {% set ref = coverage.get(idx) %}
-                    {% if ref %}
-                      <li>
-                        <a href="{{ ref.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ ref.headline }}</a>
-                        <span class="dot">·</span> {{ ref.source }}
-                        <span class="dot">·</span> {{ ref.published_at | de_short_date }}
-                      </li>
-                    {% endif %}
-                  {% endfor %}
-                </ul>
-              </details>
-            {% endif %}
-            {% if s.draft and advice_targets %}
-              <div class="pitchlist">
-                <span class="pitchlist__label">{{ t("Wohin damit") }}</span>
-                <div class="pitchtags">
-                  {% for target in advice_targets %}
-                    <span class="pitchtag">
-                      {% if target.journalist %}
-                        <a href="/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}">{{ target.journalist }}</a>
-                        <span class="dot">·</span>
-                      {% endif %}{{ target.outlet }}
-                      {% if target.contact_email %}
-                        <a class="pitchlist__mail" href="mailto:{{ target.contact_email }}">✉</a>
-                      {% endif %}
-                    </span>
-                  {% endfor %}
-                </div>
-              </div>
-            {% endif %}
-          </div>
-        </div>
-      {% else %}
-        <p class="sect__empty" style="margin-top:10px">{{ t("Keine Maßnahmen vorgeschlagen — im Zeitraum gab es nichts, das eine Reaktion erfordert.") }}</p>
-      {% endfor %}
-    {% else %}
-      <p class="sect__empty">{{ t("Noch keine Empfehlungen erzeugt.") }}</p>
-    {% endif %}
   </div>
 </section>
 

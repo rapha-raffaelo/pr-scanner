@@ -140,27 +140,26 @@ def test_a_generating_page_polls_itself_so_nobody_is_told_to_reload(client, runn
     assert "Seite neu laden" not in body
 
 
-def test_the_advisory_generator_holds_the_sweep_guard(monkeypatch):
-    """Without it the advisory page would sit there finished and look unfinished."""
-    from newspulse.web.routes import advisory
+def test_the_message_writer_holds_the_sweep_guard(monkeypatch, no_background_message):
+    """Without it the Impulse page would sit there finished and look unfinished.
 
-    held: list[bool] = []
+    The generator this replaced wrote "recommendations"; the guard requirement is
+    the same and for the same reason — the header polls while it is held, so the
+    page reloads itself the moment the text exists.
+    """
+    from newspulse.web.routes import advisory
 
     def _fake_session():
         raise RuntimeError("stop here — the guard is what this test is about")
 
     monkeypatch.setattr(advisory, "get_session", _fake_session)
-    monkeypatch.setattr(
-        advisory.runlock if hasattr(advisory, "runlock") else advisory,
-        "_run_guard",
-        advisory._run_guard,
-        raising=False,
-    )
 
     # The worker acquires the guard before doing any work, and releases it even
     # when that work explodes.
-    advisory._generating.acquire()
-    advisory._run_advisory(1, 30)
+    advisory._writing.acquire()
+    no_background_message(1, 1, "", "")  # the real worker
 
-    held.append(advisory._run_guard.locked())
-    assert held == [False], "the guard must not be left held after a failure"
+    assert not advisory._run_guard.locked(), "the guard must not be left held"
+    assert not advisory._writing.locked(), "nor its own lock"
+    # And the failure is reported rather than swallowed into an empty page.
+    assert "1" not in advisory._last_message_error or advisory._last_message_error[1]

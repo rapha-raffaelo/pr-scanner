@@ -5,6 +5,18 @@ coverage for one client, ranked — and proposes what to do about it. That is th
 work a PR manager does on Monday morning, and it is the one thing the tool could
 compute that it previously left entirely to the reader.
 
+.. note::
+
+   **No longer on any page.** Its panel sat next to the positioning drafts and
+   the difference between the two could not be stated by the person using them
+   daily — "das ist wirklich nicht ganz klar wo der unterschied liegt". The
+   answer was that a recommendation described work where an impulse did some, so
+   the panel became a button on the impulse (:mod:`newspulse.outreach`) and the
+   material this module reads — a mandate's own coverage — now personalises a
+   pitch instead of forming a second column. The module and its stored briefs
+   are kept: the reading it does is sound, and nothing is gained by dropping a
+   table mid-flight.
+
 Design posture
 --------------
 **Advisory, never autonomous.** Nothing here writes to a client, schedules

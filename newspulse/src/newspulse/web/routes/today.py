@@ -93,6 +93,10 @@ class QuietClientView:
     #: Market items the radar surfaced in the window; the evidence that it ran.
     seen: int
     has_themes: bool
+    #: What the last attempt actually concluded, recorded on the client by the
+    #: sweep. More precise than the generic sentence, and the reason the page can
+    #: say something true about an attempt made at 06:10.
+    note: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -358,6 +362,7 @@ def _fetch_quiet_clients(
             client_name=client.name,
             seen=int(seen_counts.get(client.id, 0)),
             has_themes=bool(client.keywords or client.alert_topics),
+            note=client.impulse_note or "",
         )
         for client in mandates
         if client.id not in drafted

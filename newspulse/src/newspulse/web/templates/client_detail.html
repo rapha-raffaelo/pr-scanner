@@ -114,9 +114,8 @@
 
     {% if candidates %}
       {% set matching = [] %}
-      {% set other = [] %}
       {% for c in candidates %}
-        {% if client.industry and shares_field(client, c) %}{{ matching.append(c) or '' }}{% else %}{{ other.append(c) or '' }}{% endif %}
+        {% if client.industry and shares_field(client, c) %}{{ matching.append(c) or '' }}{% endif %}
       {% endfor %}
       {% if matching %}
         <details class="otherfield">
@@ -127,25 +126,6 @@
               <select id="competitor_id" name="competitor_id">
                 {% for c in matching %}
                   <option value="{{ c.id }}">{{ c.name }}{% if c.industry %} · {{ c.industry }}{% endif %}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <button type="submit" class="btn btn--quiet">{{ t("Hinzufügen") }}</button>
-          </form>
-        </details>
-      {% endif %}
-      {% if other %}
-        <details class="otherfield">
-          <summary>{{ other | length }} {{ t("Unternehmen aus anderen Branchen anzeigen") }}</summary>
-          <p class="panel-hint">
-            {{ t("Ein Vergleich über Branchengrenzen hinweg verfälscht den Anteil — nur wählen, wenn es wirklich derselbe Markt ist.") }}
-          </p>
-          <form method="post" action="/client/{{ client.id }}/competitors" class="run-form">
-            <div class="filter-field">
-              <label for="competitor_other_{{ client.id }}">{{ t("Trotzdem hinzufügen") }}</label>
-              <select id="competitor_other_{{ client.id }}" name="competitor_id">
-                {% for c in other %}
-                  <option value="{{ c.id }}">{{ c.name }}{% if c.industry %} · {{ c.industry }}{% else %} · {{ t("ohne Branche") }}{% endif %}</option>
                 {% endfor %}
               </select>
             </div>

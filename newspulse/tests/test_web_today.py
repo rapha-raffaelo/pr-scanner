@@ -786,63 +786,6 @@ def test_a_draft_is_collapsed_to_its_subject_until_it_is_opened(factory, client)
     assert "HEUTE" in body
 
 
-def test_a_mandate_without_a_draft_reports_what_the_radar_saw(factory, client):
-    """"Kein Anlass" alone is indistinguishable from a broken feature.
-
-    The count is the evidence that work happened, which is the difference between
-    a quiet market and a tool that silently stopped.
-    """
-    from newspulse.models import TopicHit
-
-    with factory() as session:
-        mandate = _seed_client(session, "Arrakis")
-        session.flush()
-        for i in range(3):
-            article = Article(
-                title=f"Markt {i}",
-                url=f"https://ex.de/markt{i}",
-                source="yellow.com",
-                published_at=_noon_utc(_TEST_DAY),
-                fetched_at=_noon_utc(_TEST_DAY),
-                summary_text=None,
-                language="de",
-                title_hash=f"markt{i}",
-            )
-            session.add(article)
-            session.flush()
-            session.add(
-                TopicHit(
-                    article_id=article.id,
-                    client_id=mandate.id,
-                    found_at=_noon_utc(_TEST_DAY),
-                )
-            )
-        mandate.keywords = ["Onchain-Liquidität"]
-        session.commit()
-
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
-    column = body.split('class="anglecol"', 1)[1]
-
-    assert "Kein Anlass in den letzten 7 Tagen" in column
-    assert "3" in column
-    assert "Marktumfeld ansehen" in column
-
-
-def test_a_mandate_without_themes_is_told_that_instead(factory, client):
-    """No radar is a configuration fact, not a quiet market, and the two need
-    opposite responses."""
-    with factory() as session:
-        mandate = _seed_client(session, "Ohne Themen")
-        mandate.keywords = []
-        mandate.alert_topics = []
-        session.commit()
-        mandate_id = mandate.id
-
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
-    column = body.split('class="anglecol"', 1)[1]
-
-    assert "Kein Themen-Radar für diesen Mandanten." in column
-    assert f'href="/settings?edit={mandate_id}"' in column
 
 
 def test_the_column_follows_the_client_filter(factory, client):
@@ -994,3 +937,59 @@ def test_without_a_filter_the_portfolio_count_is_still_the_right_one(factory, cl
     # No filter, so no client scoping in the sentence or in the link.
     assert "für diesen Mandanten" not in hint
     assert 'href="/archive"' in body
+
+
+# --- The rail holds openings, and only openings ---------------------------------
+
+
+def test_only_actual_openings_are_cards(factory, client):
+    """"Auf der Titelseite sollten nur Impulse angezeigt werden, wo auch wirklich
+    Impulse sind."
+
+    Every mandate without a draft used to get a card the same size as a draft, so
+    a portfolio of eight put two drafts among six explanations and the reader had
+    to sort them out. The column is called Impulse; a card saying "no opening" is
+    not one.
+    """
+    with factory() as session:
+        _seed_angle(session, generated_at=_noon_utc(_TEST_DAY), subject="ECHTER IMPULS")
+        session.add(Client(name="Ohne Anlass", aliases=[], keywords=["X"], alert_topics=[]))
+        session.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    rail = body.split('class="anglecol"', 1)[1]
+
+    # One card, and the quiet mandate is folded away rather than beside it.
+    assert rail.count('class="impulse"') == 1
+    assert "ECHTER IMPULS" in rail
+    assert "quietfold" in rail
+    assert "Ohne Anlass" in rail
+
+
+def test_the_fold_still_says_why_each_one_is_empty(factory, client):
+    """A rail that goes quiet without saying why reads as a broken feature. The
+    explanations move under the drafts; they do not disappear."""
+    with factory() as session:
+        quiet = Client(name="Ohne Themen", aliases=[], keywords=[], alert_topics=[])
+        session.add(quiet)
+        session.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    assert "Ohne Themen" in body
+    assert "Kein Themen-Radar" in body
+    assert "Themen hinterlegen" in body
+
+
+def test_the_recorded_reason_beats_the_generic_one(factory, client):
+    """The sweep writes what it actually concluded; that is more use than "the
+    radar found nothing"."""
+    with factory() as session:
+        quiet = Client(name="Mit Notiz", aliases=[], keywords=["X"], alert_topics=[])
+        quiet.impulse_note = "Aus 4 Marktmeldungen ergab sich kein Anlass."
+        session.add(quiet)
+        session.commit()
+
+    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+
+    assert "Aus 4 Marktmeldungen ergab sich kein Anlass." in body

@@ -1,12 +1,17 @@
-"""The advisor view: generated PR action suggestions for one client.
+"""The Impulse view: what one client should be saying, and to whom.
 
-Generation is explicit — a button, not a side effect of the daily run. Three
-reasons: it costs a model call per client, the advice is only worth reading when
-someone is about to act on it, and a brief that regenerates itself silently would
-change under the operator between opening the page and reading it.
+The page held two panels for a while — a positioning draft from the market and a
+"recommendation" from the client's own press — and the difference between them
+was never legible from the outside: *"das ist wirklich nicht ganz klar wo der
+unterschied liegt"*. Only one of them was a thing you can do. So the
+recommendations panel is gone and its substance moved onto the impulse as a
+button: :mod:`newspulse.outreach` turns a position into a message at a named
+journalist, using the mandate's own coverage — the recommendation half's
+material — as what makes the pitch personal.
 
-The result is persisted (``advisories``) so the page is instant on reload and the
-brief that was current during a crisis stays on the record.
+Generation stays explicit: a button, not a side effect of the daily run. It costs
+a model call per press, and a text that rewrote itself between opening the page
+and reading it would be worse than none.
 """
 
 from __future__ import annotations
@@ -20,11 +25,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import advisor, angles, job, pitch
+from ... import angles, job, outreach, pitch
 from ...db import get_session
 from ..runlock import guard as _run_guard
 from .. import themework
-from ...models import Client, TopicHit
+from ...models import Angle, Client, TopicHit
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
 
@@ -33,103 +38,26 @@ router = APIRouter()
 _log = logging.getLogger(__name__)
 _SEE_OTHER = 303
 
-# One generation at a time, process-wide. Each is a `claude -p` call taking tens
-# of seconds; a second click while one is running would spend a second call to
-# produce a brief that overwrites the first.
-_generating = threading.Lock()
-
-
-def _run_advisory(client_id: int, days: int) -> None:
-    """Generate and store a brief on a worker thread; always release the lock.
-
-    Holds the sweep's guard as well, which is what makes the page refresh itself:
-    the header polls while that guard is held and reloads the whole page when it is
-    released. Without it the reader was told to reload by hand — an instruction the
-    machinery had already made unnecessary everywhere else.
-    """
-    try:
-        _run_guard.acquire()
-        with get_session() as session:
-            client = session.get(Client, client_id)
-            if client is None:
-                return
-            brief, coverage = advisor.advise(session, client, days=days)
-            advisor.store(session, client, brief, coverage, days=days)
-            _log.info(
-                "advisory generated for %r: %d suggestion(s) from %d article(s)",
-                client.name,
-                len(brief.suggestions),
-                len(coverage),
-            )
-    except Exception:  # noqa: BLE001 — a worker thread must never die silently
-        _log.exception("advisory generation failed")
-    finally:
-        _generating.release()
-        # Released after the brief is committed, so the reload the header triggers
-        # finds the finished result rather than an empty page a beat too early.
-        try:
-            _run_guard.release()
-        except RuntimeError:  # never acquired, e.g. an error before the try body
-            pass
-
-
-#: The windows the page offers. The count beside the button, the window a
-#: generation uses and the option the select shows all read from the same value —
-#: they disagreed before, which is how a page could report "0 Artikel" for thirty
-#: days directly under a brief that had just been generated over ninety.
-# The windows the reader can choose. Half a year is included because a mandate
-# with sparse coverage still has a pattern — it just takes longer to see, and the
-# alternative on offer was an empty page.
-ADVICE_DAYS = (7, 30, 90, 180)
-
-
-def _parse_days(raw: str | None) -> int:
-    """One of the offered windows, or the default. An unknown value falls back
-    rather than erroring: a hand-typed or stale URL must not 500 the page."""
-    try:
-        value = int(raw or "")
-    except (TypeError, ValueError):
-        return advisor.DEFAULT_DAYS
-    return value if value in ADVICE_DAYS else advisor.DEFAULT_DAYS
-
-
 
 @router.get("/client/{client_id}/advice", response_class=HTMLResponse)
 def advice_view(
     request: Request,
     client_id: int,
-    days: str | None = None,
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
-    """The client's current brief, or an invitation to generate the first one."""
+    """This client's impulses, the messages written off them, and why not."""
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    window = _parse_days(days)
-    latest = advisor.latest(session, client_id)
-    coverage = advisor.recent_coverage(session, client_id, days=window)
+    drafts = angles.for_client(session, client_id)
     return templates.TemplateResponse(
         request,
         "advice.html",
         {
             "client": client,
-            "advisory": latest,
-            # Resolve each suggestion's evidence ids back to the coverage they
-            # cite, so a recommendation can be checked rather than trusted.
-            "coverage": {ref.index: ref for ref in coverage},
-            # What the window holds, not what the prompt was handed: the two
-            # differ once the cap bites, and the label sits next to the control
-            # for choosing the window. Reporting the cap made 30, 90 and 180 days
-            # all read "40 Artikel", so widening looked like it did nothing.
-            "available": advisor.coverage_count(session, client_id, days=window),
-            "shown": len(coverage),
-            # Echoed back so the select keeps the reader's choice: it always
-            # rendered "Letzte 30 Tage" no matter what had just been asked for.
-            "days": window,
-            "day_options": ADVICE_DAYS,
-            "running": _generating.locked(),
             "drafting": _drafting.locked(),
+            "writing": _writing.locked(),
             # Why the last click came back empty, if it did. Shown instead of the
             # generic "the radar has collected nothing", which was wrong as often
             # as it was right.
@@ -141,23 +69,16 @@ def advice_view(
             # The remedy for the commonest refusal, offered where the refusal is
             # read rather than on a settings screen the reader has never opened.
             "theme_work": themework.state.get(client_id),
-            # What to offer when there is no coverage to advise on. An advisory
-            # reads a client's own press; a young mandate has none, and telling it
-            # "nothing to recommend" is true but useless. The impulse works off the
-            # market instead, which is exactly the case this page cannot serve.
-            "angles": angles.for_client(session, client_id),
+            "angles": drafts,
             # Who to send each draft to, keyed by angle id. Computed per draft
             # because the strongest signal is specific to it: the bylines on the
             # very stories it answers.
             "pitch_targets": {
-                a.id: pitch.targets_for(session, client, a)
-                for a in angles.for_client(session, client_id)
+                a.id: pitch.targets_for(session, client, a) for a in drafts
             },
-            # The recipients for the recommendations. Not per suggestion: they
-            # all react to the same client's coverage, so the pitch list is the
-            # client's, not each item's.
-            "advice_targets": pitch.targets_for(session, client),
-            "latest_angle": angles.latest(session, client_id),
+            # The messages already written off each impulse, keyed the same way.
+            "messages": outreach.by_angle(session, [a.id for a in drafts]),
+            "message_error": _last_message_error.get(client_id, ""),
             # Whether a radar is possible at all, which is a question about the
             # client's themes — not about whether it has found anything yet. Read
             # off the hit count, a mandate with twenty-five themes and a radar that
@@ -167,36 +88,27 @@ def advice_view(
             # the window can never disagree.
             "impulse_days": job.IMPULSE_LOOKBACK.days,
             "pitch_days": pitch.LOOKBACK_DAYS,
+            # Two different numbers, and conflating them is why a page could say
+            # "the radar collected 2 items and made nothing of them" about a
+            # mandate that had no usable material at all. What the radar found is
+            # ``market_seen``; what an impulse can be built from is
+            # ``market_usable`` — inside the window, and not coverage of the
+            # mandate itself, which is what the draft actually reads.
             "market_seen": session.scalar(
                 select(func.count()).select_from(TopicHit).where(
                     TopicHit.client_id == client_id
                 )
             ) or 0,
+            "market_usable": len(
+                job.market_material(
+                    session,
+                    client,
+                    dt.datetime.now(dt.UTC) - job.IMPULSE_LOOKBACK,
+                )
+            ),
             "last_run": _fetch_last_run(session),
             "header_date": dt.datetime.now(_local_tz()).date(),
         },
-    )
-
-
-@router.post("/client/{client_id}/advice")
-def generate_advice(
-    client_id: int,
-    request: Request,
-    days: int = Form(advisor.DEFAULT_DAYS),
-    session: Session = Depends(get_db),
-) -> Response:
-    """Kick off generation on a worker thread and return to the brief."""
-    if session.get(Client, client_id) is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    if _generating.acquire(blocking=False):
-        threading.Thread(
-            target=_run_advisory,
-            args=(client_id, max(1, days)),
-            daemon=True,
-            name="newspulse-advisory",
-        ).start()
-    return RedirectResponse(
-        f"/client/{client_id}/advice?days={max(1, days)}", status_code=_SEE_OTHER
     )
 
 
@@ -226,13 +138,28 @@ def _run_impulse(client_id: int) -> None:
                 if client is None:
                     return
                 _last_refusal.pop(client_id, None)
-                drafted = job.draft_impulse(
-                    session,
-                    client,
-                    note=lambda reason: _last_refusal.__setitem__(client_id, reason),
-                )
+
+                def _note(reason: str, *, target: Client = client) -> None:
+                    """Both places: the dict answers *this* click, the column
+                    survives the restart.
+
+                    Memory alone meant a refusal vanished when the process
+                    bounced, and the page fell back to a generic sentence about
+                    the radar — the very sentence that keeps producing "es
+                    funktioniert immer noch nicht" over a button that worked and
+                    said so an hour earlier.
+                    """
+                    _last_refusal[client_id] = reason
+                    target.impulse_note = reason
+                    target.impulse_checked_at = dt.datetime.now(dt.UTC)
+                    session.commit()
+
+                drafted = job.draft_impulse(session, client, note=_note)
                 if drafted:
                     _last_refusal.pop(client_id, None)
+                    client.impulse_note = ""
+                    client.impulse_checked_at = dt.datetime.now(dt.UTC)
+                    session.commit()
                 _log.info(
                     "impulse request for %r: %s",
                     client.name,
@@ -286,3 +213,97 @@ def request_impulse(client_id: int, session: Session = Depends(get_db)) -> Respo
             name=f"newspulse-impulse-{client_id}",
         ).start()
     return RedirectResponse(f"/client/{client_id}/advice", status_code=_SEE_OTHER)
+
+
+# One personalised message at a time, for the same reason as the impulse above.
+_writing = threading.Lock()
+
+# Why the last "write me the message" click produced nothing, per client. Only
+# failures land here: unlike an impulse, this one has no honest empty answer — the
+# judgement of whether there is something to say was already made upstream.
+_last_message_error: dict[int, str] = {}
+
+
+def _target_for(
+    session: Session, client: Client, angle: Angle, journalist: str, outlet: str
+) -> pitch.PitchTarget | None:
+    """Recover the full recipient from the name the form posted.
+
+    The form carries a name and an outlet, which is all a link can carry. The
+    prompt needs more than that — what this person has actually written — so the
+    posted pair is matched back against the draft's own pitch list rather than
+    trusted as the whole truth. An unmatched pair still yields a usable target:
+    the consultant may know a desk the radar has never seen.
+    """
+    if not (journalist or outlet):
+        return None
+    wanted = ((journalist or "").casefold(), (outlet or "").casefold())
+    for candidate in pitch.targets_for(session, client, angle):
+        if ((candidate.journalist or "").casefold(), candidate.outlet.casefold()) == wanted:
+            return candidate
+    return pitch.PitchTarget(
+        outlet=outlet,
+        journalist=journalist or None,
+        reason="",
+        evidence=(),
+        about_client=0,
+    )
+
+
+def _run_outreach(client_id: int, angle_id: int, journalist: str, outlet: str) -> None:
+    """Write one personalised message on a worker thread; always release the lock."""
+    try:
+        with _run_guard:
+            with get_session() as session:
+                client = session.get(Client, client_id)
+                angle = session.get(Angle, angle_id)
+                if client is None or angle is None or angle.client_id != client_id:
+                    return
+                _last_message_error.pop(client_id, None)
+                target = _target_for(session, client, angle, journalist, outlet)
+                message = outreach.draft(session, client, angle, target)
+                outreach.store(session, client, angle, message, target)
+                _log.info(
+                    "outreach written for %r → %s",
+                    client.name,
+                    target.outlet if target else "(kein Empfänger)",
+                )
+    except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
+        _last_message_error[client_id] = (
+            f"Die Nachricht konnte nicht geschrieben werden: {exc}. "
+            "Details stehen im Log."
+        )
+        _log.exception("outreach generation failed")
+    finally:
+        _writing.release()
+
+
+@router.post("/client/{client_id}/impulse/{angle_id}/message")
+def write_message(
+    client_id: int,
+    angle_id: int,
+    journalist: str = Form(""),
+    outlet: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Turn this impulse into a message someone can actually send.
+
+    This is what the "Empfehlungen" panel became. That panel described work —
+    "react to the coverage" — and left the writing to the reader; the difference
+    between it and the impulse beside it was never legible. One button on the
+    position itself, and the mandate's own coverage does its work inside the text
+    rather than in a second column.
+    """
+    angle = session.get(Angle, angle_id)
+    if session.get(Client, client_id) is None or angle is None or angle.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Impulse not found")
+    if _writing.acquire(blocking=False):
+        threading.Thread(
+            target=_run_outreach,
+            args=(client_id, angle_id, journalist.strip(), outlet.strip()),
+            daemon=True,
+            name=f"newspulse-outreach-{angle_id}",
+        ).start()
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{angle_id}", status_code=_SEE_OTHER
+    )

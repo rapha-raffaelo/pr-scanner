@@ -58,6 +58,11 @@
   <span class="colhead__note">{{ t("Wettbewerb links") }} · {{ map.client }} {{ t("rechts") }} · {{ t("nach Ungleichgewicht sortiert") }}</span>
 </div>
 
+{# An empty chart is the worst of the three possible answers here: it looks
+   broken, and the two real causes need opposite responses. A map compares two
+   sides — with no competitor linked there is no left-hand side to draw, and
+   saying so beats a white box with a legend over it. #}
+{% if map.leaning %}
 <div class="diverge">
   <div class="diverge__legend">
     <span class="diverge__key"><i class="dk dk--rival"></i>{{ t("Wettbewerb") }}</span>
@@ -78,6 +83,20 @@
     </div>
   {% endfor %}
 </div>
+{% else %}
+  <div class="notice">
+    {% if map.companies | length < 2 %}
+      <strong>{{ t("Noch kein Wettbewerber hinterlegt.") }}</strong>
+      {{ t("Diese Karte vergleicht, welche Medien über den Wettbewerb schreiben und über diesen Mandanten nicht — ohne Vergleichsgruppe gibt es nichts zu vergleichen.") }}
+      <a href="/client/{{ client.id }}">{{ t("Vergleichsgruppe festlegen") }} →</a>
+    {% else %}
+      <strong>{{ t("Zu wenig Berichterstattung im Zeitraum.") }}</strong>
+      {{ t("In den letzten") }} {{ days }} {{ t("Tagen kam für Mandant und Wettbewerb zusammen zu wenig zusammen, um Medien gegeneinander zu stellen") }}
+      ({{ map.rows | length }} {{ t("Medien") }}).
+      <a href="/client/{{ client.id }}/market">{{ t("Marktumfeld ansehen") }} →</a>
+    {% endif %}
+  </div>
+{% endif %}
 
 <details class="fulltable">
   <summary>{{ t("Vollständige Tabelle") }} ({{ map.rows | length }} {{ t("Medien") }})</summary>

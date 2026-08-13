@@ -311,15 +311,17 @@ def test_an_offsite_redirect_is_refused(factory, client):
     assert resp.headers["location"] == f"/client/{subject_id}"
 
 
-def test_a_competitor_from_another_industry_is_grouped_apart(factory, client):
+def test_a_competitor_from_another_industry_is_not_offered_at_all(factory, client):
     """Every monitored competitor used to be offered to every mandate, so a
     finance platform was invited to benchmark itself against ASOS and H&M —
     fashion brands that exist in the portfolio only because a fashion mandate
     needed them. Share of voice is a statement about *a market*, and a number
     computed across two of them is not a fact about anything.
 
-    Grouped rather than hidden: an operator may know a cross-industry rival the
-    labels cannot see.
+    First grouped under an expander, and reported again anyway: "das ding mit
+    unternehmen aus anderer branche macht keinen sinn". So it is gone. An
+    operator who knows a rival the labels cannot see types the name — that route
+    is always open and does not need a list of everything else to sit beside it.
     """
     with factory() as session:
         broker = Client(
@@ -345,13 +347,14 @@ def test_a_competitor_from_another_industry_is_grouped_apart(factory, client):
     # brand under a heading was not enough: it was still on the list, and the
     # report came back twice.
     assert "Trade Republic" in offered
-    assert "H&amp;M" not in offered
-    # Reachable, but only for someone who opens the expander and means it.
-    assert "anderen Branchen" in body
+    # Not in the picker, and not anywhere else on the page either.
+    assert "H&amp;M" not in body
 
 
-def test_without_an_industry_every_competitor_is_still_offered(factory, client):
-    """No field, no grouping — and no silent narrowing of the reader's options."""
+def test_without_an_industry_nothing_is_offered_but_the_field_stays_open(factory, client):
+    """No field means no same-market claim can be made, so nothing is proposed —
+    and the typed name still works, which is the route that never depended on the
+    labels being right."""
     with factory() as session:
         subject = Client(name="Ohne Feld", aliases=[], industry=None,
                          keywords=[], alert_topics=[])
@@ -363,11 +366,7 @@ def test_without_an_industry_every_competitor_is_still_offered(factory, client):
 
     body = client.get(f"/client/{subject_id}").text
 
-    # No field, so nothing is offered as "same market": the monitored pool sits
-    # behind the cross-industry expander, where picking one takes a deliberate
-    # act. Typing a name is always available — the consultant knows the market.
     assert 'id="competitor_id"' not in body
-    assert "anderen Branchen" in body
     assert 'name="name"' in body  # the manual field
     # Escaped in the rendered page, so match what the browser actually receives.
-    assert "H&amp;M" in body
+    assert "H&amp;M" not in body

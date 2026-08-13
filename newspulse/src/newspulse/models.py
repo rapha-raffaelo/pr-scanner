@@ -701,6 +701,47 @@ class Angle(Base):
     )
 
 
+class Outreach(Base):
+    """One personalised message: an impulse, written at a named recipient.
+
+    The page used to carry two panels — a positioning draft from the market and a
+    "recommendation" from the mandate's own press — and the difference between
+    them was never legible: "das ist wirklich nicht ganz klar wo der unterschied
+    liegt". There is only one thing a consultant does with either: send a text to
+    a journalist. So the recommendation stopped being a second panel and became
+    this: the same impulse, aimed.
+
+    Kept in its own table rather than as columns on ``angles`` because one impulse
+    has many of these — one per recipient — and each is a separate artefact with
+    its own moment of creation.
+
+    ``journalist`` may be empty: a feed carries a byline about one time in ten,
+    and an outlet with no name attached is still a valid address for a pitch.
+    """
+
+    __tablename__ = "outreach"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    angle_id: Mapped[int] = mapped_column(
+        ForeignKey("angles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    generated_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow, index=True
+    )
+    journalist: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    outlet: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    #: The subject line as it would go out — this one *is* for the recipient,
+    #: unlike an angle's subject, which is a label for the consultant.
+    subject: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Why this recipient, in one line: what they wrote that this answers. Kept
+    #: apart from the message so it can never be pasted into an inbox with it.
+    hook: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
 __all__ = [
     "Base",
     "Category",
@@ -713,6 +754,7 @@ __all__ = [
     "Analysis",
     "Advisory",
     "Angle",
+    "Outreach",
     "TopicHit",
     "GuideSource",
     "Run",
