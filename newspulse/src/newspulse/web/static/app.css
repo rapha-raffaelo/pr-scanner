@@ -552,6 +552,25 @@ nav.tabs a.active {
 .otherfield > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); padding: 4px 0; }
 .otherfield > summary:hover { color: var(--accent); }
 
+/* --- The comparison set --------------------------------------------------- */
+/* One block on the client page: what is linked, a name typed by hand, and the
+   monitored pool behind an expander. A bare <select> under the table said
+   nothing about what it did, and offering the whole pool is how a finance
+   platform came to be shown fashion brands. */
+.tag--rival { background: #eef0fb; color: var(--accent); margin-right: 0.25rem; text-transform: none; }
+.rivalbox { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.rivalbox__label {
+  display: block; font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted); margin-bottom: 8px;
+}
+.rivalbox .rivals { margin-bottom: 10px; }
+.rivalbox .rivals__one { display: inline-flex; align-items: center; gap: 2px; }
+.rivalbox .run-form { margin-bottom: 4px; }
+.rivalbox input[type="text"] {
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+  font: inherit; font-size: 13px; min-width: 220px;
+}
+
 /* --- Proposal chips ------------------------------------------------------- */
 /* Competitors in settings and themes on both settings and the impulse page. The
    same control on two pages, so it is defined once — the lesson of .linkbtn. */

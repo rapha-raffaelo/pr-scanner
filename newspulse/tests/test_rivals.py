@@ -363,10 +363,11 @@ def test_without_an_industry_every_competitor_is_still_offered(factory, client):
 
     body = client.get(f"/client/{subject_id}").text
 
-    # No field, so the picker cannot judge comparability. It says that instead of
-    # offering a flat list of everything — the state a finance platform was in
-    # when it was shown fashion brands.
-    assert "keine Branche hinterlegt" in body
+    # No field, so nothing is offered as "same market": the monitored pool sits
+    # behind the cross-industry expander, where picking one takes a deliberate
+    # act. Typing a name is always available — the consultant knows the market.
     assert 'id="competitor_id"' not in body
+    assert "anderen Branchen" in body
+    assert 'name="name"' in body  # the manual field
     # Escaped in the rendered page, so match what the browser actually receives.
-    assert "H&amp;M" in body  # still reachable behind the expander
+    assert "H&amp;M" in body

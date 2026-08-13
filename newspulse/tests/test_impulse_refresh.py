@@ -236,3 +236,94 @@ def test_the_daily_run_actually_calls_the_refresh(session, monkeypatch):
 
     assert report.angles_written == 1
     assert session.scalar(select(func.count()).select_from(Angle)) == 1
+
+
+# --- The reason has to outlive the sweep that produced it -----------------------
+
+
+def test_the_sweep_records_why_it_produced_nothing(session, monkeypatch):
+    """Six reports of "es funktioniert immer noch nicht" over work that was
+    running correctly, because the explanation lived in a dict in the web process
+    and only the button ever wrote to it. The 06:10 sweep left no trace, so the
+    page at nine had nothing to say."""
+    client = _client(session)
+    monkeypatch.setattr(
+        angles, "suggest", lambda *a, **k: pytest.fail("no material to ask about")
+    )
+
+    job._refresh_impulses(session, [client], [], now=_NOW)
+
+    stored = session.get(Client, client.id)
+    assert "Kein Marktmaterial" in stored.impulse_note
+    assert stored.impulse_checked_at == _NOW
+
+
+def test_the_models_own_reason_is_what_gets_recorded(session, monkeypatch):
+    client = _client(session)
+    _market(session, client, "Clean Beauty wird Pflicht im Handel")
+
+    def _refuse(sess, cli, material, **kw):
+        kw["note"]("Vereinzelte Wettbewerbermeldungen, kein Aufhänger.")
+        return None
+
+    monkeypatch.setattr(angles, "suggest", _refuse)
+
+    job._refresh_impulses(session, [client], [], now=_NOW)
+
+    assert "kein Aufhänger" in session.get(Client, client.id).impulse_note
+
+
+def test_a_successful_draft_clears_the_note(session, monkeypatch):
+    """Otherwise last week's refusal sits under this week's impulse."""
+    client = _client(session)
+    client.impulse_note = "Alte Absage."
+    session.commit()
+    _market(session, client, "Clean Beauty wird Pflicht im Handel")
+    monkeypatch.setattr(angles, "suggest", _draft())
+
+    job._refresh_impulses(session, [client], [], now=_NOW)
+
+    assert session.get(Client, client.id).impulse_note == ""
+
+
+def test_the_page_shows_what_the_sweep_recorded(factory_app):
+    """The whole point: opened at nine, it says what happened at 06:10."""
+    factory, http = factory_app
+    with factory() as session:
+        client = Client(name="Still AG", aliases=[], keywords=["X"], alert_topics=[])
+        client.impulse_note = "Kein Marktmaterial in 90 Tagen."
+        client.impulse_checked_at = _NOW
+        session.add(client)
+        session.commit()
+        client_id = client.id
+
+    body = http.get(f"/client/{client_id}/advice").text
+
+    assert "Kein Marktmaterial in 90 Tagen." in body
+    assert "Zuletzt geprüft" in body
+
+
+@pytest.fixture
+def factory_app():
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+
+    from newspulse.web.app import create_app, get_db
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    app = create_app()
+
+    def _db():
+        s = factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_db] = _db
+    return factory, TestClient(app)

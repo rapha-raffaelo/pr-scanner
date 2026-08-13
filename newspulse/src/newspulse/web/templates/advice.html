@@ -33,6 +33,7 @@
     border-left: 3px solid var(--line); padding: 2px 0 2px 12px; max-width: 74ch;
   }
   .sect__refusal strong { color: var(--muted); }
+  .sect__when { display: block; margin-top: 4px; font-size: 11.5px; color: var(--muted); }
   /* A brief from another window is not an error, but it must not read as an
      answer to the window on screen. */
   .sect__stale {
@@ -180,6 +181,9 @@
       {% if impulse_refusal %}
         <p class="sect__empty sect__refusal">
           <strong>{{ t("Kein Impuls erzeugt.") }}</strong> {{ impulse_refusal }}
+          {% if impulse_checked_at %}
+            <span class="sect__when">{{ t("Zuletzt geprüft") }}: {{ impulse_checked_at | de_datetime }}</span>
+          {% endif %}
         </p>
         {# A message that names a cause has to carry its remedy. This one said the
            themes were written too close to the company and then left the reader to

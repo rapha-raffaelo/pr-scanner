@@ -578,19 +578,23 @@ def test_only_companies_marked_as_competitors_can_be_added(factory, client):
     assert "IB-7 Beauty Tech GmbH" not in body
 
 
-def test_with_no_competitor_anywhere_the_page_says_where_they_come_from(factory, client):
-    """An empty picker is a dead end unless it says how to fill it."""
+def test_with_no_competitor_anywhere_the_page_offers_the_manual_field(factory, client):
+    """An empty comparison set is not a dead end. Typing a name creates the
+    company as a monitored competitor and links it to this mandate — the path a
+    consultant who knows the market reaches for first."""
     with factory() as session:
-        subject = Client(name="Zalando", aliases=[], keywords=[], alert_topics=[])
+        subject = Client(name="Allein AG", aliases=[], industry="Modehandel",
+                         keywords=[], alert_topics=[])
         session.add(subject)
         session.commit()
         subject_id = subject.id
 
     body = client.get(f"/client/{subject_id}").text
 
-    assert 'id="competitor_id"' not in body
-    assert "Kein Unternehmen ist als Wettbewerber angelegt" in body
-    assert 'href="/settings"' in body
+    assert "Wettbewerber hinzufügen" in body
+    assert f'action="/client/{subject_id}/competitors/accept"' in body
+    assert "nur hier, nicht bei den anderen" in body
+
 
 
 def test_the_client_tab_leads_with_its_positioning_drafts(factory, client):

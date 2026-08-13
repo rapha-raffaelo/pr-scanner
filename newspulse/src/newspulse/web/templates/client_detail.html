@@ -76,80 +76,85 @@
     </p>
   {% endif %}
 
-  {% if candidates %}
-    {# Only the client's own field, by default and by rule.
+  {# --- The comparison set ------------------------------------------------
+     One block, three ways in, in the order they are actually used: what is
+     already linked, a name typed by hand, and the pool of companies already
+     monitored. A bare <select> sitting under the table said nothing about what
+     it did — and offering the whole pool is how a finance platform ended up
+     looking at fashion brands. #}
+  <div class="rivalbox">
+    <span class="rivalbox__label">{{ t("Vergleichsgruppe") }}</span>
 
-       Grouping the rest under "another industry" was a compromise, and it was
-       wrong: a finance platform was still offered ASOS and H&M, which is the
-       report that came back twice. Worse, a mandate with no industry fell
-       through to a flat list of everything — Qonto's case exactly.
-
-       Share of voice is a statement about *a market*. A cross-industry entry does
-       not merely look odd, it lands in the arithmetic and changes a number the
-       agency reports. The others stay reachable behind an explicit expander, so
-       an operator who knows a rival the labels cannot see is not blocked — they
-       just have to mean it. #}
-    {% set matching = [] %}
-    {% set other = [] %}
-    {% for c in candidates %}
-      {% if client.industry and shares_field(client, c) %}{{ matching.append(c) or '' }}{% else %}{{ other.append(c) or '' }}{% endif %}
-    {% endfor %}
-
-    {% if matching %}
-      <form method="post" action="/client/{{ client.id }}/competitors" class="run-form">
-        <div class="filter-field">
-          <label for="competitor_id">{{ t("Wettbewerber hinzufügen") }}</label>
-          <select id="competitor_id" name="competitor_id">
-            {% for c in matching %}
-              <option value="{{ c.id }}">{{ c.name }}{% if c.industry %} · {{ c.industry }}{% endif %}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <button type="submit">{{ t("Hinzufügen") }}</button>
-      </form>
-    {% elif not client.industry %}
-      {# The picker cannot judge comparability without a field, and offering
-         everything is how the wrong answer got in. Name the cause instead. #}
-      <p class="panel-hint">
-        {{ t("Für diesen Mandanten ist keine Branche hinterlegt — ohne sie lässt sich nicht beurteilen, wer ein vergleichbares Unternehmen ist.") }}
-        <a href="/settings?edit={{ client.id }}">{{ t("Branche setzen") }} →</a>
-      </p>
-    {% else %}
-      <p class="panel-hint">
-        {{ t("Kein überwachtes Unternehmen aus diesem Feld.") }}
-        <a href="/settings?edit={{ client.id }}">{{ t("Wettbewerber vorschlagen lassen") }} →</a>
-      </p>
+    {% if competitors %}
+      <div class="rivals">
+        {% for rival in competitors %}
+          <form method="post" action="/client/{{ client.id }}/competitors/{{ rival.id }}/remove" class="rivals__one">
+            <input type="hidden" name="redirect_to" value="/client/{{ client.id }}">
+            <span class="tag tag--rival">{{ rival.name }}</span>
+            <button type="submit" class="linkbtn linkbtn--danger" title="{{ t('Verknüpfung lösen') }}">×</button>
+          </form>
+        {% endfor %}
+      </div>
     {% endif %}
 
-    {% if other %}
-      <details class="otherfield">
-        <summary>{{ other | length }} {{ t("Unternehmen aus anderen Branchen anzeigen") }}</summary>
-        <p class="panel-hint">
-          {{ t("Ein Vergleich über Branchengrenzen hinweg verfälscht den Anteil — nur wählen, wenn es wirklich derselbe Markt ist.") }}
-        </p>
-        <form method="post" action="/client/{{ client.id }}/competitors" class="run-form">
-          <div class="filter-field">
-            <label for="competitor_other_{{ client.id }}">{{ t("Trotzdem hinzufügen") }}</label>
-            <select id="competitor_other_{{ client.id }}" name="competitor_id">
-              {% for c in other %}
-                <option value="{{ c.id }}">{{ c.name }}{% if c.industry %} · {{ c.industry }}{% else %} · {{ t("ohne Branche") }}{% endif %}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <button type="submit" class="btn btn--quiet">{{ t("Hinzufügen") }}</button>
-        </form>
-      </details>
-    {% endif %}
-  {% else %}
-    {# The list is empty because no company is marked as a competitor — not
-       because there is nothing to add. Saying where they come from is the whole
-       difference between a missing control and a broken one. #}
-    <p class="panel-hint">
-      {{ t("Kein Unternehmen ist als Wettbewerber angelegt. Ein Wettbewerber ist selbst ein überwachtes Unternehmen — nur so ist seine Meldungszahl vergleichbar.") }}
-      <a href="/settings">{{ t("In Einstellungen vorschlagen lassen") }}</a>
+    {# Typed by hand, because the consultant knows the market and the model does
+       not always. Creates the company as a monitored competitor and links it. #}
+    <form method="post" action="/client/{{ client.id }}/competitors/accept" class="run-form">
+      <div class="filter-field">
+        <label for="rival-name-{{ client.id }}">{{ t("Wettbewerber hinzufügen") }}</label>
+        <input type="text" id="rival-name-{{ client.id }}" name="name" required
+               placeholder="{{ t('Firmenname') }}" autocomplete="off">
+      </div>
+      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}">
+      <button type="submit">{{ t("Hinzufügen") }}</button>
+    </form>
+    <p class="fieldhint">
+      {{ t("Wird als überwachtes Unternehmen angelegt und diesem Mandanten zugeordnet — nur hier, nicht bei den anderen.") }}
     </p>
-  {% endif %}
 
+    {% if candidates %}
+      {% set matching = [] %}
+      {% set other = [] %}
+      {% for c in candidates %}
+        {% if client.industry and shares_field(client, c) %}{{ matching.append(c) or '' }}{% else %}{{ other.append(c) or '' }}{% endif %}
+      {% endfor %}
+      {% if matching %}
+        <details class="otherfield">
+          <summary>{{ matching | length }} {{ t("bereits überwachte Unternehmen aus diesem Feld") }}</summary>
+          <form method="post" action="/client/{{ client.id }}/competitors" class="run-form">
+            <div class="filter-field">
+              <label for="competitor_id">{{ t("Aus dem Bestand wählen") }}</label>
+              <select id="competitor_id" name="competitor_id">
+                {% for c in matching %}
+                  <option value="{{ c.id }}">{{ c.name }}{% if c.industry %} · {{ c.industry }}{% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <button type="submit" class="btn btn--quiet">{{ t("Hinzufügen") }}</button>
+          </form>
+        </details>
+      {% endif %}
+      {% if other %}
+        <details class="otherfield">
+          <summary>{{ other | length }} {{ t("Unternehmen aus anderen Branchen anzeigen") }}</summary>
+          <p class="panel-hint">
+            {{ t("Ein Vergleich über Branchengrenzen hinweg verfälscht den Anteil — nur wählen, wenn es wirklich derselbe Markt ist.") }}
+          </p>
+          <form method="post" action="/client/{{ client.id }}/competitors" class="run-form">
+            <div class="filter-field">
+              <label for="competitor_other_{{ client.id }}">{{ t("Trotzdem hinzufügen") }}</label>
+              <select id="competitor_other_{{ client.id }}" name="competitor_id">
+                {% for c in other %}
+                  <option value="{{ c.id }}">{{ c.name }}{% if c.industry %} · {{ c.industry }}{% else %} · {{ t("ohne Branche") }}{% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <button type="submit" class="btn btn--quiet">{{ t("Hinzufügen") }}</button>
+          </form>
+        </details>
+      {% endif %}
+    {% endif %}
+  </div>
 </section>
 
 {# All filters live in one form, so submitting sends every value together and the

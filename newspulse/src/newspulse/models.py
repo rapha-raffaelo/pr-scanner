@@ -251,6 +251,16 @@ class Client(Base):
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
     )
+    # Why this mandate has no current positioning, and when that was last
+    # established. On the client rather than in the web process, because the
+    # answer is produced by the 06:10 sweep and read by a person at nine — an
+    # in-memory note written only by the button meant the page stayed silent
+    # about every unattended attempt, which is how "es funktioniert immer noch
+    # nicht" came back six times over work that was running correctly.
+    impulse_note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    impulse_checked_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1")
     )

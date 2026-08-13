@@ -133,7 +133,11 @@ def advice_view(
             # Why the last click came back empty, if it did. Shown instead of the
             # generic "the radar has collected nothing", which was wrong as often
             # as it was right.
-            "impulse_refusal": _last_refusal.get(client_id),
+            # The click's own answer if there was one this session, otherwise
+            # what the last sweep recorded — which is the usual case, since the
+            # sweep runs at 06:10 and the page is opened at nine.
+            "impulse_refusal": _last_refusal.get(client_id) or client.impulse_note,
+            "impulse_checked_at": client.impulse_checked_at,
             # The remedy for the commonest refusal, offered where the refusal is
             # read rather than on a settings screen the reader has never opened.
             "theme_work": themework.state.get(client_id),

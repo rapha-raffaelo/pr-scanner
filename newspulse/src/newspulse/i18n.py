@@ -382,6 +382,13 @@ _EN: dict[str, str] = {
     "Vorschlag fehlgeschlagen": "Proposal failed",
     "Verknüpfung lösen": "Unlink",
     "Wohin damit": "Where to send it",
+    "Zuletzt geprüft": "Last checked",
+    "Vergleichsgruppe": "Comparison set",
+    "Firmenname": "Company name",
+    "Wird als überwachtes Unternehmen angelegt und diesem Mandanten zugeordnet — nur hier, nicht bei den anderen.":
+        "Created as a monitored company and linked to this mandate only \u2014 not to the others.",
+    "bereits überwachte Unternehmen aus diesem Feld": "already-monitored companies from this field",
+    "Aus dem Bestand wählen": "Pick from the monitored companies",
     "Kontakt hinterlegen": "add a contact",
     "Kontaktbuch": "Contact book",
     "Journalistinnen und Journalisten, die Sie kennen. Das Tool schlägt aus der Berichterstattung vor, wen man ansprechen kann — womit, steht hier, und nur was Sie hier eintragen.":

@@ -819,19 +819,43 @@ def _refresh_impulses(
         current = angles.latest(session, client.id)
         if current is not None and current.generated_at >= cutoff:
             continue
+
+        def _note(text: str, *, target: Client = client) -> None:
+            """Record why, on the client, so the page can say it hours later.
+
+            The reason used to live in a dict in the web process, written only by
+            the button — so a sweep that found nothing left the page silent, and
+            "es funktioniert immer noch nicht" came back over work that was
+            running correctly.
+            """
+            target.impulse_note = text
+            target.impulse_checked_at = now
+            session.commit()
+
         material = market_material(session, client, since)
         if not material:
+            _note(
+                f"Kein Marktmaterial in {IMPULSE_LOOKBACK.days} Tagen — das Radar "
+                "fand nichts, was nicht schon Berichterstattung über den Mandanten "
+                "selbst ist."
+            )
             continue
         try:
-            result = angles.suggest(session, client, material)
+            result = angles.suggest(session, client, material, note=_note)
         except Exception as exc:  # noqa: BLE001 — per-client fault-isolation boundary
             _log.warning("impulse refresh for %r failed: %s; skipping", client.name, exc)
+            _note(f"Der Entwurf ist mit einem Fehler abgebrochen: {exc}")
             continue
         if result is None:
             _log.info("impulse refresh for %r: no opening in stored material", client.name)
+            if not client.impulse_note:
+                _note(f"Aus {len(material)} Marktmeldung(en) ergab sich kein Anlass.")
             continue
         draft, numbered = result
         angles.store(session, client, draft, numbered)
+        client.impulse_note = ""
+        client.impulse_checked_at = now
+        session.commit()
         written += 1
         _log.info("impulse refreshed for %r: %s", client.name, draft.subject)
     return written
