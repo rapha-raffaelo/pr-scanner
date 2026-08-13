@@ -11,7 +11,7 @@
       <span class="source">{{ row.source }}</span>
       <span class="time">{{ row.published_at.strftime('%d.%m.%Y %H:%M') }}</span>
       <span class="tag tag--category tag--{{ row.category }}">{{ t(row.category) }}</span>
-      <span class="importance" title="Importance score">{{ row.importance }}/10</span>
+      <span class="importance" title="{{ t('Wichtigkeit für diesen Mandanten, 0–10 — vom Analysemodell vergeben') }}">{{ row.importance }}/10</span>
     </div>
     {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
     <form method="post" action="/coverage/{{ row.analysis_id }}/dismiss" class="feed-item__act">

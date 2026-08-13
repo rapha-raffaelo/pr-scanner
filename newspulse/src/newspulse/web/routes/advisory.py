@@ -29,7 +29,7 @@ from ... import angles, job, outreach, pitch
 from ...db import get_session
 from ..runlock import guard as _run_guard
 from .. import themework
-from ...models import Angle, Client, TopicHit
+from ...models import Angle, Article, Client, TopicHit
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
 
@@ -37,6 +37,28 @@ router = APIRouter()
 
 _log = logging.getLogger(__name__)
 _SEE_OTHER = 303
+
+
+def _backing(
+    messages: dict[int, list], targets: dict[int, list[pitch.PitchTarget]]
+) -> dict[int, tuple[str, ...]]:
+    """Headlines per stored message, matched on (journalist, outlet).
+
+    Empty when the recipient was typed by hand or the radar has since moved on —
+    which is honest: there is then nothing on file that the letter's opening line
+    can be checked against.
+    """
+    out: dict[int, tuple[str, ...]] = {}
+    for angle_id, rows in messages.items():
+        by_who = {
+            ((t.journalist or "").casefold(), t.outlet.casefold()): t.evidence
+            for t in targets.get(angle_id, [])
+        }
+        for row in rows:
+            found = by_who.get((row.journalist.casefold(), row.outlet.casefold()))
+            if found:
+                out[row.id] = found
+    return out
 
 
 @router.get("/client/{client_id}/advice", response_class=HTMLResponse)
@@ -51,6 +73,8 @@ def advice_view(
         raise HTTPException(status_code=404, detail="Client not found")
 
     drafts = angles.for_client(session, client_id)
+    targets = {a.id: pitch.targets_for(session, client, a) for a in drafts}
+    messages = outreach.by_angle(session, [a.id for a in drafts])
     return templates.TemplateResponse(
         request,
         "advice.html",
@@ -70,14 +94,28 @@ def advice_view(
             # read rather than on a settings screen the reader has never opened.
             "theme_work": themework.state.get(client_id),
             "angles": drafts,
+            # The stories each draft rests on, keyed by angle id. The page's own
+            # lead promises that "jede Aussage nennt die Meldungen, auf die sie
+            # sich stützt" — and this card, the detailed view of a draft the Today
+            # column already shows in full, was the one place that named none of
+            # them. It showed strictly less than the overview it is reached from.
+            "sources": {
+                a.id: session.scalars(
+                    select(Article).where(Article.id.in_(a.article_ids or [-1]))
+                ).all()
+                for a in drafts
+            },
             # Who to send each draft to, keyed by angle id. Computed per draft
             # because the strongest signal is specific to it: the bylines on the
             # very stories it answers.
-            "pitch_targets": {
-                a.id: pitch.targets_for(session, client, a) for a in drafts
-            },
+            "pitch_targets": targets,
             # The messages already written off each impulse, keyed the same way.
-            "messages": outreach.by_angle(session, [a.id for a in drafts]),
+            "messages": messages,
+            # And, per message, the recipient's own headlines — the ones the
+            # letter claims to have read. A pitch that says "Sie haben über X
+            # geschrieben" has to be checkable where it is read, not two scrolls
+            # down in the pitch list.
+            "evidence": _backing(messages, targets),
             "message_error": _last_message_error.get(client_id, ""),
             # Whether a radar is possible at all, which is a question about the
             # client's themes — not about whether it has found anything yet. Read

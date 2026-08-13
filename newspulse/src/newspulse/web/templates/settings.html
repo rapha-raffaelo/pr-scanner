@@ -86,7 +86,7 @@
                        radar searches, and searching the wrong thing is why a
                        mandate can sit for months with nothing to say. #}
                     <form method="post" action="/settings/clients/{{ client.id }}/themes">
-                      <button type="submit" class="linkbtn" title="{{ t('Marktthemen vorschlagen und gegen die echte Suche prüfen') }}">{{ t("Themen") }}</button>
+                      <button type="submit" class="linkbtn" title="{{ t('Marktthemen vorschlagen und gegen die echte Suche prüfen') }}">{{ t("Themen vorschlagen") }}</button>
                     </form>
                   {% endif %}
                   {% if client.active %}
@@ -632,7 +632,7 @@
       {% else %}
         <p class="panel-hint">
           {{ t("Nicht eingerichtet") }} —
-          {{ t("erreicht das Claude-Abo sein Limit, bricht der Lauf ab und es entsteht eine Lücke im Archiv. Zum Aktivieren NEWSPULSE_GEMINI_API_KEY setzen.") }}
+          {{ t("erreicht das Claude-Abo sein Limit, bricht der Lauf ab — Gespeichertes bleibt, aber für diesen Zeitraum kommt nichts Neues dazu. Zum Aktivieren NEWSPULSE_GEMINI_API_KEY setzen.") }}
         </p>
       {% endif %}
       <p class="panel-hint">

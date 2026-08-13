@@ -36,7 +36,7 @@
     {% else %}
       <span class="runbad" title="{{ t('Fehler aus Feed-Abruf, Zuordnung oder Analyse — Details im Log') }}">{{ last_run.feed_errors }} {{ t("Fehler im Lauf") }}</span>
     {% endif %}
-    <span class="dot">·</span> {{ last_run.articles_checked }} {{ t("neue Artikel") }}
+    <span class="dot">·</span> <span title="{{ t('Über alle Mandanten und Themen-Radare zusammen — die Tagesansicht zeigt davon nur die Berichterstattung über Mandanten.') }}">{{ last_run.articles_checked }} {{ t("neue Artikel") }}</span>
   {% else %}
     <span class="runempty">{{ t("Noch kein Lauf") }}</span>
   {% endif %}

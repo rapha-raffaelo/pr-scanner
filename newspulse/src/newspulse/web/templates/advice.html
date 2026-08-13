@@ -120,6 +120,40 @@
           <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
         {% endif %}
 
+        {# The lead of this page promises that every claim names the coverage it
+           rests on. This card — the *detailed* view of a draft, reached from the
+           Today column that already shows all of it — was the one place that named
+           none: no context, no credibility, no derivable statements, no sources.
+           It showed strictly less than the overview it is opened from. #}
+        {% set cited = sources.get(angle.id) or [] %}
+        <details class="impulse__more">
+          <summary>{{ t("Grundlage") }}{% if cited %} · {{ cited | length }} {{ t("Meldung(en)") }}{% endif %}</summary>
+          {% if angle.context %}
+            <p class="impulse__block"><span class="impulse__label">{{ t("Kontext") }}</span> {{ angle.context }}</p>
+          {% endif %}
+          {% if angle.credibility %}
+            <p class="impulse__block"><span class="impulse__label">{{ t("Glaubwürdigkeit") }}</span> {{ angle.credibility }}</p>
+          {% endif %}
+          {% if angle.statements %}
+            <p class="impulse__block"><span class="impulse__label">{{ t("Ableitbare Aussagen") }}</span></p>
+            <ol class="impulse__statements">
+              {% for statement in angle.statements %}<li>{{ statement }}</li>{% endfor %}
+            </ol>
+          {% endif %}
+          {% if cited %}
+            <ul class="impulse__sources">
+              {% for article in cited %}
+                <li>
+                  <a href="{{ article.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ article.title }}</a>
+                  <span class="dot">·</span> {{ article.source }}
+                  <span class="dot">·</span> {{ article.published_at | de_short_date }}
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+          <p class="impulse__caveat">{{ t("Entwurf aus Schlagzeilen und Feed-Anrissen, nicht aus den vollständigen Artikeln. Vor dem Versand prüfen.") }}</p>
+        </details>
+
         {# The position is not the deliverable — the message is. This used to be a
            second panel called "Empfehlungen", and nobody could say how it differed
            from the one above it. It differed by being unsendable: it described
@@ -139,7 +173,7 @@
           </form>
           <span class="panel-hint">
             {% if first %}
-              {{ t("Als Anschreiben an") }} {% if first.journalist %}{{ first.journalist }} · {% endif %}{{ first.outlet }}{{ t(", mit dem, was über den Mandanten geschrieben wurde.") }}
+              {{ t("Trägt diese Position als Anschreiben an") }} {% if first.journalist %}{{ first.journalist }} · {% endif %}{{ first.outlet }}{{ t(" — belegt mit dem, was diese:r zuletzt geschrieben hat.") }}
             {% else %}
               {{ t("Macht aus der Positionierung ein Anschreiben — an eine Fachredaktion Ihrer Wahl.") }}
             {% endif %}
@@ -178,6 +212,20 @@
             {% if msg.hook %}
               <div class="letter__hook"><span class="impulse__label">{{ t("Warum diese:r") }}</span> {{ msg.hook }}</div>
             {% endif %}
+            {# The recipient's own headlines, beside the letter that claims to
+               have read them. The model is told to refer only to these, but a
+               claim about someone's work has to be checkable in the second before
+               it is sent, not two scrolls further down. #}
+            {% set backing = evidence.get(msg.id) or [] %}
+            {% if backing %}
+              <div class="letter__backing">
+                <span class="impulse__label">{{ t("Bezieht sich auf") }}</span>
+                <ul>{% for headline in backing %}<li>„{{ headline }}“</li>{% endfor %}</ul>
+              </div>
+            {% endif %}
+            <p class="letter__caveat">
+              {{ t("Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.") }}
+            </p>
           </article>
         {% endfor %}
 
@@ -210,7 +258,7 @@
                   {% elif target.journalist %}
                     <a class="pitchlist__add" href="/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}">{{ t("Kontakt hinterlegen") }}</a>
                   {% endif %}
-                  {% if target.is_new_contact %}<span class="pitchlist__new">{{ t("noch kein Kontakt") }}</span>{% endif %}
+                  {% if target.is_new_contact %}<span class="pitchlist__new" title="{{ t('Schreibt über das Themenfeld, aber noch nie über diesen Mandanten.') }}">{{ t("schreibt nie über den Mandanten") }}</span>{% endif %}
                   {# One recipient, one message: the same position reads
                      differently to the reporter who covered the story it answers
                      than to a trade title that never has. #}
@@ -315,8 +363,8 @@
            and a mandate cannot position against its own press. #}
         <p class="sect__empty sect__refusal">
           <strong>{{ t("Kein verwertbares Marktmaterial.") }}</strong>
-          {{ t("Das Themen-Radar hat") }} {{ market_seen }} {{ t("Treffer gesammelt, aber keiner davon liegt in den letzten") }}
-          {{ impulse_days }} {{ t("Tagen und handelt von etwas anderem als vom Mandanten selbst. Ein Impuls braucht ein Thema, über das auch ohne ihn geschrieben wird.") }}
+          {{ t("Das Themen-Radar hat") }} {{ market_seen }} {{ t("Treffer gesammelt. Jeder davon ist entweder älter als") }}
+          {{ impulse_days }} {{ t("Tage oder Berichterstattung über den Mandanten selbst — und gegen die eigene Presse lässt sich nicht positionieren. Ein Impuls braucht ein Thema, über das auch ohne den Mandanten geschrieben wird.") }}
         </p>
         <form method="post" action="/client/{{ client.id }}/themes" class="sect__act" style="border:0;padding:0;margin-top:10px">
           <button type="submit" class="btn btn--ghost">{{ t("Passende Themen vorschlagen") }}</button>

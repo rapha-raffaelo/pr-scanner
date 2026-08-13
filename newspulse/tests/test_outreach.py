@@ -480,3 +480,50 @@ def test_usable_material_without_a_draft_still_points_at_the_button(factory, web
 
     assert "verwertbare Marktmeldung(en)" in body
     assert "Kein verwertbares Marktmaterial" not in body
+
+
+def test_the_impulse_card_names_the_coverage_it_rests_on(factory, web):
+    """The page's own lead promises that "jede Aussage nennt die Meldungen, auf
+    die sie sich stützt". This card named none of them — no context, no
+    credibility, no derivable statements, no sources — while the Today column it
+    is reached from showed all four. The detail view showed less than the
+    overview, which is the wrong way round for a page called the detail view.
+    """
+    import datetime as dt
+
+    with factory() as session:
+        client, angle = _mandate(session)
+        source = Article(
+            title="EU verschärft Regeln für Zahlungsdienstleister",
+            url="https://ex.de/eu-regeln", source="Finanz-Szene",
+            published_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=2),
+            fetched_at=dt.datetime.now(dt.UTC), summary_text=None,
+            language="de", title_hash="eu0000001",
+        )
+        session.add(source)
+        session.flush()
+        angle.article_ids = [source.id]
+        session.commit()
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "Laut CoinDesk stand die Kette kurz still." in body  # Kontext
+    assert "Grundlage" in body
+    assert 'href="https://ex.de/eu-regeln"' in body
+    assert "Finanz-Szene" in body
+
+
+def test_a_draft_without_stored_sources_still_renders(factory, web):
+    """Older drafts carry no article ids. The block has to degrade, not 500 —
+    and an ``IN ()`` over an empty list is the classic way that goes wrong."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        angle.article_ids = []
+        session.commit()
+        client_id = client.id
+
+    resp = web.get(f"/client/{client_id}/advice")
+
+    assert resp.status_code == 200
+    assert "Grundlage" in resp.text

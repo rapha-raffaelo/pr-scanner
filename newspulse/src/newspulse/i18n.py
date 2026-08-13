@@ -117,7 +117,7 @@ _EN: dict[str, str] = {
     "Kein Anlass heute.": "No opening today.",
     "Mandant ohne Impuls": "client with no opening",
     "Mandanten ohne Impuls": "clients with no opening",
-    "Marktmeldung(en) gesichtet — keine davon trug.":
+    "Marktmeldung(en) gesichtet — keine davon gab einen Anlass her.":
         "market item(s) \u2014 none of them held up.",
     "Kein Themen-Radar — ohne hinterlegte Themen lässt sich nicht bestimmen, welche Marktmeldung ihn angeht.":
         "No topic radar \u2014 without themes there is no way to tell which market "
@@ -351,6 +351,33 @@ _EN: dict[str, str] = {
     # between the two panels was never legible, and only one of them produced
     # something sendable.
     "Personalisierte Nachricht erzeugen": "Write a personalised message",
+    "Personalisierte Nachrichten": "Personalised messages",
+    "Bezieht sich auf": "Refers to",
+    "Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.":
+        "Written from headlines and feed snippets, not from the articles "
+        "themselves. Check it against the item before sending.",
+    "Treffer gesammelt. Jeder davon ist entweder älter als":
+        "hits. Every one of them is either older than",
+    "Tage oder Berichterstattung über den Mandanten selbst — und gegen die eigene Presse lässt sich nicht positionieren. Ein Impuls braucht ein Thema, über das auch ohne den Mandanten geschrieben wird.":
+        "days or coverage of the client itself — and there is no positioning "
+        "against your own press. An opening needs a theme the press writes about "
+        "without them.",
+    "Themen vorschlagen": "Suggest themes",
+    "erreicht das Claude-Abo sein Limit, bricht der Lauf ab — Gespeichertes bleibt, aber für diesen Zeitraum kommt nichts Neues dazu. Zum Aktivieren NEWSPULSE_GEMINI_API_KEY setzen.":
+        "if the Claude subscription hits its limit the run stops — what is stored "
+        "stays, but nothing new is added for that period. Set "
+        "NEWSPULSE_GEMINI_API_KEY to enable it.",
+    "Trägt diese Position als Anschreiben an": "Carries this position as a letter to",
+    " — belegt mit dem, was diese:r zuletzt geschrieben hat.":
+        " — grounded in what they last wrote.",
+    "schreibt nie über den Mandanten": "never writes about the client",
+    "Schreibt über das Themenfeld, aber noch nie über diesen Mandanten.":
+        "Writes about the field, but has never written about this client.",
+    "Wichtigkeit für diesen Mandanten, 0–10 — vom Analysemodell vergeben":
+        "Importance for this client, 0–10 — assigned by the analysis model",
+    "Über alle Mandanten und Themen-Radare zusammen — die Tagesansicht zeigt davon nur die Berichterstattung über Mandanten.":
+        "Across every client and topic radar combined — the day view shows only "
+        "the coverage of clients.",
     "Als Anschreiben an": "As a letter to",
     ", mit dem, was über den Mandanten geschrieben wurde.":
         ", drawing on what has been written about the client.",

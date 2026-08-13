@@ -680,6 +680,13 @@ nav.tabs a.active {
   margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--line);
   font-size: 12.5px; color: var(--muted);
 }
+/* What the letter's opening line rests on, next to the letter. Both of these sit
+   outside the copy target, like the hook: they are the check on the text, not
+   part of it. */
+.letter__backing { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.letter__backing ul { list-style: none; margin: 4px 0 0; padding: 0; }
+.letter__backing li { font-style: italic; }
+.letter__caveat { margin-top: 8px; font-size: 11.5px; color: var(--muted); max-width: 72ch; }
 
 /* --- Shared surfaces ------------------------------------------------------ */
 /* Card, table and status box. Every one of these was declared only in
