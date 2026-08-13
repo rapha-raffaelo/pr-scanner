@@ -223,6 +223,28 @@
                 <ul>{% for headline in backing %}<li>„{{ headline }}“</li>{% endfor %}</ul>
               </div>
             {% endif %}
+            {# The second model's verdict. Three states, and they must not blur:
+               a clean check, objections, and never checked at all. The last one is
+               the dangerous one to render as silence — a letter with no objections
+               on screen reads as approved. #}
+            {% if msg.reviewed_by %}
+              <div class="crosscheck{% if not msg.review_ok %} crosscheck--hold{% endif %}">
+                <span class="impulse__label">
+                  {% if msg.review_ok %}{{ t("Gegengelesen von") }}{% else %}{{ t("Zweitmodell rät ab") }} —{{ t("gelesen von") }}{% endif %}
+                  {{ msg.reviewed_by }}
+                </span>
+                {% if msg.review %}
+                  <ul>{% for line in msg.review.split("\n") if line.strip() %}<li>{{ line }}</li>{% endfor %}</ul>
+                {% else %}
+                  <span class="crosscheck__clean">{{ t("keine Einwände") }}</span>
+                {% endif %}
+              </div>
+            {% else %}
+              <p class="crosscheck crosscheck--none">
+                {{ t("Nicht gegengelesen — es ist kein Zweitmodell hinterlegt.") }}
+                <a href="/settings">{{ t("Einstellungen") }} →</a>
+              </p>
+            {% endif %}
             <p class="letter__caveat">
               {{ t("Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.") }}
             </p>

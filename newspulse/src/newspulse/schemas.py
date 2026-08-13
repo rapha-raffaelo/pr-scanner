@@ -209,6 +209,29 @@ class PersonalMessage(BaseModel):
     hook: str = ""
 
 
+class MessageReview(BaseModel):
+    """A second model's read of a letter the first one wrote.
+
+    Two models, one text. The one that wrote it is the worst possible judge of
+    whether it oversells: it chose every word for a reason it still believes. So
+    the check runs on a different provider entirely (Gemini, configured with its
+    own key) and is asked one narrow question — would this embarrass the sender.
+
+    ``send`` is its verdict, and it is advisory like everything else here: a
+    consultant who disagrees sends the letter anyway. What the flag buys is that
+    disagreeing becomes a decision instead of an oversight.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    send: bool = True
+    #: One line per concern, in the consultant's language. Empty is the good case
+    #: and must stay possible: a checker that always finds something is noise.
+    concerns: list[str] = Field(default_factory=list, max_length=5)
+    #: The one thing to change first, if anything.
+    fix: str = ""
+
+
 # --- Coach: does the guide hold up against the actual coverage? ------------------
 
 

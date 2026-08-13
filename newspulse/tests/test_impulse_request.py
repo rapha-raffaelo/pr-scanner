@@ -390,14 +390,43 @@ def test_a_client_without_themes_says_so_rather_than_going_quiet(session, monkey
     assert "keine Themen hinterlegt" in said[0]
 
 
-def test_material_older_than_the_window_is_not_used(session, monkeypatch):
+def test_fresh_material_wins_over_old(session, monkeypatch):
+    """The window is a preference, not a wall: what is inside it is what the draft
+    reads, and the old item stays out of the way."""
     client = _client(session)
     _stored_market(session, client, "Uralte Meldung", days_ago=200)
+    _stored_market(session, client, "Meldung von gestern", days_ago=1)
+    seen: list[str] = []
     monkeypatch.setattr(
-        angles, "suggest", lambda *a, **k: pytest.fail("must not ask the model")
+        angles, "suggest",
+        lambda s_, c_, material, **k: seen.extend(a.title for a, _ in material) or None,
     )
 
-    assert job.draft_impulse(session, client, fetch=_no_fetch, now=lambda: _NOW) is False
+    job.draft_impulse(session, client, fetch=_no_fetch, now=lambda: _NOW)
+
+    assert seen == ["Meldung von gestern"]
+
+
+def test_material_outside_the_window_is_used_rather_than_nothing(session, monkeypatch):
+    """"Vielleicht lösen wir einfach die 90-Tage-Restriktion und schauen immer auf
+    die letzten 3 Artikel."
+
+    A mandate in a field that moves twice a year had an empty column for months
+    because of a boundary it could not see. A four-month-old development it never
+    spoke to beats nothing at all — and the model still refuses stale material, so
+    the bar stays with the judgement rather than with the SQL.
+    """
+    client = _client(session)
+    _stored_market(session, client, "Uralte Meldung", days_ago=200)
+    seen: list[str] = []
+    monkeypatch.setattr(
+        angles, "suggest",
+        lambda s_, c_, material, **k: seen.extend(a.title for a, _ in material) or None,
+    )
+
+    job.draft_impulse(session, client, fetch=_no_fetch, now=lambda: _NOW)
+
+    assert seen == ["Uralte Meldung"]
 
 
 def test_a_radar_that_finds_only_the_client_itself_widens(session, monkeypatch):

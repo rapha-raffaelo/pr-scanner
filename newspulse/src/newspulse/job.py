@@ -41,6 +41,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
@@ -56,6 +57,7 @@ from .feeds import Feed, load_feeds
 from .ingest import FeedItem, fetch_feed
 from .matching import (
     Candidate,
+    _haystack,
     dedup_title_hash,
     deduplicate,
     match_candidates,
@@ -337,12 +339,15 @@ def _fetch_topics(
                     # stronger evidence of an actual analysis.
                     batch = [
                         *batch,
-                        *fetch(
-                            widened,
-                            since,
-                            source=feed.name,
-                            fetched_at=fetched_at,
-                            per_entry_source=feed.per_entry_source,
+                        *_on_theme(
+                            fetch(
+                                widened,
+                                since,
+                                source=feed.name,
+                                fetched_at=fetched_at,
+                                per_entry_source=feed.per_entry_source,
+                            ),
+                            client,
                         ),
                     ]
         except Exception as exc:  # noqa: BLE001 — per-feed fault-isolation boundary
@@ -352,6 +357,75 @@ def _fetch_topics(
         feeds_ok += 1
         pairs.extend(Candidate(item=item, client=client) for item in batch)
     return pairs, feeds_ok
+
+
+def _theme_probes(client: Client) -> list[str]:
+    """Each theme, plus its longest word — the phrase alone is too strict here.
+
+    A theme is often written as a phrase ("KI in der Kosmetik", "financial
+    operating system") and the press almost never repeats it verbatim in a
+    headline. Requiring the whole phrase would drop the very items the widened
+    query exists to find, so the longest content word of each theme counts too:
+    "Kosmetik" for the first, "financial" for the second. Five characters is the
+    floor, which keeps stopwords and "KI" out of the alternation — a two-letter
+    token would match half the German press.
+
+    Measured on the live widened query for a real mandate: the phrase-only rule
+    kept 32 of 45 items, this one keeps 39. The six it still drops are German
+    synonyms of a theme that *is* present ("Firmeninsolvenzen" where the theme
+    says "Unternehmensinsolvenzen") — a real loss, and an acceptable one while 39
+    items on the same subject come through beside them.
+    """
+    probes: list[str] = []
+    for term in [*(client.keywords or []), *(client.alert_topics or [])]:
+        term = (term or "").strip()
+        if not term:
+            continue
+        probes.append(term)
+        words = [w for w in re.findall(r"\w+", term, re.UNICODE) if len(w) >= 5]
+        if words:
+            probes.append(max(words, key=len))
+    return probes
+
+
+def _on_theme(items: Sequence[FeedItem], client: Client) -> list[FeedItem]:
+    """Keep the widened query's items that actually carry one of the themes.
+
+    Three doors lead into ``topic_hits`` and only two were guarded. The archive
+    linker demands theme *and* field with word boundaries. The scoped search
+    carries "AND (Branche)" in the query itself, and that clause does real work —
+    measured on a fashion mandate it took 100 loose results down to 6 relevant.
+
+    The third door is this one: when the scoped query comes back with nothing
+    usable, the radar re-asks *without* the field clause, leaving a bare OR-chain
+    of themes. Google answers such a chain generously and nothing downstream knows
+    a hit arrived that way. That is how "Putin Signs Russia's First Crypto Law"
+    ended up in a Neobank's market radar — stored, indistinguishable from signal,
+    and eventually pitched.
+
+    Measured on that mandate's real themes: the scoped query returned 1 item, the
+    widened one 45 — of which 32 carry a theme term in the syndicated text and 13
+    carry none. Applied here and only here, so a legitimate hit whose headline
+    does not repeat the theme ("BitMEX stellt den Betrieb ein" for a mandate whose
+    theme is "Onchain-Liquidität") still arrives through the scoped door, where a
+    field clause vouches for it.
+
+    The cost is a genuine synonym now and then ("Firmeninsolvenzen" where the
+    theme says "Unternehmensinsolvenzen"). On the unanchored query that is the
+    right side to err on: a missing item is invisible, a wrong one is believed.
+    """
+    matcher = terms_matcher(_theme_probes(client))
+    if matcher is None:
+        return list(items)
+    kept = [item for item in items if matcher.search(_haystack(item).casefold())]
+    dropped = len(items) - len(kept)
+    if dropped:
+        _log.info(
+            "widened radar for %r: dropped %d of %d item(s) that carry none of "
+            "its themes in the syndicated text",
+            client.name, dropped, len(items),
+        )
+    return kept
 
 
 def _distinct_items(candidates: Sequence[Candidate]) -> list[FeedItem]:
@@ -657,10 +731,21 @@ def refresh_radar(
     return _record_topic_hits(session, pairs, started)
 
 
+#: How many market items an impulse falls back to when the window holds none.
+#: Three, because that is what was asked for and because a fourth adds little: the
+#: model reads them as "what has happened in this field lately", and a field that
+#: produced three items in six months has told you its pace.
+IMPULSE_FALLBACK_ITEMS = 3
+
+
 def market_material(
-    session: Session, client: Client, since: dt.datetime
+    session: Session,
+    client: Client,
+    since: dt.datetime | None = None,
+    *,
+    newest: int = IMPULSE_FALLBACK_ITEMS,
 ) -> list[tuple[Article, str]]:
-    """What the radar has stored for ``client`` since ``since`` — minus its own press.
+    """What the radar has stored for ``client`` — minus its own press.
 
     A theme search finds the mandate's own coverage too, and offering that back as
     "a market development to position against" asks for a statement about itself.
@@ -672,25 +757,34 @@ def market_material(
     Dismissed and irrelevant matches are not coverage, so ``visible_coverage()``
     is the right gate rather than "has any analysis": an article the analyzer
     scored as not about this client is market material like any other.
+
+    ``since`` bounds the window, and an empty window falls back to the ``newest``
+    items whatever their age — *"vielleicht lösen wir einfach die 90-Tage-
+    Restriktion und schauen immer auf die letzten 3 Artikel"*. The cutoff is a
+    freshness preference, not a fact about the world: a mandate in a field that
+    moves twice a year had an empty column for months because of a boundary it
+    could not see, and a four-month-old development it never spoke to is worth
+    more than nothing at all. The model still refuses stale material — the age
+    goes into the prompt — so the bar stays where it belongs, with the judgement
+    rather than with the SQL.
     """
     own_coverage = (
         select(Analysis.article_id)
         .where(Analysis.client_id == client.id, visible_coverage())
         .scalar_subquery()
     )
-    return [
-        (article, "Themen-Radar")
-        for article in session.scalars(
-            select(Article)
-            .join(TopicHit, TopicHit.article_id == Article.id)
-            .where(
-                TopicHit.client_id == client.id,
-                Article.published_at >= since,
-                Article.id.not_in(own_coverage),
-            )
-            .order_by(Article.published_at.desc())
-        ).all()
-    ]
+    base = (
+        select(Article)
+        .join(TopicHit, TopicHit.article_id == Article.id)
+        .where(TopicHit.client_id == client.id, Article.id.not_in(own_coverage))
+        .order_by(Article.published_at.desc())
+    )
+    if since is not None:
+        inside = session.scalars(base.where(Article.published_at >= since)).all()
+        if inside:
+            return [(article, "Themen-Radar") for article in inside]
+        base = base.limit(max(1, newest))
+    return [(article, "Themen-Radar") for article in session.scalars(base).all()]
 
 
 def link_archive_to_themes(
@@ -835,9 +929,9 @@ def _refresh_impulses(
         material = market_material(session, client, since)
         if not material:
             _note(
-                f"Kein Marktmaterial in {IMPULSE_LOOKBACK.days} Tagen — das Radar "
-                "fand nichts, was nicht schon Berichterstattung über den Mandanten "
-                "selbst ist."
+                "Kein Marktmaterial — das Radar fand nichts, was nicht schon "
+                "Berichterstattung über den Mandanten selbst ist. Ein Impuls "
+                "braucht ein Thema, über das auch ohne ihn geschrieben wird."
             )
             continue
         try:
@@ -1470,11 +1564,12 @@ def draft_impulse(
     if not material:
         _log.info("no market material for %r in the last %s", client.name, IMPULSE_LOOKBACK)
         _say(
-            f"Das Themen-Radar hat in den letzten {IMPULSE_LOOKBACK.days} Tagen "
-            "keine Marktmeldung gefunden, die nicht schon Berichterstattung über "
-            "den Mandanten selbst ist. Meist sind die hinterlegten Themen zu eng "
-            "am Unternehmen formuliert — ein Impuls braucht ein Thema, über das "
-            "auch ohne den Mandanten geschrieben wird."
+            "Das Themen-Radar hat keine einzige Marktmeldung gefunden, die nicht "
+            "schon Berichterstattung über den Mandanten selbst ist — auch außerhalb "
+            "der letzten "
+            f"{IMPULSE_LOOKBACK.days} Tage nicht. Meist sind die hinterlegten Themen "
+            "zu eng am Unternehmen formuliert: ein Impuls braucht ein Thema, über "
+            "das auch ohne den Mandanten geschrieben wird."
         )
         return False
 

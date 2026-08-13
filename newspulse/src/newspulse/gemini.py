@@ -40,10 +40,13 @@ def _body(prompt: str) -> bytes:
     return json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
 
 
-def _request(url: str, prompt: str) -> urllib.request.Request:
+def _request(url: str, prompt: str, api_key: str | None = None) -> urllib.request.Request:
     from .analyzer import BackendError
 
-    key = config.gemini_api_key()
+    # A caller may bring its own key. The cross-check does: it is allowed to run
+    # on a bare GEMINI_API_KEY, while the coverage fallback insists on the
+    # namespaced one — two different things to consent to (see config).
+    key = api_key or config.gemini_api_key()
     if not key:
         raise BackendError("Gemini is not configured (NEWSPULSE_GEMINI_API_KEY unset)")
     return urllib.request.Request(  # noqa: S310 - fixed https endpoint, not caller-supplied
@@ -89,14 +92,22 @@ def _text_from(payload: dict) -> str:
     return "".join(p.get("text", "") for p in parts if isinstance(p, dict))
 
 
-def generate(prompt: str, *, timeout: float = _TIMEOUT, model: str | None = None) -> str:
+def generate(
+    prompt: str,
+    *,
+    timeout: float = _TIMEOUT,
+    model: str | None = None,
+    api_key: str | None = None,
+) -> str:
     """One prompt in, the model's text out. Raises ``BackendError`` on failure."""
     from .analyzer import BackendError
 
     name = model or config.GEMINI_MODEL
     url = f"{_ENDPOINT}/{name}:generateContent"
     try:
-        with urllib.request.urlopen(_request(url, prompt), timeout=timeout) as response:
+        with urllib.request.urlopen(
+            _request(url, prompt, api_key), timeout=timeout
+        ) as response:
             payload = json.loads(response.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as exc:
         _raise_for_http(exc)

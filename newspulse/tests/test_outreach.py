@@ -527,3 +527,167 @@ def test_a_draft_without_stored_sources_still_renders(factory, web):
 
     assert resp.status_code == 200
     assert "Grundlage" in resp.text
+
+
+# --- The house rule, applied where the text is stored ----------------------------
+
+
+def test_a_stored_letter_carries_no_dash(session):
+    """The prompt asks and the model relapses. Storage is the last place that can
+    still be sure — see newspulse.prose."""
+    client, angle = _mandate(session)
+    message = outreach.draft(
+        session, client, angle, _TARGET,
+        invoke=lambda *a, **k: _reply(
+            subject="Retouren — die Begründung verschiebt sich",
+            message="Sehr geehrte Frau Faber,\n\nDie Anprobe ist gewandert — und "
+                    "wird dort bezahlt.\n\nMit freundlichen Grüßen\nZalando",
+        ),
+    )
+    stored = outreach.store(session, client, angle, message, _TARGET)
+
+    assert "—" not in stored.message
+    assert "—" not in stored.subject
+    assert stored.message.count("\n\n") == 2, "the paragraphs survive"
+
+
+# --- The second model --------------------------------------------------------
+
+
+def _review(**over) -> str:
+    payload = {"send": True, "concerns": [], "fix": ""}
+    payload.update(over)
+    return json.dumps(payload)
+
+
+def test_the_crosscheck_sees_the_letter_and_what_it_may_claim(session):
+    """It can only judge invention if it knows what was provable."""
+    client, angle = _mandate(session, coverage=1)
+    seen: list[str] = []
+    message = outreach.draft(session, client, angle, _TARGET, invoke=lambda *a, **k: _reply())
+
+    outreach.crosscheck(
+        session, client, angle, message, _TARGET,
+        generate=lambda prompt, **k: seen.append(prompt) or _review(),
+    )
+
+    assert "Sehr geehrter Herr Nelson" in seen[0]          # the letter itself
+    assert "Was ist Arc? Die Stablecoin-Kette von Circle" in seen[0]  # what is provable
+    assert "Solana ist unzuverlässig" in seen[0]           # the overclaim to catch
+    assert "Alpha AG baut Verwahrung aus 0" in seen[0]     # the mandate's own press
+
+
+def test_concerns_are_stored_with_the_letter_they_are_about(session):
+    client, angle = _mandate(session)
+    message = outreach.draft(session, client, angle, _TARGET, invoke=lambda *a, **k: _reply())
+    review, model = outreach.crosscheck(
+        session, client, angle, message, _TARGET,
+        generate=lambda *a, **k: _review(
+            send=False, concerns=["Behauptet einen Artikelinhalt, der nicht belegt ist."],
+            fix="Ersten Satz streichen.",
+        ),
+    )
+    stored = outreach.store(session, client, angle, message, _TARGET, review, model)
+
+    assert stored.review_ok is False
+    assert "nicht belegt" in stored.review
+    assert "Ersten Satz streichen." in stored.review
+    assert stored.reviewed_by == model
+
+
+def test_rewriting_clears_the_verdict_of_the_letter_it_replaces(session):
+    """A verdict must never stand over a text it never read."""
+    client, angle = _mandate(session)
+    message = outreach.draft(session, client, angle, _TARGET, invoke=lambda *a, **k: _reply())
+    review, model = outreach.crosscheck(
+        session, client, angle, message, _TARGET,
+        generate=lambda *a, **k: _review(send=False, concerns=["Zu werblich."]),
+    )
+    outreach.store(session, client, angle, message, _TARGET, review, model)
+
+    again = outreach.draft(
+        session, client, angle, _TARGET, invoke=lambda *a, **k: _reply(message="Neu.")
+    )
+    stored = outreach.store(session, client, angle, again, _TARGET)
+
+    assert stored.review == ""
+    assert stored.reviewed_by == ""
+    assert stored.review_ok is True
+
+
+def test_a_dash_is_caught_even_if_the_checker_misses_it(session):
+    """The one failure mode a language model should not be trusted with, because
+    it is mechanical and it is the one the reader spots first."""
+    client, angle = _mandate(session)
+    message = outreach.draft(
+        session, client, angle, _TARGET,
+        invoke=lambda *a, **k: _reply(message="Sehr geehrter Herr Nelson,\n\nEins — zwei."),
+    )
+    review, _ = outreach.crosscheck(
+        session, client, angle, message, _TARGET, generate=lambda *a, **k: _review(),
+    )
+
+    assert any("Gedankenstrich" in c for c in review.concerns)
+
+
+def test_without_a_second_model_the_check_refuses_rather_than_passes(session, monkeypatch):
+    """A check that silently did not run is worse than none: the page would show a
+    letter with no objections and the reader would take that for a verdict."""
+    from newspulse import config
+
+    client, angle = _mandate(session)
+    message = outreach.draft(session, client, angle, _TARGET, invoke=lambda *a, **k: _reply())
+    monkeypatch.setattr(config, "review_configured", lambda: False)
+
+    with pytest.raises(RuntimeError, match="Zweitmodell"):
+        outreach.crosscheck(session, client, angle, message, _TARGET)
+
+
+def test_the_page_says_which_of_the_three_states_a_letter_is_in(factory, web):
+    """Clean, objected-to, and never checked. Rendering the third as silence is
+    the failure this guards against."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        message = outreach.draft(session, client, angle, _TARGET, invoke=lambda *a, **k: _reply())
+        outreach.store(session, client, angle, message, _TARGET)  # unchecked
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+    assert "Nicht gegengelesen" in body
+
+    with factory() as session:
+        client = session.get(Client, client_id)
+        angle = outreach.for_angle(session, 1)[0]
+        stored = session.get(Outreach, angle.id)
+        stored.reviewed_by = "gemini-2.5-flash"
+        stored.review = "Behauptet einen Artikelinhalt, der nicht belegt ist."
+        stored.review_ok = False
+        session.commit()
+
+    body = web.get(f"/client/{client_id}/advice").text
+    assert "Zweitmodell rät ab" in body
+    assert "nicht belegt" in body
+    assert "Nicht gegengelesen" not in body
+
+
+def test_the_coverage_fallback_still_needs_its_own_explicit_key(monkeypatch):
+    """Two different things to consent to, and only one of them was asked for.
+
+    The namespaced key turns Google into a fallback processor of *all* client
+    coverage; the bare one, which a developer already has exported for unrelated
+    work, must not switch that on by accident. It enables the letter check and
+    nothing else.
+    """
+    import importlib
+
+    from newspulse import config
+
+    monkeypatch.delenv("NEWSPULSE_GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "bare-key-from-the-shell")
+    importlib.reload(config)
+
+    assert config.review_configured() is True
+    assert config.gemini_configured() is False
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    importlib.reload(config)

@@ -44,7 +44,7 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config, guide
+from . import config, guide, prose
 from .analyzer import (
     AnalyzerError,
     ParseError,
@@ -263,10 +263,14 @@ def store(
     """
     by_index = {item.index: item.article_id for item in numbered}
     cited = [by_index[i] for i in draft.evidence if i in by_index]
+    # The message and the subject are what a consultant forwards, so they follow
+    # the house rule on dashes (newspulse.prose). The reasoning fields below stay
+    # verbatim: they are read inside the tool, never sent, and a dash there is
+    # nobody's tell.
     angle = Angle(
         client_id=client.id,
-        subject=draft.subject.strip(),
-        message=draft.message.strip(),
+        subject=prose.plain(draft.subject),
+        message=prose.plain(draft.message),
         context=draft.context.strip(),
         credibility=draft.credibility.strip(),
         thesis=draft.thesis.strip(),

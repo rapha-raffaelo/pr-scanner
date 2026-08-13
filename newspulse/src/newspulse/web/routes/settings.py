@@ -232,11 +232,18 @@ def _first_drafts(session: Session, client: Client) -> None:
         first = angles.latest(session, client.id)
         if first is not None:
             targets = pitch.targets_for(session, client, first)
-            message = outreach.draft(
-                session, client, first, targets[0] if targets else None
-            )
+            target = targets[0] if targets else None
+            message = outreach.draft(session, client, first, target)
+            review = reviewed_by = None
+            try:
+                review, reviewed_by = outreach.crosscheck(
+                    session, client, first, message, target
+                )
+            except Exception as exc:  # noqa: BLE001 — no key, no network, no loss
+                _log.info("first message for %r not cross-checked: %s", client.name, exc)
             outreach.store(
-                session, client, first, message, targets[0] if targets else None
+                session, client, first, message, target,
+                review=review, reviewed_by=reviewed_by or "",
             )
             _log.info("first message for %r written", client.name)
     except Exception:  # noqa: BLE001

@@ -740,6 +740,15 @@ class Outreach(Base):
     #: Why this recipient, in one line: what they wrote that this answers. Kept
     #: apart from the message so it can never be pasted into an inbox with it.
     hook: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: A second model's verdict on the letter, one concern per line. Empty means
+    #: either "no concerns" or "never checked", which the two columns below
+    #: distinguish — a blank check and a clean check must not look alike.
+    review: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: Which model checked it, so a stale verdict from a since-changed provider is
+    #: visible rather than silently authoritative. Empty means unchecked.
+    reviewed_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    #: The checker's own send/hold flag. True unless it objected.
+    review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 __all__ = [

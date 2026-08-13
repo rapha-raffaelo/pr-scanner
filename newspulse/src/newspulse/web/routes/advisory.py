@@ -300,7 +300,25 @@ def _run_outreach(client_id: int, angle_id: int, journalist: str, outlet: str) -
                 _last_message_error.pop(client_id, None)
                 target = _target_for(session, client, angle, journalist, outlet)
                 message = outreach.draft(session, client, angle, target)
-                outreach.store(session, client, angle, message, target)
+                # A second model reads it before a human does. Fault-isolated on
+                # purpose: a missing key or an unreachable provider must not lose
+                # the letter that was just written — it costs a model call, and
+                # the page says plainly that it went unchecked.
+                review = reviewed_by = None
+                try:
+                    review, reviewed_by = outreach.crosscheck(
+                        session, client, angle, message, target
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    _last_message_error[client_id] = (
+                        f"Die Nachricht steht, aber das Zweitmodell hat sie nicht "
+                        f"gegengelesen: {exc}"
+                    )
+                    _log.warning("crosscheck skipped: %s", exc)
+                outreach.store(
+                    session, client, angle, message, target,
+                    review=review, reviewed_by=reviewed_by or "",
+                )
                 _log.info(
                     "outreach written for %r → %s",
                     client.name,

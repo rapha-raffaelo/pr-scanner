@@ -687,6 +687,23 @@ nav.tabs a.active {
 .letter__backing ul { list-style: none; margin: 4px 0 0; padding: 0; }
 .letter__backing li { font-style: italic; }
 .letter__caveat { margin-top: 8px; font-size: 11.5px; color: var(--muted); max-width: 72ch; }
+/* The second model's verdict. Green is not celebration, it is "no objection" —
+   and the "never checked" state gets its own muted look so it cannot be mistaken
+   for a clean bill of health, which is the whole failure this guards against. */
+.crosscheck {
+  margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+  background: #f0fdf4; border: 1px solid #bbf7d0;
+  font-size: 12.5px; color: #14532d;
+}
+.crosscheck .impulse__label { color: #15803d; }
+.crosscheck ul { margin: 4px 0 0 16px; padding: 0; }
+.crosscheck--hold { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.crosscheck--hold .impulse__label { color: #b45309; }
+.crosscheck--none {
+  background: var(--bg); border-color: var(--line); color: var(--muted);
+}
+.crosscheck--none a { color: var(--accent); }
+.crosscheck__clean { color: #15803d; }
 
 /* --- Shared surfaces ------------------------------------------------------ */
 /* Card, table and status box. Every one of these was declared only in

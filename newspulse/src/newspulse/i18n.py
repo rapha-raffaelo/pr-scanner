@@ -352,6 +352,12 @@ _EN: dict[str, str] = {
     # something sendable.
     "Personalisierte Nachricht erzeugen": "Write a personalised message",
     "Personalisierte Nachrichten": "Personalised messages",
+    "Gegengelesen von": "Second read by",
+    "Zweitmodell rät ab": "Second model advises against",
+    "gelesen von": "read by",
+    "keine Einwände": "no objections",
+    "Nicht gegengelesen — es ist kein Zweitmodell hinterlegt.":
+        "Not cross-checked: no second model is configured.",
     "Bezieht sich auf": "Refers to",
     "Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.":
         "Written from headlines and feed snippets, not from the articles "

@@ -37,11 +37,11 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config, guide
+from . import config, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Analysis, Angle, Article, Client, Outreach, visible_coverage
 from .pitch import PitchTarget
-from .schemas import PersonalMessage
+from .schemas import MessageReview, PersonalMessage
 
 _log = logging.getLogger(__name__)
 
@@ -198,12 +198,94 @@ def draft(
     return _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
 
 
+_CROSSCHECK_RESOURCE = "prompts/crosscheck.txt"
+
+
+def crosscheck(
+    session: Session,
+    client: Client,
+    angle: Angle,
+    message: PersonalMessage,
+    target: PitchTarget | None = None,
+    *,
+    generate=None,
+) -> tuple[MessageReview, str]:
+    """Have a *different* model read the letter, and say which one did.
+
+    The model that wrote a pitch cannot judge whether it oversells: it chose every
+    word for a reason it still believes, and asking it to review its own work
+    reliably produces "looks good". So this runs on the configured second provider
+    — Gemini, with its own key — and is asked one narrow question: would this
+    embarrass the sender.
+
+    Returns the review and the name of the model that gave it. Raises
+    :class:`RuntimeError` when no second model is configured, because a check that
+    silently did not happen is worse than no check at all: the page would show a
+    letter with no objections and the reader would take that for a verdict.
+
+    ``generate`` is injectable so the tests drive the whole path without a network
+    call; by default it is :func:`newspulse.gemini.generate`, which is deliberately
+    *not* the fallback-wrapped invoker the drafting side uses — falling back to
+    Claude here would quietly turn the cross-check into a self-check.
+    """
+    if generate is None:
+        if not config.review_configured():
+            raise RuntimeError(
+                "Kein Zweitmodell hinterlegt: GEMINI_API_KEY (oder "
+                "NEWSPULSE_GEMINI_API_KEY) in der .env setzen, damit ein anderes "
+                "Modell die Nachricht gegenliest."
+            )
+
+        def generate(prompt: str, **kwargs) -> str:
+            return gemini.generate(
+                prompt,
+                model=config.review_model(),
+                api_key=config.review_api_key(),
+                **kwargs,
+            )
+
+    template = Template(
+        resources.files("newspulse").joinpath(_CROSSCHECK_RESOURCE).read_text("utf-8")
+    )
+    prompt = template.substitute(
+        client=client.name,
+        thesis=angle.thesis or "—",
+        overclaim=angle.overclaim or "—",
+        recipient=_recipient_block(target),
+        recipient_work=_recipient_work(target) or "Keine belegten Schlagzeilen.",
+        own_coverage=_own_coverage_block(session, client.id),
+        subject=message.subject,
+        message=message.message,
+    )
+    raw = generate(prompt)
+    try:
+        payload = json.loads(strip_code_fence(raw))
+        review = MessageReview.model_validate(payload)
+    except Exception as exc:  # noqa: BLE001 — pydantic and json raise their own
+        raise ParseError(f"crosscheck did not match the schema: {exc}") from exc
+
+    # One thing the checker cannot be trusted to catch, because it is mechanical:
+    # the house rule on dashes. Checked here rather than believed.
+    if prose.has_dash(message.message) or prose.has_dash(message.subject):
+        review = review.model_copy(
+            update={
+                "concerns": [
+                    *review.concerns,
+                    "Gedankenstrich im Text — verrät maschinelles Schreiben.",
+                ][:5]
+            }
+        )
+    return review, config.review_model()
+
+
 def store(
     session: Session,
     client: Client,
     angle: Angle,
     message: PersonalMessage,
     target: PitchTarget | None = None,
+    review: MessageReview | None = None,
+    reviewed_by: str = "",
 ) -> Outreach:
     """Persist one message. Re-writing for the same recipient replaces the old
     one: two drafts at the same journalist are two attempts, not two pitches."""
@@ -219,9 +301,19 @@ def store(
     row = existing or Outreach(angle_id=angle.id, client_id=client.id)
     row.journalist = journalist
     row.outlet = outlet
-    row.subject = message.subject.strip()
-    row.message = message.message.strip()
+    # House style, enforced rather than requested: the prompt asks for no dashes
+    # and the model relapses by the third paragraph. See newspulse.prose.
+    row.subject = prose.plain(message.subject)
+    row.message = prose.plain(message.message)
     row.hook = message.hook.strip()
+    # A stored review always belongs to the text beside it: re-writing for the
+    # same recipient clears the old verdict rather than letting it stand over a
+    # letter it never read.
+    row.review = "\n".join(review.concerns) if review else ""
+    row.reviewed_by = reviewed_by if review else ""
+    row.review_ok = review.send if review else True
+    if review and review.fix:
+        row.review = f"{row.review}\nZuerst ändern: {review.fix}".strip()
     row.generated_at = dt.datetime.now(dt.UTC)
     session.add(row)
     session.commit()
@@ -257,4 +349,4 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
     return grouped
 
 
-__all__ = ["draft", "store", "for_angle", "by_angle"]
+__all__ = ["draft", "crosscheck", "store", "for_angle", "by_angle"]

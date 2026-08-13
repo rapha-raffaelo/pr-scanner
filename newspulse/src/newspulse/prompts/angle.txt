@@ -34,6 +34,10 @@ Regeln für den Text:
 - Der Mandant wird nicht angepriesen. Der Text erklärt eine Marktmechanik; dass
   der Mandant genau dort arbeitet, ergibt sich daraus, statt behauptet zu werden.
   Nenne ihn höchstens beiläufig, oft gar nicht.
+- Keine Gedankenstriche. Kein "—", kein "–". Sie sind das verlässlichste
+  Erkennungszeichen maschinell geschriebener Texte, und ein Anschreiben, das sich
+  im ersten Satz als KI-Text zu erkennen gibt, ist gelesen und verworfen, bevor
+  das Argument beginnt. Nimm ein Komma, einen Doppelpunkt oder zwei Sätze.
 - Keine Anrede, keine Grußformel, keine Überschrift. Zwei bis drei Absätze
   Fließtext, keine Aufzählungen.
 - Differenziere zum Schluss. Was bleibt bestehen, was verschiebt sich? Ein Text,

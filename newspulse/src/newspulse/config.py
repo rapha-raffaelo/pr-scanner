@@ -155,6 +155,43 @@ _DEFAULT_SMTP_PORT = 587
 _DEFAULT_SMTP_STARTTLS = True
 
 
+def _load_dotenv() -> None:
+    """Read ``.env`` next to the working directory into the environment.
+
+    There has been a ``.env.example`` in this repo since the first week and
+    nothing ever read the file it describes: every setting came from a real
+    environment variable, which is right on Railway (the platform injects them)
+    and wrong on a laptop, where the operator does exactly what the example file
+    invites — *"ich kann dir hier in's .env file einen Gemini Key legen"* — and
+    nothing happens.
+
+    Hand-parsed rather than a dependency, the same call this codebase makes for
+    two HTTP requests to Gemini: the format is ``KEY=value`` and there is nothing
+    to get right beyond quotes and comments.
+
+    A real environment variable always wins. The file is for a developer's
+    machine; on a server the platform's own configuration must not be silently
+    overridden by a file that happened to be committed alongside the code.
+    """
+    path = Path(os.environ.get("NEWSPULSE_ENV_FILE", "")) or Path.cwd() / ".env"
+    try:
+        text = path.read_text("utf-8")
+    except OSError:
+        return
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv()
+
+
 def _env_int(name: str, default: int) -> int:
     """Read an int from the environment, falling back to ``default`` if unset or
     unparseable (a typo in a shell profile must not crash startup)."""
@@ -326,12 +363,51 @@ def gemini_configured() -> bool:
     A function rather than a constant so a key set after import — the Settings
     page, a test's monkeypatch — is seen without reloading the module.
     """
-    return bool(os.environ.get(_ENV_GEMINI_API_KEY, GEMINI_API_KEY).strip())
+    return bool(gemini_api_key())
 
 
 def gemini_api_key() -> str:
     """The current key, read live for the same reason as above."""
     return os.environ.get(_ENV_GEMINI_API_KEY, GEMINI_API_KEY).strip()
+
+
+def review_api_key() -> str:
+    """The key for the second model that cross-reads one outreach letter.
+
+    Deliberately a wider net than :func:`gemini_api_key`, and deliberately a
+    separate function, because the two ask for different consent.
+
+    The namespaced key turns Google into a *fallback processor of all client
+    coverage*: every headline the sweep analyses can end up there when the Claude
+    subscription hits its limit. That has to be an explicit decision, so it reads
+    one explicitly named variable and nothing else.
+
+    Cross-reading a single pitch before a human sends it is the smaller act, and
+    it is the one the operator just asked for — "ich kann dir hier in's .env file
+    einen Gemini Key legen". So the bare ``GEMINI_API_KEY`` counts here: it is
+    what every Google example prints and what a developer already has exported,
+    and refusing to see it would mean reporting "kein Zweitmodell hinterlegt"
+    with a working key sitting in the environment.
+    """
+    return (
+        os.environ.get(_ENV_GEMINI_API_KEY)
+        or os.environ.get("GEMINI_API_KEY")
+        or GEMINI_API_KEY
+    ).strip()
+
+
+def review_model() -> str:
+    """Which model does that reading."""
+    return (
+        os.environ.get(_ENV_GEMINI_MODEL)
+        or os.environ.get("GEMINI_MODEL")
+        or GEMINI_MODEL
+    ).strip()
+
+
+def review_configured() -> bool:
+    """Whether a second model can read a letter at all."""
+    return bool(review_api_key())
 
 
 def base_url() -> str:

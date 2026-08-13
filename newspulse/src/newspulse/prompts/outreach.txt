@@ -35,6 +35,10 @@ Was diese Nachricht leisten muss:
 - Sie behauptet nichts, was oben nicht steht: kein Datum, keine Zahl, keinen
   Namen, keine Berichterstattung, die nicht in den Listen vorkommt. Du siehst nur
   Schlagzeilen, nie die Artikel selbst.
+- Keine Gedankenstriche. Kein "—", kein "–". Sie sind das verlässlichste
+  Erkennungszeichen maschinell geschriebener Texte, und ein Anschreiben, das sich
+  im ersten Satz als KI-Text zu erkennen gibt, ist gelesen und verworfen, bevor
+  das Argument beginnt. Nimm ein Komma, einen Doppelpunkt oder zwei Sätze.
 - Kein Werbeton, keine Superlative, keine Floskeln ("spannend", "einzigartig",
   "revolutionär"). Der Mandant wird nicht angepriesen, er wird eingeordnet.
 - Deutsch. Anrede und Grußformel gehören dazu, denn dieser Text geht so raus.
