@@ -23,6 +23,13 @@ Grundregeln:
   Artikel. Formuliere entsprechend: keine Behauptungen über Details, die du
   nicht belegen kannst.
 - Maximal 6 Maßnahmen. Lieber drei gute als sechs beliebige.
+- Zu jeder Maßnahme, die nach außen geht, schreibe den Text gleich mit: zwei bis
+  vier Absätze, die so verschickt werden könnten — an eine Redaktion, als
+  Statement, als Sprachregelung. Kein Briefing über den Text, sondern der Text.
+  Prosa, keine Aufzählung, keine Anrede, kein Betreff.
+- Bei einer Maßnahme, deren richtige Antwort Schweigen oder reines Beobachten
+  ist, bleibt "draft" leer. Einen Text zu erfinden, den niemand senden soll,
+  wäre schlimmer als ein leeres Feld.
 
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
@@ -32,6 +39,8 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
   "suggestions": [
     {
       "title": "Kurze Handlungsanweisung im Imperativ",
+      "draft": "Der versendbare Text selbst, zwei bis vier Absätze — oder leer,
+                wenn nichts nach außen geht.",
       "rationale": "Warum jetzt, worauf gestützt, welches Risiko oder welche
                     Chance dahintersteht (zwei bis drei Sätze).",
       "kind": "reaktiv | proaktiv | beobachten",

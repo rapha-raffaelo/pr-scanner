@@ -108,9 +108,26 @@ class Urgency(StrEnum):
 
 
 class ActionSuggestion(BaseModel):
-    """One suggested PR action, tied to the coverage that prompted it."""
+    """One recommendation, as a text that can actually be sent.
+
+    It used to be a briefing line — an imperative plus a rationale — and the
+    consultant's verdict on that was that it did not cohere with the other half
+    of the page: "für mich sind Empfehlungen Beispiel-Pressemeldungen, die man an
+    PR-Berater schicken kann, und unten die Tags der jeweiligen Magazine". The
+    positioning drafts already had that shape; this one described work instead of
+    doing it, and the reader had to write the text themselves.
+
+    So ``draft`` carries the sendable version and ``rationale`` stays as the
+    reason it is worth sending. Defaulted rather than required: an older stored
+    brief has no draft, and the page must render it rather than fail on it.
+    """
+
+    model_config = ConfigDict(extra="ignore")
 
     title: str
+    #: The text itself, ready to go out — prose, no salutation, no bullet points.
+    #: Empty for a recommendation whose right answer is to stay silent.
+    draft: str = ""
     rationale: str
     kind: ActionKind
     urgency: Urgency

@@ -153,6 +153,10 @@ def advice_view(
                 a.id: pitch.targets_for(session, client, a)
                 for a in angles.for_client(session, client_id)
             },
+            # The recipients for the recommendations. Not per suggestion: they
+            # all react to the same client's coverage, so the pitch list is the
+            # client's, not each item's.
+            "advice_targets": pitch.targets_for(session, client),
             "latest_angle": angles.latest(session, client_id),
             # Whether a radar is possible at all, which is a question about the
             # client's themes — not about whether it has found anything yet. Read

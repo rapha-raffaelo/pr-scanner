@@ -189,3 +189,63 @@ def test_store_and_latest_round_trip(session, client):
 
 def test_latest_is_none_before_anything_is_generated(session, client):
     assert advisor.latest(session, client.id) is None
+
+
+# --- A recommendation is a text, not a briefing line -----------------------------
+
+
+def test_a_recommendation_carries_the_text_it_recommends(session):
+    """"Für mich sind Empfehlungen Beispiel-Pressemeldungen, die man an PR-Berater
+    schicken kann." The two halves of the page produced different shapes: the
+    positioning was a sendable draft, this one described work and left the
+    writing to the reader."""
+    from newspulse.schemas import ActionSuggestion
+
+    suggestion = ActionSuggestion(
+        title="Sachlich einordnen",
+        draft="Zwei Absätze, die so verschickt werden könnten.",
+        rationale="Weil die Meldung sonst unwidersprochen bleibt.",
+        kind="reaktiv",
+        urgency="heute",
+        evidence=[0],
+    )
+
+    assert suggestion.draft.startswith("Zwei Absätze")
+
+
+def test_a_recommendation_to_stay_silent_has_no_draft(session):
+    """Inventing a text nobody should send would be worse than an empty field —
+    the same rule the positioning drafts follow with worth_sending."""
+    from newspulse.schemas import ActionSuggestion
+
+    suggestion = ActionSuggestion(
+        title="Nicht reagieren",
+        rationale="Eine Antwort verlängert die Geschichte.",
+        kind="beobachten",
+        urgency="laufend",
+    )
+
+    assert suggestion.draft == ""
+
+
+def test_an_older_stored_brief_still_renders(session):
+    """Briefs written before the field existed carry no draft, and the page has
+    to show them rather than fail on them."""
+    from newspulse.schemas import AdvisoryBrief
+
+    brief = AdvisoryBrief.model_validate(
+        {
+            "situation": "Die Lage.",
+            "suggestions": [
+                {
+                    "title": "Alt",
+                    "rationale": "Ohne draft gespeichert.",
+                    "kind": "proaktiv",
+                    "urgency": "diese_woche",
+                    "evidence": [],
+                }
+            ],
+        }
+    )
+
+    assert brief.suggestions[0].draft == ""

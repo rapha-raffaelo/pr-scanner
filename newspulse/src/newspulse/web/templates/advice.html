@@ -319,14 +319,27 @@
         {{ advisory.article_count }} {{ t("Artikel") }} {{ t("aus") }} {{ advisory.covered_days }} {{ t("Tagen") }}.
       </p>
 
+      {# Same shape as a positioning draft, because the reader wants the same
+         thing from both halves: a text they can send, and who to send it to.
+         This section used to hand over an imperative and a rationale and leave
+         the writing to them — "für mich sind Empfehlungen Beispiel-Pressemeldungen
+         … und unten die Tags der jeweiligen Magazine". #}
       {% for s in advisory.suggestions %}
         <div class="item advice" style="margin-top:12px">
           <div class="body">
             <div class="toprow">
               <span class="tag kind-{{ s.kind }}">{{ t(s.kind) | capitalize }}</span>
               <span class="tag urgency-{{ s.urgency }}">{{ t(s.urgency | replace('_', ' ')) | capitalize }}</span>
+              {% if s.draft %}
+                <button type="button" class="impulse__copy" data-copy-from="advice-text-{{ loop.index0 }}">{{ t("Kopieren") }}</button>
+              {% endif %}
             </div>
             <div class="hl">{{ s.title }}</div>
+            {% if s.draft %}
+              {# The sendable text, and only that, inside the copy target — the
+                 rationale below is for the consultant, never for a recipient. #}
+              <div class="impulse__text" id="advice-text-{{ loop.index0 }}">{{ s.draft }}</div>
+            {% endif %}
             <div class="sum">{{ s.rationale }}</div>
             {% if s.evidence %}
               <details class="pickup-list">
@@ -344,6 +357,24 @@
                   {% endfor %}
                 </ul>
               </details>
+            {% endif %}
+            {% if s.draft and advice_targets %}
+              <div class="pitchlist">
+                <span class="pitchlist__label">{{ t("Wohin damit") }}</span>
+                <div class="pitchtags">
+                  {% for target in advice_targets %}
+                    <span class="pitchtag">
+                      {% if target.journalist %}
+                        <a href="/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}">{{ target.journalist }}</a>
+                        <span class="dot">·</span>
+                      {% endif %}{{ target.outlet }}
+                      {% if target.contact_email %}
+                        <a class="pitchlist__mail" href="mailto:{{ target.contact_email }}">✉</a>
+                      {% endif %}
+                    </span>
+                  {% endfor %}
+                </div>
+              </div>
             {% endif %}
           </div>
         </div>

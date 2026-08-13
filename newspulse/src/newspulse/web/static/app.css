@@ -618,6 +618,14 @@ nav.tabs a.active {
 .pitchlist__add { font-size: 11.5px; color: var(--muted); margin-right: 6px; text-decoration: underline; }
 .pitchlist__add:hover { color: var(--accent); }
 .pitchlist__ev { display: block; color: var(--muted); font-style: italic; margin-top: 2px; }
+/* Recommendations carry their recipients as tags rather than a list: they are
+   read after the text, at a glance, not worked through. */
+.pitchtags { display: flex; flex-wrap: wrap; gap: 6px; }
+.pitchtag {
+  font-size: 11.5px; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 20px; padding: 3px 10px; color: var(--muted);
+}
+.pitchtag a { color: var(--accent); }
 .pitchlist__caveat { font-size: 11.5px; color: var(--muted); margin-top: 8px; max-width: 70ch; }
 
 /* --- Shared surfaces ------------------------------------------------------ */
