@@ -26,11 +26,12 @@ book a human fills in.
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from . import contacts as contactbook
 from .models import Analysis, Angle, Article, Client, TopicHit, visible_coverage
 
 # How far back the field's journalists are read. The impulse window, so the people
@@ -61,6 +62,10 @@ class PitchTarget:
     #: How often they have written about this client. Zero is the interesting
     #: case: the outlet covers the field and has never mentioned the mandate.
     about_client: int
+    #: The contact-book entry for this byline, if the consultant has recorded one.
+    #: Never derived — see the module docstring — only looked up.
+    contact_id: int | None = None
+    contact_email: str = ""
 
     @property
     def is_new_contact(self) -> bool:
@@ -157,6 +162,16 @@ def targets_for(
         if key in seen or len(targets) >= MAX_TARGETS:
             return
         seen.add(key)
+        # What the consultant already recorded about this byline, if anything.
+        # Looked up, never inferred: the book is the only source of contact
+        # details in the tool, and it is filled in by hand.
+        known = (
+            contactbook.find(session, target.journalist, target.outlet)
+            if target.journalist
+            else None
+        )
+        if known is not None:
+            target = replace(target, contact_id=known.id, contact_email=known.email)
         targets.append(target)
 
     # 1. The bylines on the very stories this draft answers.

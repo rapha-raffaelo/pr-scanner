@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Kontakte") }} · NewsPulse{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+
+<div class="client-profile">
+  <h1>{{ t("Kontaktbuch") }}</h1>
+  {# The one place in the tool that holds contact details, and they arrive one
+     way: somebody types them in. Feeds carry a byline sometimes and an address
+     never; a plausible one derived from a pattern would be used and would reach
+     the wrong person. #}
+  <p class="panel-hint">
+    {{ t("Journalistinnen und Journalisten, die Sie kennen. Das Tool schlägt aus der Berichterstattung vor, wen man ansprechen kann — womit, steht hier, und nur was Sie hier eintragen.") }}
+  </p>
+</div>
+
+{% if error %}<div class="notice notice--error">{{ error }}</div>{% endif %}
+
+{% if came_from_pitch and not editing %}
+  <div class="notice notice--ok">
+    {{ t("Noch kein Eintrag für") }} <strong>{{ prefill_name }}</strong>{% if prefill_outlet %} ({{ prefill_outlet }}){% endif %} —
+    {{ t("unten ausfüllen und speichern.") }}
+  </div>
+{% endif %}
+
+<section class="panel panel--wide">
+  <h2>{{ t("Eintrag bearbeiten") if editing else t("Neuer Kontakt") }}</h2>
+  <form method="post" action="/contacts" class="contact-form">
+    {% if editing %}<input type="hidden" name="contact_id" value="{{ editing.id }}">{% endif %}
+    <div class="import-fields">
+      <div>
+        <label for="c-name">{{ t("Name") }}*</label>
+        <input type="text" id="c-name" name="name" required
+               value="{{ editing.name if editing else prefill_name }}">
+      </div>
+      <div>
+        <label for="c-outlet">{{ t("Medium") }}</label>
+        <input type="text" id="c-outlet" name="outlet"
+               value="{{ editing.outlet if editing else prefill_outlet }}">
+      </div>
+      <div>
+        <label for="c-email">{{ t("E-Mail") }}</label>
+        <input type="text" id="c-email" name="email" value="{{ editing.email if editing else '' }}">
+      </div>
+      <div>
+        <label for="c-phone">{{ t("Telefon") }}</label>
+        <input type="text" id="c-phone" name="phone" value="{{ editing.phone if editing else '' }}">
+      </div>
+      <div>
+        <label for="c-beat">{{ t("Themengebiet") }}</label>
+        <input type="text" id="c-beat" name="beat" value="{{ editing.beat if editing else '' }}">
+      </div>
+    </div>
+    <div>
+      <label for="c-notes">{{ t("Notizen") }}</label>
+      <input type="text" id="c-notes" name="notes" value="{{ editing.notes if editing else '' }}">
+    </div>
+    <div class="actions">
+      <button type="submit">{{ t("Speichern") }}</button>
+      {% if editing %}<a class="rowlink" href="/contacts">{{ t("Abbrechen") }}</a>{% endif %}
+    </div>
+  </form>
+</section>
+
+<section class="panel panel--wide">
+  <h2>{{ contacts | length }} {{ t("Kontakte") }}</h2>
+  <form method="get" action="/contacts" class="run-form">
+    <div class="filter-field">
+      <label for="q">{{ t("Suche") }}</label>
+      <input type="search" id="q" name="q" value="{{ search }}" placeholder="{{ t('Name, Medium oder Themengebiet') }}">
+    </div>
+    <button type="submit">{{ t("Filtern") }}</button>
+  </form>
+
+  {% if contacts %}
+    <div class="table-scroll">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>{{ t("Name") }}</th><th>{{ t("Medium") }}</th><th>{{ t("E-Mail") }}</th>
+            <th>{{ t("Telefon") }}</th><th>{{ t("Themengebiet") }}</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in contacts %}
+            <tr>
+              <td class="cell-name">{{ c.name }}</td>
+              <td>{{ c.outlet or '—' }}</td>
+              <td>{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% else %}—{% endif %}</td>
+              <td>{{ c.phone or '—' }}</td>
+              <td class="cell-list" title="{{ c.beat }}">{{ c.beat or '—' }}</td>
+              <td class="col-actions">
+                <a class="rowlink" href="/contacts?edit={{ c.id }}">{{ t("Bearbeiten") }}</a>
+                <form method="post" action="/contacts/{{ c.id }}/delete">
+                  <button type="submit" class="linkbtn linkbtn--danger">{{ t("Löschen") }}</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="panel-hint">
+      {{ t("Noch keine Kontakte. Unter jedem Impuls stehen die Journalisten, die zum Thema geschrieben haben — ein Klick auf einen Namen legt hier einen Eintrag an.") }}
+    </p>
+  {% endif %}
+</section>
+{% endblock %}

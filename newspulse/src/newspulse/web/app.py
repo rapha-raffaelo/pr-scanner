@@ -248,8 +248,8 @@ def create_app() -> FastAPI:
     # Imported here (not at module top) to avoid a circular import: the route
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
-        advisory, archive, assistant, client, guide_routes, language, runstatus,
-        settings, today, triage,
+        advisory, archive, assistant, client, contacts, guide_routes, language,
+        runstatus, settings, today, triage,
     )
 
     app.include_router(today.router)
@@ -262,6 +262,7 @@ def create_app() -> FastAPI:
     app.include_router(triage.router)
     app.include_router(runstatus.router)
     app.include_router(guide_routes.router)
+    app.include_router(contacts.router)
     return app
 
 

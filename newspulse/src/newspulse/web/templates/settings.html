@@ -26,7 +26,6 @@
     align-items: start;
   }
   @media (max-width: 860px) { .settings-grid { grid-template-columns: 1fr; } }
-  .panel--wide { grid-column: 1 / -1; }
 
   /* --- Client portfolio table ------------------------------------------- */
   /* Collapsed add-form: adding is occasional, reading the table is constant. */
@@ -57,20 +56,9 @@
      row pushed the actions column past the right edge of the screen. "Bearbeiten"
      was present the whole time and simply out of reach. The full list stays in
      the cell's title attribute. */
-  .cell-list {
-    color: var(--muted); font-size: 0.78rem;
-    max-width: 22ch; overflow: hidden; text-overflow: ellipsis;
-  }
   /* Pinned to the right edge as well, so the actions stay reachable even when the
      table does overflow — a wide screen should not be the price of editing. */
-  .col-actions {
-    white-space: nowrap;
-    position: sticky; right: 0;
-    background: var(--surface);
-    border-left: 1px solid var(--border);
-  }
   .client-tr:hover > .col-actions { background: #f9fafb; }
-  .col-actions form { display: inline; }
   .tag--inactive { background: #f3f4f6; color: var(--muted); margin-left: 0.35rem; }
   /* Setup status on the client's own row. Normal weight and small: it is a
      transient fact about one mandate, not a second name for it. */
@@ -83,7 +71,6 @@
   .setup--bad { color: var(--alert); font-weight: 600; }
   .tag--topic { background: var(--alert-bg); color: #b91c1c; margin-right: 0.25rem; text-transform: none; }
   .client-edit-tr > td { background: #f9fafb; white-space: normal; padding: 0.85rem 0.5rem; }
-  .client-edit .actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.3rem; }
   .mutebox { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--border); }
   .mutebox__label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
                     letter-spacing: 0.04em; color: var(--muted); margin-right: 0.75rem; }
@@ -113,8 +100,6 @@
     background: var(--surface); color: var(--accent); cursor: pointer; margin-left: auto;
   }
   .panel .feedgroup__all:hover { border-color: var(--accent); }
-  .import-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem 0.75rem; }
-  @media (max-width: 620px) { .import-fields { grid-template-columns: 1fr; } }
   .run-errors { margin: 0.25rem 0 0; padding-left: 1rem; color: var(--alert); }
   .run-form .filter-field { min-width: 260px; }
   .run-form select { margin-bottom: 0; }

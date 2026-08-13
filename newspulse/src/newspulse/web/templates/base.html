@@ -26,6 +26,7 @@
       <a href="/"{% if request.url.path == '/' %} class="active" aria-current="page"{% endif %}>{{ t("Heute") }}</a>
       <a href="/clients"{% if request.url.path.startswith('/client') %} class="active" aria-current="page"{% endif %}>{{ t("Mandanten") }}</a>
       <a href="/archive"{% if request.url.path.startswith('/archive') %} class="active" aria-current="page"{% endif %}>{{ t("Archiv") }}</a>
+      <a href="/contacts"{% if request.url.path.startswith('/contacts') %} class="active" aria-current="page"{% endif %}>{{ t("Kontakte") }}</a>
       <a href="/settings"{% if request.url.path.startswith('/settings') %} class="active" aria-current="page"{% endif %}>{{ t("Einstellungen") }}</a>
       {# Fetching news is the one action wanted from any page, so it lives in the
          nav rather than three clicks deep in Einstellungen. redirect_to returns

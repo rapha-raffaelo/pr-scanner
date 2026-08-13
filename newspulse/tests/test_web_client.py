@@ -560,19 +560,22 @@ def test_only_companies_marked_as_competitors_can_be_added(factory, client):
     unrelated mention count into the share-of-voice table.
     """
     with factory() as session:
-        subject = Client(name="Zalando", aliases=[], keywords=[], alert_topics=[])
-        mandate = Client(name="IB-7 Beauty Tech GmbH", aliases=[], keywords=[], alert_topics=[])
-        rival = Client(name="About You", aliases=[], keywords=[], alert_topics=[],
-                       is_competitor=True)
+        subject = Client(name="Zalando", aliases=[], industry="Modehandel",
+                         keywords=[], alert_topics=[])
+        mandate = Client(name="IB-7 Beauty Tech GmbH", aliases=[],
+                         industry="Modehandel", keywords=[], alert_topics=[])
+        rival = Client(name="About You", aliases=[], industry="Modehandel",
+                       keywords=[], alert_topics=[], is_competitor=True)
         session.add_all([subject, mandate, rival])
         session.commit()
         subject_id = subject.id
 
     body = client.get(f"/client/{subject_id}").text
-    picker = body.split('id="competitor_id"', 1)[1].split("</select>", 1)[0]
 
-    assert "About You" in picker
-    assert "IB-7 Beauty Tech GmbH" not in picker
+    # Nowhere on the page, not merely absent from one control: the mandate is
+    # never a yardstick, whichever picker it would appear in.
+    assert "About You" in body
+    assert "IB-7 Beauty Tech GmbH" not in body
 
 
 def test_with_no_competitor_anywhere_the_page_says_where_they_come_from(factory, client):

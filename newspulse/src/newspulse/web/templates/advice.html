@@ -135,8 +135,19 @@
               {% for target in targets %}
                 <li>
                   <span class="pitchlist__who">
-                    {% if target.journalist %}{{ target.journalist }} <span class="dot">·</span> {% endif %}{{ target.outlet }}
+                    {# A name links into the contact book: onto the entry if one
+                       exists, otherwise onto a form prefilled with what the feed
+                       knew, one edit away from having it. #}
+                    {% if target.journalist %}
+                      <a href="/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}">{{ target.journalist }}</a>
+                      <span class="dot">·</span>
+                    {% endif %}{{ target.outlet }}
                   </span>
+                  {% if target.contact_email %}
+                    <a class="pitchlist__mail" href="mailto:{{ target.contact_email }}">{{ target.contact_email }}</a>
+                  {% elif target.journalist %}
+                    <a class="pitchlist__add" href="/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}">{{ t("Kontakt hinterlegen") }}</a>
+                  {% endif %}
                   {% if target.is_new_contact %}<span class="pitchlist__new">{{ t("noch kein Kontakt") }}</span>{% endif %}
                   <span class="pitchlist__why">{{ target.reason }}</span>
                   {% for headline in target.evidence %}

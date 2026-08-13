@@ -339,11 +339,15 @@ def test_a_competitor_from_another_industry_is_grouped_apart(factory, client):
         broker_id = broker.id
 
     body = client.get(f"/client/{broker_id}").text
+    offered = body.split('id="competitor_id"', 1)[1].split("</select>", 1)[0]
 
-    assert "Gleiches Feld" in body
-    assert "Andere Branche" in body
-    # The peer is offered ahead of the fashion brand, not filtered out with it.
-    assert body.index("Trade Republic") < body.index("Andere Branche")
+    # The picker itself offers the peer and nothing else. Grouping the fashion
+    # brand under a heading was not enough: it was still on the list, and the
+    # report came back twice.
+    assert "Trade Republic" in offered
+    assert "H&amp;M" not in offered
+    # Reachable, but only for someone who opens the expander and means it.
+    assert "anderen Branchen" in body
 
 
 def test_without_an_industry_every_competitor_is_still_offered(factory, client):
@@ -359,6 +363,10 @@ def test_without_an_industry_every_competitor_is_still_offered(factory, client):
 
     body = client.get(f"/client/{subject_id}").text
 
+    # No field, so the picker cannot judge comparability. It says that instead of
+    # offering a flat list of everything — the state a finance platform was in
+    # when it was shown fashion brands.
+    assert "keine Branche hinterlegt" in body
+    assert 'id="competitor_id"' not in body
     # Escaped in the rendered page, so match what the browser actually receives.
-    assert "H&amp;M" in body
-    assert "Andere Branche" not in body
+    assert "H&amp;M" in body  # still reachable behind the expander

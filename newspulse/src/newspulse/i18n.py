@@ -35,6 +35,7 @@ _EN: dict[str, str] = {
     "Heute": "Today",
     "Mandanten": "Clients",
     "Archiv": "Archive",
+    "Kontakte": "Contacts",
     "Einstellungen": "Settings",
     "↻ Aktualisieren": "↻ Refresh",
     "Feeds jetzt abrufen und analysieren — läuft im Hintergrund":
@@ -240,7 +241,18 @@ _EN: dict[str, str] = {
     "kaum Presse — als Filter unbrauchbar": "barely any press \u2014 useless as a filter",
     "Der Begriff filtert Markt-Meldungen. Nur was die Presse auch schreibt, taugt dafür.":
         "The term filters market news. Only a word the press actually writes will do.",
-    "Gleiches Feld": "Same field",
+    "Für diesen Mandanten ist keine Branche hinterlegt — ohne sie lässt sich nicht beurteilen, wer ein vergleichbares Unternehmen ist.":
+        "No industry is set for this client \u2014 without one there is no way to "
+        "judge which company is comparable.",
+    "Branche setzen": "Set an industry",
+    "Kein überwachtes Unternehmen aus diesem Feld.": "No monitored company from this field.",
+    "Wettbewerber vorschlagen lassen": "Have competitors proposed",
+    "Unternehmen aus anderen Branchen anzeigen": "companies from other industries",
+    "Ein Vergleich über Branchengrenzen hinweg verfälscht den Anteil — nur wählen, wenn es wirklich derselbe Markt ist.":
+        "A comparison across industries distorts the share \u2014 pick one only if "
+        "it really is the same market.",
+    "Trotzdem hinzufügen": "Add anyway",
+    "ohne Branche": "no industry",
     "Andere Branche — selten sinnvoll": "Another industry \u2014 rarely useful",
     "Wettbewerber vorschlagen": "Suggest competitors",
     "Wettbewerber": "Competitors",
@@ -370,6 +382,25 @@ _EN: dict[str, str] = {
     "Vorschlag fehlgeschlagen": "Proposal failed",
     "Verknüpfung lösen": "Unlink",
     "Wohin damit": "Where to send it",
+    "Kontakt hinterlegen": "add a contact",
+    "Kontaktbuch": "Contact book",
+    "Journalistinnen und Journalisten, die Sie kennen. Das Tool schlägt aus der Berichterstattung vor, wen man ansprechen kann — womit, steht hier, und nur was Sie hier eintragen.":
+        "The journalists you know. The tool proposes who to approach from what the "
+        "press published; how to reach them lives here, and only what you put in it.",
+    "Noch kein Eintrag für": "No entry yet for",
+    "unten ausfüllen und speichern.": "fill in below and save.",
+    "Eintrag bearbeiten": "Edit entry",
+    "Neuer Kontakt": "New contact",
+    "Medium": "Outlet",
+    "E-Mail": "Email",
+    "Telefon": "Phone",
+    "Themengebiet": "Beat",
+    "Notizen": "Notes",
+    "Löschen": "Delete",
+    "Name, Medium oder Themengebiet": "Name, outlet or beat",
+    "Noch keine Kontakte. Unter jedem Impuls stehen die Journalisten, die zum Thema geschrieben haben — ein Klick auf einen Namen legt hier einen Eintrag an.":
+        "No contacts yet. Under every opening are the journalists who wrote about "
+        "the subject \u2014 clicking a name starts an entry here.",
     "Noch keine Empfängerliste: kein Medium berichtet regelmäßig genug über dieses Themenfeld, als dass eine Empfehlung belastbar wäre.":
         "No recipients yet: no publication covers this field regularly enough for "
         "a recommendation to hold.",

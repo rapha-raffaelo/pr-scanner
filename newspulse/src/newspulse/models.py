@@ -549,6 +549,48 @@ class GuideSource(Base):
     )
 
 
+class Contact(Base):
+    """One journalist the consultant knows, with whatever they know about them.
+
+    The one place in this tool where contact details live, and they get here
+    exactly one way: a person types them in. Nothing here is derived, scraped or
+    guessed — feeds carry a byline sometimes and an address never, and a
+    plausible "vorname.nachname@medium.de" is worse than an empty field because
+    it gets used and reaches the wrong person.
+
+    Keyed on (name, outlet) rather than name alone: a journalist who moves is a
+    new contact at the new masthead, and the pitch list looks people up by the
+    outlet that published them.
+    """
+
+    __tablename__ = "contacts"
+    __table_args__ = (
+        UniqueConstraint("name", "outlet", name="uq_contacts_name_outlet"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    #: The masthead they wrote under. Empty is allowed — a freelancer known by
+    #: name is still worth keeping.
+    outlet: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    email: Mapped[str] = mapped_column(String(320), nullable=False, default="")
+    phone: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    #: What they write about, in the consultant's own words.
+    beat: Mapped[str] = mapped_column(String(400), nullable=False, default="")
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    @property
+    def has_details(self) -> bool:
+        """Whether anything was actually filled in beyond the name."""
+        return bool(self.email or self.phone or self.beat or self.notes)
+
+
 class TopicHit(Base):
     """One market article the topic radar surfaced for one client.
 
