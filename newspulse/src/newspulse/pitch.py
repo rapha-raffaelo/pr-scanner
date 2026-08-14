@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 
 from . import contacts as contactbook
 from .models import Analysis, Angle, Article, Client, TopicHit, visible_coverage
+from .outlets import tier_for
 
 # How far back the field's journalists are read. The impulse window, so the people
 # named are the ones writing about it now rather than a year ago.
@@ -125,16 +126,36 @@ def _covered_client(session: Session, client: Client, since: dt.datetime) -> dic
 def _field_outlets(
     session: Session, client: Client, since: dt.datetime
 ) -> list[tuple[str, int, str]]:
-    """(outlet, articles, one headline) for publications covering the field."""
+    """(outlet, articles, one headline) for publications covering the field.
+
+    Two articles is the floor, and beneath it lies the failure this fallback
+    exists for. Measured on a mandate's first day: the radar found 16 market
+    items across **16 different outlets, one each** — Handelsblatt, SZ, ZDFheute,
+    Der Standard, Golem among them — and the floor removed every one, so the
+    pitch list was empty on a day when the answer was obvious to any human
+    looking at it. A rule that assumes density is right in steady state and wrong
+    at exactly the moment a new mandate is being set up.
+
+    So when the strict list is empty, the single-hit outlets are offered instead,
+    best masthead first (:func:`newspulse.outlets.tier_for`) rather than in
+    whatever order SQLite returns them. The count travels with each row, so
+    "1 Meldung" is on screen and the reader can weigh it — the list never
+    pretends a single hit is a beat.
+    """
     rows = session.execute(
         select(Article.source, func.count(Article.id), func.max(Article.title))
         .join(TopicHit, TopicHit.article_id == Article.id)
         .where(TopicHit.client_id == client.id, Article.published_at >= since)
         .group_by(Article.source)
-        .having(func.count(Article.id) >= _MIN_FIELD_ARTICLES)
         .order_by(func.count(Article.id).desc())
     ).all()
-    return [(s, n, t) for s, n, t in rows]
+    established = [(s, n, t) for s, n, t in rows if n >= _MIN_FIELD_ARTICLES]
+    if established:
+        return established
+    return sorted(
+        ((s, n, t) for s, n, t in rows),
+        key=lambda row: (tier_for(row[0]), row[0].casefold()),
+    )
 
 
 def targets_for(
@@ -210,6 +231,7 @@ def targets_for(
                 reason=(
                     f"berichtet über das Themenfeld ({count} Meldung(en)), "
                     + ("bisher nie über den Mandanten" if not about else f"und {about}× über den Mandanten")
+                    + ("" if count >= _MIN_FIELD_ARTICLES else " — bislang eine einzelne Meldung, kein Beat")
                 ),
                 evidence=(headline,),
                 about_client=about,

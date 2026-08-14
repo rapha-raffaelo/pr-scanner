@@ -203,16 +203,49 @@ def test_the_same_person_is_not_listed_twice(session):
     assert len(named) == 1
 
 
-def test_a_one_off_outlet_is_not_treated_as_a_beat(session):
-    """A publication that wrote about the field once is not a target; a pitch
-    aimed at a one-off mention wastes the relationship."""
+def test_a_one_off_outlet_yields_to_a_real_beat(session):
+    """A publication that wrote about the field once is not a target while a
+    publication that writes about it regularly exists; a pitch aimed at a one-off
+    mention wastes the relationship."""
     client = _client(session)
-    once = _article(session, "Einmalige Erwähnung", source="Zufall.de")
-    _market(session, client, once)
+    _market(session, client, _article(session, "Einmalige Erwähnung", source="Zufall.de"))
+    for i in range(2):
+        _market(session, client, _article(session, f"Dauerthema {i}", source="Fachblatt"))
 
     outlets = {t.outlet for t in pitch.targets_for(session, client, now=_NOW)}
 
+    assert "Fachblatt" in outlets
     assert "Zufall.de" not in outlets
+
+
+def test_one_off_outlets_are_offered_when_there_is_nothing_better(session):
+    """Measured on a mandate's first day: the radar found 16 market items across
+    16 different outlets, one each — Handelsblatt, SZ, ZDFheute, Der Standard
+    among them — and the two-article floor removed every one of them. An empty
+    pitch list on a day when the answer is obvious to anyone reading the page is
+    the rule failing, not the data."""
+    client = _client(session)
+    for source in ("Zufall.de", "Einzelfall-Magazin"):
+        _market(session, client, _article(session, f"Eine Meldung aus {source}", source=source))
+
+    targets = pitch.targets_for(session, client, now=_NOW)
+
+    assert {t.outlet for t in targets} == {"Zufall.de", "Einzelfall-Magazin"}
+    # And it never pretends a single hit is a beat.
+    assert all("kein Beat" in t.reason for t in targets)
+
+
+def test_the_fallback_leads_with_the_better_masthead(session):
+    """Alphabetical or arbitrary order would put a games blog above ZDFheute. The
+    tier table already knows which is which."""
+    client = _client(session)
+    for source in ("Caschys Blog", "ZDFheute", "AD HOC NEWS"):
+        _market(session, client, _article(session, f"Eine Meldung aus {source}", source=source))
+
+    outlets = [t.outlet for t in pitch.targets_for(session, client, now=_NOW)]
+
+    assert outlets[0] == "ZDFheute"
+    assert outlets[-1] == "AD HOC NEWS"
 
 
 def test_material_outside_the_window_is_ignored(session):

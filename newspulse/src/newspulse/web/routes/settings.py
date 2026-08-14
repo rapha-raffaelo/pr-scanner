@@ -129,6 +129,11 @@ _CATEGORY_VALUES = tuple(c.value for c in Category)
 # job, and forgetting it on restart is correct.
 _onboarding: dict[int, str] = {}
 
+# How many measured themes a new mandate is given. Four is enough for a radar to
+# find something most weeks and few enough that the list reads as a starting point
+# the consultant will edit, not as a mess to clean up.
+_ONBOARDING_THEMES = 4
+
 
 def _onboard(client_id: int, name: str) -> None:
     """Fetch a newly created client's recent coverage on a worker thread.
@@ -154,6 +159,7 @@ def _onboard(client_id: int, name: str) -> None:
                     _onboarding.pop(client_id, None)
                     return
                 _settle_industry(session, client)
+                _settle_themes(session, client)
                 stored = job.backfill_client(session, client)
                 _log.info("onboarding fetch for %r stored %d article(s)", name, stored)
                 _onboarding[client_id] = "entwürfe"
@@ -187,6 +193,48 @@ def _settle_industry(session: Session, client: Client) -> None:
         "classified %r as %r (%d item(s) of press use the word)",
         client.name, best.term, best.hits,
     )
+
+
+def _settle_themes(session: Session, client: Client) -> None:
+    """Give a new mandate a topic radar if it arrived without one.
+
+    Beta-tested by adding "Google" through the real form with the theme field
+    left empty, which is what anyone does the first time: a name, a website, and
+    the reasonable expectation that the tool works out the rest. It classified the
+    industry, fetched and analysed thirty articles — and then the Impulse page
+    said "Dafür braucht dieser Mandant Themen", the Marktumfeld said "kein
+    Themen-Radar eingerichtet", and the promise that a new mandate is never empty
+    was broken by the one input the operator was least likely to fill in.
+
+    Proposed by the model and then *measured*, exactly as the button on the
+    Impulse page does it: each candidate is run as a real radar query and only a
+    term the press actually writes is kept. A theme nobody writes filters
+    everything away, and a mandate silently configured with three of those is
+    worse off than one with none, because the emptiness now looks like the
+    market's fault.
+
+    Capped at four. The consultant edits the list afterwards, and a wall of
+    auto-added terms reads as something to clean up rather than something to
+    check. Failures are logged and swallowed: a mandate must still arrive.
+    """
+    if client.keywords or client.alert_topics:
+        return
+    try:
+        proposals = themes.suggest(client)
+        measured = themes.probe(client, proposals) if proposals else []
+    except Exception as exc:  # noqa: BLE001 — onboarding must not depend on it
+        _log.warning("theme suggestion for %r failed: %s", client.name, exc)
+        return
+    usable = [probe.term for probe in measured if probe.usable][:_ONBOARDING_THEMES]
+    if not usable:
+        _log.info(
+            "no measurably usable theme found for %r; leaving the radar empty "
+            "rather than filling it with terms the press does not write",
+            client.name,
+        )
+        return
+    update_client(session, client.id, keywords=usable)
+    _log.info("gave %r a radar: %s", client.name, ", ".join(usable))
 
 
 def _first_drafts(session: Session, client: Client) -> None:

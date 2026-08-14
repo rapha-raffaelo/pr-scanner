@@ -61,6 +61,8 @@ _EN: dict[str, str] = {
         "Errors from feed fetching, matching or analysis — details in the log",
     "neue Artikel": "new articles",
     "Noch kein Lauf": "No run yet",
+    "Erst-Import": "Initial import",
+    "noch kein täglicher Lauf": "no daily sweep yet",
     "Sprache": "Language",
     # --- Today ---------------------------------------------------------------
     "Kategorie": "Category",

@@ -375,7 +375,22 @@ def _fetch_last_run(session: Session) -> RunStatusView | None:
         select(Run).order_by(Run.started_at.desc()).limit(1)
     ).scalar_one_or_none()
     if run is None:
-        return None
+        # No sweep has run — but a mandate's onboarding backfill fetches and
+        # analyses without writing a runs row, so "Noch kein Lauf" sat in the
+        # header above thirty articles it had just imported. Both statements were
+        # true and together they read as a broken system. Report the import
+        # instead, as what it is.
+        imported = session.scalar(select(func.count()).select_from(Article))
+        if not imported:
+            return None
+        newest = session.scalar(select(func.max(Article.fetched_at)))
+        return RunStatusView(
+            ran_at=newest or dt.datetime.now(dt.UTC),
+            is_running=False,
+            status="import",
+            articles_checked=imported,
+            feed_errors=0,
+        )
     # Left in UTC as stored: base.html renders it through the de_time filter,
     # which applies the reader's zone (the same one the day window uses). A run
     # with no finished_at is still in progress.

@@ -23,6 +23,14 @@
       <span class="dot">·</span>
       <span class="runstale">{{ t("Stand von") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}</span>
     {% endif %}
+  {% elif last_run and last_run.status == "import" %}
+    {# Not a sweep: the archive was filled by a mandate's onboarding backfill.
+       Saying "Letzter Lauf" here would name a thing that never happened, and
+       saying "Noch kein Lauf" above thirty imported articles reads as broken. #}
+    {{ t("Erst-Import") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}
+    <span class="dot">·</span> {{ last_run.articles_checked }} {{ t("Artikel") }}
+    <span class="dot">·</span>
+    <span class="runempty">{{ t("noch kein täglicher Lauf") }}</span>
   {% elif last_run %}
     {{ t("Letzter Lauf") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}
     <span class="dot">·</span>

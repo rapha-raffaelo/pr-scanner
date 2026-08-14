@@ -543,3 +543,107 @@ def test_no_message_is_written_without_a_position_to_carry(monkeypatch):
 
         settings_routes._first_drafts(session, client)
 
+
+
+def test_a_new_mandate_is_given_a_measured_radar(monkeypatch):
+    """Beta-tested by adding "Google" through the real form with the theme field
+    empty, which is what anyone does the first time: a name, a website, and the
+    reasonable expectation that the tool works out the rest.
+
+    It classified the industry, fetched and analysed thirty articles, and then the
+    Impulse page said "Dafür braucht dieser Mandant Themen" — the promise that a
+    new mandate is never empty, broken by the one field the operator was least
+    likely to fill in.
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import themes
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.themes import ThemeProbe
+    from newspulse.web.routes import settings as settings_routes
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with factory() as session:
+        client = Client(name="Google", aliases=[], industry="Suchmaschinen",
+                        keywords=[], alert_topics=[], country="DE")
+        session.add(client)
+        session.commit()
+
+        monkeypatch.setattr(themes, "suggest", lambda c, **k: ["egal"])
+        monkeypatch.setattr(
+            themes, "probe",
+            lambda c, proposals, **k: [
+                ThemeProbe(term="Digital Markets Act", reason="", external=9, own=0),
+                # Measured and found wanting: the press does not write this one, and
+                # a theme nobody writes filters everything away.
+                ThemeProbe(term="Synergetische Suchintelligenz", reason="", external=0, own=0),
+                ThemeProbe(term="Generative KI", reason="", external=14, own=1),
+            ],
+        )
+
+        settings_routes._settle_themes(session, client)
+
+        assert client.keywords == ["Digital Markets Act", "Generative KI"]
+
+
+def test_a_mandate_that_brought_its_own_themes_is_left_alone(monkeypatch):
+    """The operator's own terms are the point; overwriting them with proposals
+    would silently change what the radar watches."""
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import themes
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.web.routes import settings as settings_routes
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with factory() as session:
+        client = Client(name="Qonto", aliases=[], keywords=["Firmenkunden-Banking"],
+                        alert_topics=[])
+        session.add(client)
+        session.commit()
+        monkeypatch.setattr(
+            themes, "suggest", lambda *a, **k: pytest.fail("must not ask the model")
+        )
+
+        settings_routes._settle_themes(session, client)
+
+        assert client.keywords == ["Firmenkunden-Banking"]
+
+
+def test_no_usable_theme_leaves_the_radar_empty_rather_than_wrong(monkeypatch):
+    """A mandate silently configured with three terms the press never writes is
+    worse off than one with none: the emptiness now looks like the market's
+    fault."""
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import themes
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.themes import ThemeProbe
+    from newspulse.web.routes import settings as settings_routes
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with factory() as session:
+        client = Client(name="Nischen AG", aliases=[], keywords=[], alert_topics=[])
+        session.add(client)
+        session.commit()
+        monkeypatch.setattr(themes, "suggest", lambda c, **k: ["egal"])
+        monkeypatch.setattr(
+            themes, "probe",
+            lambda c, p, **k: [ThemeProbe(term="Nischenthema", reason="", external=0, own=0)],
+        )
+
+        settings_routes._settle_themes(session, client)
+
+        assert client.keywords == []
