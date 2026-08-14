@@ -124,10 +124,36 @@ def _themed(name: str, keywords: list[str], alert_topics: list[str] | None = Non
     return client
 
 
-def test_topic_terms_take_keywords_first_then_alert_topics():
-    """Keywords describe the field; an alert topic is the sharper event inside it."""
+def test_topic_terms_take_alert_topics_first_then_keywords():
+    """The two fields do different jobs and the settings screen says so: search
+    terms decide what is *found* for this mandate, alert topics name the subjects
+    that matter. A market radar is looking for subjects.
+
+    Measured on a cannabis wholesaler with 28 search terms and 150 alert topics:
+    keywords-first spent all six query slots on "Remexian", "Remexian Pharma",
+    the managing directors and the parent group, and the radar returned nothing
+    twice over.
+    """
     client = _themed("Arrakis", ["Onchain-Liquidität"], ["Börsenschließung"])
-    assert gnews.topic_terms(client) == ["Onchain-Liquidität", "Börsenschließung"]
+    assert gnews.topic_terms(client) == ["Börsenschließung", "Onchain-Liquidität"]
+
+
+def test_a_theme_that_names_the_mandate_is_not_searched():
+    """Everything the radar returns is filtered to coverage that is *not* about
+    the client, so a term naming it cannot contribute a usable item — it can only
+    consume one of six slots."""
+    client = _themed("Remexian Pharma GmbH", ["Remexian Cannabis", "Medizinalcannabis"], [])
+    client.aliases = ["Remexian", "Remexian Pharma"]
+
+    assert gnews.topic_terms(client) == ["Medizinalcannabis"]
+
+
+def test_a_short_mandate_name_does_not_eat_its_own_themes():
+    """"Otto" inside "Ottomotor" is a coincidence, not the company. The length
+    floor is what keeps the substring rule from deleting the radar."""
+    client = _themed("Otto", ["Ottomotor", "Versandhandel"], [])
+
+    assert gnews.topic_terms(client) == ["Versandhandel"]
 
 
 def test_topic_terms_deduplicate_and_drop_blanks():
@@ -143,7 +169,7 @@ def test_a_long_theme_list_is_capped_in_the_query_in_theme_order():
     keywords before alert topics.
     """
     client = _themed(
-        "Arrakis", ["eins", "zwei", "drei", "vier"], alert_topics=["fünf"]
+        "Arrakis", ["zwei", "drei", "vier", "fünf"], alert_topics=["eins"]
     )
 
     assert gnews.topic_terms(client) == ["eins", "zwei", "drei", "vier", "fünf"]

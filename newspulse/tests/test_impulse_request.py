@@ -221,13 +221,14 @@ def test_a_radar_that_finds_something_in_its_field_is_not_widened(session, monke
         asked.append(url)
         return [
             FeedItem(
-                title="Kosmetikbranche diskutiert KI-Rezepturen",
-                link="https://ex.de/treffer",
+                title=f"Kosmetikbranche diskutiert KI-Rezepturen {i}",
+                link=f"https://ex.de/treffer-{i}",
                 source="Cosmetics Business",
                 published_at=_NOW - dt.timedelta(days=1),
                 summary="Ein Satz.",
                 language="de",
             )
+            for i in range(3)
         ]
 
     monkeypatch.setattr(angles, "suggest", _draft())
@@ -486,16 +487,56 @@ def test_a_radar_with_real_market_news_is_not_widened(session, monkeypatch):
         asked.append(url)
         return [
             FeedItem(
-                title="Kosmetikbranche diskutiert KI-Rezepturen",
-                link="https://ex.de/markt",
+                title=f"Kosmetikbranche diskutiert KI-Rezepturen {i}",
+                link=f"https://ex.de/markt-{i}",
                 source="Cosmetics Business",
                 published_at=_NOW - dt.timedelta(days=1),
                 summary="Ein Satz.",
                 language="de",
             )
+            for i in range(3)
         ]
 
     monkeypatch.setattr(angles, "suggest", _draft())
 
     assert job.draft_impulse(session, client, fetch=_fetch, now=lambda: _NOW) is True
     assert len(asked) == 1
+
+
+def test_a_field_scoped_radar_that_returns_almost_nothing_widens(session, monkeypatch):
+    """One survivor is noise, not a radar.
+
+    Measured on a cannabis wholesaler: the field-scoped query returned exactly one
+    German article — enough to suppress a fallback that fired only on *nothing* —
+    while the same themes unscoped returned twenty. The field clause is an AND
+    against an industry label, and this mandate's label was written in English
+    ("Pharmaceuticals, Medical Cannabis"), which excludes German coverage almost
+    entirely.
+    """
+    client = _client(session, keywords=["Hautpflege"])
+    client.industry = "Beauty Tech"
+    session.commit()
+    asked: list[str] = []
+
+    def _fetch(url, since, *, source=None, **_):
+        asked.append(url)
+        scoped = "AND" in urllib.parse.unquote_plus(url)
+        titles = ["Ein einzelner Treffer zur Hautpflege"] if scoped else [
+            f"Hautpflege-Markt bewegt sich {i}" for i in range(4)
+        ]
+        return [
+            FeedItem(
+                title=t,
+                link=f"https://ex.de/{abs(hash(t))}",
+                source="Cosmetics Business",
+                published_at=_NOW - dt.timedelta(days=1),
+                summary="Ein Satz.",
+                language="de",
+            )
+            for t in titles
+        ]
+
+    monkeypatch.setattr(angles, "suggest", _draft())
+
+    assert job.draft_impulse(session, client, fetch=_fetch, now=lambda: _NOW) is True
+    assert len(asked) == 2, "the thin scoped result has to widen"

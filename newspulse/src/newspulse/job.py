@@ -95,6 +95,18 @@ _FIRST_RUN_LOOKBACK = dt.timedelta(days=7)
 # never O(whole archive), as the history grows to thousands of articles (DEC-3).
 _BACKFILL_WINDOW = dt.timedelta(days=7)
 
+# Below this, a field-scoped radar has not really answered. The fallback used to
+# fire only on *nothing* usable, and one item was enough to suppress it — measured
+# on a cannabis wholesaler whose scoped query returned exactly one German article
+# while the same themes unscoped returned twenty. The field clause is an AND
+# against an industry label, and a label written in English ("Pharmaceuticals")
+# excludes German coverage almost completely; one survivor is noise, not a radar.
+#
+# Widening is also cheaper in consequences than it was when the "only if empty"
+# rule was written: the widened batch now has to carry one of the mandate's own
+# themes in its syndicated text (:func:`_on_theme`) before anything is recorded.
+_MIN_RADAR_ITEMS = 3
+
 # Rotating-log knobs. The whole point of the file is week-three survivability, so
 # it must never grow without bound or silently truncate: rotate at 5 MB and keep 5
 # generations (~30 MB of history) — plenty to see what a job did last night, tiny
@@ -325,14 +337,14 @@ def _fetch_topics(
             )
             about_client = name_matcher(client)
             usable = [i for i in batch if not mentions_client(i, about_client)]
-            if not usable:
+            if len(usable) < _MIN_RADAR_ITEMS:
                 widened = gnews.unscoped_topic_url(client)
                 if widened is not None and widened != feed.url:
                     _log.info(
-                        "topic radar for %r found %d item(s) in its field, all about "
-                        "the client itself; widening",
+                        "topic radar for %r yielded %d usable item(s) in its field; "
+                        "widening",
                         client.name,
-                        len(batch),
+                        len(usable),
                     )
                     # Added to, not replacing: an item naming the client is still a
                     # real radar hit, and the material query filters it later on the

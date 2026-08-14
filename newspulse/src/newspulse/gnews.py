@@ -202,27 +202,75 @@ def client_feeds(clients: list[Client]) -> list[Feed]:
 
 
 def topic_terms(client: Client) -> list[str]:
-    """The client's own themes: its keywords first, then its alert topics.
+    """The client's themes for the radar: alert topics first, then search terms,
+    and never a term that names the mandate itself.
 
-    Both, because they are the same thing from two angles — what this mandate is
-    about, and what it must not miss — and an operator who filled in one rarely
-    filled in the other. Keywords lead: they describe the mandate's field, while
-    an alert topic is usually the sharper, rarer event inside it. The order is
-    therefore also a priority: :func:`query_url` keeps only the first few, because
-    a long OR-chain drifts off topic and returns a general news feed.
+    The order is a priority, because :func:`query_url` keeps only the first few —
+    and it used to be the wrong way round.
+
+    Measured on a real mandate, a cannabis wholesaler carrying 28 search terms and
+    over 150 alert topics: the radar returned **nothing**, twice over. Its search
+    terms begin the way search terms should, with what identifies the company —
+    "Remexian", "Remexian Pharma", "Remexian Pharma GmbH", then its managing
+    directors and its parent group. Those six filled every slot of the
+    field-scoped query, and the first three filled the widened fallback as well.
+    The hundred and fifty terms describing the actual market — Medizinal-
+    Cannabisgesetz, Cannabis Lieferkette, europäischer Cannabismarkt — were never
+    searched at all.
+
+    Two changes, each of which stands on its own:
+
+    * **A term naming the mandate is dropped.** Everything this radar returns is
+      filtered to coverage that is *not* about the client
+      (:func:`newspulse.job.market_material`), so such a term cannot contribute a
+      single usable item. It can only consume a slot.
+    * **Alert topics lead.** The two fields do different jobs, and the settings
+      screen says so: search terms decide what is *found* for this mandate, alert
+      topics name the subjects that matter. An operator who fills both in as
+      documented puts identifiers in the first and subjects in the second, and
+      subjects are what a market radar is looking for.
     """
+    own = name_terms(client)
     terms: list[str] = []
     seen: set[str] = set()
-    for raw in [*(client.keywords or []), *(client.alert_topics or [])]:
+    for raw in [*(client.alert_topics or []), *(client.keywords or [])]:
         term = (raw or "").strip()
         if not term:
             continue
         key = term.casefold()
-        if key in seen:
+        if key in seen or _names_client(term, own):
             continue
         seen.add(key)
         terms.append(term)
     return terms
+
+
+def name_terms(client: Client) -> set[str]:
+    """The mandate's own identifiers, case-folded: its name and every alias, each
+    also stripped of its legal form so "Remexian Pharma GmbH" catches
+    "Remexian Pharma"."""
+    out: set[str] = set()
+    for raw in [client.name, *(client.aliases or [])]:
+        value = (raw or "").strip()
+        if not value:
+            continue
+        out.add(value.casefold())
+        stripped = company_names.strip_legal_form(value)
+        if stripped:
+            out.add(stripped.casefold())
+    return out
+
+
+def _names_client(term: str, own: set[str]) -> bool:
+    """Whether a radar term is really the mandate's own name.
+
+    Substring rather than equality: "Remexian Cannabis" is the company under
+    another hat, and searching it returns the company. Guarded by a length floor
+    so a mandate called "Otto" does not silently delete every theme containing
+    those four letters.
+    """
+    folded = term.casefold()
+    return any(name and len(name) >= 4 and name in folded for name in own)
 
 
 def context_terms(client: Client) -> list[str]:
