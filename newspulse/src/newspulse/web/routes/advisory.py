@@ -340,6 +340,7 @@ def write_message(
     angle_id: int,
     journalist: str = Form(""),
     outlet: str = Form(""),
+    target: str = Form(""),
     session: Session = Depends(get_db),
 ) -> Response:
     """Turn this impulse into a message someone can actually send.
@@ -350,9 +351,20 @@ def write_message(
     position itself, and the mandate's own coverage does its work inside the text
     rather than in a second column.
     """
+    client = session.get(Client, client_id)
     angle = session.get(Angle, angle_id)
-    if session.get(Client, client_id) is None or angle is None or angle.client_id != client_id:
+    if client is None or angle is None or angle.client_id != client_id:
         raise HTTPException(status_code=404, detail="Impulse not found")
+    # The name the browser sent wins. The index behind it is the fallback for a
+    # reader with no JavaScript, resolved against the same list in the same order —
+    # and deliberately not the primary path, because a list rebuilt a second later
+    # could have shifted under it and addressed the letter to the wrong desk.
+    if not (journalist or outlet) and target.strip().isdigit():
+        options = pitch.targets_for(session, client, angle)
+        index = int(target)
+        if 0 <= index < len(options):
+            journalist = options[index].journalist or ""
+            outlet = options[index].outlet
     if _writing.acquire(blocking=False):
         threading.Thread(
             target=_run_outreach,

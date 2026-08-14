@@ -658,6 +658,11 @@ nav.tabs a.active {
   margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line);
 }
 .makemsg .panel-hint { margin: 0; max-width: 46ch; }
+.makemsg__form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* The recipient reads as part of the action, not as a setting parked beside it. */
+.makemsg__pick { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+.makemsg__pick > span { color: var(--muted); }
+.makemsg__pick select { max-width: 280px; }
 /* Deliberately larger than the buttons around it: it is the one action on this
    page that produces something sendable. */
 .btn--big { font-size: 14px; padding: 11px 20px; border-radius: 10px; }
@@ -803,6 +808,26 @@ table.data th { color: var(--muted); font-weight: 600; }
 .cell-name { font-weight: 600; }
 .cell-name a { color: var(--text); text-decoration: none; }
 .cell-name a:hover { color: var(--accent); text-decoration: underline; }
+
+/* --- Every field, wherever it sits ---------------------------------------- */
+/* The same lesson as the buttons: three container-scoped copies of this rule
+   existed (.run-form, .filter-field, .panel) and each styled its own corner, so a
+   control added anywhere else fell back to the browser's Arial and beveled border.
+   The recipient picker on an impulse card was the next one to land outside all
+   three. :where() contributes no specificity, so every one of those rules still
+   wins on the properties it sets. */
+:where(select, textarea,
+       input[type="text"], input[type="search"], input[type="email"],
+       input[type="url"], input[type="number"], input[type="password"]) {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+}
+:where(select, textarea, input):focus { outline: none; border-color: var(--accent); }
 
 .run-form { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .run-form select {

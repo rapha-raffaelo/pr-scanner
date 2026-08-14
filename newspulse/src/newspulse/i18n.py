@@ -351,6 +351,14 @@ _EN: dict[str, str] = {
     # between the two panels was never legible, and only one of them produced
     # something sendable.
     "Personalisierte Nachricht erzeugen": "Write a personalised message",
+    "Empfänger:in": "Recipient",
+    "ohne feste:n Empfänger:in": "no fixed recipient",
+    "Schreibt daraus ein fertiges Anschreiben: mit Betreff, Anrede und einem ersten Satz, der an die letzten Meldungen dieser Person anknüpft. Danach frei bearbeitbar.":
+        "Turns it into a finished letter: subject, salutation, and an opening line "
+        "that picks up what this person last wrote. Yours to edit afterwards.",
+    "Schreibt daraus ein fertiges Anschreiben an eine Fachredaktion Ihrer Wahl. Für dieses Themenfeld kennt das Tool noch keine Namen.":
+        "Turns it into a finished letter for a trade desk of your choosing. The "
+        "tool knows no names for this field yet.",
     "Personalisierte Nachrichten": "Personalised messages",
     "Gegengelesen von": "Second read by",
     "Zweitmodell rät ab": "Second model advises against",
@@ -373,9 +381,6 @@ _EN: dict[str, str] = {
         "if the Claude subscription hits its limit the run stops — what is stored "
         "stays, but nothing new is added for that period. Set "
         "NEWSPULSE_GEMINI_API_KEY to enable it.",
-    "Trägt diese Position als Anschreiben an": "Carries this position as a letter to",
-    " — belegt mit dem, was diese:r zuletzt geschrieben hat.":
-        " — grounded in what they last wrote.",
     "schreibt nie über den Mandanten": "never writes about the client",
     "Schreibt über das Themenfeld, aber noch nie über diesen Mandanten.":
         "Writes about the field, but has never written about this client.",
@@ -384,11 +389,6 @@ _EN: dict[str, str] = {
     "Über alle Mandanten und Themen-Radare zusammen — die Tagesansicht zeigt davon nur die Berichterstattung über Mandanten.":
         "Across every client and topic radar combined — the day view shows only "
         "the coverage of clients.",
-    "Als Anschreiben an": "As a letter to",
-    ", mit dem, was über den Mandanten geschrieben wurde.":
-        ", drawing on what has been written about the client.",
-    "Macht aus der Positionierung ein Anschreiben — an eine Fachredaktion Ihrer Wahl.":
-        "Turns the position into a letter — to a trade desk of your choosing.",
     "Die Nachricht wird geschrieben — die Seite aktualisiert sich, sobald sie steht.":
         "Writing the message — the page will refresh itself once it is ready.",
     "Keine Nachricht erzeugt.": "No message written.",

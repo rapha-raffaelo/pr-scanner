@@ -112,6 +112,33 @@ _TARGET = PitchTarget(
 )
 
 
+def _covered_field(session, author: str, outlet: str) -> None:
+    """A story in the mandate's field carrying a byline, so the pitch list has a
+    name to offer."""
+    import datetime as dt
+
+    from newspulse.models import TopicHit
+
+    client = session.scalars(select(Client).where(Client.name == "Alpha AG")).first()
+    article = Article(
+        title=f"Verwahrung im Wandel ({author})",
+        url=f"https://ex.de/field-{author.replace(' ', '-')}",
+        source=outlet,
+        author=author,
+        published_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=5),
+        fetched_at=dt.datetime.now(dt.UTC),
+        summary_text=None,
+        language="de",
+        title_hash=f"f{abs(hash(author)):015d}"[:16],
+    )
+    session.add(article)
+    session.flush()
+    session.add(
+        TopicHit(client_id=client.id, article_id=article.id, found_at=dt.datetime.now(dt.UTC))
+    )
+    session.commit()
+
+
 def _reply(**over) -> str:
     payload = {
         "subject": "Verfügbarkeit als Risikoparameter",
@@ -691,3 +718,99 @@ def test_the_coverage_fallback_still_needs_its_own_explicit_key(monkeypatch):
 
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     importlib.reload(config)
+
+
+# --- Choosing the recipient ------------------------------------------------------
+
+
+def _record_recipients(monkeypatch) -> list[tuple[str, str]]:
+    """Capture who the route would write to, releasing the lock the way the real
+    worker's ``finally`` does — a stub that only records leaves ``_writing`` held
+    for the rest of the process."""
+    from newspulse.web.routes import advisory
+
+    seen: list[tuple[str, str]] = []
+
+    def _stub(cid, aid, journalist, outlet):
+        seen.append((journalist, outlet))
+        try:
+            advisory._writing.release()
+        except RuntimeError:
+            pass
+
+    monkeypatch.setattr(advisory, "_run_outreach", _stub)
+    return seen
+
+
+def test_the_recipient_is_a_control_not_a_sentence(factory, web):
+    """"Trägt diese Position als Anschreiben an Jason Nelson · Decrypt … diesen
+    Teil verstehe ich noch nicht."
+
+    The tool picked the first name on the pitch list and announced it in prose, so
+    the reader met a journalist they had never chosen and could not tell it was
+    changeable. A select says the same thing without having to be read, and it can
+    be changed before the click.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        _covered_field(session, "Jason Nelson", "Decrypt")
+        _covered_field(session, "Sam Bourgi", "Cointelegraph")
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert 'select name="target"' in body
+    assert "Trägt diese Position" not in body
+    assert "ohne feste:n Empfänger:in" in body
+
+
+def test_the_posted_name_is_what_gets_written_to(factory, web, monkeypatch):
+    """The browser sends the chosen name; the server must use it verbatim rather
+    than re-deriving one."""
+    seen = _record_recipients(monkeypatch)
+    with factory() as session:
+        client, angle = _mandate(session)
+        client_id, angle_id = client.id, angle.id
+
+    web.post(
+        f"/client/{client_id}/impulse/{angle_id}/message",
+        data={"journalist": "Helen Partz", "outlet": "Cointelegraph", "target": "0"},
+        follow_redirects=False,
+    )
+
+    assert seen == [("Helen Partz", "Cointelegraph")]
+
+
+def test_without_javascript_the_index_still_resolves(factory, web, monkeypatch):
+    """A reader with no JS posts only the select's index. It resolves against the
+    same list in the same order — the fallback path, never the primary one."""
+    seen = _record_recipients(monkeypatch)
+    with factory() as session:
+        client, angle = _mandate(session)
+        _covered_field(session, "Jason Nelson", "Decrypt")
+        client_id, angle_id = client.id, angle.id
+
+    web.post(
+        f"/client/{client_id}/impulse/{angle_id}/message",
+        data={"journalist": "", "outlet": "", "target": "0"},
+        follow_redirects=False,
+    )
+
+    assert seen and seen[0][0] == "Jason Nelson"
+
+
+def test_no_fixed_recipient_is_a_valid_choice(factory, web, monkeypatch):
+    """The empty option is not a mistake: a consultant who knows the desk they
+    want takes a general letter and addresses it themselves."""
+    seen = _record_recipients(monkeypatch)
+    with factory() as session:
+        client, angle = _mandate(session)
+        client_id, angle_id = client.id, angle.id
+
+    web.post(
+        f"/client/{client_id}/impulse/{angle_id}/message",
+        data={"journalist": "", "outlet": "", "target": ""},
+        follow_redirects=False,
+    )
+
+    assert seen == [("", "")]

@@ -160,22 +160,44 @@
            work instead of doing it. One button on the position itself, and the
            mandate's own coverage does its work inside the text. #}
         {% set written = messages.get(angle.id, []) %}
+        {% set targets = pitch_targets.get(angle.id) or [] %}
         <div class="makemsg">
-          <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/message">
-            {% set first = (pitch_targets.get(angle.id) or [])[:1] | first %}
-            {% if first %}
-              <input type="hidden" name="journalist" value="{{ first.journalist or '' }}">
-              <input type="hidden" name="outlet" value="{{ first.outlet }}">
+          <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/message"
+                class="makemsg__form">
+            {# The recipient is a choice, not an assumption. It used to be picked
+               silently — the first name on the pitch list — and announced in a
+               sentence naming a journalist the reader had never selected: "diesen
+               teil verstehe ich noch nicht". A control says the same thing without
+               having to be read as prose, and it can be changed. #}
+            {% if targets %}
+              <label class="makemsg__pick">
+                <span>{{ t("An") }}</span>
+                <select name="target" aria-label="{{ t('Empfänger:in') }}">
+                  {% for target in targets %}
+                    <option value="{{ loop.index0 }}"
+                            data-journalist="{{ target.journalist or '' }}"
+                            data-outlet="{{ target.outlet }}">
+                      {% if target.journalist %}{{ target.journalist }} · {% endif %}{{ target.outlet }}
+                    </option>
+                  {% endfor %}
+                  <option value="">{{ t("ohne feste:n Empfänger:in") }}</option>
+                </select>
+              </label>
+              {# Mirrored by the script at the foot of the page so the exact name
+                 travels with the request. Without JS the index above is resolved
+                 server-side against the same list, in the same order. #}
+              <input type="hidden" name="journalist" value="{{ targets[0].journalist or '' }}">
+              <input type="hidden" name="outlet" value="{{ targets[0].outlet }}">
             {% endif %}
             <button type="submit" class="btn btn--big"{% if writing %} disabled{% endif %}>
               {{ t("Personalisierte Nachricht erzeugen") }}
             </button>
           </form>
           <span class="panel-hint">
-            {% if first %}
-              {{ t("Trägt diese Position als Anschreiben an") }} {% if first.journalist %}{{ first.journalist }} · {% endif %}{{ first.outlet }}{{ t(" — belegt mit dem, was diese:r zuletzt geschrieben hat.") }}
+            {% if targets %}
+              {{ t("Schreibt daraus ein fertiges Anschreiben: mit Betreff, Anrede und einem ersten Satz, der an die letzten Meldungen dieser Person anknüpft. Danach frei bearbeitbar.") }}
             {% else %}
-              {{ t("Macht aus der Positionierung ein Anschreiben — an eine Fachredaktion Ihrer Wahl.") }}
+              {{ t("Schreibt daraus ein fertiges Anschreiben an eine Fachredaktion Ihrer Wahl. Für dieses Themenfeld kennt das Tool noch keine Namen.") }}
             {% endif %}
           </span>
         </div>
@@ -402,6 +424,21 @@
 <script>
 // The copy button, shared with the Today column: it takes the message only, never
 // the reasoning around it, which must not land in a client's inbox.
+// Carry the chosen recipient's actual name with the form, so the server never has
+// to trust a positional index against a list it rebuilt a second later.
+(function () {
+  document.querySelectorAll(".makemsg__form select[name=target]").forEach(function (select) {
+    var form = select.form;
+    var sync = function () {
+      var option = select.options[select.selectedIndex];
+      form.journalist.value = option.dataset.journalist || "";
+      form.outlet.value = option.dataset.outlet || "";
+    };
+    select.addEventListener("change", sync);
+    sync();
+  });
+})();
+
 (function () {
   document.querySelectorAll("[data-copy-from]").forEach(function (button) {
     button.addEventListener("click", function () {
