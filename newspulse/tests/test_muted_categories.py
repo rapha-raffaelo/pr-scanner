@@ -23,6 +23,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from newspulse import config
 from newspulse.models import Analysis, Article, Base, Category, Client
 from newspulse.web.app import create_app, get_db
 
@@ -51,6 +52,20 @@ def client(factory):
     return TestClient(app)
 
 
+def _local_noon() -> dt.datetime:
+    """Midday on the day the page will show, in UTC.
+
+    Not "a few hours ago": the Today view renders one *local* day, so seeding
+    relative to the current instant puts every row on the previous day for anyone
+    running the suite between midnight and the small hours. That is how five tests
+    which had passed all week failed at 00:06 with nothing in the code changed.
+    """
+    zone = config.local_zone()
+    return dt.datetime.combine(
+        dt.datetime.now(zone).date(), dt.time(12, 0), tzinfo=zone
+    ).astimezone(dt.UTC)
+
+
 def _seed(session, *, muted: list[str] | None = None) -> int:
     """One mandate with a real event and three ticker items on the same day."""
     subject = Client(
@@ -62,7 +77,7 @@ def _seed(session, *, muted: list[str] | None = None) -> int:
     )
     session.add(subject)
     session.flush()
-    now = dt.datetime.now(dt.UTC)
+    now = _local_noon()
     rows = [
         ("BaFin rügt Zalando", Category.REGULATORIK, 8),
         ("Zalando-Aktie zeigt Stabilität", Category.FINANZEN, 4),
@@ -151,8 +166,8 @@ def test_muting_is_per_client_not_portfolio_wide(factory, client):
             title="Sparkasse meldet Quartalszahlen",
             url="https://ex.de/bank",
             source="Handelsblatt",
-            published_at=dt.datetime.now(dt.UTC) - dt.timedelta(hours=1),
-            fetched_at=dt.datetime.now(dt.UTC),
+            published_at=_local_noon(),
+            fetched_at=_local_noon(),
             summary_text=None,
             language="de",
             title_hash="bank0001",

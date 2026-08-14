@@ -490,6 +490,38 @@ def theme_matcher(client: Client) -> re.Pattern[str] | None:
     )
 
 
+def radar_matcher(client: Client) -> re.Pattern[str] | None:
+    """Match a client's themes *loosely enough for a headline*.
+
+    :func:`theme_matcher` demands the whole phrase, and the press almost never
+    repeats one: a mandate whose theme is "KI in der Kosmetik" is written about
+    under "Kosmetik". So each theme also contributes its longest word, with a
+    five-character floor that keeps stopwords and initialisms out of the
+    alternation — a two-letter token would match half the German press.
+
+    Used wherever a stored radar hit has to prove it belongs to this mandate
+    rather than to whichever other mandate's search first found the article.
+    """
+    probes: list[str] = []
+    for raw in [*(getattr(client, "alert_topics", None) or []),
+                *(getattr(client, "keywords", None) or [])]:
+        term = (raw or "").strip()
+        if not term:
+            continue
+        probes.append(term)
+        words = [w for w in re.findall(r"\w+", term, re.UNICODE) if len(w) >= 5]
+        if words:
+            probes.append(max(words, key=len))
+    return terms_matcher(probes)
+
+
+def on_theme(item, matcher: re.Pattern[str] | None) -> bool:
+    """Whether ``item``'s syndicated text carries one of those themes."""
+    if matcher is None:
+        return True
+    return matcher.search(_haystack(item).casefold()) is not None
+
+
 def mentions_client(item, matcher: re.Pattern[str] | None) -> bool:
     """Whether ``item``'s feed-provided text names the client ``matcher`` was built
     from. Only syndicated text is searched — no body is fetched (no-scrape rule)."""
@@ -500,6 +532,8 @@ def mentions_client(item, matcher: re.Pattern[str] | None) -> bool:
 
 __all__ = [
     "Candidate",
+    "radar_matcher",
+    "on_theme",
     "canonical_url",
     "dedup_title_hash",
     "deduplicate",

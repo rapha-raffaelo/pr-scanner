@@ -556,7 +556,15 @@ class Nomination:
 
 
 def _market_items(session: Session, client_id: int, *, days: int) -> list[MarketItem]:
-    """The radar's articles for this client, newest first."""
+    """The radar's articles for this client, newest first.
+
+    Deliberately unfiltered, unlike the pitch list built from the same rows. This
+    page is material to read and judge; a story whose headline does not repeat the
+    theme can still be the one worth positioning on — "BitMEX stellt den Betrieb
+    ein" never says "Onchain-Liquidität". An address list cannot afford that
+    latitude and does not get it (:func:`newspulse.pitch.targets_for`), because
+    the cost of a wrong row there is an email to the wrong journalist.
+    """
     since = dt.datetime.now(dt.UTC) - dt.timedelta(days=days)
     tz = _local_tz()
     rows = session.execute(

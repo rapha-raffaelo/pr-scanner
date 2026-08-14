@@ -57,12 +57,13 @@ from .feeds import Feed, load_feeds
 from .ingest import FeedItem, fetch_feed
 from .matching import (
     Candidate,
-    _haystack,
     dedup_title_hash,
     deduplicate,
     match_candidates,
     mentions_client,
     name_matcher,
+    on_theme,
+    radar_matcher,
     terms_matcher,
     theme_matcher,
     title_hash,
@@ -371,35 +372,6 @@ def _fetch_topics(
     return pairs, feeds_ok
 
 
-def _theme_probes(client: Client) -> list[str]:
-    """Each theme, plus its longest word — the phrase alone is too strict here.
-
-    A theme is often written as a phrase ("KI in der Kosmetik", "financial
-    operating system") and the press almost never repeats it verbatim in a
-    headline. Requiring the whole phrase would drop the very items the widened
-    query exists to find, so the longest content word of each theme counts too:
-    "Kosmetik" for the first, "financial" for the second. Five characters is the
-    floor, which keeps stopwords and "KI" out of the alternation — a two-letter
-    token would match half the German press.
-
-    Measured on the live widened query for a real mandate: the phrase-only rule
-    kept 32 of 45 items, this one keeps 39. The six it still drops are German
-    synonyms of a theme that *is* present ("Firmeninsolvenzen" where the theme
-    says "Unternehmensinsolvenzen") — a real loss, and an acceptable one while 39
-    items on the same subject come through beside them.
-    """
-    probes: list[str] = []
-    for term in [*(client.keywords or []), *(client.alert_topics or [])]:
-        term = (term or "").strip()
-        if not term:
-            continue
-        probes.append(term)
-        words = [w for w in re.findall(r"\w+", term, re.UNICODE) if len(w) >= 5]
-        if words:
-            probes.append(max(words, key=len))
-    return probes
-
-
 def _on_theme(items: Sequence[FeedItem], client: Client) -> list[FeedItem]:
     """Keep the widened query's items that actually carry one of the themes.
 
@@ -426,10 +398,10 @@ def _on_theme(items: Sequence[FeedItem], client: Client) -> list[FeedItem]:
     theme says "Unternehmensinsolvenzen"). On the unanchored query that is the
     right side to err on: a missing item is invisible, a wrong one is believed.
     """
-    matcher = terms_matcher(_theme_probes(client))
+    matcher = radar_matcher(client)
     if matcher is None:
         return list(items)
-    kept = [item for item in items if matcher.search(_haystack(item).casefold())]
+    kept = [item for item in items if on_theme(item, matcher)]
     dropped = len(items) - len(kept)
     if dropped:
         _log.info(

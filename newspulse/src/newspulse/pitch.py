@@ -32,6 +32,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import contacts as contactbook
+from .matching import on_theme, radar_matcher
 from .models import Analysis, Angle, Article, Client, TopicHit, visible_coverage
 from .outlets import tier_for
 
@@ -85,27 +86,52 @@ def _authors_of(session: Session, article_ids: list[int]) -> list[tuple[str, str
     return [(a.strip(), s, t) for a, s, t in rows if (a or "").strip()]
 
 
+def _radar_articles(session: Session, client: Client, since: dt.datetime) -> list[Article]:
+    """This mandate's radar hits that actually read like its field.
+
+    A ``topic_hits`` row says "a search for this client surfaced this article",
+    and for a while the search was capable of surfacing anything: an unanchored
+    query put Russian crypto legislation into a business-banking mandate's radar,
+    and the pitch list then offered CoinDesk, Cointelegraph and Decrypt as the
+    people who cover Qonto's field. "Das passt nicht" — no, and the damage is not
+    cosmetic here: this list is the address book for a letter that actually gets
+    sent, and a Bitcoin reporter emailed about business banking remembers it.
+
+    The radar guard now filters at write time, but rows already stored keep their
+    reach. So a recipient has to prove the article carries one of *this* mandate's
+    themes before being offered. Deliberately applied here and not to the market
+    material itself: a drafting model can weigh a marginal story and refuse, while
+    an address list cannot.
+    """
+    matcher = radar_matcher(client)
+    articles = session.scalars(
+        select(Article)
+        .join(TopicHit, TopicHit.article_id == Article.id)
+        .where(TopicHit.client_id == client.id, Article.published_at >= since)
+    ).all()
+    if matcher is None:
+        return list(articles)
+    return [article for article in articles if on_theme(article, matcher)]
+
+
 def _field_authors(
     session: Session, client: Client, since: dt.datetime
 ) -> list[tuple[str, str, int, str]]:
     """(author, outlet, articles, one headline) for people covering the field."""
-    rows = session.execute(
-        select(
-            Article.author,
-            Article.source,
-            func.count(Article.id),
-            func.max(Article.title),
+    counts: dict[tuple[str, str], list] = {}
+    for article in _radar_articles(session, client, since):
+        author = (article.author or "").strip()
+        if not author:
+            continue
+        key = (author, article.source)
+        row = counts.setdefault(key, [0, article.title])
+        row[0] += 1
+    return [
+        (author, source, n, title)
+        for (author, source), (n, title) in sorted(
+            counts.items(), key=lambda kv: -kv[1][0]
         )
-        .join(TopicHit, TopicHit.article_id == Article.id)
-        .where(
-            TopicHit.client_id == client.id,
-            Article.published_at >= since,
-            Article.author.is_not(None),
-        )
-        .group_by(Article.author, Article.source)
-        .order_by(func.count(Article.id).desc())
-    ).all()
-    return [(a.strip(), s, n, t) for a, s, n, t in rows if (a or "").strip()]
+    ]
 
 
 def _covered_client(session: Session, client: Client, since: dt.datetime) -> dict[str, int]:
@@ -142,13 +168,14 @@ def _field_outlets(
     "1 Meldung" is on screen and the reader can weigh it — the list never
     pretends a single hit is a beat.
     """
-    rows = session.execute(
-        select(Article.source, func.count(Article.id), func.max(Article.title))
-        .join(TopicHit, TopicHit.article_id == Article.id)
-        .where(TopicHit.client_id == client.id, Article.published_at >= since)
-        .group_by(Article.source)
-        .order_by(func.count(Article.id).desc())
-    ).all()
+    counts: dict[str, list] = {}
+    for article in _radar_articles(session, client, since):
+        row = counts.setdefault(article.source, [0, article.title])
+        row[0] += 1
+    rows = [
+        (source, n, title)
+        for source, (n, title) in sorted(counts.items(), key=lambda kv: -kv[1][0])
+    ]
     established = [(s, n, t) for s, n, t in rows if n >= _MIN_FIELD_ARTICLES]
     if established:
         return established

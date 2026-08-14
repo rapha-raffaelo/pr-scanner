@@ -131,7 +131,7 @@ def test_an_outlet_that_never_wrote_about_the_client_is_flagged(session):
     """The point of the exercise: they cover the field and have never named us."""
     client = _client(session)
     for i in range(2):
-        item = _article(session, f"Modehandel-Analyse {i}", source="InStyle")
+        item = _article(session, f"Retouren-Analyse {i}", source="InStyle")
         _market(session, client, item)
 
     targets = pitch.targets_for(session, client, now=_NOW)
@@ -144,7 +144,7 @@ def test_an_outlet_that_never_wrote_about_the_client_is_flagged(session):
 def test_an_outlet_that_already_covers_the_client_is_not_flagged_as_new(session):
     client = _client(session)
     for i in range(2):
-        item = _article(session, f"Modehandel-Analyse {i}", source="Handelsblatt")
+        item = _article(session, f"Retouren-Analyse {i}", source="Handelsblatt")
         _market(session, client, item)
     own = _article(session, "Zalando meldet Zahlen", source="Handelsblatt")
     _coverage(session, client, own)
@@ -162,7 +162,7 @@ def test_a_missing_byline_is_left_empty_rather_than_invented(session):
     fabrication that gets acted on."""
     client = _client(session)
     for i in range(2):
-        item = _article(session, f"Modehandel-Analyse {i}", source="InStyle", author=None)
+        item = _article(session, f"Retouren-Analyse {i}", source="InStyle", author=None)
         _market(session, client, item)
 
     targets = pitch.targets_for(session, client, now=_NOW)
@@ -208,9 +208,9 @@ def test_a_one_off_outlet_yields_to_a_real_beat(session):
     publication that writes about it regularly exists; a pitch aimed at a one-off
     mention wastes the relationship."""
     client = _client(session)
-    _market(session, client, _article(session, "Einmalige Erwähnung", source="Zufall.de"))
+    _market(session, client, _article(session, "Retouren einmal erwähnt", source="Zufall.de"))
     for i in range(2):
-        _market(session, client, _article(session, f"Dauerthema {i}", source="Fachblatt"))
+        _market(session, client, _article(session, f"Retouren als Dauerthema {i}", source="Fachblatt"))
 
     outlets = {t.outlet for t in pitch.targets_for(session, client, now=_NOW)}
 
@@ -226,7 +226,7 @@ def test_one_off_outlets_are_offered_when_there_is_nothing_better(session):
     the rule failing, not the data."""
     client = _client(session)
     for source in ("Zufall.de", "Einzelfall-Magazin"):
-        _market(session, client, _article(session, f"Eine Meldung aus {source}", source=source))
+        _market(session, client, _article(session, f"Retouren: eine Meldung aus {source}", source=source))
 
     targets = pitch.targets_for(session, client, now=_NOW)
 
@@ -240,7 +240,7 @@ def test_the_fallback_leads_with_the_better_masthead(session):
     tier table already knows which is which."""
     client = _client(session)
     for source in ("Caschys Blog", "ZDFheute", "AD HOC NEWS"):
-        _market(session, client, _article(session, f"Eine Meldung aus {source}", source=source))
+        _market(session, client, _article(session, f"Retouren: eine Meldung aus {source}", source=source))
 
     outlets = [t.outlet for t in pitch.targets_for(session, client, now=_NOW)]
 
@@ -251,7 +251,7 @@ def test_the_fallback_leads_with_the_better_masthead(session):
 def test_material_outside_the_window_is_ignored(session):
     client = _client(session)
     for i in range(2):
-        old = _article(session, f"Alt {i}", source="InStyle", days_ago=200)
+        old = _article(session, f"Retouren-Rückblick {i}", source="InStyle", days_ago=200)
         _market(session, client, old)
 
     assert pitch.targets_for(session, client, now=_NOW) == []
@@ -261,7 +261,50 @@ def test_the_list_is_short_enough_to_act_on(session):
     """A pitch list of twenty is a research project."""
     client = _client(session)
     for i in range(20):
-        item = _article(session, f"Feld-Meldung {i}", source=f"Medium-{i}", author=f"A{i}")
+        item = _article(session, f"Retouren-Meldung {i}", source=f"Medium-{i}", author=f"A{i}")
         _market(session, client, item)
 
     assert len(pitch.targets_for(session, client, now=_NOW)) <= pitch.MAX_TARGETS
+
+
+def test_another_mandates_field_is_not_offered_as_this_ones_press(session):
+    """"Du musst auch die Journalisten und Medien pro Kunde trennen — aktuell
+    sagst du, dass CoinDesk und Cointelegraph über Qonto schreiben."
+
+    A ``topic_hits`` row only says a search for this client surfaced this article,
+    and for a while the search could surface anything: an unanchored query put
+    Russian crypto legislation into a business-banking mandate's radar, and the
+    pitch list then offered CoinDesk, Cointelegraph and Decrypt as the people who
+    cover its field. Rows already stored keep that reach, so a recipient has to
+    prove the article carries one of *this* mandate's themes.
+    """
+    client = _client(session)  # themes: Retouren
+    on_field = _article(session, "Retouren treiben die Kosten", source="Textilwirtschaft")
+    _market(session, client, on_field)
+    stray = _article(
+        session, "Strategy sells 1,638 Bitcoin to fund dividends",
+        source="Cointelegraph", author="Zoltan Vardai",
+    )
+    _market(session, client, stray)
+
+    outlets = {t.outlet for t in pitch.targets_for(session, client, now=_NOW)}
+
+    assert "Textilwirtschaft" in outlets
+    assert "Cointelegraph" not in outlets
+
+
+def test_the_byline_of_the_answered_story_is_offered_regardless(session):
+    """The one exception, and it is deliberate: whoever wrote the very story an
+    impulse answers is on the subject this week, whatever their headline happened
+    to say. That signal comes from the draft's own citations, not from the radar,
+    so the theme filter never sees it."""
+    client = _client(session)
+    answered = _article(
+        session, "BitMEX stellt den Betrieb ein", source="Börsen-Zeitung", author="Jan Roth"
+    )
+    _market(session, client, answered)
+    angle = _angle(session, client, [answered.id])
+
+    named = [t.journalist for t in pitch.targets_for(session, client, angle, now=_NOW)]
+
+    assert "Jan Roth" in named
