@@ -23,17 +23,20 @@ offering, and a person picks.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import logging
 from dataclasses import dataclass
 from importlib import resources
 from string import Template
+from sqlalchemy.orm import Session
 
 from . import config, gnews
 from .analyzer import AnalyzerError, ParseError, invoke_with_fallback, strip_code_fence
+from .clients import update_client
 from .ingest import fetch_feed
 from .matching import mentions_client, name_matcher
-from .models import Client
+from .models import Client, Setting
 from .schemas import ThemeSuggestions
 
 _log = logging.getLogger(__name__)
@@ -140,8 +143,6 @@ def probe(
     "the search errored" and "nobody writes about this" are different facts, and
     silently discarding the first would present it as the second.
     """
-    import datetime as dt
-
     reference = now() if callable(now) else (now or dt.datetime.now(dt.UTC))
     since = reference - dt.timedelta(days=days)
     lang, country = gnews.edition_for(client)
@@ -195,8 +196,33 @@ def probe(
 #: a starting point the consultant will edit, not as a mess to clean up.
 SETTLE_LIMIT = 4
 
+#: How long before a mandate that produced nothing usable is asked about again.
+#: The sweep calls this daily and the guard at the top of :func:`settle` only
+#: fires once a radar exists — so a mandate for which the model proposes nothing
+#: the press writes would otherwise cost one model call and up to eight live
+#: searches *every night, forever*. A week is short enough that a new market term
+#: is picked up quickly and long enough that a permanently unlucky mandate costs
+#: fifty-two attempts a year rather than three hundred and sixty-five.
+SETTLE_RETRY_AFTER = dt.timedelta(days=7)
 
-def settle(session, client, *, limit: int = SETTLE_LIMIT) -> list[str]:
+#: Key prefix for the last attempt, in the shared settings table. Not a column on
+#: the client: it describes a background job's history, not the mandate, and
+#: losing it on a database rebuild costs one extra attempt.
+_ATTEMPT_KEY = "themes_settled_attempt:{client_id}"
+
+#: The value that means "done, never again", as opposed to a timestamp.
+_SETTLED = "settled"
+
+
+def settle(
+    session: Session,
+    client: Client,
+    *,
+    limit: int = SETTLE_LIMIT,
+    fetch=fetch_feed,
+    invoke=invoke_with_fallback,
+    now=None,
+) -> list[str]:
     """Give a mandate a topic radar if it has none. Returns what was added.
 
     Beta-tested by adding "Google" through the real form with the theme field left
@@ -216,13 +242,18 @@ def settle(session, client, *, limit: int = SETTLE_LIMIT) -> list[str]:
     before this existed is in exactly the state it prevents — and every attempt is
     self-limiting: once a radar is in place, the guard at the top returns.
     """
-    from .clients import update_client
-
     if client.keywords or client.alert_topics or client.is_competitor:
         return []
+    if not config.GOOGLE_NEWS_ENABLED:
+        # Every probe is a live search. An operator who switched the searches off
+        # did not mean "except for this one".
+        return []
+    if not _attempt_is_due(session, client, now=now):
+        return []
+    _record_attempt(session, client, now=now)
     try:
-        proposals = suggest(client)
-        measured = probe(client, proposals) if proposals else []
+        proposals = suggest(client, invoke=invoke)
+        measured = probe(client, proposals, fetch=fetch) if proposals else []
     except Exception as exc:  # noqa: BLE001 — a radar is not worth a failed run
         _log.warning("theme suggestion for %r failed: %s", client.name, exc)
         return []
@@ -235,16 +266,60 @@ def settle(session, client, *, limit: int = SETTLE_LIMIT) -> list[str]:
         )
         return []
     update_client(session, client.id, keywords=usable)
+    # Permanent, not another timestamp: a mandate is offered a radar once. A
+    # consultant who then clears the Themen field means it, and finding it
+    # repopulated with four machine-chosen terms the next morning is the tool
+    # overruling the person it works for.
+    _record_attempt(session, client, now=now, final=True)
     _log.info("gave %r a radar: %s", client.name, ", ".join(usable))
     return usable
+
+
+def _attempt_is_due(session: Session, client: Client, *, now=None) -> bool:
+    """Whether this mandate may be asked about again yet.
+
+    Recorded before the attempt rather than after it, so a crash mid-probe still
+    counts: the failure mode this bounds is "asks every night and never
+    succeeds", and a run that dies halfway is exactly that.
+    """
+    row = session.get(Setting, _ATTEMPT_KEY.format(client_id=client.id))
+    if row is None or not row.value:
+        return True
+    if row.value == _SETTLED:
+        return False  # offered once, and the answer stuck
+    try:
+        last = dt.datetime.fromisoformat(row.value)
+    except ValueError:  # hand-edited or from an older format
+        return True
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=dt.UTC)
+    reference = now() if callable(now) else (now or dt.datetime.now(dt.UTC))
+    return reference - last >= SETTLE_RETRY_AFTER
+
+
+def _record_attempt(
+    session: Session, client: Client, *, now=None, final: bool = False
+) -> None:
+    reference = now() if callable(now) else (now or dt.datetime.now(dt.UTC))
+    value = _SETTLED if final else reference.isoformat()
+    key = _ATTEMPT_KEY.format(client_id=client.id)
+    row = session.get(Setting, key)
+    if row is None:
+        session.add(Setting(key=key, value=value))
+    else:
+        row.value = value
+    session.commit()
 
 
 __all__ = [
     "AnalyzerError",
     "MAX_PROBED",
     "PROBE_DAYS",
+    "SETTLE_LIMIT",
+    "SETTLE_RETRY_AFTER",
     "ParseError",
     "ThemeProbe",
     "probe",
+    "settle",
     "suggest",
 ]

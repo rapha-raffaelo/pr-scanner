@@ -535,6 +535,9 @@ nav.tabs a.active {
 /* Secondary: the same shape, so a row of actions lines up, without competing
    with the one button that does the thing. */
 .btn--ghost { background: var(--card); color: var(--accent); }
+/* The one filled button in the app that destroys something. */
+.btn--danger { background: var(--alert); }
+.btn--danger:hover { background: #b91c1c; }
 .btn--quiet { background: var(--bg); color: var(--muted); border-color: var(--line); font-weight: 500; }
 .btn.secondary, .panel button.secondary { background: var(--card); color: var(--accent); }
 .btn.danger, .panel button.danger { background: var(--card); color: var(--alert); border-color: #fca5a5; }

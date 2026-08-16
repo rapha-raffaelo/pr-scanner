@@ -650,7 +650,7 @@ def test_no_usable_theme_leaves_the_radar_empty_rather_than_wrong(monkeypatch, n
         assert client.keywords == []
 
 
-def test_the_sweep_gives_an_existing_themeless_mandate_a_radar(monkeypatch, no_theme_settling):
+def test_the_sweep_gives_an_existing_themeless_mandate_a_radar(monkeypatch):
     """"Hier wird immer noch kein Impuls angezeigt", three times over the same
     mandate.
 
@@ -694,3 +694,150 @@ class _NullAnalyzer:
 
     def analyze(self, *args, **kwargs):  # pragma: no cover - defensive
         return []
+
+
+def test_a_mandate_that_yields_nothing_is_not_asked_again_tomorrow(monkeypatch, no_theme_settling):
+    """The sweep calls this nightly and the guard at the top only fires once a
+    radar exists, so a mandate for which the model proposes nothing the press
+    writes would cost one model call and up to eight live searches every night,
+    forever. Measured in review, not in production, which is the good case.
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import themes
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.themes import ThemeProbe
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    calls: list[str] = []
+
+    with factory() as session:
+        client = Client(name="Nischen AG", aliases=[], keywords=[], alert_topics=[])
+        session.add(client)
+        session.commit()
+        monkeypatch.setattr(
+            themes, "suggest", lambda c, **k: calls.append("asked") or ["egal"]
+        )
+        monkeypatch.setattr(
+            themes, "probe",
+            lambda c, p, **k: [ThemeProbe(term="Nischenthema", reason="", external=0, own=0)],
+        )
+
+        day = dt.datetime(2026, 8, 16, 6, 0, tzinfo=dt.UTC)
+        no_theme_settling(session, client, now=day)
+        no_theme_settling(session, client, now=day + dt.timedelta(days=1))
+        no_theme_settling(session, client, now=day + dt.timedelta(days=3))
+
+        assert calls == ["asked"], "asked once, then left alone"
+
+        # A week later it is worth another look: markets acquire vocabulary.
+        no_theme_settling(session, client, now=day + dt.timedelta(days=8))
+
+        assert calls == ["asked", "asked"]
+
+
+def test_a_mandate_that_settles_is_never_asked_again(monkeypatch, no_theme_settling):
+    """The cheap guard, and the one that matters in the steady state."""
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import themes
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.themes import ThemeProbe
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    calls: list[str] = []
+
+    with factory() as session:
+        client = Client(name="Neu AG", aliases=[], keywords=[], alert_topics=[])
+        session.add(client)
+        session.commit()
+        monkeypatch.setattr(
+            themes, "suggest", lambda c, **k: calls.append("asked") or ["egal"]
+        )
+        monkeypatch.setattr(
+            themes, "probe",
+            lambda c, p, **k: [ThemeProbe(term="Marktthema", reason="", external=11, own=0)],
+        )
+
+        assert no_theme_settling(session, client) == ["Marktthema"]
+        assert no_theme_settling(session, client) == []
+        assert calls == ["asked"]
+
+
+def test_the_sweep_really_produces_a_radar_end_to_end(monkeypatch, no_theme_settling):
+    """The integration nobody was testing.
+
+    The other sweep test replaces ``settle`` with a recorder and proves only that
+    the loop skips competitors — the function name promises a radar and the
+    assertion never checks for one. This one patches the two *outside* calls the
+    real function makes and drives the whole thing through ``job.run``, which is
+    where the injected fetch, the transaction and the guard all meet.
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import job, themes
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.themes import ThemeProbe
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with factory() as session:
+        session.add(Client(name="IB-7 Beauty Tech", aliases=[], industry="Beauty Tech",
+                           keywords=[], alert_topics=[]))
+        session.commit()
+
+        monkeypatch.setattr(themes, "settle", no_theme_settling)  # the real one
+        monkeypatch.setattr(themes, "suggest", lambda c, **k: ["egal"])
+        monkeypatch.setattr(
+            themes, "probe",
+            lambda c, p, **k: [ThemeProbe(term="KI in der Kosmetik", reason="",
+                                          external=12, own=0)],
+        )
+        job.run(session, analyzer=_NullAnalyzer(), feeds=[], fetch=lambda *a, **k: [])
+
+        session.expire_all()
+        stored = session.scalars(__import__("sqlalchemy").select(Client)).one()
+        assert stored.keywords == ["KI in der Kosmetik"]
+
+
+def test_a_settling_failure_leaves_the_session_usable(monkeypatch, no_theme_settling):
+    """A caught exception is not a clean session.
+
+    ``settle`` writes, so a failed flush leaves the transaction in
+    ``PendingRollbackError`` and every later statement in the post-run block dies
+    with it — after the run row has already been recorded as ok. Reproduced in
+    review: a green sweep with zero errors, and the drafting, archive linking and
+    notification all silently skipped.
+    """
+    from sqlalchemy import select, text
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import job, themes
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with factory() as session:
+        session.add(Client(name="Kaputt AG", aliases=[], keywords=[], alert_topics=[]))
+        session.commit()
+
+        def _explode(session_, client, **kwargs):
+            session_.execute(text("INSERT INTO clients (id) VALUES (1)"))
+
+        monkeypatch.setattr(themes, "settle", _explode)
+        job.run(session, analyzer=_NullAnalyzer(), feeds=[], fetch=lambda *a, **k: [])
+
+        # The session survived: the sweep could still read and write after it.
+        assert session.scalars(select(Client)).all()

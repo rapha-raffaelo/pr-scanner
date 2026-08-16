@@ -698,26 +698,30 @@
         <p class="panel-hint">
           {{ radar_stale | length }} {{ t("Treffer tragen kein Thema ihres Mandanten. Der Artikel bleibt im Archiv — nur die Zuordnung wird gelöst.") }}
         </p>
-        <div class="table-scroll">
-          <table class="data">
-            <thead><tr><th>{{ t("Mandant") }}</th><th>{{ t("Medium") }}</th><th>{{ t("Meldung") }}</th></tr></thead>
-            <tbody>
-              {% for row in radar_stale[:40] %}
-                <tr>
-                  <td class="cell-name">{{ row.client }}</td>
-                  <td>{{ row.outlet }}</td>
-                  <td>{{ row.headline }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% if radar_stale | length > 40 %}
-          <p class="panel-hint">{{ t("… und weitere") }} {{ radar_stale | length - 40 }}.</p>
-        {% endif %}
-        <form method="post" action="/settings/radar/cleanup" style="margin-top:12px">
-          <button type="submit" class="btn">
-            {{ radar_stale | length }} {{ t("Zuordnungen entfernen") }}
+        {# Every row, and each one travels with the form. The table used to stop at
+           forty while the button deleted all of them, under a module docstring
+           insisting the list be read first. #}
+        <form method="post" action="/settings/radar/cleanup">
+          <div class="table-scroll">
+            <table class="data">
+              <thead><tr><th>{{ t("Mandant") }}</th><th>{{ t("Medium") }}</th><th>{{ t("Datum") }}</th><th>{{ t("Meldung") }}</th></tr></thead>
+              <tbody>
+                {% for row in radar_stale %}
+                  <tr>
+                    <td class="cell-name">{{ row.client }}</td>
+                    <td>{{ row.outlet }}</td>
+                    <td>{{ row.published_at | de_short_date }}</td>
+                    <td>
+                      <a href="{{ row.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ row.headline }}</a>
+                      <input type="hidden" name="hit" value="{{ row.client_id }}:{{ row.article_id }}">
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <button type="submit" class="btn btn--danger" style="margin-top:12px">
+            {{ t("Diese") }} {{ radar_stale | length }} {{ t("Zuordnungen entfernen") }}
           </button>
         </form>
       {% endif %}

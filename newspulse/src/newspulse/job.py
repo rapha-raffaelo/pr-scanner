@@ -108,6 +108,13 @@ _BACKFILL_WINDOW = dt.timedelta(days=7)
 # themes in its syndicated text (:func:`_on_theme`) before anything is recorded.
 _MIN_RADAR_ITEMS = 3
 
+# How many mandates may be given a radar in one sweep. Settling costs a model call
+# and up to sixteen live searches, all of it inside the run guard — a portfolio of
+# ten themeless mandates would hold that guard for over an hour on the first
+# morning, and every page would show "a sweep is running" throughout. Three a
+# night clears such a portfolio inside a week without anyone noticing the cost.
+_SETTLE_PER_SWEEP = 3
+
 # Rotating-log knobs. The whole point of the file is week-three survivability, so
 # it must never grow without bound or silently truncate: rotate at 5 MB and keep 5
 # generations (~30 MB of history) — plenty to see what a job did last night, tiny
@@ -1301,13 +1308,25 @@ def _run_real(
         # onboarding step prevents — reported three times as "hier wird immer noch
         # kein Impuls angezeigt". Self-limiting: the call returns immediately once
         # a radar is in place.
+        settled = 0
         for client in clients:
             if client.is_competitor:
                 continue  # a yardstick has no impulse page for a radar to fill
+            if settled >= _SETTLE_PER_SWEEP:
+                break
             try:
-                themes.settle(session, client)
+                if themes.settle(session, client, fetch=fetch):
+                    settled += 1
             except Exception:  # noqa: BLE001 — a radar is not worth a failed sweep
                 _log.exception("theme settling for %r failed", client.name)
+                # A caught exception is not a clean session. ``settle`` writes,
+                # so a failed flush leaves the transaction in
+                # ``PendingRollbackError`` and every later statement in this
+                # block dies with it — after ``_finalize_run`` has already
+                # recorded the sweep as ok. Reproduced: the header shows a green
+                # run with zero errors while the drafting, the archive linking
+                # and the notification were all skipped.
+                session.rollback()
         # The archive first: the registry feeds fetched the trade press this
         # morning and nothing linked it to the mandates whose field it is. Doing
         # this before drafting means today's material is available to today's

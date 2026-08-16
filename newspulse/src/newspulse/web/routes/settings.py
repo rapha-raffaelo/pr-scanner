@@ -140,8 +140,6 @@ _CATEGORY_VALUES = tuple(c.value for c in Category)
 _onboarding: dict[int, str] = {}
 
 
-
-
 def _onboard(client_id: int, name: str) -> None:
     """Fetch a newly created client's recent coverage on a worker thread.
 
@@ -624,6 +622,28 @@ async def _read_upload(form: FormData) -> tuple[str, bytes]:
     if isinstance(upload, StarletteUploadFile) and upload.filename:
         return upload.filename, await upload.read()
     return "", b""
+
+
+@router.post("/settings/radar/cleanup")
+def clean_radar_route(
+    hit: list[str] = Form(default_factory=list),
+    session: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Remove exactly the links the operator was shown.
+
+    The rows travel with the form as ``client_id:article_id`` rather than being
+    re-derived here. Re-deriving them meant the page could render forty rows and
+    the button delete eight hundred, and that a hit added by the night's sweep
+    between reading and pressing was deleted unseen.
+    """
+    pairs: list[tuple[int, int]] = []
+    for raw in hit:
+        client_id, _, article_id = (raw or "").partition(":")
+        if client_id.isdigit() and article_id.isdigit():
+            pairs.append((int(client_id), int(article_id)))
+    removed = radar_cleanup.remove(session, pairs)
+    _log.info("radar cleanup removed %d hit(s) on request", removed)
+    return RedirectResponse("/settings?radar=1", status_code=_SEE_OTHER)
 
 
 # --- Rendering -----------------------------------------------------------------
@@ -1250,17 +1270,3 @@ __all__ = [
     "set_active_feed_names",
     "set_alert_threshold",
 ]
-
-
-@router.post("/settings/radar/cleanup")
-def clean_radar_route(session: Session = Depends(get_db)) -> RedirectResponse:
-    """Delete the radar hits that were never this mandate's field.
-
-    Reached only from the survey, which is reached only from an explicit link: the
-    standard is blunt enough that a person should read the list before pressing
-    this. It cuts links, never articles — the same story is genuinely another
-    mandate's market.
-    """
-    removed = radar_cleanup.clean(session, apply=True)
-    _log.info("radar cleanup removed %d hit(s) on request", len(removed))
-    return RedirectResponse(f"/settings?radar=1", status_code=_SEE_OTHER)

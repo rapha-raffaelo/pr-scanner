@@ -112,5 +112,12 @@ def no_theme_settling(monkeypatch):
     from newspulse import themes
 
     original = themes.settle
-    monkeypatch.setattr(themes, "settle", lambda *args, **kwargs: [])
+
+    def _stub(session, client, *, limit=themes.SETTLE_LIMIT, fetch=None,
+              invoke=None, now=None) -> list[str]:
+        """The real signature, so a change to it breaks the suite rather than
+        production: ``lambda *a, **k`` would have accepted anything."""
+        return []
+
+    monkeypatch.setattr(themes, "settle", _stub)
     return original
