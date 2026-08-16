@@ -679,6 +679,50 @@
       </form>
     </section>
 
+    <!-- ── Radar hygiene ── -->
+    {# A topic_hits row only records that a search for this client surfaced this
+       article, and an unanchored query could surface anything: Russian crypto
+       legislation landed in a business-banking mandate's radar, and its pitch list
+       then offered CoinDesk as the press that covers it. The guard runs at write
+       time now; these are the rows that predate it. #}
+    <section class="panel panel--wide" aria-label="Themen-Radar">
+      <h2>{{ t("Themen-Radar") }}</h2>
+      {% if radar_stale is none %}
+        <p class="panel-hint">
+          {{ t("Prüft, welche gespeicherten Radar-Treffer gar nicht zum Themenfeld ihres Mandanten gehören. Ändert nichts, zeigt nur.") }}
+        </p>
+        <a class="btn btn--ghost" href="/settings?radar=1">{{ t("Radar-Treffer prüfen") }}</a>
+      {% elif not radar_stale %}
+        <p class="panel-hint">{{ t("Alle gespeicherten Radar-Treffer tragen ein Thema ihres Mandanten.") }}</p>
+      {% else %}
+        <p class="panel-hint">
+          {{ radar_stale | length }} {{ t("Treffer tragen kein Thema ihres Mandanten. Der Artikel bleibt im Archiv — nur die Zuordnung wird gelöst.") }}
+        </p>
+        <div class="table-scroll">
+          <table class="data">
+            <thead><tr><th>{{ t("Mandant") }}</th><th>{{ t("Medium") }}</th><th>{{ t("Meldung") }}</th></tr></thead>
+            <tbody>
+              {% for row in radar_stale[:40] %}
+                <tr>
+                  <td class="cell-name">{{ row.client }}</td>
+                  <td>{{ row.outlet }}</td>
+                  <td>{{ row.headline }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if radar_stale | length > 40 %}
+          <p class="panel-hint">{{ t("… und weitere") }} {{ radar_stale | length - 40 }}.</p>
+        {% endif %}
+        <form method="post" action="/settings/radar/cleanup" style="margin-top:12px">
+          <button type="submit" class="btn">
+            {{ radar_stale | length }} {{ t("Zuordnungen entfernen") }}
+          </button>
+        </form>
+      {% endif %}
+    </section>
+
     <!-- ── Run history ── -->
     <section class="panel panel--wide" aria-label="Läufe">
       <h2>{{ t("Letzte Läufe") }}</h2>

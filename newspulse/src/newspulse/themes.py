@@ -190,6 +190,55 @@ def probe(
     return sorted(probes, key=lambda p: p.external, reverse=True)
 
 
+#: How many measured themes a mandate is given when it has none. Four is enough
+#: for a radar to find something most weeks and few enough that the list reads as
+#: a starting point the consultant will edit, not as a mess to clean up.
+SETTLE_LIMIT = 4
+
+
+def settle(session, client, *, limit: int = SETTLE_LIMIT) -> list[str]:
+    """Give a mandate a topic radar if it has none. Returns what was added.
+
+    Beta-tested by adding "Google" through the real form with the theme field left
+    empty, which is what anyone does the first time: a name, a website, and the
+    reasonable expectation that the tool works out the rest. It classified the
+    industry, fetched and analysed thirty articles, and then the Impulse page said
+    "Dafür braucht dieser Mandant Themen" — the promise that a new mandate is never
+    empty, broken by the one input the operator was least likely to fill in.
+
+    Proposed by the model and then *measured*, exactly as the button on the Impulse
+    page does it: each candidate runs as a real radar query and only a term the
+    press actually writes is kept. A theme nobody writes filters everything away,
+    and a mandate silently configured with three of those is worse off than one
+    with none, because the emptiness now looks like the market's fault.
+
+    Called at onboarding and again by the daily sweep, because a mandate created
+    before this existed is in exactly the state it prevents — and every attempt is
+    self-limiting: once a radar is in place, the guard at the top returns.
+    """
+    from .clients import update_client
+
+    if client.keywords or client.alert_topics or client.is_competitor:
+        return []
+    try:
+        proposals = suggest(client)
+        measured = probe(client, proposals) if proposals else []
+    except Exception as exc:  # noqa: BLE001 — a radar is not worth a failed run
+        _log.warning("theme suggestion for %r failed: %s", client.name, exc)
+        return []
+    usable = [p.term for p in measured if p.usable][:limit]
+    if not usable:
+        _log.info(
+            "no measurably usable theme found for %r; leaving the radar empty "
+            "rather than filling it with terms the press does not write",
+            client.name,
+        )
+        return []
+    update_client(session, client.id, keywords=usable)
+    _log.info("gave %r a radar: %s", client.name, ", ".join(usable))
+    return usable
+
+
 __all__ = [
     "AnalyzerError",
     "MAX_PROBED",

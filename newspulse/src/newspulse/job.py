@@ -50,7 +50,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import angles, config, gnews, notify
+from . import angles, config, gnews, notify, themes
 from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
 from .feeds import Feed, load_feeds
@@ -1295,6 +1295,19 @@ def _run_real(
     # through: pitching a positioning message off a half-fetched radar would put a
     # confident text in front of the reader on the strength of partial data.
     if status is not RunStatus.FAILED:
+        # A mandate with no themes has no radar, and every downstream feature
+        # reads off that radar. It was only ever filled in at onboarding, so every
+        # mandate created before that existed sat permanently in the state the
+        # onboarding step prevents — reported three times as "hier wird immer noch
+        # kein Impuls angezeigt". Self-limiting: the call returns immediately once
+        # a radar is in place.
+        for client in clients:
+            if client.is_competitor:
+                continue  # a yardstick has no impulse page for a radar to fill
+            try:
+                themes.settle(session, client)
+            except Exception:  # noqa: BLE001 — a radar is not worth a failed sweep
+                _log.exception("theme settling for %r failed", client.name)
         # The archive first: the registry feeds fetched the trade press this
         # morning and nothing linked it to the mandates whose field it is. Doing
         # this before drafting means today's material is available to today's

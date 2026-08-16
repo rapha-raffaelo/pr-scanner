@@ -349,7 +349,6 @@ def test_creating_a_client_starts_the_onboarding_fetch(monkeypatch):
     from sqlalchemy.pool import StaticPool
 
     from newspulse.web.app import create_app, get_db
-    from newspulse.web.routes import settings as settings_routes
 
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
@@ -366,6 +365,8 @@ def test_creating_a_client_starts_the_onboarding_fetch(monkeypatch):
             s.close()
 
     app.dependency_overrides[get_db] = _override
+
+    from newspulse.web.routes import settings as settings_routes
 
     started: list[str] = []
     # conftest neutralises this globally; here it is the thing under test.
@@ -545,7 +546,7 @@ def test_no_message_is_written_without_a_position_to_carry(monkeypatch):
 
 
 
-def test_a_new_mandate_is_given_a_measured_radar(monkeypatch):
+def test_a_new_mandate_is_given_a_measured_radar(monkeypatch, no_theme_settling):
     """Beta-tested by adding "Google" through the real form with the theme field
     empty, which is what anyone does the first time: a name, a website, and the
     reasonable expectation that the tool works out the rest.
@@ -585,12 +586,12 @@ def test_a_new_mandate_is_given_a_measured_radar(monkeypatch):
             ],
         )
 
-        settings_routes._settle_themes(session, client)
+        no_theme_settling(session, client)  # the real one
 
         assert client.keywords == ["Digital Markets Act", "Generative KI"]
 
 
-def test_a_mandate_that_brought_its_own_themes_is_left_alone(monkeypatch):
+def test_a_mandate_that_brought_its_own_themes_is_left_alone(monkeypatch, no_theme_settling):
     """The operator's own terms are the point; overwriting them with proposals
     would silently change what the radar watches."""
     from sqlalchemy.orm import sessionmaker
@@ -613,12 +614,12 @@ def test_a_mandate_that_brought_its_own_themes_is_left_alone(monkeypatch):
             themes, "suggest", lambda *a, **k: pytest.fail("must not ask the model")
         )
 
-        settings_routes._settle_themes(session, client)
+        no_theme_settling(session, client)  # the real one
 
         assert client.keywords == ["Firmenkunden-Banking"]
 
 
-def test_no_usable_theme_leaves_the_radar_empty_rather_than_wrong(monkeypatch):
+def test_no_usable_theme_leaves_the_radar_empty_rather_than_wrong(monkeypatch, no_theme_settling):
     """A mandate silently configured with three terms the press never writes is
     worse off than one with none: the emptiness now looks like the market's
     fault."""
@@ -644,6 +645,52 @@ def test_no_usable_theme_leaves_the_radar_empty_rather_than_wrong(monkeypatch):
             lambda c, p, **k: [ThemeProbe(term="Nischenthema", reason="", external=0, own=0)],
         )
 
-        settings_routes._settle_themes(session, client)
+        no_theme_settling(session, client)  # the real one
 
         assert client.keywords == []
+
+
+def test_the_sweep_gives_an_existing_themeless_mandate_a_radar(monkeypatch, no_theme_settling):
+    """"Hier wird immer noch kein Impuls angezeigt", three times over the same
+    mandate.
+
+    Theme settling only ever ran at onboarding, so every mandate created before it
+    existed sat permanently in the state onboarding prevents: no themes, therefore
+    no radar, therefore no market material, therefore no impulse and no letter —
+    and each of those layers reported the one below it as the cause.
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import job, themes
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    asked: list[str] = []
+
+    with factory() as session:
+        old = Client(name="IB-7 Beauty Tech", aliases=[], industry="Beauty Tech",
+                     keywords=[], alert_topics=[])
+        rival = Client(name="Wettbewerb AG", aliases=[], keywords=[],
+                       alert_topics=[], is_competitor=True)
+        session.add_all([old, rival])
+        session.commit()
+
+        monkeypatch.setattr(
+            themes, "settle",
+            lambda s_, c, **k: asked.append(c.name) or [],
+        )
+        job.run(session, analyzer=_NullAnalyzer(), feeds=[], fetch=lambda *a, **k: [])
+
+    # Every mandate, and never a yardstick: a competitor has no impulse page for
+    # a radar to fill.
+    assert asked == ["IB-7 Beauty Tech"]
+
+
+class _NullAnalyzer:
+    """A sweep needs an analyzer; this one is never reached with no feeds."""
+
+    def analyze(self, *args, **kwargs):  # pragma: no cover - defensive
+        return []

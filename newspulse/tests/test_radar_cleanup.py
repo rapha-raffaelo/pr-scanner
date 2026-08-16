@@ -5,10 +5,11 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from newspulse import radar_cleanup
-from newspulse.db import make_engine
 from newspulse.models import Article, Base, Client, TopicHit
 
 _NOW = dt.datetime(2026, 8, 15, 9, 0, tzinfo=dt.UTC)
@@ -16,7 +17,12 @@ _NOW = dt.datetime(2026, 8, 15, 9, 0, tzinfo=dt.UTC)
 
 @pytest.fixture
 def session():
-    engine = make_engine("sqlite:///:memory:")
+    # StaticPool, because the TestClient below serves the request on another
+    # thread: a plain :memory: engine hands that thread its own empty database and
+    # the route fails with "no such table: clients".
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine, expire_on_commit=False)() as sess:
         yield sess
@@ -82,3 +88,62 @@ def test_a_mandate_without_themes_is_left_alone(session):
     _hit(session, client, "Irgendeine Meldung")
 
     assert radar_cleanup.survey(session) == []
+
+
+# --- The survey and its button ---------------------------------------------------
+
+
+@pytest.fixture
+def web(session):
+    from fastapi.testclient import TestClient
+
+    from newspulse.web.app import create_app, get_db
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: session
+    return TestClient(app)
+
+
+def test_the_settings_page_does_not_survey_unless_asked(session, web):
+    """It walks every stored hit, and the page is opened many times a day for
+    reasons that have nothing to do with this."""
+    client = _client(session)
+    _hit(session, client, "Putin Signs Russia First Crypto Law")
+
+    body = web.get("/settings").text
+
+    assert "Radar-Treffer prüfen" in body
+    assert "Putin Signs" not in body
+
+
+def test_the_survey_shows_what_would_go_before_anything_goes(session, web):
+    client = _client(session)
+    _hit(session, client, "Putin Signs Russia First Crypto Law")
+
+    body = web.get("/settings?radar=1").text
+
+    assert "Putin Signs" in body
+    assert "Cointelegraph" in body
+    assert "Zuordnungen entfernen" in body
+    assert session.query(TopicHit).count() == 1, "looking is not deleting"
+
+
+def test_a_clean_portfolio_says_so(session, web):
+    client = _client(session)
+    _hit(session, client, "Firmenkunden-Banking wird zum Preiskampf", "Handelsblatt")
+
+    body = web.get("/settings?radar=1").text
+
+    assert "Alle gespeicherten Radar-Treffer tragen ein Thema" in body
+
+
+def test_the_button_removes_them_and_comes_back_to_the_survey(session, web):
+    client = _client(session)
+    _hit(session, client, "Putin Signs Russia First Crypto Law")
+
+    resp = web.post("/settings/radar/cleanup", follow_redirects=False)
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/settings?radar=1"
+    assert session.query(TopicHit).count() == 0
+

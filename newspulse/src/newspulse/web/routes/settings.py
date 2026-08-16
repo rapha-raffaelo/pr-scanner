@@ -41,7 +41,17 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from ... import angles, config, industry, job, outreach, pitch, rivals, themes
+from ... import (
+    angles,
+    config,
+    industry,
+    job,
+    outreach,
+    pitch,
+    radar_cleanup,
+    rivals,
+    themes,
+)
 from ...analyzer import get_analyzer
 from ...db import get_session
 from ...clients import (
@@ -129,10 +139,7 @@ _CATEGORY_VALUES = tuple(c.value for c in Category)
 # job, and forgetting it on restart is correct.
 _onboarding: dict[int, str] = {}
 
-# How many measured themes a new mandate is given. Four is enough for a radar to
-# find something most weeks and few enough that the list reads as a starting point
-# the consultant will edit, not as a mess to clean up.
-_ONBOARDING_THEMES = 4
+
 
 
 def _onboard(client_id: int, name: str) -> None:
@@ -159,7 +166,7 @@ def _onboard(client_id: int, name: str) -> None:
                     _onboarding.pop(client_id, None)
                     return
                 _settle_industry(session, client)
-                _settle_themes(session, client)
+                themes.settle(session, client)
                 stored = job.backfill_client(session, client)
                 _log.info("onboarding fetch for %r stored %d article(s)", name, stored)
                 _onboarding[client_id] = "entwürfe"
@@ -193,48 +200,6 @@ def _settle_industry(session: Session, client: Client) -> None:
         "classified %r as %r (%d item(s) of press use the word)",
         client.name, best.term, best.hits,
     )
-
-
-def _settle_themes(session: Session, client: Client) -> None:
-    """Give a new mandate a topic radar if it arrived without one.
-
-    Beta-tested by adding "Google" through the real form with the theme field
-    left empty, which is what anyone does the first time: a name, a website, and
-    the reasonable expectation that the tool works out the rest. It classified the
-    industry, fetched and analysed thirty articles — and then the Impulse page
-    said "Dafür braucht dieser Mandant Themen", the Marktumfeld said "kein
-    Themen-Radar eingerichtet", and the promise that a new mandate is never empty
-    was broken by the one input the operator was least likely to fill in.
-
-    Proposed by the model and then *measured*, exactly as the button on the
-    Impulse page does it: each candidate is run as a real radar query and only a
-    term the press actually writes is kept. A theme nobody writes filters
-    everything away, and a mandate silently configured with three of those is
-    worse off than one with none, because the emptiness now looks like the
-    market's fault.
-
-    Capped at four. The consultant edits the list afterwards, and a wall of
-    auto-added terms reads as something to clean up rather than something to
-    check. Failures are logged and swallowed: a mandate must still arrive.
-    """
-    if client.keywords or client.alert_topics:
-        return
-    try:
-        proposals = themes.suggest(client)
-        measured = themes.probe(client, proposals) if proposals else []
-    except Exception as exc:  # noqa: BLE001 — onboarding must not depend on it
-        _log.warning("theme suggestion for %r failed: %s", client.name, exc)
-        return
-    usable = [probe.term for probe in measured if probe.usable][:_ONBOARDING_THEMES]
-    if not usable:
-        _log.info(
-            "no measurably usable theme found for %r; leaving the radar empty "
-            "rather than filling it with terms the press does not write",
-            client.name,
-        )
-        return
-    update_client(session, client.id, keywords=usable)
-    _log.info("gave %r a radar: %s", client.name, ", ".join(usable))
 
 
 def _first_drafts(session: Session, client: Client) -> None:
@@ -679,6 +644,9 @@ def _page_context(session: Session) -> dict[str, object]:
         # a flat list cannot answer at a glance.
         "feed_tiers": _feeds_by_tier(_fetch_feed_views(session)),
         "runs": runs,
+        # None means "not asked for". The one route that offers the survey
+        # overrides it; every other render leaves the panel as an invitation.
+        "radar_stale": None,
         "last_run": _header_from_runs(runs),
         # The shared header dates every page; this view has no viewed-day of its
         # own, so it shows today — in the reader's zone, like every other page.
@@ -754,10 +722,13 @@ def settings_view(
     imported: int | None = None,
     edit: int | None = None,
     started: int | None = None,
+    radar: int | None = None,
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Render the settings page. ``?imported=N`` shows a post-import success note;
-    ``?edit=<client_id>`` opens that one client's row as an edit form.
+    ``?edit=<client_id>`` opens that one client's row as an edit form;
+    ``?radar=1`` runs the radar survey, which walks every stored hit and is
+    therefore not something to do on a page this often opened.
 
     Editing is opt-in per row so the portfolio reads as a scannable table: a
     30-client portfolio is 30 rows to skim, not 180 always-open input boxes.
@@ -771,6 +742,8 @@ def settings_view(
         extra["edit_id"] = edit
     if started is not None:
         extra["run_started"] = started
+    if radar:
+        extra["radar_stale"] = radar_cleanup.survey(session)
     return _render_settings(request, session, **extra)
 
 
@@ -1277,3 +1250,17 @@ __all__ = [
     "set_active_feed_names",
     "set_alert_threshold",
 ]
+
+
+@router.post("/settings/radar/cleanup")
+def clean_radar_route(session: Session = Depends(get_db)) -> RedirectResponse:
+    """Delete the radar hits that were never this mandate's field.
+
+    Reached only from the survey, which is reached only from an explicit link: the
+    standard is blunt enough that a person should read the list before pressing
+    this. It cuts links, never articles — the same story is genuinely another
+    mandate's market.
+    """
+    removed = radar_cleanup.clean(session, apply=True)
+    _log.info("radar cleanup removed %d hit(s) on request", len(removed))
+    return RedirectResponse(f"/settings?radar=1", status_code=_SEE_OTHER)

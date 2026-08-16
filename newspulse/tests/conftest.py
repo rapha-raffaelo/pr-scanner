@@ -95,3 +95,22 @@ def background_locks_are_free():
     yield
     for name in ("_drafting", "_writing"):
         assert not getattr(advisory, name).locked(), f"a test left {name} held"
+
+
+@pytest.fixture(autouse=True)
+def no_theme_settling(monkeypatch):
+    """Stop the sweep from proposing themes in a test run.
+
+    ``job.run`` now gives a themeless mandate a radar, which means a model call and
+    a live search per proposal. Most fixtures here create clients with no themes at
+    all, so without this the suite shells out to `claude` and to Google News from
+    every test that drives a sweep — measured the hard way: the run stopped
+    responding and had to be killed.
+
+    Yields the real function for the tests that are about it.
+    """
+    from newspulse import themes
+
+    original = themes.settle
+    monkeypatch.setattr(themes, "settle", lambda *args, **kwargs: [])
+    return original

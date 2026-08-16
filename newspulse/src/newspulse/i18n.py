@@ -426,6 +426,19 @@ _EN: dict[str, str] = {
     "in": "in",
     "Tage nachladen": "days backfill",
     "Letzte Läufe": "Recent runs",
+    "Themen-Radar": "Topic radar",
+    "Prüft, welche gespeicherten Radar-Treffer gar nicht zum Themenfeld ihres Mandanten gehören. Ändert nichts, zeigt nur.":
+        "Checks which stored radar hits do not belong to their client's field at "
+        "all. Changes nothing, only shows.",
+    "Radar-Treffer prüfen": "Check radar hits",
+    "Alle gespeicherten Radar-Treffer tragen ein Thema ihres Mandanten.":
+        "Every stored radar hit carries one of its client's themes.",
+    "Treffer tragen kein Thema ihres Mandanten. Der Artikel bleibt im Archiv — nur die Zuordnung wird gelöst.":
+        "hits carry none of their client's themes. The article stays in the "
+        "archive; only the link is cut.",
+    "Meldung": "Item",
+    "… und weitere": "… and a further",
+    "Zuordnungen entfernen": "links to remove",
     "Start": "Start",
     "Status": "Status",
     "Fehler": "Errors",
