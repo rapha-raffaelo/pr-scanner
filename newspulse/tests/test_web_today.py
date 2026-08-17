@@ -594,29 +594,68 @@ def test_a_competitor_is_not_offered_as_a_filter(factory, client):
 # coverage is, or it reads as a fault every quiet morning.
 
 
-def test_empty_day_points_at_recent_coverage_in_the_archive(factory, client):
-    today = dt.datetime.now().astimezone().date()
+def test_an_empty_today_shows_the_newest_day_that_has_something(factory, client):
+    """The sweep runs at 06:10 and brings in what was published overnight, which
+    carries yesterday's date. Filtering by publication day therefore empties this
+    page at exactly the hour it is opened.
+
+    Measured on the live instance at half past eight on a Monday: today 0 items,
+    yesterday 21 of them including 14 alerts, none ever seen, and the header
+    reporting "35 neue Artikel" over the top of it.
+    """
+    today = dt.datetime.now(config.local_zone()).date()
     with factory() as session:
-        for offset in (2, 3, 4):
-            _seed_coverage(
-                session,
-                client_name="Zalando",
-                title=f"Zalando meldet Zahlen {offset}",
-                url=f"https://example.de/z{offset}",
-                importance=6,
-                is_alert=False,
-                published_at=dt.datetime.combine(
-                    today - dt.timedelta(days=offset), dt.time(9, 0), tzinfo=dt.UTC
-                ),
-            )
+        _seed_coverage(
+            session, client_name="Zalando", title="Zalando meldet Zahlen",
+            url="https://example.de/z1", importance=6, is_alert=False,
+            published_at=_local_noon(today - dt.timedelta(days=1)),
+        )
         session.commit()
 
     body = client.get("/").text
 
-    assert "Keine Berichterstattung" in body, "today genuinely has nothing"
-    hint = body.split('empty-state-hint')[1].split('</p>')[0]
-    assert "3" in hint, f"the hint must carry the count of recent articles: {hint!r}"
-    assert 'href="/archive"' in hint, "and a way to reach them"
+    assert "Zalando meldet Zahlen" in body, "yesterday's coverage is on screen"
+    # And the page says which day it is showing, rather than passing it off as
+    # today: a page headed "Heute" quietly showing yesterday is worse than an
+    # empty one.
+    assert "liegt noch keine Berichterstattung vor" in body
+    assert f'href="/?date={today.isoformat()}"' in body, "today stays reachable"
+
+
+def test_an_explicit_date_gets_its_real_answer(factory, client):
+    """The fallback is for the reader who asked for no particular day. A ?date=
+    is a question about that day and deserves the truth, empty or not."""
+    today = dt.datetime.now(config.local_zone()).date()
+    with factory() as session:
+        _seed_coverage(
+            session, client_name="Zalando", title="Zalando meldet Zahlen",
+            url="https://example.de/z1", importance=6, is_alert=False,
+            published_at=_local_noon(today - dt.timedelta(days=1)),
+        )
+        session.commit()
+
+    body = client.get("/", params={"date": today.isoformat()}).text
+
+    assert "Keine Berichterstattung" in body
+    assert "Zalando meldet Zahlen" not in body
+
+
+def test_coverage_older_than_a_week_does_not_masquerade_as_news(factory, client):
+    """Past a week the honest answer is the empty state and the setup checklist it
+    carries, not a fortnight-old day dressed up as this morning."""
+    today = dt.datetime.now(config.local_zone()).date()
+    with factory() as session:
+        _seed_coverage(
+            session, client_name="Zalando", title="Zalando meldet Zahlen",
+            url="https://example.de/z1", importance=6, is_alert=False,
+            published_at=_local_noon(today - dt.timedelta(days=20)),
+        )
+        session.commit()
+
+    body = client.get("/").text
+
+    assert "Keine Berichterstattung" in body
+    assert "Zalando meldet Zahlen" not in body
 
 
 def test_a_truly_empty_database_offers_setup_not_the_archive(factory, client):

@@ -403,6 +403,33 @@ def _fetch_last_run(session: Session) -> RunStatusView | None:
     )
 
 
+def _latest_covered_day(
+    session: Session, *, before: dt.date, within: int = 7
+) -> dt.date | None:
+    """The most recent local day at or before ``before`` that has any coverage.
+
+    Bounded to a week: past that the honest answer is the empty state and the
+    setup checklist it carries, not a fortnight-old day dressed up as news.
+    """
+    tz = _local_tz()
+    floor = dt.datetime.combine(
+        before - dt.timedelta(days=within), dt.time.min, tzinfo=tz
+    ).astimezone(dt.UTC)
+    ceiling = dt.datetime.combine(
+        before, dt.time.min, tzinfo=tz
+    ).astimezone(dt.UTC)
+    newest = session.scalar(
+        select(func.max(Article.published_at))
+        .join(Analysis, Analysis.article_id == Article.id)
+        .where(
+            visible_coverage(),
+            Article.published_at >= floor,
+            Article.published_at < ceiling,
+        )
+    )
+    return newest.astimezone(tz).date() if newest else None
+
+
 @router.get("/", response_class=HTMLResponse)
 def today_view(
     request: Request,
@@ -421,6 +448,23 @@ def today_view(
     """
     day = _parse_day(date)
     all_items = _fetch_items(session, day)
+
+    # A morning sweep runs at 06:10 and brings in what was published overnight —
+    # which is yesterday's date. This page filters by publication day, so the page
+    # called "Heute" is empty at exactly the hour it is opened, every day, while
+    # the header truthfully reports thirty-five new articles. Measured on the live
+    # instance at 08:30 on a Monday: today 0 items, yesterday 21 with 14 alerts,
+    # none of them ever seen.
+    #
+    # So an empty *today* falls back to the newest day that has something, and
+    # says so. Only when no date was asked for: an explicit ?date= is a question
+    # about that day and deserves its real answer, empty or not.
+    shown_instead_of: dt.date | None = None
+    if not all_items and date is None:
+        recent = _latest_covered_day(session, before=day)
+        if recent is not None:
+            shown_instead_of, day = day, recent
+            all_items = _fetch_items(session, day)
 
     # Each mandate's own muted categories, applied before anything else is
     # counted. A listed retailer's ticker produces three near-identical items a
@@ -500,6 +544,10 @@ def today_view(
         {
             "day": day,
             "day_iso": day.strftime(_DATE_FORMAT),
+            # Set when the reader asked for no particular day, today held nothing
+            # and this is the newest day that did. The banner has to say it: a page
+            # headed "Heute" quietly showing yesterday is worse than an empty one.
+            "shown_instead_of": shown_instead_of,
             # Only computed when there is nothing to show, so the ordinary path
             # does not pay for a count nobody reads.
             # Scoped to the filter the reader is looking through, and only

@@ -169,6 +169,17 @@
   </div>
 {% endif %}
 
+{% if shown_instead_of %}
+  {# The sweep runs at 06:10 and brings in what was published overnight, which
+     carries yesterday's date. Filtering by publication day therefore empties this
+     page at exactly the hour it is opened — measured on the live instance: today
+     0 items, yesterday 21 including 14 alerts, none of them ever seen. #}
+  <div class="notice notice--day">
+    {{ t("Für") }} {{ shown_instead_of.strftime("%d.%m.%Y") }} {{ t("liegt noch keine Berichterstattung vor — der Lauf von heute Morgen hat geholt, was gestern Abend erschienen ist. Angezeigt wird deshalb") }}
+    <strong>{{ day.strftime("%d.%m.%Y") }}</strong>.
+    <a href="/?date={{ shown_instead_of.isoformat() }}">{{ t("Trotzdem heute ansehen") }} →</a>
+  </div>
+{% endif %}
 <div class="cols">
   <aside class="alertcol" aria-label="{{ t('Warnungen') }}">
     <div class="colhead">{{ t("Warnungen") }} <span class="n">{{ alerts | length }}</span></div>

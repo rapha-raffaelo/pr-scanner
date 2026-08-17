@@ -73,6 +73,10 @@ _EN: dict[str, str] = {
     "Warnungen": "Alerts",
     "Keine Warnungen heute.": "No alerts today.",
     "Gesamter Tag": "Whole day",
+    "liegt noch keine Berichterstattung vor — der Lauf von heute Morgen hat geholt, was gestern Abend erschienen ist. Angezeigt wird deshalb":
+        "there is no coverage yet: this morning's sweep collected what appeared "
+        "last night. Showing instead",
+    "Trotzdem heute ansehen": "Show today anyway",
     "aus": "from",
     "Artikeln": "articles",
     "Keine Berichterstattung für": "No coverage for",
