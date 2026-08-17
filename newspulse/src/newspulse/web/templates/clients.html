@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ translator(request)("Mandanten") }} · NewsPulse{% endblock %}
+{% block title %}{{ translator(request)("Mandanten") }} · RauteOS{% endblock %}
 
 {% block content %}
 {% set t = translator(request) %}
@@ -23,9 +23,20 @@
             </div>
           </div>
         </div>
+        {# Three numbers, always the same three, always in this order: what came in,
+           what is on fire, what is ready to send. The archive total used to sit
+           here and was the largest figure on every card — a fact about the past,
+           given the emphasis of a decision. #}
         <div class="pcounts">
-          <div><b>{{ row.today_count }}</b> {{ t("heute") }}</div>
-          <div><b>{{ row.total_count }}</b> {{ t("im Archiv") }}</div>
+          <div{% if not row.today_count %} class="is-zero"{% endif %}>
+            <b>{{ row.today_count }}</b> {{ t("heute") }}
+          </div>
+          <div class="{% if row.alerts_today %}is-alert{% else %}is-zero{% endif %}">
+            <b>{{ row.alerts_today }}</b> {{ t("Warnungen") }}
+          </div>
+          <div{% if not row.open_impulses %} class="is-zero"{% endif %}>
+            <b>{{ row.open_impulses }}</b> {{ t("Impulse") }}
+          </div>
         </div>
         {# Labelled, because the two lists mean different things and an unlabelled
            wall of chips was read as "keywords" when it was alert topics — a card

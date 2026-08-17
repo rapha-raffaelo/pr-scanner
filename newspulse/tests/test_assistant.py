@@ -219,8 +219,8 @@ def test_the_page_says_the_recognition_is_not_ours():
     would never match the rendered source.
     """
     body = _page()
-    assert "die Spracherkennung läuft im Browser, nicht in NewsPulse" in body
-    assert "der Browser, nicht NewsPulse" in body
+    assert "die Spracherkennung läuft im Browser, nicht in RauteOS" in body
+    assert "der Browser, nicht RauteOS" in body
 
 
 def test_reading_answers_aloud_is_off_until_it_is_switched_on():

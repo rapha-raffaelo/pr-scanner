@@ -430,7 +430,7 @@ def _latest_covered_day(
     return newest.astimezone(tz).date() if newest else None
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/today", response_class=HTMLResponse)
 def today_view(
     request: Request,
     date: str | None = None,

@@ -116,9 +116,9 @@ def test_pages_render_in_the_selected_language(client, path, german, english):
 
 
 def test_the_html_lang_attribute_follows_the_choice(client):
-    assert 'lang="de"' in client.get("/").text
+    assert 'lang="de"' in client.get("/today").text
     client.cookies.set(i18n.COOKIE_NAME, "en")
-    assert 'lang="en"' in client.get("/").text
+    assert 'lang="en"' in client.get("/today").text
 
 
 def test_both_flags_are_offered_on_every_page(client):
@@ -136,7 +136,7 @@ def test_no_german_chrome_survives_on_an_english_page(client, factory):
         s.commit()
 
     client.cookies.set(i18n.COOKIE_NAME, "en")
-    body = client.get("/").text
+    body = client.get("/today").text
     for leftover in ("Einstellungen", "Aktualisieren", "Warnungen", "Gesamter Tag"):
         assert leftover not in body, leftover
 
@@ -171,7 +171,7 @@ def test_the_impulse_column_translates_its_chrome_but_not_the_draft(client, fact
         s.commit()
 
     client.cookies.set(i18n.COOKIE_NAME, "en")
-    body = client.get("/").text
+    body = client.get("/today").text
 
     assert "Openings" in body
     assert "Copy" in body
@@ -215,11 +215,11 @@ def test_category_labels_are_translated_but_the_stored_value_is_not(client, fact
         ))
         s.commit()
 
-    de = client.get("/").text
+    de = client.get("/today").text
     assert ">Krise</span>" in de
 
     client.cookies.set(i18n.COOKIE_NAME, "en")
-    en = client.get("/").text
+    en = client.get("/today").text
     assert ">Crisis</span>" in en
     assert ">Krise</span>" not in en
     # The filter still submits the stored German value.

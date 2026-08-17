@@ -23,7 +23,8 @@ from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from ... import gnews
-from ...models import Analysis, Article, Category, Client, TopicHit, visible_coverage
+from ... import angles
+from ...models import Analysis, Angle, Article, Category, Client, TopicHit, visible_coverage
 from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
 from ..app import get_db, templates
@@ -355,8 +356,19 @@ class PortfolioRow:
     logo_url: str | None
     today_count: int
     total_count: int
+    # The two numbers that decide whether this mandate needs the consultant this
+    # morning. The archive total does not: it is a fact about the past, and it was
+    # the larger of the two figures on every card, which is the wrong emphasis for
+    # a front door.
+    alerts_today: int
+    open_impulses: int
 
 
+# The portfolio is the front door now. A consultant does not open this tool to
+# read "the news" — he opens it to work on a mandate, and the first question is
+# always which one. The day view keeps its own address at /today for the mornings
+# when the question really is "what happened anywhere".
+@router.get("/", response_class=HTMLResponse)
 @router.get("/clients", response_class=HTMLResponse)
 def clients_index(
     request: Request, session: Session = Depends(get_db)
@@ -386,6 +398,30 @@ def clients_index(
         ).all()
     )
 
+    alerts_today = dict(
+        session.execute(
+            select(Analysis.client_id, func.count())
+            .join(Article, Article.id == Analysis.article_id)
+            .where(
+                relevant,
+                Analysis.is_alert.is_(True),
+                Article.published_at >= start,
+                Article.published_at < end,
+            )
+            .group_by(Analysis.client_id)
+        ).all()
+    )
+    # A draft stands for a week (angles.COLUMN_DAYS); past that it is history, not
+    # something waiting to be sent.
+    impulse_since = dt.datetime.now(dt.UTC) - dt.timedelta(days=angles.COLUMN_DAYS)
+    open_impulses = dict(
+        session.execute(
+            select(Angle.client_id, func.count())
+            .where(Angle.generated_at >= impulse_since)
+            .group_by(Angle.client_id)
+        ).all()
+    )
+
     clients = session.scalars(select(Client).order_by(Client.name)).all()
     rows = [
         PortfolioRow(
@@ -401,6 +437,8 @@ def clients_index(
             logo_url=c.logo_url,
             today_count=today_counts.get(c.id, 0),
             total_count=totals.get(c.id, 0),
+            alerts_today=alerts_today.get(c.id, 0),
+            open_impulses=open_impulses.get(c.id, 0),
         )
         for c in clients
     ]

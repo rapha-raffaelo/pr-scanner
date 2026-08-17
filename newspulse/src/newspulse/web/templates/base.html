@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}NewsPulse{% endblock %}</title>
+  <title>{% block title %}RauteOS{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css">
   <!-- HTMX for server-driven swaps (date picker); vendored locally so the app
        stays fully offline (DEC-3: everything runs on the local machine). Loaded
@@ -18,16 +18,16 @@
   {% set lang = request_language(request) %}
   <div class="wrap">
     <header class="top">
-      <div class="brand"><a href="/">News<span>Pulse</span></a></div>
+      <div class="brand"><a href="/"><span class="brand__mark">#</span>RauteOS</a></div>
       {% include "partials/runmeta.html" %}
     </header>
 
     <nav class="tabs">
-      <a href="/"{% if request.url.path == '/' %} class="active" aria-current="page"{% endif %}>{{ t("Heute") }}</a>
-      <a href="/clients"{% if request.url.path.startswith('/client') %} class="active" aria-current="page"{% endif %}>{{ t("Mandanten") }}</a>
-      <a href="/archive"{% if request.url.path.startswith('/archive') %} class="active" aria-current="page"{% endif %}>{{ t("Archiv") }}</a>
-      <a href="/contacts"{% if request.url.path.startswith('/contacts') %} class="active" aria-current="page"{% endif %}>{{ t("Kontakte") }}</a>
-      <a href="/settings"{% if request.url.path.startswith('/settings') %} class="active" aria-current="page"{% endif %}>{{ t("Einstellungen") }}</a>
+      <a data-n="01" href="/"{% if request.url.path == '/' %} class="active" aria-current="page"{% endif %}>{{ t("Portfolio") }}</a>
+      <a data-n="02" href="/today"{% if request.url.path.startswith('/today') %} class="active" aria-current="page"{% endif %}>{{ t("Heute") }}</a>
+      <a data-n="03" href="/archive"{% if request.url.path.startswith('/archive') %} class="active" aria-current="page"{% endif %}>{{ t("Archiv") }}</a>
+      <a data-n="04" href="/contacts"{% if request.url.path.startswith('/contacts') %} class="active" aria-current="page"{% endif %}>{{ t("Kontakte") }}</a>
+      <a data-n="05" href="/settings"{% if request.url.path.startswith('/settings') %} class="active" aria-current="page"{% endif %}>{{ t("Einstellungen") }}</a>
       {# Fetching news is the one action wanted from any page, so it lives in the
          nav rather than three clicks deep in Einstellungen. redirect_to returns
          the reader to where they clicked instead of bouncing them to Settings. #}
@@ -108,7 +108,7 @@
     <form class="drawer__ask" id="drawer-form">
       <button type="button" class="drawer__voice" id="drawer-mic" hidden
               aria-pressed="false"
-              title="{{ t('Frage sprechen — die Spracherkennung läuft im Browser, nicht in NewsPulse') }}"
+              title="{{ t('Frage sprechen — die Spracherkennung läuft im Browser, nicht in RauteOS') }}"
               aria-label="{{ t('Frage sprechen') }}">🎙</button>
       <input type="text" id="drawer-input" placeholder="{{ t('Frage stellen…') }}" autocomplete="off">
       <button type="button" class="drawer__voice" id="drawer-speak" hidden
@@ -402,7 +402,7 @@
           listening = true;
           submitted = false;
           paintMic();
-          note({{ t("Hört zu… die Erkennung übernimmt der Browser, nicht NewsPulse.") | tojson }});
+          note({{ t("Hört zu… die Erkennung übernimmt der Browser, nicht RauteOS.") | tojson }});
         };
 
         recognition.onresult = event => {

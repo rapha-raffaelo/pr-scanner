@@ -78,13 +78,13 @@ def test_loopback_never_requires_credentials(monkeypatch, host):
 def test_unconfigured_means_open(client, monkeypatch):
     monkeypatch.setattr(config, "AUTH_USER", "")
     monkeypatch.setattr(config, "AUTH_PASSWORD", "")
-    assert client.get("/").status_code == 200
+    assert client.get("/today").status_code == 200
 
 
 def test_configured_challenges_an_anonymous_request(client, monkeypatch):
     monkeypatch.setattr(config, "AUTH_USER", "lucas")
     monkeypatch.setattr(config, "AUTH_PASSWORD", "geheim")
-    resp = client.get("/")
+    resp = client.get("/today")
     assert resp.status_code == 401
     assert "Basic" in resp.headers["WWW-Authenticate"]
 

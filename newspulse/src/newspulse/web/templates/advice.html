@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ translator(request)("Impulse") }} · {{ client.name }} · NewsPulse{% endblock %}
+{% block title %}{{ translator(request)("Impulse") }} · {{ client.name }} · RauteOS{% endblock %}
 
 {% block content %}
 {% set t = translator(request) %}
@@ -7,47 +7,30 @@
 {% include '_client_tabs.html' %}
 
 <style>
-  /* Two sections, two sources. Positioning comes from the market and works for a
-     mandate nobody writes about; recommendations come from its own press and do
-     not. They looked like one continuous page with controls floating between
-     them, so each is now a panel that carries its own header, explanation and
-     action — and the reader can tell at a glance which half is which. */
-  .sect { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-          padding: 18px 20px; margin-bottom: 18px; }
-  .sect__head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
-  .sect__title { font-size: 15px; font-weight: 700; }
-  .sect__n { font-size: 11px; background: #eef0f3; color: #374151; padding: 2px 8px; border-radius: 20px; }
-  .sect__src { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em;
-               color: var(--muted); font-weight: 600; margin-left: auto; }
-  .sect__lead { font-size: 13px; color: var(--muted); margin-bottom: 14px; max-width: 72ch; }
-  /* The action row sits inside its section, not between two of them. */
-  .sect__act { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-               padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+  /* Page-local only. Everything with a shared name — .sect, .impulse, .notice —
+     now comes from the system in app.css; this block used to redeclare them as
+     bordered cards and quietly opted this page out of the redesign. */
+  .sect__head { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s1); }
+  .sect__title { font-size: var(--t-lead); font-weight: 600; }
+  .sect__n { font-size: var(--t-small); color: var(--ink); font-weight: 600; }
+  .sect__src { font-size: var(--t-micro); text-transform: uppercase; letter-spacing: 0.06em;
+               color: var(--faint); font-weight: 600; margin-left: auto; }
+  .sect__lead { font-size: var(--t-small); color: var(--muted); margin-bottom: var(--s4); max-width: 72ch; }
+  .sect__act { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+               padding-bottom: var(--s4); margin-bottom: var(--s4); border-bottom: 1px solid var(--line); }
   .sect__act .panel-hint { margin: 0; }
-  .sect__body > .item:last-child, .sect__body > .impulse:last-child { margin-bottom: 0; }
-  .sect__empty { font-size: 13px; color: var(--muted); font-style: italic; }
-  /* A refusal is a result, not an absence: it gets a border and upright type so
-     it reads as an answer to the click rather than as the empty state. */
+  .sect__empty { font-size: var(--t-small); color: var(--muted); }
   .sect__refusal {
-    font-style: normal; color: var(--ink); line-height: 1.55;
-    border-left: 3px solid var(--line); padding: 2px 0 2px 12px; max-width: 74ch;
+    color: var(--ink); line-height: 1.55;
+    border-left: 2px solid var(--line-strong); padding: 2px 0 2px var(--s3); max-width: 74ch;
   }
   .sect__refusal strong { color: var(--muted); }
-  .sect__when { display: block; margin-top: 4px; font-size: 11.5px; color: var(--muted); }
-  /* A brief from another window is not an error, but it must not read as an
-     answer to the window on screen. */
-  .sect__stale {
-    font-size: 12.5px; color: #a16207; background: #fffbeb;
-    border: 1px solid #fde68a; border-radius: 8px;
-    padding: 7px 10px; margin-bottom: 10px; max-width: 74ch;
-  }
-
-  /* The situation reads as a lead paragraph, not as a second page title. */
-  .situation { font-size: 14px; line-height: 1.6; margin-bottom: 6px; }
-  .sect__meta { font-size: 11.5px; color: var(--muted); }
-  .handover__lead { font-size: 13.5px; margin-bottom: 6px; }
-  .handover__why { font-size: 13px; color: var(--muted); margin-bottom: 10px; max-width: 68ch; }
-  .handover__act { font-size: 13px; color: var(--muted); }
+  .sect__when { display: block; margin-top: var(--s1); font-size: var(--t-micro); color: var(--muted); }
+  .situation { font-size: var(--t-body); line-height: 1.6; margin-bottom: var(--s1); }
+  .sect__meta { font-size: var(--t-micro); color: var(--muted); }
+  .handover__lead { font-size: var(--t-body); margin-bottom: var(--s1); }
+  .handover__why { font-size: var(--t-small); color: var(--muted); margin-bottom: var(--s3); max-width: 68ch; }
+  .handover__act { font-size: var(--t-small); color: var(--muted); }
   .handover__act a { color: var(--accent); font-weight: 600; }
 </style>
 

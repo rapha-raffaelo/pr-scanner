@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ translator(request)("Heute") }} · NewsPulse{% endblock %}
+{% block title %}{{ translator(request)("Heute") }} · RauteOS{% endblock %}
 
 {# One row of the ranked feed: importance badge, client + category, headline,
    summary, source/time. Mirrors the locked today-triage mock's .item. #}
@@ -68,7 +68,7 @@
   {# Category filter and date picker share one form so changing either keeps the
      other's value; the whole toolbar sits inside #today-root so an HTMX swap
      re-renders it with the new day's categories. #}
-  <form class="date-picker" method="get" action="/">
+  <form class="date-picker" method="get" action="/today">
     <label for="category">{{ t("Kategorie") }}:</label>
     <select
       id="category"
@@ -94,7 +94,7 @@
     {% if muted_count %}
       <a class="filter-note filter-note--muted"
          href="/?show_muted=1{% if selected_client %}&client={{ selected_client }}{% endif %}{% if day_iso %}&date={{ day_iso }}{% endif %}"
-         hx-get="/?show_muted=1{% if selected_client %}&client={{ selected_client }}{% endif %}{% if day_iso %}&date={{ day_iso }}{% endif %}"
+         hx-get="/today?show_muted=1{% if selected_client %}&client={{ selected_client }}{% endif %}{% if day_iso %}&date={{ day_iso }}{% endif %}"
          hx-target="#today-root" hx-select="#today-root" hx-swap="outerHTML" hx-push-url="true">
         {{ muted_count }} {{ t("stummgeschaltet") }} · {{ t("anzeigen") }}
       </a>
@@ -134,13 +134,13 @@
   <div class="clientfilter">
     {% if clients | length <= card_limit %}
       <a class="cfcard{% if not selected_client %} cfcard--on{% endif %}"
-         href="/?date={{ day_iso }}{% if selected_category %}&category={{ selected_category }}{% endif %}">
+         href="/today?date={{ day_iso }}{% if selected_category %}&category={{ selected_category }}{% endif %}">
         <span class="cfall">{{ t("Alle") }}</span>
         <span class="cfname">{{ total_today }} {{ t("Meldungen") }}</span>
       </a>
       {% for c in clients %}
         <a class="cfcard{% if selected_client == c.id %} cfcard--on{% endif %}"
-           href="/?date={{ day_iso }}&client={{ c.id }}{% if selected_category %}&category={{ selected_category }}{% endif %}">
+           href="/today?date={{ day_iso }}&client={{ c.id }}{% if selected_category %}&category={{ selected_category }}{% endif %}">
           {% if c.logo_url %}
             <img class="cflogo" src="{{ c.logo_url | logo_src }}" alt="">
           {% else %}
@@ -151,7 +151,7 @@
         </a>
       {% endfor %}
     {% else %}
-      <form class="date-picker" method="get" action="/">
+      <form class="date-picker" method="get" action="/today">
         <input type="hidden" name="date" value="{{ day_iso }}">
         {% if selected_category %}<input type="hidden" name="category" value="{{ selected_category }}">{% endif %}
         <label for="client">{{ t("Mandant") }}:</label>
@@ -177,7 +177,7 @@
   <div class="notice notice--day">
     {{ t("Für") }} {{ shown_instead_of.strftime("%d.%m.%Y") }} {{ t("liegt noch keine Berichterstattung vor — der Lauf von heute Morgen hat geholt, was gestern Abend erschienen ist. Angezeigt wird deshalb") }}
     <strong>{{ day.strftime("%d.%m.%Y") }}</strong>.
-    <a href="/?date={{ shown_instead_of.isoformat() }}">{{ t("Trotzdem heute ansehen") }} →</a>
+    <a href="/today?date={{ shown_instead_of.isoformat() }}">{{ t("Trotzdem heute ansehen") }} →</a>
   </div>
 {% endif %}
 <div class="cols">

@@ -51,7 +51,7 @@ def running():
 
 def test_idle_pages_show_neither_spinner_nor_poll(client):
     """Nothing turning, and no request every four seconds for nothing."""
-    body = client.get("/").text
+    body = client.get("/today").text
 
     assert "spinner" not in body
     assert "/partials/runmeta" not in body
@@ -67,7 +67,7 @@ def test_a_running_sweep_turns_the_wheel_on_every_page(client, running):
 
 
 def test_a_running_sweep_makes_the_header_poll_itself(client, running):
-    body = client.get("/").text
+    body = client.get("/today").text
 
     meta = body.split('id="runmeta"', 1)[1].split(">", 1)[0]
     assert 'hx-get="/partials/runmeta"' in meta
@@ -77,7 +77,7 @@ def test_a_running_sweep_makes_the_header_poll_itself(client, running):
 def test_the_refresh_button_is_disabled_while_a_sweep_runs(client, running):
     """The trigger refuses a second run anyway; a button that looks clickable
     while the answer is "no" reads as a broken control."""
-    body = client.get("/").text
+    body = client.get("/today").text
 
     assert "nav-refresh__btn--busy" in body
     assert "disabled" in body.split("nav-refresh", 1)[1].split("</form>", 1)[0]
@@ -134,7 +134,7 @@ def test_a_generating_page_polls_itself_so_nobody_is_told_to_reload(client, runn
     they run and reloads the whole page when they release it. This pins the wiring
     those notices now depend on.
     """
-    body = client.get("/").text
+    body = client.get("/today").text
 
     assert 'hx-get="/partials/runmeta"' in body
     assert "Seite neu laden" not in body

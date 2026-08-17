@@ -409,7 +409,12 @@ def test_clients_index_lists_portfolio_with_counts(factory, client):
     # Alpha: 1 today of 2 archived; Beta: 0 today of 1 archived.
     alpha_card = body.split("Alpha AG", 1)[1].split("Beta AG", 1)[0]
     assert "<b>1</b> heute" in alpha_card
-    assert "<b>2</b> im Archiv" in alpha_card
+    # The card carries the three numbers a morning decision needs. The archive
+    # total was the biggest figure on it and the least useful: a fact about the
+    # past, given the emphasis of a decision.
+    assert "heute" in alpha_card
+    assert "Warnungen" in alpha_card
+    assert "Impulse" in alpha_card
 
 
 def test_clients_index_excludes_irrelevant_and_handles_empty(factory, client):
@@ -427,7 +432,8 @@ def test_clients_index_excludes_irrelevant_and_handles_empty(factory, client):
 
     body = client.get("/clients").text
     card = body.split("Alpha AG", 1)[1]
-    assert "<b>0</b> im Archiv" in card
+    # A dismissed match must not be counted anywhere on the card.
+    assert "<b>0</b> heute" in card
 
 
 # --- Per-client competitor sets ------------------------------------------------

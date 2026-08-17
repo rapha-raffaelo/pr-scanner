@@ -116,7 +116,7 @@ def test_the_muted_category_is_gone_from_the_day(factory, client):
     with factory() as session:
         _seed(session, muted=["finanzen"])
 
-    body = client.get("/").text
+    body = client.get("/today").text
 
     assert "BaFin rügt Zalando" in body
     assert "Zalando-Aktie zeigt Stabilität" not in body
@@ -128,7 +128,7 @@ def test_the_day_says_how_much_it_muted_and_offers_it_back(factory, client):
     with factory() as session:
         _seed(session, muted=["finanzen"])
 
-    body = " ".join(client.get("/").text.split())
+    body = " ".join(client.get("/today").text.split())
 
     assert "3 stummgeschaltet" in body
     assert "show_muted=1" in body
@@ -138,7 +138,7 @@ def test_showing_them_brings_them_back(factory, client):
     with factory() as session:
         _seed(session, muted=["finanzen"])
 
-    body = client.get("/?show_muted=1").text
+    body = client.get("/today?show_muted=1").text
 
     assert "Zalando-Aktie zeigt Stabilität" in body
     assert "wieder ausblenden" in body
@@ -148,7 +148,7 @@ def test_without_a_preference_nothing_changes(factory, client):
     with factory() as session:
         _seed(session)
 
-    body = " ".join(client.get("/").text.split())
+    body = " ".join(client.get("/today").text.split())
 
     assert "Zalando-Aktie zeigt Stabilität" in body
     assert "stummgeschaltet" not in body
@@ -187,7 +187,7 @@ def test_muting_is_per_client_not_portfolio_wide(factory, client):
         )
         session.commit()
 
-    body = client.get("/").text
+    body = client.get("/today").text
 
     assert "Sparkasse meldet Quartalszahlen" in body
     assert "Zalando-Aktie zeigt Stabilität" not in body

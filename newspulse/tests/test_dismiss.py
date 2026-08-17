@@ -96,14 +96,14 @@ def test_a_dismissed_article_leaves_every_view_at_once(factory, client):
         subject_id, analysis_id = subject.id, analysis.id
 
     day = _TEST_DAY.isoformat()
-    assert "Wüsten-Action" in client.get("/", params={"date": day}).text
+    assert "Wüsten-Action" in client.get("/today", params={"date": day}).text
     assert "Wüsten-Action" in client.get(f"/client/{subject_id}").text
     assert "Wüsten-Action" in client.get("/archive").text
 
     client.post(f"/coverage/{analysis_id}/dismiss", data={"redirect_to": "/"},
                 follow_redirects=False)
 
-    assert "Wüsten-Action" not in client.get("/", params={"date": day}).text
+    assert "Wüsten-Action" not in client.get("/today", params={"date": day}).text
     assert "Wüsten-Action" not in client.get(f"/client/{subject_id}").text
     assert "Wüsten-Action" not in client.get("/archive").text
 
@@ -114,8 +114,17 @@ def test_it_leaves_the_counts_and_the_share_of_voice(factory, client):
         subject, _article, analysis = _covered(session)
         subject_id, analysis_id = subject.id, analysis.id
 
-    assert "1</b>" in client.get("/clients").text.replace(" ", "")
+    # The archive count lives on the mandate's own page now: the portfolio card
+    # answers "does this one need me today", which is a different question.
+    # The archive count lives on the mandate's own page now: the portfolio card
+    # answers "does this one need me today", which is a different question. Anchor
+    # on the archive heading, not on a bare number the page header also carries.
+    before = " ".join(client.get(f"/client/{subject_id}").text.split())
+    assert "1 Artikel · Seite" in before
     client.post(f"/coverage/{analysis_id}/dismiss", follow_redirects=False)
+
+    after = " ".join(client.get(f"/client/{subject_id}").text.split())
+    assert "1 Artikel · Seite" not in after
 
     with factory() as session:
         from newspulse.reporting import share_of_voice

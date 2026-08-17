@@ -132,7 +132,7 @@ def test_today_renders_items_in_importance_order_with_alerts_surfaced(factory, c
         )
         s.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     # Within the ranked feed pane: alert(9) before mid(8) before low(5).
     feed = body.split('class="feedcol"', 1)[1]
@@ -161,7 +161,7 @@ def test_today_item_shows_all_required_fields(factory, client):
         )
         s.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     assert 'href="https://ex.de/delta"' in body
     assert 'target="_blank"' in body  # headline links out
@@ -174,7 +174,7 @@ def test_today_item_shows_all_required_fields(factory, client):
 
 def test_empty_day_renders_clean_empty_state(client):
     """A day with no coverage renders an empty state, not an error."""
-    resp = client.get("/", params={"date": _TEST_DAY.isoformat()})
+    resp = client.get("/today", params={"date": _TEST_DAY.isoformat()})
     assert resp.status_code == 200
     assert "Keine Berichterstattung" in resp.text
 
@@ -193,7 +193,7 @@ def test_header_shows_last_run_status(factory, client):
         )
         s.commit()
 
-    body = client.get("/").text
+    body = client.get("/today").text
     # "geprüft" claimed the run had examined 137 articles; the number is what it
     # newly stored, and on a day of pure duplicates it is zero while every feed
     # was in fact fetched and matched. "Lauf ok" rather than "Feeds ok" because
@@ -204,7 +204,7 @@ def test_header_shows_last_run_status(factory, client):
 
 def test_header_without_any_run_shows_placeholder(client):
     """With no runs yet the header shows a placeholder rather than crashing."""
-    body = client.get("/").text
+    body = client.get("/today").text
     assert "Noch kein Lauf" in body
 
 
@@ -223,7 +223,7 @@ def test_coverage_from_another_day_is_excluded(factory, client):
         )
         s.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     assert "HEUTE Story" in body
     assert "GESTERN Story" not in body
 
@@ -243,7 +243,7 @@ def test_javascript_url_is_not_rendered_into_href(factory, client):
         )
         s.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     assert "XSSHEADLINE" in body  # the item still renders
     assert "javascript:alert" not in body  # the dangerous scheme is gone
     assert 'href=""' in body  # blanked to an empty href
@@ -268,7 +268,7 @@ def test_zero_relevance_analysis_is_excluded(factory, client):
         )
         s.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     assert "NOISE Irrelevant" not in body
     assert "Keine Berichterstattung" in body  # falls through to the empty state
 
@@ -308,7 +308,7 @@ def test_header_run_time_is_shown_in_the_reader_zone(factory, client, monkeypatc
         )
         s.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     assert "Letzter Lauf 10:00 Uhr" in body
     assert "08:00 Uhr" not in body
@@ -340,7 +340,7 @@ def _seed_day_mix(factory):
 
 def test_category_filter_narrows_the_day_to_one_category(factory, client):
     _seed_day_mix(factory)
-    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "category": "finanzen"}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat(), "category": "finanzen"}).text
     assert "FINANZHEADLINE" in body
     assert "KRISEHEADLINE" not in body
     assert "PRODUKTHEADLINE" not in body
@@ -350,7 +350,7 @@ def test_category_filter_also_narrows_the_alert_rail(factory, client):
     """The rail is the filtered day's alerts, not the whole day's — otherwise a
     filtered view would show alerts for stories no longer in the feed."""
     _seed_day_mix(factory)
-    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "category": "finanzen"}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat(), "category": "finanzen"}).text
     rail = body.split('class="feedcol"', 1)[0]
     assert "KRISEHEADLINE" not in rail
 
@@ -358,7 +358,7 @@ def test_category_filter_also_narrows_the_alert_rail(factory, client):
 def test_category_dropdown_offers_only_categories_present_that_day(factory, client):
     """An option that would return an empty page is worse than no option."""
     _seed_day_mix(factory)
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     for present in ("krise", "finanzen", "produkt"):
         assert f'value="{present}"' in body
     for absent in ("personalie", "wettbewerb", "regulatorik"):
@@ -368,7 +368,7 @@ def test_category_dropdown_offers_only_categories_present_that_day(factory, clie
 def test_unknown_category_degrades_to_no_filter(factory, client):
     """A stale or hand-typed category shows the whole day, not an empty page."""
     _seed_day_mix(factory)
-    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "category": "nonsense"}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat(), "category": "nonsense"}).text
     assert "KRISEHEADLINE" in body
     assert "FINANZHEADLINE" in body
     assert "PRODUKTHEADLINE" in body
@@ -376,7 +376,7 @@ def test_unknown_category_degrades_to_no_filter(factory, client):
 
 def test_filter_reports_how_many_items_it_hid(factory, client):
     _seed_day_mix(factory)
-    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "category": "finanzen"}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat(), "category": "finanzen"}).text
     assert "2 ausgeblendet" in body
 
 
@@ -396,7 +396,7 @@ def test_outlet_tier_breaks_ties_without_changing_the_score(factory, client):
         )
         s.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     feed = body.split('class="feedcol"', 1)[1]
     assert feed.index("QUALITYHEADLINE") < feed.index("WIREHEADLINE")
     # Both are still present: tier reorders, it never hides.
@@ -418,7 +418,7 @@ def test_a_higher_score_still_outranks_a_better_outlet(factory, client):
         )
         s.commit()
 
-    feed = client.get("/", params={"date": _TEST_DAY.isoformat()}).text.split('class="feedcol"', 1)[1]
+    feed = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text.split('class="feedcol"', 1)[1]
     assert feed.index("WIREHEADLINE") < feed.index("QUALITYHEADLINE")
 
 
@@ -435,7 +435,7 @@ def test_syndicated_coverage_occupies_one_slot_with_its_pickup_count(factory, cl
             )
         s.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     assert "3× aufgegriffen" in body
     # One card in the rail, not three.
     rail = body.split('class="feedcol"', 1)[0]
@@ -461,7 +461,7 @@ def test_distinct_stories_are_not_collapsed_in_the_view(factory, client):
         )
         s.commit()
 
-    feed = client.get("/", params={"date": _TEST_DAY.isoformat()}).text.split('class="feedcol"', 1)[1]
+    feed = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text.split('class="feedcol"', 1)[1]
     assert feed.count('class="item') == 2
     assert "aufgegriffen" not in feed
 
@@ -489,7 +489,7 @@ def test_competitor_coverage_stays_out_of_the_daily_triage(factory, client):
             ))
         s.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     assert "MANDANT Story" in body
     assert "RIVALE Story" not in body
 
@@ -509,7 +509,7 @@ def test_the_importance_score_is_not_shown_but_still_orders_the_feed(factory, cl
             published_at=_local_noon(_TEST_DAY),
         )
         s.commit()
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     assert "Wichtigkeit" not in body
     feed = body.split('class="feedcol"', 1)[1]
     assert feed.index("HOCH") < feed.index("NIEDRIG")
@@ -553,10 +553,10 @@ def test_the_day_can_be_filtered_to_one_mandate(factory, client):
         s.commit()
         alpha_id = s.query(Client).filter_by(name="Alpha AG").one().id
 
-    both = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    both = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     assert "ALPHA" in both and "BETA" in both
 
-    only = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": alpha_id}).text
+    only = client.get("/today", params={"date": _TEST_DAY.isoformat(), "client": alpha_id}).text
     assert "ALPHA" in only
     assert "BETA Meldung" not in only
 
@@ -570,7 +570,7 @@ def test_an_unknown_client_id_shows_the_whole_day(factory, client):
             published_at=_local_noon(_TEST_DAY),
         )
         s.commit()
-    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": 9999}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat(), "client": 9999}).text
     assert "ALPHA" in body
 
 
@@ -580,7 +580,7 @@ def test_a_competitor_is_not_offered_as_a_filter(factory, client):
         _seed_client(s, "Alpha AG")
         s.add(Client(name="Rivale AG", is_competitor=True))
         s.commit()
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     assert "Rivale AG" not in body
 
 
@@ -612,14 +612,14 @@ def test_an_empty_today_shows_the_newest_day_that_has_something(factory, client)
         )
         session.commit()
 
-    body = client.get("/").text
+    body = client.get("/today").text
 
     assert "Zalando meldet Zahlen" in body, "yesterday's coverage is on screen"
     # And the page says which day it is showing, rather than passing it off as
     # today: a page headed "Heute" quietly showing yesterday is worse than an
     # empty one.
     assert "liegt noch keine Berichterstattung vor" in body
-    assert f'href="/?date={today.isoformat()}"' in body, "today stays reachable"
+    assert f'href="/today?date={today.isoformat()}"' in body, "today stays reachable"
 
 
 def test_an_explicit_date_gets_its_real_answer(factory, client):
@@ -634,7 +634,7 @@ def test_an_explicit_date_gets_its_real_answer(factory, client):
         )
         session.commit()
 
-    body = client.get("/", params={"date": today.isoformat()}).text
+    body = client.get("/today", params={"date": today.isoformat()}).text
 
     assert "Keine Berichterstattung" in body
     assert "Zalando meldet Zahlen" not in body
@@ -652,7 +652,7 @@ def test_coverage_older_than_a_week_does_not_masquerade_as_news(factory, client)
         )
         session.commit()
 
-    body = client.get("/").text
+    body = client.get("/today").text
 
     assert "Keine Berichterstattung" in body
     assert "Zalando meldet Zahlen" not in body
@@ -664,7 +664,7 @@ def test_a_truly_empty_database_offers_setup_not_the_archive(factory, client):
     Pointing at an empty archive would send the operator somewhere that confirms
     nothing; the useful next step is adding mandates and running a backfill.
     """
-    body = client.get("/").text
+    body = client.get("/today").text
 
     assert "Keine Berichterstattung" in body
     assert 'href="/settings"' in body
@@ -686,7 +686,7 @@ def test_a_day_with_coverage_shows_no_hint(factory, client):
         )
         session.commit()
 
-    body = client.get("/").text
+    body = client.get("/today").text
 
     assert "empty-state-hint" not in body
 
@@ -735,7 +735,7 @@ def test_the_impulse_column_renders_the_draft_and_its_reasoning(factory, client)
     with factory() as session:
         _seed_angle(session, generated_at=_noon_utc(_TEST_DAY))
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     column = body.split('class="anglecol"', 1)[1]
     assert "Börsenschließungen: Liquidität als Infrastruktur" in column
@@ -753,7 +753,7 @@ def test_only_the_sendable_text_sits_in_the_copy_target(factory, client):
     with factory() as session:
         angle = _seed_angle(session, generated_at=_noon_utc(_TEST_DAY))
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     target = body.split(f'id="impulse-text-{angle.id}"', 1)[1].split("</div>", 1)[0]
     assert "Liquidität als eigene Infrastruktur" in target
@@ -775,7 +775,7 @@ def test_a_draft_from_earlier_in_the_week_still_stands(factory, client):
             subject="VORGESTERN",
         )
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     assert "VORGESTERN" in body
     # And it says how old it is, or it reads as this morning's work every morning.
@@ -790,7 +790,7 @@ def test_a_draft_older_than_the_window_is_gone(factory, client):
             subject="LETZTEWOCHE",
         )
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     assert "LETZTEWOCHE" not in body
 
@@ -801,7 +801,7 @@ def test_todays_draft_is_marked_as_todays(factory, client):
     with factory() as session:
         _seed_angle(session, generated_at=_noon_utc(_TEST_DAY), subject="HEUTE")
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     assert "impulse__age--today" in body
 
@@ -817,7 +817,7 @@ def test_a_draft_is_collapsed_to_its_subject_until_it_is_opened(factory, client)
     with factory() as session:
         _seed_angle(session, generated_at=_noon_utc(_TEST_DAY), subject="HEUTE")
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     # The scannable line is in the summary; the message is behind the fold.
     assert "impulse__fold" in body
@@ -836,7 +836,7 @@ def test_the_column_follows_the_client_filter(factory, client):
                     subject="ZALANDOIMPULS")
         selected = keep.client_id
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": selected}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat(), "client": selected}).text
 
     assert "ARRAKISIMPULS" in body
     assert "ZALANDOIMPULS" not in body
@@ -863,7 +863,7 @@ def test_the_draft_cites_the_coverage_it_was_built_on(factory, client):
             article_ids=[source_article.id],
         )
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     column = body.split('class="anglecol"', 1)[1]
     assert "BitMEX stellt den Betrieb ein" in column
@@ -875,7 +875,7 @@ def test_a_draft_citing_a_vanished_article_still_renders(factory, client):
     with factory() as session:
         _seed_angle(session, generated_at=_noon_utc(_TEST_DAY), article_ids=[9999])
 
-    resp = client.get("/", params={"date": _TEST_DAY.isoformat()})
+    resp = client.get("/today", params={"date": _TEST_DAY.isoformat()})
 
     assert resp.status_code == 200
     assert "Börsenschließungen" in resp.text
@@ -883,7 +883,7 @@ def test_a_draft_citing_a_vanished_article_still_renders(factory, client):
 
 def test_the_column_says_so_when_there_is_no_opening(factory, client):
     """An empty column is the normal case and must read as a working tool."""
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     assert 'class="anglecol"' in body
     assert "Kein Anlass heute." in body
@@ -917,7 +917,7 @@ def test_the_hint_counts_only_the_filtered_clients_coverage(factory, client):
         session.commit()
         arrakis = session.scalar(select(Client).where(Client.name == "Arrakis")).id
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": arrakis}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat(), "client": arrakis}).text
     # Whitespace-normalised, and cut before the link: the client id in the href
     # would otherwise match a digit assertion about the count.
     hint = body.split("empty-state-hint", 1)[1].split("<a", 1)[0]
@@ -934,7 +934,7 @@ def test_the_archive_link_carries_the_filter(factory, client):
         session.commit()
         arrakis = session.scalar(select(Client).where(Client.name == "Arrakis")).id
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": arrakis}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat(), "client": arrakis}).text
 
     assert f'href="/archive?client={arrakis}"' in body
 
@@ -954,7 +954,7 @@ def test_a_mandate_with_nothing_at_all_gets_a_checklist_not_a_dead_link(factory,
         session.commit()
         empty_id = empty.id
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat(), "client": empty_id}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat(), "client": empty_id}).text
 
     assert "ist noch keine Berichterstattung erfasst" in body
     assert "IB-7 Beauty Tech GmbH" in body
@@ -969,7 +969,7 @@ def test_without_a_filter_the_portfolio_count_is_still_the_right_one(factory, cl
         _seed_for(session, "Arrakis", "Arrakis startet Vaults", "https://ex.de/a1", days_ago=2)
         session.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     hint = " ".join(body.split("empty-state-hint", 1)[1].split("<a", 1)[0].split())
 
     assert "2 Artikel in den letzten 10 Tagen" in hint
@@ -995,7 +995,7 @@ def test_only_actual_openings_are_cards(factory, client):
         session.add(Client(name="Ohne Anlass", aliases=[], keywords=["X"], alert_topics=[]))
         session.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     rail = body.split('class="anglecol"', 1)[1]
 
     # One card, and the quiet mandate is folded away rather than beside it.
@@ -1013,7 +1013,7 @@ def test_the_fold_still_says_why_each_one_is_empty(factory, client):
         session.add(quiet)
         session.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     assert "Ohne Themen" in body
     assert "Kein Themen-Radar" in body
@@ -1029,6 +1029,6 @@ def test_the_recorded_reason_beats_the_generic_one(factory, client):
         session.add(quiet)
         session.commit()
 
-    body = client.get("/", params={"date": _TEST_DAY.isoformat()}).text
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     assert "Aus 4 Marktmeldungen ergab sich kein Anlass." in body
