@@ -36,10 +36,11 @@ destroying the record of what was actually sent.
 
 One honest caveat on the word "record": the routes that write these rows share
 the app's trust boundary, which is HTTP Basic behind a loopback bind by default
-and — like every POST in this tool — no CSRF token yet. Until one exists
-app-wide, a row here is evidence that the consultant's browser sent the request,
-not proof that no other page made it do so. The ledger's claim is only as strong
-as that boundary.
+and — like every POST in this tool — no CSRF token yet. The two ledger routes
+at least refuse a browser POST whose ``Origin``/``Referer`` names a foreign
+page (see ``advisory._refuse_foreign_origin``), so another site cannot mint a
+release through the consultant's browser; a proper same-site token remains an
+app-wide task, and the ledger's claim is only as strong as that boundary.
 """
 
 from __future__ import annotations
@@ -50,7 +51,7 @@ import logging
 from importlib import resources
 from string import Template
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from . import config, contacts, gemini, guide, prose
@@ -313,6 +314,29 @@ def crosscheck(
     return review, config.review_model()
 
 
+def _message_fields(
+    message: PersonalMessage, review: MessageReview | None, reviewed_by: str
+) -> dict:
+    """The columns one drafted text writes, shared by both of ``store``'s paths."""
+    # A stored review always belongs to the text beside it: re-writing for the
+    # same recipient clears the old verdict rather than letting it stand over a
+    # letter it never read.
+    review_text = "\n".join(review.concerns) if review else ""
+    if review and review.fix:
+        review_text = f"{review_text}\nZuerst ändern: {review.fix}".strip()
+    return {
+        # House style, enforced rather than requested: the prompt asks for no
+        # dashes and the model relapses by the third paragraph. See newspulse.prose.
+        "subject": prose.plain(message.subject),
+        "message": prose.plain(message.message),
+        "hook": message.hook.strip(),
+        "review": review_text,
+        "reviewed_by": reviewed_by if review else "",
+        "review_ok": review.send if review else True,
+        "generated_at": dt.datetime.now(dt.UTC),
+    }
+
+
 def store(
     session: Session,
     client: Client,
@@ -329,11 +353,15 @@ def store(
     Once a letter has been released that upsert would be data loss, and of the
     worst kind: it would overwrite the only record of the text a journalist
     actually received with one nobody sent. So a released row is never touched
-    here and the redraft becomes a new row beside it.
+    here and the redraft becomes a new row beside it — and the "still a draft"
+    test is re-checked by the database at write time, not only at the read
+    above it, because a release may commit in between (the rewrite finishing
+    while the consultant clicks the release button).
     """
     journalist = (target.journalist or "") if target else ""
     outlet = (target.outlet or "") if target else ""
-    existing = session.scalars(
+    fields = _message_fields(message, review, reviewed_by)
+    draft_row = session.scalars(
         select(Outreach)
         .where(
             Outreach.angle_id == angle.id,
@@ -351,23 +379,32 @@ def store(
         # is meant a fact rather than a coincidence of insertion order.
         .order_by(Outreach.id.desc())
     ).first()
-    row = existing or Outreach(angle_id=angle.id, client_id=client.id)
-    row.journalist = journalist
-    row.outlet = outlet
-    # House style, enforced rather than requested: the prompt asks for no dashes
-    # and the model relapses by the third paragraph. See newspulse.prose.
-    row.subject = prose.plain(message.subject)
-    row.message = prose.plain(message.message)
-    row.hook = message.hook.strip()
-    # A stored review always belongs to the text beside it: re-writing for the
-    # same recipient clears the old verdict rather than letting it stand over a
-    # letter it never read.
-    row.review = "\n".join(review.concerns) if review else ""
-    row.reviewed_by = reviewed_by if review else ""
-    row.review_ok = review.send if review else True
-    if review and review.fix:
-        row.review = f"{row.review}\nZuerst ändern: {review.fix}".strip()
-    row.generated_at = dt.datetime.now(dt.UTC)
+    if draft_row is not None:
+        # The freeze holds in the database, not in the copy this session read:
+        # the WHERE repeats the draft test so a release committed since the
+        # SELECT makes this match zero rows instead of rewriting a released
+        # letter's text — in which case the redraft becomes a new row below.
+        claimed = session.execute(
+            update(Outreach)
+            .where(
+                Outreach.id == draft_row.id,
+                Outreach.state == OutreachState.ENTWURF,
+                Outreach.released_at.is_(None),
+            )
+            .values(**fields)
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        session.commit()
+        if claimed:
+            session.refresh(draft_row)
+            return draft_row
+    row = Outreach(
+        angle_id=angle.id,
+        client_id=client.id,
+        journalist=journalist,
+        outlet=outlet,
+        **fields,
+    )
     session.add(row)
     session.commit()
     return row
@@ -415,22 +452,37 @@ def release(
 
     Releasing twice is not an error and not a second release: the first timestamp
     stands. A double submit, a reloaded confirmation page or a second consultant
-    clicking the same button must not rewrite when the decision was made.
+    clicking the same button must not rewrite when the decision was made — and
+    the two clicks may *overlap*, each request reading the row unreleased in its
+    own session. So the guard is not the read below but the UPDATE's own WHERE,
+    which the database re-checks at write time: exactly one request stamps the
+    row, and the other reads the winner's record back.
     """
     if row.released_at is not None:
         return row
-    row.released_at = dt.datetime.now(dt.UTC)
-    row.released_by = ((released_by or "").strip() or DEFAULT_RELEASED_BY)[
-        :_RELEASED_BY_MAX
-    ]
-    row.state = OutreachState.RAUS
+    # A consultant who types the literal token "mensch" into the form is stored
+    # indistinguishably from the anonymous default and renders as the unsigned
+    # trail line. Accepted: the token means "a person did this" either way.
+    signer = ((released_by or "").strip() or DEFAULT_RELEASED_BY)[:_RELEASED_BY_MAX]
     # Resolved once, here, rather than matched again on every read. Left null
     # when the book has no entry: the letter still names its recipient in its own
     # ``journalist``/``outlet``, and a guessed link is worse than none.
     match = contacts.find(session, row.journalist, row.outlet)
-    row.contact_id = match.id if match is not None else None
-    session.add(row)
+    session.execute(
+        update(Outreach)
+        .where(Outreach.id == row.id, Outreach.released_at.is_(None))
+        .values(
+            released_at=dt.datetime.now(dt.UTC),
+            released_by=signer,
+            state=OutreachState.RAUS,
+            contact_id=match.id if match is not None else None,
+        )
+        .execution_options(synchronize_session=False)
+    )
     session.commit()
+    # Whether this request won or lost the write, the row now shows the release
+    # that actually stands.
+    session.refresh(row)
     return row
 
 
@@ -484,6 +536,8 @@ def is_silent(row: Outreach, *, now: dt.datetime | None = None) -> bool:
     if row.state != OutreachState.RAUS or row.released_at is None:
         return False
     moment = now or dt.datetime.now(dt.UTC)
+    # ``>=`` on purpose: the moment the fourteenth day has fully elapsed counts
+    # as "after 14 days" — the card should not wait for day fifteen to say so.
     return moment - row.released_at >= dt.timedelta(days=SILENT_AFTER_DAYS)
 
 
