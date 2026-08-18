@@ -22,6 +22,7 @@
       {% include "partials/runmeta.html" %}
     </header>
 
+    <div class="navbar">
     <nav class="tabs">
       <a data-n="01" href="/"{% if request.url.path == '/' %} class="active" aria-current="page"{% endif %}>{{ t("Portfolio") }}</a>
       <a data-n="02" href="/today"{% if request.url.path.startswith('/today') %} class="active" aria-current="page"{% endif %}>{{ t("Heute") }}</a>
@@ -33,6 +34,8 @@
          the reader to where they clicked instead of bouncing them to Settings. #}
       {# Language toggle. A POST because it writes a cookie, and `next` returns
          the reader to the page they were on rather than the dashboard root. #}
+    </nav>
+      <div class="navbar__actions">
       <div class="langtoggle" role="group" aria-label="{{ t('Sprache') }}">
         {% for code, flag, label in [('de', '🇩🇪', 'Deutsch'), ('en', '🇬🇧', 'English')] %}
           <form method="post" action="/language/{{ code }}?next={{ request.url.path }}{% if request.url.query %}%3F{{ request.url.query | urlencode }}{% endif %}">
@@ -53,7 +56,8 @@
           <button type="submit" title="{{ t('Feeds jetzt abrufen und analysieren — läuft im Hintergrund') }}">{{ t("↻ Aktualisieren") }}</button>
         {% endif %}
       </form>
-    </nav>
+    </div>
+    </div>
 
     <main class="content">
       {% block content %}{% endblock %}
