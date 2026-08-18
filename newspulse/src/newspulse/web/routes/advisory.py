@@ -19,6 +19,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -405,6 +406,34 @@ def write_message(
 # --- The ledger: the human act at the end of the pipeline ------------------------
 
 
+def _refuse_foreign_origin(request: Request) -> None:
+    """Refuse a browser POST that arrived from another site's page.
+
+    These two routes mint the audit record — "a human released this" — and the
+    app has no CSRF token yet, so any open web page could auto-submit a form at
+    the loopback bind and the browser would attach the cached Basic-auth
+    credentials. A browser names the submitting page in ``Origin`` (or at least
+    ``Referer``); when that name is not this app, the request was made *by* the
+    consultant's browser but not *from* this tool, and writing the ledger off it
+    would let any website forge the very claim the ledger exists to make.
+
+    A request with neither header passes: that is not a browser (curl, a test
+    client), and a non-browser carries no ambient credentials for a foreign page
+    to ride on. An app-wide same-site token remains the real fix; this closes
+    the hole where it costs the most first.
+    """
+    named = request.headers.get("origin") or request.headers.get("referer") or ""
+    if not named:
+        return
+    # ``Origin: null`` (sandboxed frames, data: pages) has an empty netloc and
+    # fails the comparison too, which is the right answer for it.
+    if urlsplit(named).netloc != request.url.netloc:
+        raise HTTPException(
+            status_code=403,
+            detail="Anfrage von einer fremden Seite — nicht eingetragen.",
+        )
+
+
 def _letter(session: Session, client_id: int, outreach_id: int) -> Outreach:
     """One letter of this mandate, or a 404.
 
@@ -419,6 +448,7 @@ def _letter(session: Session, client_id: int, outreach_id: int) -> Outreach:
 
 @router.post("/client/{client_id}/outreach/{outreach_id}/release")
 def release_letter(
+    request: Request,
     client_id: int,
     outreach_id: int,
     released_by: str = Form(""),
@@ -435,6 +465,7 @@ def release_letter(
     are no user accounts; it defaults to "mensch", the same answer a hand-filled
     profile fact gives.
     """
+    _refuse_foreign_origin(request)
     row = _letter(session, client_id, outreach_id)
     outreach.release(session, row, released_by=released_by)
     _log.info("outreach %d released by %r", row.id, row.released_by)
@@ -445,6 +476,7 @@ def release_letter(
 
 @router.post("/client/{client_id}/outreach/{outreach_id}/outcome")
 def record_letter_outcome(
+    request: Request,
     client_id: int,
     outreach_id: int,
     state: str = Form(...),
@@ -458,6 +490,7 @@ def record_letter_outcome(
     so a request that fails either test did not come from the card, and answering
     it with a cheerful redirect would hide that.
     """
+    _refuse_foreign_origin(request)
     row = _letter(session, client_id, outreach_id)
     try:
         outreach.record_outcome(session, row, state, note)
