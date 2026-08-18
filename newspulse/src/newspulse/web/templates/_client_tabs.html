@@ -15,10 +15,14 @@
     {% endif %}
     <a href="/client/{{ client.id }}">{{ client.name }}</a>
   </div>
-  <a href="/client/{{ client.id }}"{% if active == 'overview' %} class="active" aria-current="page"{% endif %}>{{ t("Übersicht") }}</a>
+  {# The workspace, in the order a morning runs: what happened, what to say about
+     it, who else is being written about, and then the standing material. #}
+  <a href="/client/{{ client.id }}/heute"{% if active == 'heute' %} class="active" aria-current="page"{% endif %}>{{ t("Heute") }}</a>
   <a href="/client/{{ client.id }}/advice"{% if active == 'advice' %} class="active" aria-current="page"{% endif %}>{{ t("Impulse") }}</a>
+  <a href="/client/{{ client.id }}/wettbewerb"{% if active == 'rivals' %} class="active" aria-current="page"{% endif %}>{{ t("Wettbewerb") }}</a>
+  <a href="/client/{{ client.id }}"{% if active == 'overview' %} class="active" aria-current="page"{% endif %}>{{ t("Archiv") }}</a>
+  <a href="/client/{{ client.id }}/profil"{% if active == 'profile' %} class="active" aria-current="page"{% endif %}>{{ t("Profil") }}</a>
   <a href="/client/{{ client.id }}/guide"{% if active == 'guide' %} class="active" aria-current="page"{% endif %}>{{ t("Guide") }}</a>
   <a href="/client/{{ client.id }}/market"{% if active == 'market' %} class="active" aria-current="page"{% endif %}>{{ t("Marktumfeld") }}</a>
-  <a href="/client/{{ client.id }}/map"{% if active == 'map' %} class="active" aria-current="page"{% endif %}>{{ t("Coverage Map") }}</a>
   <a class="subtabs__dl" href="/client/{{ client.id }}/export.xlsx" download>↓ {{ t("Excel") }}</a>
 </nav>

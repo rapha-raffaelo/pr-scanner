@@ -552,7 +552,10 @@ def test_the_deep_dive_is_where_competitors_and_exports_live(factory, client):
     assert "Beta AG" in body                      # share of voice
     assert f"/client/{a_id}/export.xlsx" in body  # tab strip download
     assert f"/client/{a_id}/advice" in body
-    assert f"/client/{a_id}/map" in body
+    # The Coverage Map moved into the Wettbewerb tab, where the question it
+    # answers is actually asked; the workspace strip carries that instead.
+    assert f"/client/{a_id}/wettbewerb" in body
+    assert f"/client/{a_id}/profil" in body
 
 
 # --- The competitor picker -----------------------------------------------------

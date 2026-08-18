@@ -701,6 +701,45 @@ class Angle(Base):
     )
 
 
+class ClientFact(Base):
+    """One stated fact about a mandate, with where it came from.
+
+    The profile could have been fifteen columns on ``clients``. It is a table
+    instead, for one reason: a fact a machine found on the internet and a fact the
+    consultant typed himself must never look alike. Every row carries its source
+    and who put it there, so the page can show "CEO: Alexandre Prot" next to the
+    page it was read from, and the consultant can overrule it with one that has no
+    source at all — his own knowledge, which outranks both.
+
+    Keyed on (client, key): a mandate has one CEO field, and filling it again
+    replaces the answer rather than growing a list of guesses.
+    """
+
+    __tablename__ = "client_facts"
+    __table_args__ = (
+        UniqueConstraint("client_id", "key", name="uq_client_facts_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: A key from :data:`newspulse.profile.FIELDS`. Free-form in the schema so a
+    #: new field is a code change rather than a migration.
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: Where it was read. Empty when a person typed it, which is the strongest
+    #: provenance there is and needs no link.
+    source_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source_title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: "mensch" or the model that proposed it. Rendered, because a profile that
+    #: hides which half a machine wrote is a profile nobody can audit.
+    filled_by: Mapped[str] = mapped_column(String(80), nullable=False, default="mensch")
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+
 class Outreach(Base):
     """One personalised message: an impulse, written at a named recipient.
 
@@ -763,6 +802,7 @@ __all__ = [
     "Analysis",
     "Advisory",
     "Angle",
+    "ClientFact",
     "Outreach",
     "TopicHit",
     "GuideSource",

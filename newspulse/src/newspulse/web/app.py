@@ -249,7 +249,7 @@ def create_app() -> FastAPI:
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
         advisory, archive, assistant, client, contacts, guide_routes, language,
-        runstatus, settings, today, triage,
+        profile as profile_routes, rivals_view, runstatus, settings, today, triage,
     )
 
     app.include_router(today.router)
@@ -263,6 +263,8 @@ def create_app() -> FastAPI:
     app.include_router(runstatus.router)
     app.include_router(guide_routes.router)
     app.include_router(contacts.router)
+    app.include_router(profile_routes.router)
+    app.include_router(rivals_view.router)
     return app
 
 

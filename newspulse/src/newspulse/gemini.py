@@ -168,4 +168,66 @@ def stream(
                 yield delta
 
 
+def search(
+    prompt: str, *, timeout: float = _TIMEOUT, model: str | None = None
+) -> tuple[str, list[tuple[str, str]]]:
+    """Answer with the web, and hand back the pages it used.
+
+    The same call as :func:`generate` with Google's grounding tool switched on.
+    Returns ``(text, [(url, title), ...])`` — the sources are not decoration: a
+    profile field filled from the internet is only worth having if the reader can
+    open the page it came from, and this is the only provider in the stack that
+    returns them.
+    """
+    from .analyzer import BackendError
+
+    name = model or config.review_model()
+    url = f"{_ENDPOINT}/{name}:generateContent"
+    body = json.dumps(
+        {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "tools": [{"google_search": {}}],
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(  # noqa: S310 - fixed https endpoint
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            _KEY_HEADER: config.review_api_key(),
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as exc:
+        _raise_for_http(exc)
+    except urllib.error.URLError as exc:
+        raise BackendError(f"Gemini unreachable: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise BackendError(f"Gemini timed out after {timeout}s") from exc
+    except json.JSONDecodeError as exc:
+        raise BackendError(f"Gemini did not return JSON: {exc}") from exc
+
+    text = _text_from(payload)
+    if not text:
+        raise BackendError(
+            f"Gemini returned no text (finish: {payload.get('promptFeedback')})"
+        )
+    sources: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for chunk in (
+        payload.get("candidates", [{}])[0]
+        .get("groundingMetadata", {})
+        .get("groundingChunks", [])
+    ):
+        web = chunk.get("web") or {}
+        uri, title = web.get("uri", ""), web.get("title", "")
+        if uri and uri not in seen:
+            seen.add(uri)
+            sources.append((uri, title))
+    return text, sources
+
+
 __all__ = ["generate", "stream"]

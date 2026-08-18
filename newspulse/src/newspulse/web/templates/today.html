@@ -62,6 +62,15 @@
 
 {% block content %}
 {% set t = translator(request) %}
+{# Entered from a mandate's workspace, the day is that mandate's day and keeps the
+   workspace around it. Reached from the portfolio it is everyone's, and the strip
+   would be a lie. #}
+{% if workspace_client %}
+  {% set client = workspace_client %}
+  {% set active = 'heute' %}
+  {% include '_client_tabs.html' %}
+{% endif %}
+{% set t = translator(request) %}
 
 <div id="today-root">
 <div class="today-toolbar">

@@ -1433,3 +1433,15 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   border: 1px solid rgba(255,255,255,.28); max-width: 190px;
 }
 .drawer__pick option { color: var(--ink); }
+
+/* --- A refusal, wherever it is shown -------------------------------------- */
+/* Used by the Impulse page and the profile: a generator that declined is a
+   result, not an absence, so it gets a rule and upright type rather than the
+   italic grey of an empty state. */
+.sect__empty { font-size: var(--t-small); color: var(--muted); }
+.sect__refusal {
+  font-style: normal; color: var(--ink); line-height: 1.55;
+  border-left: 2px solid var(--line-strong); padding: 2px 0 2px var(--s3);
+  max-width: 74ch;
+}
+.sect__refusal strong { color: var(--muted); }

@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Wettbewerb") }} · {{ client.name }} · RauteOS{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'rivals' %}
+{% include '_client_tabs.html' %}
+
+<style>
+  /* One window for every number on this page, stated once at the top. Two figures
+     measured over different periods on the same screen is the fastest way to make
+     a page untrustworthy. */
+  .voice { width: 100%; border-collapse: collapse; margin-bottom: var(--s6); }
+  .voice th {
+    text-align: left; font-size: var(--t-micro); font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+    padding: 0 var(--s4) var(--s3) 0; border-bottom: 1px solid var(--ink);
+  }
+  .voice td { padding: var(--s3) var(--s4) var(--s3) 0; border-bottom: 1px solid var(--line); }
+  .voice tr.is-own td { font-weight: 600; }
+  .voice .num { text-align: right; width: 84px; }
+  /* The bar is the column: a share is a length, and a length is read faster than
+     a percentage. */
+  .voice__bar { display: block; height: 6px; background: var(--line-strong); }
+  .voice tr.is-own .voice__bar { background: var(--ink); }
+  .voice__share { width: 34%; }
+
+  .rival { border-top: 1px solid var(--line); padding: var(--s4) 0; }
+  .rival__head { display: flex; align-items: baseline; gap: var(--s3); }
+  .rival__name { font-size: var(--t-lead); font-weight: 600; }
+  .rival__n { font-size: var(--t-small); color: var(--muted); margin-left: auto; }
+  .rival__lines { margin-top: var(--s2); }
+  .rival__line { font-size: var(--t-small); padding: 3px 0; color: var(--ink-2); }
+  .rival__line a { color: var(--ink); text-decoration: none; }
+  .rival__line a:hover { text-decoration: underline; }
+  .rival__line .meta { color: var(--faint); }
+  .rival__quiet { font-size: var(--t-small); color: var(--faint); margin-top: var(--s2); }
+  .gaps { border-top: 1px solid var(--ink); padding-top: var(--s4); margin-top: var(--s6); }
+  .gapline { display: flex; gap: var(--s3); font-size: var(--t-small);
+             padding: var(--s2) 0; border-bottom: 1px solid var(--line); }
+  .gapline__n { color: var(--muted); width: 92px; flex: none; }
+</style>
+
+<div class="client-profile">
+  <h1>{{ t("Wettbewerb") }}</h1>
+  <p class="panel-hint">
+    {{ t("Wie") }} {{ client.name }} {{ t("gegen sein Feld steht — Anteil, Themen und die Medien, die über die anderen schreiben und nicht über ihn. Alle Zahlen aus den letzten") }}
+    {{ window_days }} {{ t("Tagen") }}.
+  </p>
+</div>
+
+{% if voice | length > 1 %}
+  <table class="voice">
+    <thead>
+      <tr>
+        <th>{{ t("Unternehmen") }}</th>
+        <th class="num">{{ t("Meldungen") }}</th>
+        <th class="num">{{ t("Warnungen") }}</th>
+        <th class="voice__share">{{ t("Anteil") }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in voice %}
+        <tr{% if row.client_id == client.id %} class="is-own"{% endif %}>
+          <td>{{ row.name }}{% if row.client_id == client.id %} · {{ t("Mandant") }}{% endif %}</td>
+          <td class="num">{{ row.mentions }}</td>
+          <td class="num">{{ row.alerts }}</td>
+          <td class="voice__share">
+            <span class="voice__bar" style="width: {{ (row.share * 100) | round(1) }}%"></span>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <div class="notice">
+    <strong>{{ t("Noch keine Vergleichsgruppe.") }}</strong>
+    {{ t("Ein Anteil ohne Vergleich ist immer 100 % und sagt nichts. Unten lässt sich ein Wettbewerber hinzufügen.") }}
+  </div>
+{% endif %}
+
+{# --- What the others are being written about --------------------------- #}
+{% if rivals %}
+  <div class="eyebrow">{{ t("Woran der Wettbewerb gerade gemessen wird") }}</div>
+  {% for entry in rivals %}
+    <div class="rival">
+      <div class="rival__head">
+        <span class="rival__name">{{ entry.client.name }}</span>
+        {% if entry.client.industry %}<span class="panel-hint">{{ entry.client.industry }}</span>{% endif %}
+        <span class="rival__n">{{ entry.mentions }} {{ t("Meldungen") }}</span>
+      </div>
+      {% if entry.recent %}
+        <div class="rival__lines">
+          {% for article in entry.recent %}
+            <div class="rival__line">
+              <a href="{{ article.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ article.title }}</a>
+              <span class="meta">· {{ article.source }} · {{ article.published_at | de_short_date }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="rival__quiet">{{ t("Im Zeitraum nichts gefunden. Ein stiller Wettbewerber ist selbst eine Beobachtung.") }}</p>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endif %}
+
+{# --- The pitch gaps ------------------------------------------------------ #}
+{# Always rendered, gaps or not. The Coverage Map left the tab strip when this
+   page absorbed it, so if this link hid whenever a mandate had no gaps the map
+   would be unreachable from the workspace — which is exactly what happened, and
+   what the test now pins. #}
+<div class="gaps">
+  <div class="eyebrow">
+    {% if gaps %}
+      {{ gap_total }} {{ t("Medien schreiben über den Wettbewerb und nie über") }} {{ client.name }}
+    {% else %}
+      {{ t("Pitch-Lücken") }}
+    {% endif %}
+  </div>
+  {% if gaps %}
+    {% for row in gaps %}
+      <div class="gapline">
+        <span class="gapline__n">{{ row.total }} {{ t("Meldungen") }}</span>
+        <span>{{ row.source }}</span>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="panel-hint">
+      {{ t("Noch keine: dafür braucht es Medien, die mehrfach über den Wettbewerb geschrieben haben.") }}
+    </p>
+  {% endif %}
+  <p class="panel-hint" style="margin-top:var(--s3)">
+    <a href="/client/{{ client.id }}/map">{{ t("Ganze Coverage Map") }} →</a>
+  </p>
+</div>
+
+{# --- Changing the comparison set ---------------------------------------- #}
+<div class="gaps">
+  <div class="eyebrow">{{ t("Vergleichsgruppe") }}</div>
+  {% if client.competitors %}
+    <div class="rivals" style="margin-top:var(--s3)">
+      {% for rival in client.competitors %}
+        <form method="post" action="/client/{{ client.id }}/competitors/{{ rival.id }}/remove" class="rivals__one">
+          <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/wettbewerb">
+          <span class="tag tag--rival">{{ rival.name }}</span>
+          <button type="submit" class="linkbtn linkbtn--danger" title="{{ t('Verknüpfung lösen') }}">×</button>
+        </form>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <form method="post" action="/client/{{ client.id }}/competitors/accept" class="run-form" style="margin-top:var(--s4)">
+    <div class="filter-field">
+      <label for="rival-name">{{ t("Wettbewerber hinzufügen") }}</label>
+      <input type="text" id="rival-name" name="name" required placeholder="{{ t('Firmenname') }}" autocomplete="off">
+    </div>
+    <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/wettbewerb">
+    <button type="submit">{{ t("Hinzufügen") }}</button>
+  </form>
+
+  {% if candidates %}
+    <form method="post" action="/client/{{ client.id }}/competitors" class="run-form">
+      <div class="filter-field">
+        <label for="competitor_id">{{ t("Aus dem Bestand wählen") }}</label>
+        <select id="competitor_id" name="competitor_id">
+          {% for c in candidates %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/wettbewerb">
+      <button type="submit" class="btn btn--ghost">{{ t("Hinzufügen") }}</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

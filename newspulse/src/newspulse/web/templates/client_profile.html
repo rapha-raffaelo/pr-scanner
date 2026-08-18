@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Profil") }} · {{ client.name }} · RauteOS{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'profile' %}
+{% include '_client_tabs.html' %}
+
+<style>
+  /* A profile is a reference sheet, so it reads as one: two columns of labelled
+     lines, the long answers spanning both. No cards — a card per fact would turn
+     fourteen facts into fourteen objects. */
+  .prof { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--s6); }
+  .prof__row { border-top: 1px solid var(--line); padding: var(--s4) 0; }
+  .prof__row--long { grid-column: 1 / -1; }
+  .prof__label {
+    font-size: var(--t-micro); font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: var(--s2);
+    display: flex; align-items: baseline; gap: var(--s2);
+  }
+  .prof__row textarea, .prof__row input[type="text"] { width: 100%; }
+  .prof__row textarea { min-height: 62px; resize: vertical; line-height: 1.5; }
+  /* Provenance. A machine-filled line says so and links the page it was read
+     from; a line the consultant typed says nothing, because his own knowledge
+     needs no citation. */
+  .prof__src { margin-top: var(--s2); font-size: var(--t-micro); color: var(--faint); }
+  .prof__src a { color: var(--muted); }
+  .prof__hint { font-size: var(--t-micro); color: var(--faint); font-weight: 400;
+                letter-spacing: 0; text-transform: none; }
+  .prof__done { color: var(--good); }
+
+  .fillbar { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap;
+             padding: var(--s4) 0; border-top: 1px solid var(--ink); }
+  .fillbar .panel-hint { margin: 0; max-width: 52ch; }
+  .props { border-top: 1px solid var(--ink); padding-top: var(--s4); margin-bottom: var(--s5); }
+  .props__row { display: flex; gap: var(--s3); align-items: flex-start;
+                padding: var(--s3) 0; border-top: 1px solid var(--line); }
+  .props__row:first-of-type { border-top: 0; }
+  .props__key { flex: 0 0 168px; font-size: var(--t-micro); font-weight: 600;
+                letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .props__val { flex: 1; font-size: var(--t-small); }
+  .props__act { display: flex; gap: var(--s3); margin-top: var(--s4); }
+</style>
+
+<div class="client-profile">
+  <h1>{{ t("Profil") }}</h1>
+  <p class="panel-hint">
+    {{ t("Was dieses Unternehmen ist, in vierzehn Zeilen. Jede Zeile speist die Impulse, die Anschreiben und Captain Comms — und jede sagt, woher sie stammt.") }}
+    <strong>{{ filled }}/{{ fillable }}</strong> {{ t("Felder gefüllt") }}.
+  </p>
+</div>
+
+{# --- The AI fill -------------------------------------------------------- #}
+<div class="fillbar">
+  <form method="post" action="/client/{{ client.id }}/profil/fill">
+    <button type="submit" class="btn"{% if researching %} disabled{% endif %}>
+      {{ t("Mit KI ausfüllen") }}
+    </button>
+  </form>
+  <span class="panel-hint">
+    {{ t("Liest das offene Netz und schlägt Werte vor — mit Quelle, und ohne etwas zu speichern. Was hier steht, entscheiden Sie.") }}
+  </span>
+</div>
+
+{% if researching %}
+  <div class="notice notice--ok"
+       hx-get="/client/{{ client.id }}/profil" hx-trigger="every 4s"
+       hx-select="#profilebody" hx-target="#profilebody" hx-swap="outerHTML">
+    <span class="spinner" aria-hidden="true"></span>{{ t("Recherche läuft — die Seite aktualisiert sich, sobald die Vorschläge stehen.") }}
+  </div>
+{% elif research_error %}
+  <p class="sect__empty sect__refusal"><strong>{{ t("Keine Recherche.") }}</strong> {{ research_error }}</p>
+{% endif %}
+
+<div id="profilebody">
+{% if proposals %}
+  <div class="props">
+    <div class="eyebrow">{{ proposals | length }} {{ t("Vorschläge aus dem Netz") }}</div>
+    <form method="post" action="/client/{{ client.id }}/profil/accept">
+      {% for p in proposals %}
+        <div class="props__row">
+          <label class="props__key" for="p-{{ p.key }}">
+            <input type="checkbox" id="p-{{ p.key }}" name="key" value="{{ p.key }}" checked>
+            {{ fields | selectattr("key", "equalto", p.key) | map(attribute="label") | first }}
+          </label>
+          <div class="props__val">
+            {{ p.value }}
+            {% if p.source_url %}
+              <div class="prof__src">
+                {{ t("Quelle") }}:
+                <a href="{{ p.source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ p.source_title or p.source_url }}</a>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+      <div class="props__act">
+        <button type="submit" class="btn">{{ t("Ausgewählte übernehmen") }}</button>
+        <button type="submit" class="btn btn--ghost" formaction="/client/{{ client.id }}/profil/discard">
+          {{ t("Verwerfen") }}
+        </button>
+      </div>
+    </form>
+  </div>
+{% endif %}
+
+{# --- The profile itself, always editable ------------------------------- #}
+<form method="post" action="/client/{{ client.id }}/profil">
+  <div class="prof">
+    {% for field in fields %}
+      {% set fact = facts.get(field.key) %}
+      <div class="prof__row{% if field.long %} prof__row--long{% endif %}">
+        <label class="prof__label" for="f-{{ field.key }}">
+          {{ t(field.label) }}
+          {% if fact %}<span class="prof__done">·</span>{% endif %}
+          <span class="prof__hint">{{ t(field.hint) }}</span>
+        </label>
+        {% if field.long %}
+          <textarea id="f-{{ field.key }}" name="{{ field.key }}">{{ fact.value if fact else "" }}</textarea>
+        {% else %}
+          <input type="text" id="f-{{ field.key }}" name="{{ field.key }}" value="{{ fact.value if fact else '' }}">
+        {% endif %}
+        {% if fact and fact.filled_by != "mensch" %}
+          <div class="prof__src">
+            {{ t("Von") }} {{ fact.filled_by }}
+            {% if fact.source_url %}
+              · <a href="{{ fact.source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ fact.source_title or t("Quelle") }}</a>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <div class="fillbar">
+    <button type="submit" class="btn">{{ t("Profil speichern") }}</button>
+    <span class="panel-hint">{{ t("Was Sie hier ändern, gilt als Ihre Angabe und wird von der KI nicht mehr überschrieben.") }}</span>
+  </div>
+</form>
+</div>
+{% endblock %}

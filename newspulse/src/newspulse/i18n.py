@@ -613,6 +613,44 @@ _EN: dict[str, str] = {
         "What message should we set this week?",
     "Was übersehen wir gerade?": "What are we missing?",
     "Portfolio": "Portfolio",
+    "Profil": "Profile",
+    "Wettbewerb": "Competition",
+    "Mit KI ausfüllen": "Fill with AI",
+    "Liest das offene Netz und schlägt Werte vor — mit Quelle, und ohne etwas zu speichern. Was hier steht, entscheiden Sie.":
+        "Reads the open web and proposes values, with the source, storing nothing. "
+        "What ends up here is your call.",
+    "Recherche läuft — die Seite aktualisiert sich, sobald die Vorschläge stehen.":
+        "Researching — the page will refresh itself once the proposals are ready.",
+    "Keine Recherche.": "No research.",
+    "Vorschläge aus dem Netz": "proposals from the web",
+    "Ausgewählte übernehmen": "Accept selected",
+    "Verwerfen": "Discard",
+    "Profil speichern": "Save profile",
+    "Was Sie hier ändern, gilt als Ihre Angabe und wird von der KI nicht mehr überschrieben.":
+        "What you change here counts as yours and the AI will not overwrite it.",
+    "Was dieses Unternehmen ist, in vierzehn Zeilen. Jede Zeile speist die Impulse, die Anschreiben und Captain Comms — und jede sagt, woher sie stammt.":
+        "What this company is, in fourteen lines. Every line feeds the openings, "
+        "the letters and Captain Comms, and every line says where it came from.",
+    "Felder gefüllt": "fields filled",
+    "Von": "By",
+    "Quelle": "Source",
+    "Unternehmen": "Company",
+    "Anteil": "Share",
+    "Noch keine Vergleichsgruppe.": "No peer group yet.",
+    "Ein Anteil ohne Vergleich ist immer 100 % und sagt nichts. Unten lässt sich ein Wettbewerber hinzufügen.":
+        "A share with nothing to compare against is always 100% and says nothing. "
+        "Add a competitor below.",
+    "Woran der Wettbewerb gerade gemessen wird": "What the competition is being written about",
+    "Im Zeitraum nichts gefunden. Ein stiller Wettbewerber ist selbst eine Beobachtung.":
+        "Nothing in the period. A quiet competitor is itself an observation.",
+    "Medien schreiben über den Wettbewerb und nie über": "outlets write about the competition and never about",
+    "Ganze Coverage Map": "Full coverage map",
+    "Noch keine: dafür braucht es Medien, die mehrfach über den Wettbewerb geschrieben haben.":
+        "None yet: that needs outlets which have written about the competition "
+        "more than once.",
+    "gegen sein Feld steht — Anteil, Themen und die Medien, die über die anderen schreiben und nicht über ihn. Alle Zahlen aus den letzten":
+        "stands against its field: share, subjects, and the outlets that write "
+        "about the others and not about them. Every figure from the last",
     "Fragen": "Ask",
     "Frage stellen…": "Ask a question…",
     # --- Captain Comms: voice ------------------------------------------------

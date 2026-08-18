@@ -12,7 +12,7 @@ import datetime as dt
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -430,6 +430,19 @@ def _latest_covered_day(
     return newest.astimezone(tz).date() if newest else None
 
 
+@router.get("/client/{client_id}/heute")
+def client_day(client_id: int) -> RedirectResponse:
+    """The day, scoped to one mandate.
+
+    A redirect rather than a second copy of the view: the day filtered to one
+    client is exactly what ``/today?client=`` already renders, and two routes
+    rendering the same three columns would drift apart within a month. The tab
+    strip stays visible because the day view carries it whenever a single mandate
+    is selected.
+    """
+    return RedirectResponse(f"/today?client={client_id}", status_code=303)
+
+
 @router.get("/today", response_class=HTMLResponse)
 def today_view(
     request: Request,
@@ -544,6 +557,12 @@ def today_view(
         {
             "day": day,
             "day_iso": day.strftime(_DATE_FORMAT),
+            # Present only when the day is filtered to a single mandate, which is
+            # what makes this page that mandate's workspace tab rather than the
+            # portfolio-wide view.
+            "workspace_client": (
+                session.get(Client, selected_client) if selected_client else None
+            ),
             # Set when the reader asked for no particular day, today held nothing
             # and this is the newest day that did. The banner has to say it: a page
             # headed "Heute" quietly showing yesterday is worse than an empty one.
