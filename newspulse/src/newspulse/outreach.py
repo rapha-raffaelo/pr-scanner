@@ -327,7 +327,13 @@ def store(
             Outreach.angle_id == angle.id,
             Outreach.journalist == journalist,
             Outreach.outlet == outlet,
+            # A draft is both things at once: the state says so and no release is
+            # stamped. Filtered on both because ``released_at`` is the field every
+            # other release check keys on, and a later writer (OUT-04's mailbox
+            # sync) may stamp it without walking through :func:`release` — such a
+            # row must count as released here, whatever its state still says.
             Outreach.state == OutreachState.ENTWURF,
+            Outreach.released_at.is_(None),
         )
         # At most one draft per recipient exists, but ordering makes which one
         # is meant a fact rather than a coincidence of insertion order.
