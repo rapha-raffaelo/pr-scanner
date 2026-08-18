@@ -48,10 +48,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+from dataclasses import dataclass
 from importlib import resources
 from string import Template
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from . import config, contacts, gemini, guide, prose
@@ -553,6 +554,91 @@ def days_out(row: Outreach, *, now: dt.datetime | None = None) -> int:
     return max((moment - row.released_at).days, 0)
 
 
+# --- The relationship file --------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryEntry:
+    """One released letter in a contact's file, with the mandate it went out for.
+
+    The mandate travels as its name rather than as the ``Client`` row because the
+    name is all the file shows: the line says *for whom* the agency wrote, and
+    both the chip label and its colour derive from the name alone.
+    """
+
+    letter: Outreach
+    mandate: str
+
+
+@dataclass(frozen=True, slots=True)
+class Tally:
+    """The four numbers over a contact's timeline: Anschreiben, Antworten,
+    Veröffentlicht, ohne Reaktion."""
+
+    anschreiben: int
+    antworten: int
+    veroeffentlicht: int
+    still: int
+
+
+def history_for_contact(session: Session, contact_id: int) -> list[HistoryEntry]:
+    """Every released letter to one contact, newest first, across all mandates.
+
+    Across mandates on purpose (DEC-2): a journalist is a relationship the agency
+    holds, and "have we already gone to her with something this month" cannot be
+    answered from inside one client's workspace — so the mandate is named on
+    every entry instead of scoping the query. Drafts never appear: the file is a
+    record of what left the house, and a draft has not.
+    """
+    rows = session.execute(
+        select(Outreach, Client.name)
+        .join(Client, Client.id == Outreach.client_id)
+        .where(
+            Outreach.contact_id == contact_id,
+            Outreach.released_at.is_not(None),
+        )
+        .order_by(Outreach.released_at.desc(), Outreach.id.desc())
+    ).all()
+    return [HistoryEntry(letter=letter, mandate=mandate) for letter, mandate in rows]
+
+
+def tally(history: list[HistoryEntry], *, now: dt.datetime | None = None) -> Tally:
+    """The tallies over a file, counted off the very rows the timeline shows, so
+    the numbers and the entries beneath them can never disagree.
+
+    "Ohne Reaktion" is derived (:func:`is_silent`) rather than counted from a
+    state, for the same reason it is not stored: silence is an absence. An
+    ``absage`` sits on the timeline with its badge but has no tally of its own —
+    a rejection is an answer of a kind, but claiming it as "Antwort" would count
+    a door closing as a conversation.
+    """
+    letters = [entry.letter for entry in history]
+    return Tally(
+        anschreiben=len(letters),
+        antworten=sum(row.state == OutreachState.ANTWORT for row in letters),
+        veroeffentlicht=sum(
+            row.state == OutreachState.VEROEFFENTLICHT for row in letters
+        ),
+        still=sum(is_silent(row, now=now) for row in letters),
+    )
+
+
+def released_count_by_contact(session: Session) -> dict[int, int]:
+    """Released letters per contact id — the roster's per-row count, fetched in
+    one query for the whole page rather than one per contact. Drafts do not
+    count: the number beside a name answers "how often did we actually go to
+    them", not "how often did we consider it"."""
+    rows = session.execute(
+        select(Outreach.contact_id, func.count(Outreach.id))
+        .where(
+            Outreach.contact_id.is_not(None),
+            Outreach.released_at.is_not(None),
+        )
+        .group_by(Outreach.contact_id)
+    ).all()
+    return dict(rows)
+
+
 def for_angle(session: Session, angle_id: int) -> list[Outreach]:
     """Every message written off one impulse, newest first."""
     return list(
@@ -586,13 +672,18 @@ __all__ = [
     "DEFAULT_RELEASED_BY",
     "OUTCOMES",
     "STATE_LABELS",
+    "HistoryEntry",
+    "Tally",
     "by_angle",
     "crosscheck",
     "days_out",
     "draft",
     "for_angle",
+    "history_for_contact",
     "is_silent",
     "record_outcome",
     "release",
+    "released_count_by_contact",
     "store",
+    "tally",
 ]

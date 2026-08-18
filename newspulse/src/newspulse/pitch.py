@@ -33,7 +33,15 @@ from sqlalchemy.orm import Session
 
 from . import contacts as contactbook
 from .matching import on_theme, radar_matcher
-from .models import Analysis, Angle, Article, Client, TopicHit, visible_coverage
+from .models import (
+    Analysis,
+    Angle,
+    Article,
+    Client,
+    Outreach,
+    TopicHit,
+    visible_coverage,
+)
 from .outlets import tier_for
 
 # How far back the field's journalists are read. The impulse window, so the people
@@ -43,6 +51,13 @@ LOOKBACK_DAYS = 90
 # Kept short on purpose. A pitch list of twenty is a research project; the value
 # here is "these four, and here is why".
 MAX_TARGETS = 6
+
+# How long a released letter keeps marking its recipient on this angle's list. A
+# journalist pitched on the same subject within a quarter remembers it, and the
+# second identical approach is the one that costs the relationship. The same span
+# the list itself reads (LOOKBACK_DAYS), so the mark and the material age out
+# together.
+ALREADY_PITCHED_DAYS = 90
 
 # An outlet that wrote about the field once is not a beat. Two is the same floor
 # the coverage map uses for its gap list, for the same reason.
@@ -68,6 +83,11 @@ class PitchTarget:
     #: Never derived — see the module docstring — only looked up.
     contact_id: int | None = None
     contact_email: str = ""
+    #: When a *released* letter for this same angle last went to this recipient,
+    #: within :data:`ALREADY_PITCHED_DAYS`. ``None`` when none did. The mark that
+    #: stops the list proposing someone who was already written to about the
+    #: same thing last week.
+    already_pitched_at: dt.datetime | None = None
 
     @property
     def is_new_contact(self) -> bool:
@@ -185,6 +205,36 @@ def _field_outlets(
     )
 
 
+def _already_pitched(
+    session: Session, angle: Angle | None, reference: dt.datetime
+) -> dict[tuple[str, str], dt.datetime]:
+    """(journalist, outlet) → when a released letter for this angle last went to
+    them, within :data:`ALREADY_PITCHED_DAYS`.
+
+    Only released letters count: a draft reached nobody, and marking one would
+    claim a contact that never happened. Keyed case-insensitively the way the
+    contact book matches, because the feed writes "Maria Berg" and the letter may
+    carry "maria berg".
+    """
+    if angle is None:
+        return {}
+    since = reference - dt.timedelta(days=ALREADY_PITCHED_DAYS)
+    rows = session.execute(
+        select(Outreach.journalist, Outreach.outlet, Outreach.released_at)
+        .where(
+            Outreach.angle_id == angle.id,
+            Outreach.released_at.is_not(None),
+            Outreach.released_at >= since,
+        )
+    ).all()
+    latest: dict[tuple[str, str], dt.datetime] = {}
+    for journalist, outlet, released in rows:
+        key = ((journalist or "").casefold(), (outlet or "").casefold())
+        if key not in latest or released > latest[key]:
+            latest[key] = released
+    return latest
+
+
 def targets_for(
     session: Session,
     client: Client,
@@ -201,6 +251,7 @@ def targets_for(
     reference = now or dt.datetime.now(dt.UTC)
     since = reference - dt.timedelta(days=LOOKBACK_DAYS)
     covered = _covered_client(session, client, since)
+    pitched = _already_pitched(session, angle, reference)
 
     targets: list[PitchTarget] = []
     seen: set[tuple[str, str | None]] = set()
@@ -220,6 +271,13 @@ def targets_for(
         )
         if known is not None:
             target = replace(target, contact_id=known.id, contact_email=known.email)
+        # Whether this angle already went to them, released and dated — so the
+        # list warns before proposing the same subject to the same person twice.
+        written = pitched.get(
+            ((target.journalist or "").casefold(), target.outlet.casefold())
+        )
+        if written is not None:
+            target = replace(target, already_pitched_at=written)
         targets.append(target)
 
     # 1. The bylines on the very stories this draft answers.
@@ -268,4 +326,10 @@ def targets_for(
     return targets
 
 
-__all__ = ["LOOKBACK_DAYS", "MAX_TARGETS", "PitchTarget", "targets_for"]
+__all__ = [
+    "ALREADY_PITCHED_DAYS",
+    "LOOKBACK_DAYS",
+    "MAX_TARGETS",
+    "PitchTarget",
+    "targets_for",
+]
