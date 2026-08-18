@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import types
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,7 @@ from newspulse.models import (
     OutreachState,
 )
 from newspulse.pitch import PitchTarget
+from newspulse.schemas import PersonalMessage
 from newspulse.web.app import create_app, get_db
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -168,6 +170,37 @@ def test_releasing_twice_leaves_the_first_timestamp_alone(session):
 
     assert row.released_at == first
     assert row.released_by == first_by
+
+
+def test_two_overlapping_releases_keep_the_first_stamp(tmp_path):
+    """FastAPI runs these sync routes in a threadpool: a double-click gives two
+    requests their own sessions, and both read the row unreleased. Only a guard
+    the database re-checks at write time lets exactly one of them stamp it —
+    an in-Python ``if row.released_at`` check passes in both."""
+    engine = create_engine(f"sqlite:///{(tmp_path / 'race.db').as_posix()}")
+    try:
+        Base.metadata.create_all(engine)
+        make = sessionmaker(bind=engine, expire_on_commit=False)
+        with make() as setup:
+            client, angle = _mandate(setup)
+            row_id = _write(setup, client, angle).id
+        with make() as s1, make() as s2:
+            # Both requests load the row before either commits: the stale read
+            # that defeats any application-level idempotency check.
+            r1, r2 = s1.get(Outreach, row_id), s2.get(Outreach, row_id)
+
+            outreach.release(s1, r1, released_by="erste")
+            outreach.release(s2, r2, released_by="zweite")
+
+            with make() as check:
+                final = check.get(Outreach, row_id)
+                assert final.released_by == "erste"
+                assert final.released_at == r1.released_at
+            # The losing request reads the winner's record back rather than
+            # believing its own stale copy.
+            assert r2.released_by == "erste"
+    finally:
+        engine.dispose()
 
 
 def test_releasing_stores_the_contact_when_the_book_has_one(session):
@@ -348,6 +381,36 @@ def test_the_released_letter_keeps_its_own_subject_and_message(session):
     assert frozen.state == OutreachState.RAUS
 
 
+def test_a_release_landing_in_stores_read_write_window_is_not_overwritten(
+    session, monkeypatch
+):
+    """``store`` reads the draft, then writes. A release can commit in between —
+    the rewrite job finishing while the consultant clicks the button — and the
+    released text must survive that: the freeze has to hold at the database's
+    write, not in the copy the read returned. Simulated here by handing ``store``
+    a read that still claims the released row is a draft."""
+    client, angle = _mandate(session)
+    released = _write(session, client, angle, message="Der Brief, der rausging.")
+    outreach.release(session, released)
+
+    stale_read = types.SimpleNamespace(first=lambda: released)
+    monkeypatch.setattr(session, "scalars", lambda *a, **k: stale_read)
+    redraft = PersonalMessage(
+        subject="Neuer Betreff", message="Der neue Versuch.", hook="weil"
+    )
+    stored = outreach.store(session, client, angle, redraft, _TARGET)
+    monkeypatch.undo()
+
+    session.expire_all()
+    frozen = session.get(Outreach, released.id)
+    assert frozen.message == "Der Brief, der rausging."
+    assert frozen.state == OutreachState.RAUS
+    # The redraft was not lost either — it became a new row beside the record.
+    assert stored.id != released.id
+    assert stored.message == "Der neue Versuch."
+    assert stored.state == OutreachState.ENTWURF
+
+
 def test_a_second_release_and_redraft_only_touches_the_newest_draft(session):
     client, angle = _mandate(session)
     outreach.release(session, _write(session, client, angle, message="Erster."))
@@ -439,6 +502,37 @@ def test_a_letter_belonging_to_another_mandate_is_refused(factory, web):
     assert resp.status_code == 404
     with factory() as session:
         assert session.get(Outreach, row_id).state == OutreachState.ENTWURF
+
+
+def test_a_cross_site_form_post_cannot_mint_a_release(factory, web):
+    """The ledger's claim is "a human released this". A hostile page auto-submitting
+    a form POST rides the browser's cached Basic-auth credentials — but the browser
+    also names that page in ``Origin``, and a foreign name is refused. The same
+    POST from the app's own page still passes."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = _write(session, client, angle)
+        client_id, row_id = client.id, row.id
+
+    forged = web.post(
+        f"/client/{client_id}/outreach/{row_id}/release",
+        headers={"origin": "https://evil.example"},
+        follow_redirects=False,
+    )
+
+    assert forged.status_code == 403
+    with factory() as session:
+        assert session.get(Outreach, row_id).released_at is None
+
+    own_page = web.post(
+        f"/client/{client_id}/outreach/{row_id}/release",
+        headers={"origin": "http://testserver"},
+        follow_redirects=False,
+    )
+
+    assert own_page.status_code == 303
+    with factory() as session:
+        assert session.get(Outreach, row_id).released_at is not None
 
 
 # --- The card --------------------------------------------------------------------
@@ -533,6 +627,33 @@ def test_the_outcome_form_is_only_offered_once_there_is_something_to_answer(
         outreach.release(session, session.get(Outreach, row_id))
 
     assert f"/outreach/{row_id}/outcome" in web.get(f"/client/{client_id}/advice").text
+
+
+def test_the_outcome_form_preselects_no_outcome_on_a_fresh_release(factory, web):
+    """On a letter in "raus" no option matches the state, and the browser would
+    quietly select the first one — a stray "Eintragen" click would then record a
+    reply nobody had. The placeholder must hold the selection until an outcome
+    is chosen on purpose, and hand it over once one is recorded."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = _write(session, client, angle)
+        outreach.release(session, row)
+        client_id, row_id = client.id, row.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert '<option value="" disabled selected>' in body
+    assert 'selected>Antwort' not in body
+
+    with factory() as session:
+        outreach.record_outcome(
+            session, session.get(Outreach, row_id), OutreachState.ANTWORT, "kam zurück"
+        )
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert '<option value="" disabled>' in body
+    assert 'selected>Antwort' in body
 
 
 def test_the_card_chrome_translates(factory, web):
