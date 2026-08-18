@@ -877,6 +877,10 @@ a:hover { text-decoration: underline; }
 .state__badge--antwort { color: #14532d; background: rgba(36, 138, 61, 0.1); border-color: rgba(36, 138, 61, 0.3); }
 .state__badge--absage { color: #b25000; background: rgba(178, 80, 0, 0.1); border-color: rgba(178, 80, 0, 0.28); }
 .state__badge--veroeffentlicht { color: #14532d; background: rgba(36, 138, 61, 0.16); border-color: rgba(36, 138, 61, 0.4); }
+/* The quiet second badge. Crosscheck-hold's amber — "worth a look", not an
+   alarm — and distinct from the base grey, so a silent letter cannot be read
+   as carrying a draft badge. */
+.state__badge--still { color: #92400e; background: #fffbeb; border-color: #fde68a; }
 .state__when { font-size: var(--t-caption); color: var(--muted); }
 .state__acts { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 /* The honest note under an unreleased letter. Nothing is sent from here, and the
