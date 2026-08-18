@@ -291,7 +291,16 @@
                 <ul>
                   <li>
                     <b>{{ msg.released_at | de_datetime }}</b>
-                    {{ t("von") }} {{ msg.released_by }} {{ t("freigegeben und verschickt") }}
+                    {# The default signer follows client_profile's filled_by
+                       precedent: "mensch" is a stored token, not a name, and is
+                       never shown. A named releaser renders through one
+                       interpolated string rather than glued fragments, so the
+                       English keeps its own word order instead of German's. #}
+                    {% if msg.released_by == "mensch" %}
+                      {{ t("Freigegeben und verschickt") }}
+                    {% else %}
+                      {{ t("von %(who)s freigegeben und verschickt") | format(who=msg.released_by) }}
+                    {% endif %}
                   </li>
                   {% if msg.outcome_at %}
                     <li>

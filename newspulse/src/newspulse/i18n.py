@@ -394,8 +394,9 @@ _EN: dict[str, str] = {
     "Geschrieben": "Written",
     "noch nicht freigegeben": "not released yet",
     "Freigegeben und verschickt": "Released and sent",
-    "freigegeben und verschickt": "released and sent",
-    "von": "by",
+    # One string, not fragments: "von X freigegeben" glued from three t() calls
+    # would produce English words in German word order ("by X released and sent").
+    "von %(who)s freigegeben und verschickt": "released and sent by %(who)s",
     "Ergebnis eingetragen": "Outcome recorded",
     "Was kam zurück": "What came back",
     "In einem Satz: was kam zurück.": "In one sentence: what came back.",

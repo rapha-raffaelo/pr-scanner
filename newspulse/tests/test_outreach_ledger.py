@@ -553,6 +553,35 @@ def test_the_card_chrome_translates(factory, web):
     assert "not released yet" in body
 
 
+def test_the_released_trail_translates_and_never_shows_the_mensch_token(factory, web):
+    """The trail is chrome too. Two failures guarded here: the stored default
+    "mensch" leaking onto the card (client_profile's filled_by never shows it),
+    and a named release glued from fragments into English words in German word
+    order ("by Lucas released and sent")."""
+    from newspulse import i18n
+
+    with factory() as session:
+        client, angle = _mandate(session)
+        outreach.release(session, _write(session, client, angle))
+        client_id = client.id
+
+    web.cookies.set(i18n.COOKIE_NAME, "en")
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "Released and sent" in body
+    assert "mensch" not in body
+
+    with factory() as session:
+        client, angle = _mandate(session)
+        outreach.release(session, _write(session, client, angle), released_by="Lucas")
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "released and sent by Lucas" in body
+    assert "by Lucas released" not in body
+
+
 def test_every_state_label_has_an_english_entry():
     """A new ``OutreachState`` must not silently render as its German value."""
     from newspulse import i18n
