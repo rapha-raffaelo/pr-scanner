@@ -1,101 +1,106 @@
-/* RauteOS — the design system.
+/* RauteOS — Apple HIG.
 
-   iOS, not a dashboard. The reference is Settings and Mail on an iPhone: a soft
-   grey ground, white cards floating on it with generous radii, one tint colour
-   for everything you can touch, and type that carries the hierarchy instead of
-   rules and boxes.
+   The reference is a real iPadOS/macOS app: a sidebar, a large title, and content
+   in grouped inset lists. Not a web dashboard wearing iOS colours.
 
-   The rules, so a later change does not quietly undo them:
+   What that actually means, because the first attempt got each of these wrong:
 
-   * **Two planes.** A grey ground (--bg) and white cards (--card) on top of it.
-     Nothing is a card *inside* a card; grouping is what the radius is for.
-   * **One tint.** Everything interactive is --tint and nothing else is. A heading
-     is never tinted, a border is never tinted.
-   * **Semantic colour only beyond that**: red for a warning about a mandate,
-     green for something that came off, orange for a decision waiting.
-   * **Separators, not borders.** Hairlines sit *inside* a card between rows and
-     are inset from the left edge, the way a grouped list does it.
-   * **The type carries the page.** A large title, a small uppercase section
-     header, and body text — three sizes doing the work borders used to do.
-   * The mark is the Raute, in the tint, once.
+   * **One container, many rows.** A grouped list is a single rounded surface with
+     hairline separators inset to the text edge. Not one floating card per row.
+   * **No shadows.** iOS lifts nothing. The grouped background (--group) is what
+     separates a list from the page; a shadow is a Material habit.
+   * **17pt body.** Apple's body text is large and the line height is generous.
+     13px body is a website; it is the single biggest reason a layout reads cheap.
+   * **Tint is for touch.** Links, the selected sidebar row, a destructive action.
+     Headings are label colour. Six categories are not six pills.
+   * **8pt grid.** Every padding and gap is a multiple of 4, most are multiples of
+     8, and the standard row inset is 16.
 */
 
 :root {
-  /* The two planes, plus the fills iOS layers on top of them. */
-  --bg: #f2f2f7;
-  --card: #ffffff;
+  /* System greys, light. */
+  --group: #f2f2f7;          /* systemGroupedBackground */
+  --card: #ffffff;           /* secondarySystemGroupedBackground */
+  --sidebar: #f2f2f7;
   --fill: rgba(120, 120, 128, 0.12);
-  --fill-strong: rgba(120, 120, 128, 0.20);
+  --fill-2: rgba(120, 120, 128, 0.08);
 
-  /* Label colours, in the order iOS names them. */
-  --ink: #1c1c1e;
-  --ink-2: #3c3c43;
-  --muted: #8a8a8e;
-  --faint: #b0b0b5;
-  --line: rgba(60, 60, 67, 0.14);
-  --line-strong: rgba(60, 60, 67, 0.22);
+  --ink: #000000;            /* label */
+  --ink-2: rgba(60, 60, 67, 0.86);
+  --muted: rgba(60, 60, 67, 0.60);   /* secondaryLabel */
+  --faint: rgba(60, 60, 67, 0.30);   /* tertiaryLabel */
+  --line: rgba(60, 60, 67, 0.13);    /* separator */
 
-  /* Tint and the semantic set. */
   --tint: #007aff;
   --accent: #007aff;
   --alert: #ff3b30;
-  --alert-wash: #fff1f0;
   --good: #34c759;
-  --good-wash: #f1fbf3;
   --warn: #ff9500;
-  --warn-wash: #fff8ee;
+  --purple: #af52de;
+  --pink: #ff2d55;
+  --teal: #30b0c7;
 
-  /* Type. A large title at the top of a screen, then two supporting sizes. */
-  --t-micro: 11px;
-  --t-small: 13px;
-  --t-body: 15px;
-  --t-lead: 17px;
-  --t-h3: 20px;
-  --t-h2: 24px;
-  --t-h1: 34px;
+  /* Type: the iOS text styles, by name. */
+  --t-caption2: 11px;
+  --t-caption: 12px;
+  --t-footnote: 13px;
+  --t-subhead: 15px;
+  --t-body: 17px;
+  --t-headline: 17px;
+  --t-title3: 20px;
+  --t-title2: 22px;
+  --t-title1: 28px;
+  --t-large: 34px;
 
   --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
-  --s5: 20px; --s6: 28px; --s7: 40px; --s8: 64px;
+  --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
 
-  /* Radii: cards, controls, pills. */
-  --radius: 14px;
-  --radius-s: 10px;
+  --radius: 10px;
+  --radius-s: 8px;
   --radius-pill: 980px;
+  --shadow: none;
 
-  --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .04);
-
+  --paper: var(--card);
+  --bg: var(--group);
   --surface: var(--card);
   --border: var(--line);
   --text: var(--ink);
-  --alertbg: var(--alert-wash);
-  --alert-bg: var(--alert-wash);
+  --line-strong: rgba(60, 60, 67, 0.20);
+  --alertbg: rgba(255, 59, 48, .10);
+  --alert-bg: var(--alertbg);
+  --alert-wash: var(--alertbg);
+  --good-wash: rgba(52, 199, 89, .12);
+  --warn-wash: rgba(255, 149, 0, .12);
+  --fill-strong: rgba(120, 120, 128, 0.20);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
-               "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background: var(--bg);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  background: var(--group);
   color: var(--ink);
   font-size: var(--t-body);
-  line-height: 1.45;
-  letter-spacing: -0.01em;
+  line-height: 1.47;
+  letter-spacing: -0.022em;
   -webkit-font-smoothing: antialiased;
   font-variant-numeric: tabular-nums;
 }
 
-.wrap { max-width: 1180px; margin: 0 auto; padding: var(--s5) var(--s5) var(--s8); }
+/* The app frame: sidebar and content, the way a split view does it. */
+.wrap {
+  max-width: none; margin: 0;
+  padding: var(--s6) var(--s7) var(--s8);
+}
 
-h1, h2, h3 { font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; color: var(--ink); }
-h1 { font-size: var(--t-h1); letter-spacing: -0.03em; }
-h2 { font-size: var(--t-h2); }
-h3 { font-size: var(--t-lead); }
+h1, h2, h3 { letter-spacing: -0.03em; color: var(--ink); }
+h1 { font-size: var(--t-large); font-weight: 700; line-height: 1.12; }
+h2 { font-size: var(--t-title1); font-weight: 700; }
+h3 { font-size: var(--t-title3); font-weight: 600; letter-spacing: -0.02em; }
 
-/* The grouped-list section header: small, upper, secondary, sitting just above
-   the card it names. */
+/* The grouped-list header: uppercase footnote, secondary, inset to the row text. */
 .eyebrow {
-  font-size: var(--t-small); font-weight: 600; letter-spacing: -0.01em;
+  font-size: var(--t-footnote); font-weight: 400; letter-spacing: -0.01em;
   text-transform: uppercase; color: var(--muted);
   padding: 0 var(--s4) var(--s2);
 }
@@ -103,32 +108,31 @@ h3 { font-size: var(--t-lead); }
 a { color: var(--tint); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-/* The card. One radius, one soft shadow, no border — the shadow is what lifts it
-   off the grey, and a border on top of it would read as a box again. */
+/* The grouped list: one surface, hairlines inset from the left, no shadow. */
 .card, .panel, .sect {
   background: var(--card);
-  border: 0;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: var(--s4) var(--s5);
-  margin-bottom: var(--s4);
+  border: 0; border-radius: var(--radius); box-shadow: none;
+  padding: 0; margin-bottom: var(--s6); overflow: hidden;
 }
+.panel > *, .sect > * { padding-left: var(--s4); padding-right: var(--s4); }
+.panel > *:first-child, .sect > *:first-child { padding-top: var(--s4); }
+.panel > *:last-child, .sect > *:last-child { padding-bottom: var(--s4); }
 
-/* --- Header --------------------------------------------------------------- */
+/* --- Toolbar -------------------------------------------------------------- */
 header.top {
   display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: var(--s3); padding: var(--s2) 0 var(--s4);
+  gap: var(--s4); flex-wrap: wrap;
+  padding: 0 0 var(--s4);
 }
-.brand { font-size: var(--t-h3); font-weight: 700; letter-spacing: -0.03em; }
-.brand a { color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; gap: var(--s2); }
-/* The Raute sits in a tinted rounded square, the way an app icon does. */
+.brand { font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.03em; }
+.brand a { color: var(--ink); display: inline-flex; align-items: center; gap: var(--s2); }
+.brand a:hover { text-decoration: none; }
 .brand__mark {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; border-radius: 8px;
-  background: var(--tint); color: #fff; font-size: 18px; font-weight: 700;
-  line-height: 1;
+  width: 28px; height: 28px; border-radius: 7px;
+  background: var(--tint); color: #fff; font-size: var(--t-body); font-weight: 700; line-height: 1;
 }
-.datemeta { color: var(--muted); font-size: var(--t-small); text-align: right; }
+.datemeta { color: var(--muted); font-size: var(--t-footnote); text-align: right; }
 
 /* --- A sweep in progress -------------------------------------------------- */
 /* The wheel. A sweep takes a minute or two of fetching and `claude -p` calls,
@@ -165,18 +169,18 @@ header.top {
 /* A checklist, not a dead link. A mandate with no coverage at all is nearly
    always a configuration problem, and the archive has nothing to show it. */
 .empty-state--setup { text-align: left; max-width: 620px; margin: 0 auto; }
-.empty-state--setup .empty-state__lead { text-align: center; font-size: 14.5px; margin-bottom: 6px; }
+.empty-state--setup .empty-state__lead { text-align: center; font-size: var(--t-subhead); margin-bottom: 6px; }
 .empty-state--setup .empty-state-hint { text-align: center; }
 .fixlist { list-style: none; margin: 14px 0 0; padding: 0; }
 .fixlist li {
   display: flex; gap: 10px; align-items: flex-start;
-  padding: 11px 0; border-top: 1px solid var(--line); font-size: 13px;
+  padding: 11px 0; border-top: 1px solid var(--line); font-size: var(--t-footnote);
 }
 .fixlist li > span:nth-child(2) { flex: 1; }
 .fixlist__why { color: var(--muted); }
 .fixlist__num {
   flex: none; width: 20px; height: 20px; border-radius: 50%;
-  background: #eef2ff; color: #4338ca; font-size: 11px; font-weight: 700;
+  background: #eef2ff; color: #4338ca; font-size: var(--t-caption2); font-weight: 700;
   display: inline-flex; align-items: center; justify-content: center; margin-top: 1px;
 }
 .fixlist a { color: var(--accent); font-weight: 600; white-space: nowrap; }
@@ -189,27 +193,23 @@ header.top {
 .runbad { color: var(--alert); font-weight: 600; }
 .runempty { font-style: italic; }
 
-/* --- Tabs: a segmented control -------------------------------------------- */
-/* The iOS segmented control: one tinted track, the current item a white capsule
-   riding inside it. It reads as a switch rather than as five links, which is what
-   it is. */
+/* --- Navigation ----------------------------------------------------------- */
+/* A sidebar's row list, laid horizontally: quiet by default, the current item a
+   filled grey capsule. A segmented control is for filtering a view, not for
+   moving between screens — using one as primary navigation is the tell that
+   somebody reached for an iOS shape without reading what it is for. */
 nav.tabs {
-  display: inline-flex; align-items: center; gap: 2px;
-  margin: 0 0 var(--s5); padding: 3px;
-  background: var(--fill); border: 0; border-radius: var(--radius-s);
-  max-width: 100%; overflow-x: auto;
+  display: flex; align-items: center; gap: var(--s1);
+  margin: 0; padding: 0; background: transparent; border: 0;
+  overflow-x: auto;
 }
 nav.tabs a {
-  padding: 6px 14px; border-radius: 7px;
-  font-size: var(--t-small); font-weight: 500; letter-spacing: -0.01em;
-  color: var(--ink-2); text-decoration: none; white-space: nowrap;
+  padding: 6px 12px; border-radius: var(--radius-s);
+  font-size: var(--t-subhead); font-weight: 400; letter-spacing: -0.01em;
+  color: var(--ink); white-space: nowrap;
 }
-nav.tabs a:hover { color: var(--ink); text-decoration: none; }
-nav.tabs a.active {
-  background: var(--card); color: var(--ink); font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0,0,0,.10);
-}
-/* The ordinals belonged to the grid. A segmented control numbers nothing. */
+nav.tabs a:hover { background: var(--fill-2); text-decoration: none; }
+nav.tabs a.active { background: var(--fill); font-weight: 600; }
 nav.tabs a::before { content: none; }
 
 /* --- Three-pane triage layout -------------------------------------------- */
@@ -248,8 +248,7 @@ nav.tabs a::before { content: none; }
 
 .impulse {
   background: var(--card); border: 0; border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: var(--s4) var(--s5); margin-bottom: var(--s3);
+  padding: var(--s4); margin-bottom: var(--s3); box-shadow: none;
 }
 .impulse__head {
   display: flex;
@@ -260,7 +259,7 @@ nav.tabs a::before { content: none; }
 }
 .impulse__copy {
   font: inherit;
-  font-size: 12px;
+  font-size: var(--t-caption);
   padding: 3px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -273,7 +272,7 @@ nav.tabs a::before { content: none; }
 .impulse__copy--done { color: #15803d; border-color: #86efac; background: #f0fdf4; }
 
 /* The age of a draft, always visible: a card may stand for a week. */
-.impulse__age { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.impulse__age { font-size: var(--t-caption2); color: var(--muted); white-space: nowrap; }
 .impulse__age--today { color: #16a34a; font-weight: 600; }
 /* The mandates with nothing to send. Folded under the drafts rather than beside
    them: the column is called Impulse and a card of equal weight saying "no
@@ -281,16 +280,16 @@ nav.tabs a::before { content: none; }
    saying why reads as a broken feature. */
 .quietfold { margin-top: 6px; }
 .quietfold > summary {
-  cursor: pointer; font-size: 12px; color: var(--muted); padding: 6px 2px;
+  cursor: pointer; font-size: var(--t-caption); color: var(--muted); padding: 6px 2px;
 }
 .quietfold > summary:hover { color: var(--accent); }
 .quietrow {
-  padding: 7px 2px; border-top: 1px solid var(--line); font-size: 12px;
+  padding: 7px 2px; border-top: 1px solid var(--line); font-size: var(--t-caption);
 }
 .quietrow__who { display: block; font-weight: 600; color: var(--ink); text-decoration: none; }
 .quietrow__who:hover { color: var(--accent); }
 .quietrow__why { color: var(--muted); }
-.quietrow__act { display: block; margin-top: 2px; color: var(--accent); font-size: 11.5px; }
+.quietrow__act { display: block; margin-top: 2px; color: var(--accent); font-size: var(--t-caption2); }
 
 /* --- The rail, folded ----------------------------------------------------- */
 /* Collapsed, a draft is three lines: whose it is, how old, and what it is about.
@@ -304,7 +303,7 @@ nav.tabs a::before { content: none; }
   display: block; margin: 6px 0 0;
   /* The whole subject, wrapped — it is the one line that has to be readable
      without opening the card, so truncating it would defeat the fold. */
-  font-weight: 600; font-size: 13.5px; line-height: 1.4;
+  font-weight: 600; font-size: var(--t-footnote); line-height: 1.4;
 }
 .impulse__fold[open] > summary .impulse__subject { margin-bottom: 10px; }
 .impulse__fold[open] > summary { border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 10px; }
@@ -312,27 +311,27 @@ nav.tabs a::before { content: none; }
 /* A collapsed card is one row of the rail, not a panel. */
 .impulse:has(.impulse__fold:not([open])) { padding: 10px 12px; margin-bottom: 8px; }
 
-.impulse__subject { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+.impulse__subject { font-weight: 600; font-size: var(--t-footnote); margin-bottom: 8px; }
 
 /* The honest empty card: no accent bar, because there is nothing to act on — but
    it reports what the radar did, which is the difference between "nothing
    happened" and "nothing is configured". */
 .impulse--quiet { border-left-color: var(--line); }
-.impulse--quiet .impulse__lead { font-size: 13.5px; margin-bottom: 5px; }
-.impulse--quiet .impulse__why { font-size: 12.5px; color: var(--muted); }
-.impulse__act { margin-top: 9px; font-size: 12.5px; }
+.impulse--quiet .impulse__lead { font-size: var(--t-footnote); margin-bottom: 5px; }
+.impulse--quiet .impulse__why { font-size: var(--t-caption); color: var(--muted); }
+.impulse__act { margin-top: 9px; font-size: var(--t-caption); }
 .impulse__act a { color: var(--accent); font-weight: 600; text-decoration: none; }
 .impulse__act a:hover { text-decoration: underline; }
 /* The sendable text. pre-wrap so the model's paragraph breaks survive into the
    clipboard exactly as they render here. */
 .impulse__text {
   white-space: pre-wrap;
-  font-size: 14px;
+  font-size: var(--t-footnote);
   line-height: 1.6;
   margin-bottom: 10px;
 }
 .impulse__label {
-  font-size: 11px;
+  font-size: var(--t-caption2);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-weight: 700;
@@ -340,7 +339,7 @@ nav.tabs a::before { content: none; }
   margin-right: 4px;
 }
 .impulse__thesis, .impulse__overclaim {
-  font-size: 13px;
+  font-size: var(--t-footnote);
   padding: 6px 8px;
   border-radius: var(--radius);
   margin-bottom: 6px;
@@ -351,18 +350,18 @@ nav.tabs a::before { content: none; }
 .impulse__overclaim { background: #fafafa; color: var(--muted); }
 .impulse__overclaim .impulse__label { color: #b91c1c; }
 
-.impulse__more { margin-top: 8px; font-size: 13px; }
-.impulse__more summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.impulse__more { margin-top: 8px; font-size: var(--t-footnote); }
+.impulse__more summary { cursor: pointer; color: var(--muted); font-size: var(--t-caption); }
 .impulse__block { margin: 8px 0; }
 .impulse__statements { margin: 6px 0 6px 18px; }
 .impulse__statements li { margin-bottom: 4px; }
-.impulse__sources { list-style: none; margin: 8px 0 0; font-size: 12px; }
+.impulse__sources { list-style: none; margin: 8px 0 0; font-size: var(--t-caption); }
 .impulse__sources li { margin-bottom: 4px; }
 .impulse__sources a { color: var(--accent); }
-.impulse__caveat { margin-top: 10px; font-size: 11px; color: var(--muted); }
+.impulse__caveat { margin-top: 10px; font-size: var(--t-caption2); color: var(--muted); }
 
 .colhead {
-  font-size: 13px;
+  font-size: var(--t-footnote);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 700;
@@ -381,23 +380,22 @@ nav.tabs a::before { content: none; }
 /* --- Left rail: alert cards --------------------------------------------- */
 .acard {
   background: var(--card); border: 0; border-radius: var(--radius);
-  box-shadow: 0 0 0 1.5px rgba(255, 59, 48, .35), var(--shadow);
-  padding: var(--s4); margin-bottom: var(--s3);
+  padding: var(--s4); margin-bottom: var(--s2); box-shadow: none;
 }
 .acard .cli {
-  font-size: 12px;
+  font-size: var(--t-caption);
   font-weight: 700;
   color: var(--alert);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   margin-bottom: 5px;
 }
-.acard .hl { font-size: 14.5px; font-weight: 600; margin-bottom: 4px; }
+.acard .hl { font-size: var(--t-subhead); font-weight: 600; margin-bottom: 4px; }
 .acard .hl a { color: var(--ink); text-decoration: none; }
 .acard .hl a:hover { text-decoration: underline; }
-.acard .sum { font-size: 13px; color: #52290f; margin-bottom: 7px; }
+.acard .sum { font-size: var(--t-footnote); color: #52290f; margin-bottom: 7px; }
 .acard .meta {
-  font-size: 11.5px;
+  font-size: var(--t-caption2);
   color: #9a3412;
   display: flex;
   align-items: center;
@@ -408,14 +406,20 @@ nav.tabs a::before { content: none; }
 /* --- Right pane: ranked feed -------------------------------------------- */
 .item {
   background: var(--card);
-  border: 0;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: var(--s4) var(--s5);
-  margin-bottom: var(--s3);
-  display: flex;
-  gap: var(--s3);
+  border: 0; border-radius: 0; box-shadow: none;
+  padding: var(--s3) var(--s4);
+  margin: 0;
+  display: flex; gap: var(--s3);
+  position: relative;
 }
+/* The separator: a hairline inset to where the text starts, drawn on the row
+   rather than between them, so the last row of a group has none. */
+.item + .item::before {
+  content: ""; position: absolute; left: var(--s4); right: 0; top: 0;
+  height: 1px; background: var(--line);
+}
+/* The feed is the group. */
+.feedcol .items, .feedlist { background: var(--card); border-radius: var(--radius); overflow: hidden; }
 .score {
   flex: none;
   width: 30px;
@@ -424,14 +428,14 @@ nav.tabs a::before { content: none; }
   background: #eef0fb;
   color: var(--accent);
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--t-footnote);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 /* An alert keeps its identity in the ranked feed too: the rail is the "act now"
    shortlist, but someone scanning the full feed must still see which rows fired. */
-.item--alert { box-shadow: 0 0 0 1.5px var(--alert), var(--shadow); }
+.item--alert { background: rgba(255, 59, 48, .05); }
 .item--alert .score { background: #fee2e2; color: #b91c1c; }
 .body { flex: 1; min-width: 0; }
 .toprow {
@@ -442,42 +446,36 @@ nav.tabs a::before { content: none; }
   flex-wrap: wrap;
 }
 .clichip {
-  font-size: var(--t-small); font-weight: 600; letter-spacing: -0.01em;
-  text-transform: none; padding: 0; background: transparent; color: var(--tint);
+  font-size: var(--t-footnote); font-weight: 600; letter-spacing: -0.01em;
+  color: var(--muted); background: transparent; padding: 0; text-transform: none;
 }
 .clichip a { color: inherit; text-decoration: none; }
 .clichip a:hover { text-decoration: underline; }
-.hl { font-size: var(--t-lead); font-weight: 600; letter-spacing: -0.01em; margin-bottom: 3px; }
+.hl { font-size: var(--t-body); font-weight: 600; letter-spacing: -0.022em; margin-bottom: 2px; }
 .hl a { color: var(--ink); text-decoration: none; }
 .hl a:hover { text-decoration: underline; }
-.sum { font-size: var(--t-body); color: var(--ink-2); margin-bottom: var(--s2); max-width: 74ch; }
-.meta { font-size: var(--t-small); color: var(--muted); }
+.sum { font-size: var(--t-subhead); color: var(--muted); margin-bottom: var(--s2); max-width: 74ch; }
+.meta { font-size: var(--t-footnote); color: var(--muted); }
 .dot { color: #c7cbd1; }
 
 /* --- Category and tonality ------------------------------------------------ */
-/* Colour is how iOS labels a kind of thing, and six categories are six kinds.
-   Filled capsules in the system palette, tinted low so the headline still leads. */
-.tag {
-  font-size: var(--t-micro); font-weight: 600; letter-spacing: 0;
-  text-transform: none; padding: 3px 9px; border-radius: var(--radius-pill);
-  background: var(--fill); color: var(--ink-2); border: 0;
+/* A caption in the system colour for its kind. Apple tints the *word*; a filled
+   capsule around every one of them turns a headline into a row of stickers. */
+.tag, .tone {
+  font-size: var(--t-footnote); font-weight: 400; letter-spacing: -0.01em;
+  text-transform: none; padding: 0; border: 0; border-radius: 0;
+  background: transparent; color: var(--muted);
 }
-.tag.t-krise       { background: rgba(255, 59, 48, .14);  color: #c0261d; }
-.tag.t-regulatorik { background: rgba(255, 149, 0, .16);  color: #9a5a00; }
-.tag.t-produkt     { background: rgba(0, 122, 255, .13);  color: #0062cc; }
-.tag.t-personalie  { background: rgba(175, 82, 222, .14); color: #7d2fa8; }
-.tag.t-finanzen    { background: rgba(52, 199, 89, .16);  color: #1e7a37; }
-.tag.t-wettbewerb  { background: rgba(255, 45, 85, .12);  color: #b81e43; }
-.tag.t-sonstiges   { background: var(--fill); color: var(--muted); }
-
-.tone {
-  font-size: var(--t-micro); font-weight: 600; padding: 3px 9px;
-  border-radius: var(--radius-pill); background: var(--fill); color: var(--muted);
-  text-transform: none; letter-spacing: 0; border: 0;
-}
-.tone--positiv { background: rgba(52, 199, 89, .16); color: #1e7a37; }
-.tone--neutral { background: var(--fill); color: var(--ink-2); }
-.tone--negativ { background: rgba(255, 59, 48, .14); color: #c0261d; }
+.tag.t-krise       { color: var(--alert); font-weight: 600; }
+.tag.t-regulatorik { color: var(--warn); }
+.tag.t-produkt     { color: var(--tint); }
+.tag.t-personalie  { color: var(--purple); }
+.tag.t-finanzen    { color: var(--good); }
+.tag.t-wettbewerb  { color: var(--pink); }
+.tag.t-sonstiges   { color: var(--muted); }
+.tone--positiv { color: var(--good); }
+.tone--negativ { color: var(--alert); }
+.tone--neutral { color: var(--muted); }
 
 /* --- Toolbar / date picker ---------------------------------------------- */
 .today-toolbar {
@@ -491,7 +489,7 @@ nav.tabs a::before { content: none; }
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 13px;
+  font-size: var(--t-footnote);
   color: var(--muted);
 }
 .date-picker input,
@@ -500,16 +498,16 @@ nav.tabs a::before { content: none; }
   border: 1px solid var(--line);
   border-radius: var(--radius);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--t-footnote);
   background: var(--card);
   color: var(--ink);
 }
-.filter-note { font-size: 12px; color: var(--muted); font-style: italic; }
+.filter-note { font-size: var(--t-caption); color: var(--muted); font-style: italic; }
 
 /* --- Syndication / pickup count ------------------------------------------ */
-.colhead__note { font-size: 11px; font-weight: 400; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.colhead__note { font-size: var(--t-caption2); font-weight: 400; color: var(--muted); text-transform: none; letter-spacing: 0; }
 .pickup {
-  font-size: 11px;
+  font-size: var(--t-caption2);
   font-weight: 700;
   padding: 2px 8px;
   border-radius: var(--radius);
@@ -527,7 +525,7 @@ nav.tabs a::before { content: none; }
 .pickup-list > summary::before { content: "· "; color: #c7cbd1; }
 .pickup-list > summary:hover { text-decoration: underline; }
 .pickup-list ul { margin: 6px 0 0; padding-left: 16px; }
-.pickup-list li { font-size: 12px; color: var(--muted); }
+.pickup-list li { font-size: var(--t-caption); color: var(--muted); }
 .pickup-list a { color: var(--muted); }
 .pickup-list a:hover { color: var(--accent); }
 
@@ -593,8 +591,8 @@ nav.tabs a::before { content: none; }
 .client-profile h1 { font-size: var(--t-h2); font-weight: 600; letter-spacing: -0.02em; margin-bottom: var(--s2); }
 .profile-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; }
 .profile-meta div { display: flex; flex-direction: column; }
-.profile-meta dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
-.profile-meta dd { font-size: 13px; }
+.profile-meta dt { font-size: var(--t-caption2); text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+.profile-meta dd { font-size: var(--t-footnote); }
 
 .archive-filters {
   display: flex;
@@ -621,11 +619,9 @@ nav.tabs a::before { content: none; }
    wins, and the :not() list is a safety net rather than the mechanism. */
 .btn,
 :where(.run-form, .sect__act, .panel) button:where(:not(.linkbtn, .rolebtn, .rival, .feedgroup__all)) {
-  font: inherit; font-size: var(--t-small); font-weight: 600; letter-spacing: -0.01em;
-  padding: 9px 18px;
-  border: 0; border-radius: var(--radius-pill);
-  background: var(--tint); color: #fff;
-  cursor: pointer; white-space: nowrap;
+  font: inherit; font-size: var(--t-subhead); font-weight: 600; letter-spacing: -0.01em;
+  padding: 8px 16px; border: 0; border-radius: var(--radius-s);
+  background: var(--tint); color: #fff; cursor: pointer; white-space: nowrap;
 }
 .btn:hover:not(:disabled),
 :where(.run-form, .sect__act, .panel) button:where(:not(.linkbtn, .rolebtn, .rival, .feedgroup__all)):hover:not(:disabled) {
@@ -658,7 +654,7 @@ nav.tabs a::before { content: none; }
    "nicht relevant" rendering as a beveled grey UA button in every archive row. */
 .rowlink, .linkbtn {
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--t-caption);
   font-weight: 500;
   background: none;
   border: none;
@@ -679,7 +675,7 @@ nav.tabs a::before { content: none; }
 
 /* Cross-industry competitors: reachable, never offered. */
 .otherfield { margin-top: 10px; }
-.otherfield > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); padding: 4px 0; }
+.otherfield > summary { cursor: pointer; font-size: var(--t-caption); color: var(--muted); padding: 4px 0; }
 .otherfield > summary:hover { color: var(--accent); }
 
 /* --- The comparison set --------------------------------------------------- */
@@ -690,7 +686,7 @@ nav.tabs a::before { content: none; }
 .tag--rival { background: #eef0fb; color: var(--accent); margin-right: 0.25rem; text-transform: none; }
 .rivalbox { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .rivalbox__label {
-  display: block; font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  display: block; font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.04em; color: var(--muted); margin-bottom: 8px;
 }
 .rivalbox .rivals { margin-bottom: 10px; }
@@ -698,7 +694,7 @@ nav.tabs a::before { content: none; }
 .rivalbox .run-form { margin-bottom: 4px; }
 .rivalbox input[type="text"] {
   padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius);
-  font: inherit; font-size: 13px; min-width: 220px;
+  font: inherit; font-size: var(--t-footnote); min-width: 220px;
 }
 
 /* --- Proposal chips ------------------------------------------------------- */
@@ -729,34 +725,34 @@ nav.tabs a::before { content: none; }
    where a feed supplied one; the tool holds no contact details and says so. */
 .pitchlist { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .pitchlist__label {
-  display: block; font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  display: block; font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.04em; color: var(--muted); margin-bottom: 8px;
 }
 .pitchlist ul { list-style: none; margin: 0; padding: 0; }
 .pitchlist li {
-  padding: 7px 0; border-top: 1px solid var(--line); font-size: 12.5px;
+  padding: 7px 0; border-top: 1px solid var(--line); font-size: var(--t-caption);
 }
 .pitchlist li:first-child { border-top: 0; }
 .pitchlist__who { font-weight: 600; margin-right: 6px; }
 .pitchlist__new {
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.03em; color: #a16207; background: #fffbeb;
   border: 1px solid #fde68a; border-radius: var(--radius); padding: 1px 7px; margin-right: 6px;
 }
 .pitchlist__why { color: var(--muted); }
-.pitchlist__mail { font-size: 12px; color: var(--accent); margin-right: 6px; }
-.pitchlist__add { font-size: 11.5px; color: var(--muted); margin-right: 6px; text-decoration: underline; }
+.pitchlist__mail { font-size: var(--t-caption); color: var(--accent); margin-right: 6px; }
+.pitchlist__add { font-size: var(--t-caption2); color: var(--muted); margin-right: 6px; text-decoration: underline; }
 .pitchlist__add:hover { color: var(--accent); }
 .pitchlist__ev { display: block; color: var(--muted); font-style: italic; margin-top: 2px; }
 /* Recommendations carry their recipients as tags rather than a list: they are
    read after the text, at a glance, not worked through. */
 .pitchtags { display: flex; flex-wrap: wrap; gap: 6px; }
 .pitchtag {
-  font-size: 11.5px; background: var(--bg); border: 1px solid var(--line);
+  font-size: var(--t-caption2); background: var(--bg); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 3px 10px; color: var(--muted);
 }
 .pitchtag a { color: var(--accent); }
-.pitchlist__caveat { font-size: 11.5px; color: var(--muted); margin-top: 8px; max-width: 70ch; }
+.pitchlist__caveat { font-size: var(--t-caption2); color: var(--muted); margin-top: 8px; max-width: 70ch; }
 /* Each row can be written to directly. Inline so it reads as part of the row
    rather than as a block that pushes the evidence down a line. */
 .pitchlist__write { display: inline; margin-right: 6px; }
@@ -773,12 +769,12 @@ nav.tabs a::before { content: none; }
 .makemsg .panel-hint { margin: 0; max-width: 46ch; }
 .makemsg__form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 /* The recipient reads as part of the action, not as a setting parked beside it. */
-.makemsg__pick { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+.makemsg__pick { display: inline-flex; align-items: center; gap: 7px; font-size: var(--t-footnote); }
 .makemsg__pick > span { color: var(--muted); }
 .makemsg__pick select { max-width: 280px; }
 /* Deliberately larger than the buttons around it: it is the one action on this
    page that produces something sendable. */
-.btn--big { font-size: var(--t-body); padding: 12px 22px; }
+.btn--big { font-size: var(--t-body); padding: 11px 20px; border-radius: var(--radius); }
 
 .letter {
   margin-top: 12px; border: 1px solid var(--line); border-left: 3px solid #059669;
@@ -787,31 +783,31 @@ nav.tabs a::before { content: none; }
 .letter__head {
   display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px;
 }
-.letter__to { font-size: 12px; color: var(--muted); }
+.letter__to { font-size: var(--t-caption); color: var(--muted); }
 .letter__to a { color: var(--accent); font-weight: 600; }
 .letter__head .impulse__copy { margin-left: auto; }
-.letter__body { font-size: 13.5px; line-height: 1.65; white-space: pre-wrap; }
+.letter__body { font-size: var(--t-footnote); line-height: 1.65; white-space: pre-wrap; }
 .letter__subject { font-weight: 700; margin-bottom: 10px; }
 /* Outside the copy target on purpose: this line is for the consultant and must
    never travel with the text into a recipient's inbox. */
 .letter__hook {
   margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--line);
-  font-size: 12.5px; color: var(--muted);
+  font-size: var(--t-caption); color: var(--muted);
 }
 /* What the letter's opening line rests on, next to the letter. Both of these sit
    outside the copy target, like the hook: they are the check on the text, not
    part of it. */
-.letter__backing { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.letter__backing { margin-top: 8px; font-size: var(--t-caption); color: var(--muted); }
 .letter__backing ul { list-style: none; margin: 4px 0 0; padding: 0; }
 .letter__backing li { font-style: italic; }
-.letter__caveat { margin-top: 8px; font-size: 11.5px; color: var(--muted); max-width: 72ch; }
+.letter__caveat { margin-top: 8px; font-size: var(--t-caption2); color: var(--muted); max-width: 72ch; }
 /* The second model's verdict. Green is not celebration, it is "no objection" —
    and the "never checked" state gets its own muted look so it cannot be mistaken
    for a clean bill of health, which is the whole failure this guards against. */
 .crosscheck {
   margin-top: 10px; padding: 8px 10px; border-radius: var(--radius);
   background: #f0fdf4; border: 1px solid #bbf7d0;
-  font-size: 12.5px; color: #14532d;
+  font-size: var(--t-caption); color: #14532d;
 }
 .crosscheck .impulse__label { color: #15803d; }
 .crosscheck ul { margin: 4px 0 0 16px; padding: 0; }
@@ -861,7 +857,7 @@ nav.tabs a::before { content: none; }
 input[type="file"] { cursor: pointer; }
 input[type="file"]::file-selector-button {
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--t-caption);
   font-weight: 600;
   margin-right: 10px;
   padding: 5px 12px;
@@ -950,7 +946,7 @@ table.data th { color: var(--muted); font-weight: 600; }
   border: 1px solid var(--line);
   border-radius: var(--radius);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--t-footnote);
   background: var(--card);
   color: var(--ink);
   min-width: 200px;
@@ -959,21 +955,21 @@ table.data th { color: var(--muted); font-weight: 600; }
 .run-form .panel-hint { padding-bottom: 8px; }
 
 .filter-field { display: flex; flex-direction: column; gap: 3px; }
-.filter-field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+.filter-field label { font-size: var(--t-caption2); text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
 .filter-field input, .filter-field select {
   padding: 5px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--t-footnote);
   background: var(--card);
   color: var(--ink);
 }
 .filter-field--search { flex: 1; min-width: 180px; }
 .filter-field--search input { width: 100%; }
-.filter-reset { font-size: 13px; color: var(--accent); text-decoration: none; padding-bottom: 6px; }
+.filter-reset { font-size: var(--t-footnote); color: var(--accent); text-decoration: none; padding-bottom: 6px; }
 .filter-reset:hover { text-decoration: underline; }
-.archive-count { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.archive-count { font-size: var(--t-caption); color: var(--muted); margin-bottom: 10px; }
 .archive-rows { display: flex; flex-direction: column; gap: 8px; }
 
 .feed-item {
@@ -983,10 +979,10 @@ table.data th { color: var(--muted); font-weight: 600; }
 }
 .feed-item--alert { border-color: #fecaca; }
 .feed-item__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
-.feed-item__headline { font-size: 14.5px; font-weight: 600; color: var(--ink); text-decoration: none; }
+.feed-item__headline { font-size: var(--t-subhead); font-weight: 600; color: var(--ink); text-decoration: none; }
 .feed-item__headline:hover { text-decoration: underline; }
-.feed-item__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; font-size: 12px; color: var(--muted); }
-.feed-item__summary { font-size: 13px; color: #40454f; margin-top: 5px; }
+.feed-item__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; font-size: var(--t-caption); color: var(--muted); }
+.feed-item__summary { font-size: var(--t-footnote); color: #40454f; margin-top: 5px; }
 .importance { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); }
 
 /* The archive names its category chips `tag--<category>`; same hues as the
@@ -1000,7 +996,7 @@ table.data th { color: var(--muted); font-weight: 600; }
 .tag--sonstiges { background: #eef0f3; color: #4b5563; }
 .tag--alert { background: var(--alert); color: #fff; text-transform: uppercase; letter-spacing: 0.03em; }
 
-.pagination { display: flex; align-items: center; gap: 14px; margin-top: 14px; font-size: 13px; }
+.pagination { display: flex; align-items: center; gap: 14px; margin-top: 14px; font-size: var(--t-footnote); }
 .page-link { color: var(--accent); text-decoration: none; }
 .page-link:hover { text-decoration: underline; }
 .page-link--disabled { color: #c7cbd1; pointer-events: none; }
@@ -1014,15 +1010,15 @@ table.data th { color: var(--muted); font-weight: 600; }
   padding: 2rem;
   text-align: center;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--t-footnote);
 }
 /* The hint under an empty day. Sits below the "nothing today" line and carries
    the way out of it, so it reads as secondary to that statement rather than as a
    competing message. */
-.empty-state-hint { margin-top: .6rem; font-size: 13px; }
+.empty-state-hint { margin-top: .6rem; font-size: var(--t-footnote); }
 .empty-state-hint a { color: var(--accent); font-weight: 600; }
 
-.rail__empty { color: var(--muted); font-style: italic; font-size: 13px; }
+.rail__empty { color: var(--muted); font-style: italic; font-size: var(--t-footnote); }
 
 /* --- Triage actions ------------------------------------------------------ */
 .item--done { opacity: 0.55; }
@@ -1037,12 +1033,12 @@ table.data th { color: var(--muted); font-weight: 600; }
 .triage-btn--on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
 
 /* --- Share of voice, advisor -------------------------------------------- */
-table.sov { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.sov { width: 100%; border-collapse: collapse; font-size: var(--t-footnote); }
 table.sov th, table.sov td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
-table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+table.sov th { font-size: var(--t-caption2); text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .sov-bar { display: inline-block; height: 8px; background: var(--accent); border-radius: var(--radius); vertical-align: middle; margin-right: 6px; min-width: 2px; }
 .advice { border-left: 3px solid var(--accent); }
-.situation { font-size: 14px; }
+.situation { font-size: var(--t-footnote); }
 .kind-reaktiv { background: #fee2e2; color: #b91c1c; }
 .kind-proaktiv { background: #dcfce7; color: #15803d; }
 .kind-beobachten { background: #eef0f3; color: #4b5563; }
@@ -1051,7 +1047,7 @@ table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04e
 .urgency-laufend { background: #eef0f3; color: #6b7280; }
 .sov-panel { margin-bottom: 16px; }
 .sov-panel h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 0.85rem; }
-.sov-panel .panel-hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.sov-panel .panel-hint { font-size: var(--t-caption); color: var(--muted); margin-top: 8px; }
 .sov form { display: inline; }
 
 /* Removing a competitor is destructive enough to read red here, where the row it
@@ -1063,7 +1059,7 @@ table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04e
 .nav-refresh { margin-left: auto; align-self: center; }
 .nav-refresh button {
   font: inherit;
-  font-size: 13px;
+  font-size: var(--t-footnote);
   padding: 5px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1075,7 +1071,7 @@ table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04e
 
 /* --- Score legend -------------------------------------------------------- */
 .score-legend { display: inline-flex; align-items: center; gap: 5px; }
-.score--legend { width: 20px; height: 20px; font-size: 11px; border-radius: var(--radius); }
+.score--legend { width: 20px; height: 20px; font-size: var(--t-caption2); border-radius: var(--radius); }
 .pcard--benchmark { background: #fbfbfc; border-style: dashed; }
 
 /* --- Client identity ------------------------------------------------------ */
@@ -1095,7 +1091,7 @@ table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04e
   justify-content: center;
   color: #fff;
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--t-footnote);
   letter-spacing: 0.02em;
   border: none;
 }
@@ -1118,7 +1114,7 @@ table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04e
 .mono-badge {
   display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border-radius: var(--radius);
-  color: #fff; font-size: 10px; font-weight: 700; flex: none;
+  color: #fff; font-size: var(--t-caption2); font-weight: 700; flex: none;
 }
 .gaps-head { color: var(--alert); }
 .gaps-head .n { background: transparent; color: var(--alert); }
@@ -1127,20 +1123,20 @@ table.sov th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04e
   background: var(--card); border: 1px solid #fecaca; border-left: 3px solid var(--alert);
   border-radius: var(--radius); padding: 13px 14px;
 }
-.gapsource { font-weight: 700; font-size: 14px; margin-bottom: 9px; }
+.gapsource { font-weight: 700; font-size: var(--t-footnote); margin-bottom: 9px; }
 .gapbars { display: flex; flex-direction: column; gap: 5px; }
 .gapbar { display: flex; align-items: center; gap: 8px; }
 .gapbar__track { flex: 1; height: 8px; background: #eef0f3; border-radius: var(--radius); overflow: hidden; }
 .gapbar__fill { display: block; height: 100%; border-radius: var(--radius); }
-.gapbar__n { font-size: 12px; color: var(--muted); min-width: 18px; text-align: right; font-variant-numeric: tabular-nums; }
+.gapbar__n { font-size: var(--t-caption); color: var(--muted); min-width: 18px; text-align: right; font-variant-numeric: tabular-nums; }
 .gapbar--missing .gapbar__n { color: var(--alert); font-weight: 700; }
 table.covmap th.covcol { text-align: center; }
-table.covmap .covname { display: block; font-size: 10px; font-weight: 400; color: var(--muted); margin-top: 3px; }
+table.covmap .covname { display: block; font-size: var(--t-caption2); font-weight: 400; color: var(--muted); margin-top: 3px; }
 table.covmap td.covcell { text-align: center; }
 .covdot {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 24px; height: 22px; padding: 0 6px; border-radius: var(--radius);
-  color: #fff; font-size: 11px; font-weight: 700;
+  color: #fff; font-size: var(--t-caption2); font-weight: 700;
 }
 .covempty { color: #d5d8dd; }
 .covrow--gap > td:first-child { border-left: 3px solid var(--alert); font-weight: 600; }
@@ -1167,7 +1163,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .cflogo { width: 18px; height: 18px; border-radius: var(--radius); object-fit: contain; background: #fff; flex: none; }
 .cflogo--mono {
   display: flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 9px; font-weight: 700;
+  color: #fff; font-size: var(--t-caption2); font-weight: 700;
 }
 .cfall { padding-left: 0; }
 .cfname { white-space: nowrap; }
@@ -1192,7 +1188,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   /* `font: inherit` first: without it the button keeps the UA's Arial, which is
      the one place in the header that did not use the app's own typeface. */
   font: inherit;
-  font-size: 15px; line-height: 1; padding: 5px 7px;
+  font-size: var(--t-subhead); line-height: 1; padding: 5px 7px;
   border: 1px solid transparent; border-radius: var(--radius);
   background: none; cursor: pointer; opacity: 0.45;
 }
@@ -1215,7 +1211,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .subtabs__id { display: flex; align-items: center; gap: var(--s3); margin-right: var(--s4); }
 .subtabs__id a { font-size: var(--t-h3); font-weight: 600; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
 .subtabs__logo { width: 30px; height: 30px; border-radius: var(--radius); object-fit: contain; background: #fff; border: 1px solid var(--line); flex: none; }
-.subtabs__logo--mono { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 700; border: none; }
+.subtabs__logo--mono { display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--t-caption); font-weight: 700; border: none; }
 .subtabs > a {
   padding: 0; font-size: var(--t-small); font-weight: 500; color: var(--muted);
   text-decoration: none; border: 0; border-bottom: 2px solid transparent;
@@ -1227,7 +1223,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
    that will paint a page. */
 .subtabs__dl {
   margin-left: auto; color: var(--accent) !important;
-  border-bottom-color: transparent !important; font-size: 13px;
+  border-bottom-color: transparent !important; font-size: var(--t-footnote);
 }
 .subtabs__dl:hover { text-decoration: underline; }
 
@@ -1271,17 +1267,17 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   color: #fff;
 }
 .drawer__title { display: flex; align-items: center; gap: 11px; }
-.drawer__title strong { display: block; font-size: 15px; letter-spacing: -0.01em; }
-.drawer__ctx { display: block; font-size: 11.5px; opacity: .78; margin-top: 1px; }
+.drawer__title strong { display: block; font-size: var(--t-subhead); letter-spacing: -0.01em; }
+.drawer__ctx { display: block; font-size: var(--t-caption2); opacity: .78; margin-top: 1px; }
 .drawer__acts { display: flex; align-items: center; gap: 4px; }
 .drawer__reset {
-  font: inherit; font-size: 11.5px; font-weight: 600; color: #fff;
+  font: inherit; font-size: var(--t-caption2); font-weight: 600; color: #fff;
   padding: 4px 10px; border: 1px solid rgba(255,255,255,.35);
   border-radius: var(--radius); background: rgba(255,255,255,.10); cursor: pointer;
 }
 .drawer__reset:hover { background: rgba(255,255,255,.2); }
 .drawer__close {
-  font: inherit; font-size: 24px; line-height: 1; color: #fff;
+  font: inherit; font-size: var(--t-title2); line-height: 1; color: #fff;
   background: none; border: none; cursor: pointer; padding: 0 5px; opacity: .8;
 }
 .drawer__close:hover { opacity: 1; }
@@ -1292,13 +1288,13 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .drawer__intro { padding: 4px 2px; }
 .drawer__intro[hidden] { display: none; }
 .drawer__motto {
-  font-size: 14px; font-weight: 700; color: var(--cc-deep);
+  font-size: var(--t-footnote); font-weight: 700; color: var(--cc-deep);
   margin-bottom: 6px; letter-spacing: -0.01em;
 }
-.drawer__hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 14px; }
+.drawer__hint { font-size: var(--t-caption); color: var(--muted); line-height: 1.5; margin-bottom: 14px; }
 .drawer__chips { display: flex; flex-direction: column; gap: 7px; }
 .drawer__chip {
-  font: inherit; font-size: 13px; text-align: left; line-height: 1.4;
+  font: inherit; font-size: var(--t-footnote); text-align: left; line-height: 1.4;
   padding: 10px 13px; border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--card); color: var(--ink); cursor: pointer;
 }
@@ -1306,7 +1302,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 
 /* Messages. The consultant's turn right, his left with the mark — the standard
    chat reading order, so who said what needs no label. */
-.cc-msg { max-width: 88%; margin-bottom: 12px; font-size: 13.5px; line-height: 1.55; }
+.cc-msg { max-width: 88%; margin-bottom: 12px; font-size: var(--t-footnote); line-height: 1.55; }
 .cc-msg--q {
   margin-left: auto; padding: 9px 13px; border-radius: 14px 14px 4px 14px;
   background: var(--accent); color: #fff; font-weight: 500;
@@ -1320,7 +1316,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
      answer into one block of prose. */
   white-space: pre-wrap;
 }
-.cc-err { margin-top: 7px; font-size: 12px; color: var(--alert); white-space: normal; }
+.cc-err { margin-top: 7px; font-size: var(--t-caption); color: var(--alert); white-space: normal; }
 
 /* Thinking indicator: three dots, because a spinner at 60 seconds reads as
    stuck while movement reads as work. */
@@ -1345,14 +1341,14 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   border-top: 1px solid var(--line); background: var(--card);
 }
 .drawer__ask input {
-  flex: 1; font: inherit; font-size: 13.5px; padding: 10px 13px;
+  flex: 1; font: inherit; font-size: var(--t-footnote); padding: 10px 13px;
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--bg); color: var(--ink);
 }
 .drawer__ask input:focus { outline: none; border-color: var(--cc-mid); }
 .drawer__ask button {
   width: 38px; height: 38px; flex: none;
-  font: inherit; font-size: 16px; font-weight: 700;
+  font: inherit; font-size: var(--t-subhead); font-weight: 700;
   border: none; border-radius: 50%; cursor: pointer;
   background: linear-gradient(135deg, var(--cc-mid), var(--cc-deep)); color: #fff;
 }
@@ -1365,7 +1361,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   background: var(--bg);
   color: var(--muted);
   border: 1px solid var(--line);
-  font-size: 15px;
+  font-size: var(--t-subhead);
   font-weight: 400;
   line-height: 1;
 }
@@ -1397,7 +1393,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .drawer__voicenote {
   margin: 0;
   padding: 0 16px 10px;
-  font-size: 11.5px;
+  font-size: var(--t-caption2);
   color: var(--muted);
   background: var(--card);
 }
@@ -1407,14 +1403,14 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
    a rainbow. Bars are thin and the axis recessive; the label carries identity so
    colour is never the only signal. */
 .diverge { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
-.diverge__legend { display: flex; gap: 16px; justify-content: center; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
+.diverge__legend { display: flex; gap: 16px; justify-content: center; margin-bottom: 10px; font-size: var(--t-caption); color: var(--muted); }
 .diverge__key { display: inline-flex; align-items: center; gap: 6px; }
 .dk { width: 10px; height: 10px; border-radius: var(--radius); display: inline-block; }
 .dk--rival { background: #a16207; }
 .dk--own { background: var(--accent); }
 .drow { display: grid; grid-template-columns: 170px 1fr 1px 1fr; align-items: center; gap: 8px; padding: 3px 0; }
 .drow__label {
-  font-size: 12px; color: var(--ink); text-align: right;
+  font-size: var(--t-caption); color: var(--ink); text-align: right;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .drow--gap .drow__label { font-weight: 700; color: var(--alert); }
@@ -1424,13 +1420,13 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .dbar { height: 9px; border-radius: var(--radius); display: block; }
 .dbar--rival { background: #a16207; }
 .dbar--own { background: var(--accent); }
-.dnum { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 14px; }
+.dnum { font-size: var(--t-caption2); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 14px; }
 .dnum--zero { color: var(--alert); font-weight: 700; }
 .fulltable { margin-top: 18px; }
-.fulltable > summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 6px 0; }
+.fulltable > summary { cursor: pointer; font-size: var(--t-footnote); color: var(--accent); padding: 6px 0; }
 
 .drawer__pick {
-  margin-top: 3px; font: inherit; font-size: 11.5px;
+  margin-top: 3px; font: inherit; font-size: var(--t-caption2);
   padding: 1px 5px; border-radius: var(--radius); cursor: pointer;
   background: rgba(255,255,255,.14); color: #fff;
   border: 1px solid rgba(255,255,255,.28); max-width: 190px;
@@ -1471,7 +1467,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   display: inline-flex; align-items: center; gap: var(--s2);
   padding: 6px 14px 6px 6px; margin: 0;
   background: var(--card); border: 0; border-radius: var(--radius-pill);
-  box-shadow: 0 1px 2px rgba(0,0,0,.05);
+  box-shadow: none;
   color: var(--ink-2); font-size: var(--t-small); font-weight: 500;
   text-decoration: none;
 }
@@ -1480,7 +1476,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .cfcard--on .cfn, .cfcard--on .cfname { color: #fff; }
 .cflogo { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex: none; }
 .cflogo--mono { display: flex; align-items: center; justify-content: center;
-                color: #fff; font-size: 9px; font-weight: 700; }
+                color: #fff; font-size: var(--t-caption2); font-weight: 700; }
 .cfall { padding-left: 14px; }
 .cfn { font-size: var(--t-small); color: var(--muted); font-weight: 600; }
 
@@ -1502,3 +1498,98 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   padding: 12px 20px; box-shadow: 0 6px 20px rgba(0, 122, 255, .32);
 }
 .drawer-open:hover { background: #0069d9; }
+
+/* --- Corrections after the HIG pass -------------------------------------- */
+/* Everything below fixes a component the earlier passes left in a web idiom. */
+
+/* Filters and pickers are toolbar controls: small, filled, quiet. */
+.toolbar, .archive-filters, .clientfilter { gap: var(--s2); }
+:where(select, textarea, input[type="text"], input[type="search"], input[type="date"],
+       input[type="email"], input[type="url"], input[type="number"], input[type="password"]) {
+  font: inherit; font-size: var(--t-subhead);
+  padding: 7px 11px; border: 0; border-radius: var(--radius-s);
+  background: var(--fill); color: var(--ink);
+}
+
+/* The mandate strip: a scrolling row of quiet capsules, the current one tinted. */
+.clientfilter { display: flex; flex-wrap: wrap; margin: 0 0 var(--s5); padding: 0; border: 0; }
+.cfcard {
+  display: inline-flex; align-items: center; gap: var(--s2);
+  padding: 5px 12px 5px 5px; background: var(--fill-2); border: 0;
+  border-radius: var(--radius-pill); color: var(--ink);
+  font-size: var(--t-footnote); font-weight: 400; box-shadow: none;
+}
+.cfcard:hover { background: var(--fill); text-decoration: none; }
+.cfcard--on { background: var(--tint); color: #fff; font-weight: 600; }
+.cfcard--on .cfn { color: rgba(255,255,255,.75); }
+.cfall { padding-left: 12px; }
+.cfn { font-size: var(--t-footnote); color: var(--faint); font-weight: 400; }
+.cflogo, .cflogo--mono { width: 20px; height: 20px; border-radius: 50%; font-size: var(--t-caption2); }
+
+/* The workspace strip sits under the title as a row of quiet links. */
+.subtabs { border: 0; gap: var(--s1); padding: 0; margin: 0 0 var(--s6); flex-wrap: wrap; }
+.subtabs > a {
+  padding: 5px 11px; border: 0; border-radius: var(--radius-s); margin: 0;
+  color: var(--ink); font-size: var(--t-subhead); font-weight: 400;
+}
+.subtabs > a:hover { background: var(--fill-2); text-decoration: none; }
+.subtabs > a.active { background: var(--fill); font-weight: 600; color: var(--ink); }
+.subtabs__id { margin-right: var(--s3); gap: var(--s2); }
+.subtabs__id a { font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.03em; }
+.subtabs__logo, .subtabs__logo--mono { width: 28px; height: 28px; border-radius: 50%; }
+.subtabs__dl { margin-left: auto; font-size: var(--t-footnote); color: var(--tint); }
+
+/* Column headings above a group. */
+.colhead {
+  font-size: var(--t-footnote); font-weight: 400; letter-spacing: -0.01em;
+  text-transform: uppercase; color: var(--muted);
+  padding: 0 var(--s4) var(--s2); margin: 0; border: 0;
+}
+.colhead .n { color: var(--faint); font-weight: 400; background: transparent; }
+
+/* Portfolio: one row per mandate inside a single grouped list, the way a
+   Settings screen lists accounts. */
+.portfolio { display: block; background: var(--card); border-radius: var(--radius); overflow: hidden; }
+.pcard {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3) var(--s4); border: 0; border-radius: 0; position: relative;
+}
+.pcard + .pcard::before {
+  content: ""; position: absolute; left: 60px; right: 0; top: 0; height: 1px; background: var(--line);
+}
+.pcard .pname { font-size: var(--t-body); font-weight: 600; letter-spacing: -0.022em; margin: 0; }
+.pcard .pind { font-size: var(--t-footnote); color: var(--muted); margin: 0; }
+.pcard .pcounts { margin-left: auto; display: flex; gap: var(--s5); text-align: right; }
+.pcard .pcounts > div {
+  font-size: var(--t-caption2); text-transform: uppercase; letter-spacing: 0;
+  color: var(--faint);
+}
+.pcard .pcounts b {
+  display: block; font-size: var(--t-title3); font-weight: 500;
+  letter-spacing: -0.02em; color: var(--ink);
+}
+.pcard .pcounts .is-zero b { color: var(--faint); font-weight: 400; }
+.pcard .pcounts .is-alert b { color: var(--alert); }
+.pcard .ptags, .pcard .ptopics, .pnotags { display: none; }
+.plogo, .plogo--mono { width: 36px; height: 36px; border-radius: 50%; font-size: var(--t-footnote); }
+
+/* The one floating control in the app keeps a shadow, because it floats. */
+.drawer-open {
+  background: var(--tint); color: #fff; border-radius: var(--radius-pill);
+  padding: 11px 18px; font-size: var(--t-subhead); font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
+}
+
+/* Notices read as a grouped row with a tinted leading rule, not as a web alert. */
+.notice {
+  background: var(--card); border: 0; border-radius: var(--radius);
+  padding: var(--s3) var(--s4); font-size: var(--t-subhead); color: var(--ink-2);
+}
+.notice--day { background: rgba(0, 122, 255, .08); color: var(--ink-2); }
+
+/* Minimum control height. Apple's is 44pt for touch and 28 for a pointer; the
+   language flags and the copy button were under both. */
+button, .btn, nav.tabs a, .subtabs > a, .cfcard, .triage-btn, .impulse__copy {
+  min-height: 28px;
+}
+.langbtn { min-height: 28px; padding: 0 var(--s2); }
