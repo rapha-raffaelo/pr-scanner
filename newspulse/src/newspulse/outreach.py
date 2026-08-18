@@ -33,6 +33,13 @@ what came back, and :func:`is_silent` derives the one state nobody enters. From
 the moment a letter is released its text is frozen: :func:`store` overwrites only
 a draft, so a redraft for the same recipient becomes a new row rather than
 destroying the record of what was actually sent.
+
+One honest caveat on the word "record": the routes that write these rows share
+the app's trust boundary, which is HTTP Basic behind a loopback bind by default
+and — like every POST in this tool — no CSRF token yet. Until one exists
+app-wide, a row here is evidence that the consultant's browser sent the request,
+not proof that no other page made it do so. The ledger's claim is only as strong
+as that boundary.
 """
 
 from __future__ import annotations
@@ -69,6 +76,11 @@ _PROMPT_RESOURCE = "prompts/outreach.txt"
 #: hand-filled profile fact is: by the only distinction that matters here, which
 #: is that a person and not the machine did it. See ``ClientFact.filled_by``.
 DEFAULT_RELEASED_BY = "mensch"
+
+#: ``Outreach.released_by`` is ``String(80)``. SQLite stores a longer value
+#: without complaint and any other backend raises, so the bound is enforced
+#: here, where the value is written, rather than trusted to the column.
+_RELEASED_BY_MAX = 80
 
 #: How far back the mandate's own coverage counts as a reason for a journalist to
 #: care. Longer than the angle prompt's week: a pitch may point at a piece from
@@ -379,6 +391,10 @@ STATE_LABELS: dict[OutreachState, str] = {
 
 #: The states a person may record as an outcome. ``ENTWURF`` and ``RAUS`` are not
 #: outcomes: one is where a letter starts and the other is what releasing does.
+#: Deliberately one-way: there is no path from an outcome back to plain
+#: "verschickt", because taking a result off the record is a ledger question —
+#: erase it or record the correction? — worth answering on purpose rather than
+#: in passing. A typo is fixed by recording the right outcome over it.
 OUTCOMES: tuple[OutreachState, ...] = (
     OutreachState.ANTWORT,
     OutreachState.ABSAGE,
@@ -404,7 +420,9 @@ def release(
     if row.released_at is not None:
         return row
     row.released_at = dt.datetime.now(dt.UTC)
-    row.released_by = (released_by or "").strip() or DEFAULT_RELEASED_BY
+    row.released_by = ((released_by or "").strip() or DEFAULT_RELEASED_BY)[
+        :_RELEASED_BY_MAX
+    ]
     row.state = OutreachState.RAUS
     # Resolved once, here, rather than matched again on every read. Left null
     # when the book has no entry: the letter still names its recipient in its own
@@ -430,6 +448,11 @@ def record_outcome(
     ``note`` is stored as typed, minus surrounding whitespace. It is the one text
     on this row a human wrote, so the house rule on dashes that
     :func:`store` enforces on generated prose has no business here.
+
+    Unlike :func:`release`, ``outcome_at`` deliberately follows the *most recent*
+    entry rather than the first: an outcome may lawfully change — a reply becomes
+    a publication, a typo gets corrected — and the timestamp belongs to the
+    outcome standing beside it, not to one it replaced.
     """
     if row.released_at is None:
         raise ValueError(
