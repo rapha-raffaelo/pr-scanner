@@ -318,7 +318,14 @@
                     class="state__form">
                 <label for="outcome-{{ msg.id }}">{{ t("Was kam zurück") }}</label>
                 <div class="state__row">
-                  <select name="state" id="outcome-{{ msg.id }}">
+                  <select name="state" id="outcome-{{ msg.id }}" required>
+                    {# On a letter with no outcome yet, nothing may be preselected:
+                       no option matches "raus", and the browser would quietly fall
+                       back to the first one — a stray "Eintragen" click would then
+                       record a reply nobody had. The placeholder is disabled and
+                       the select required, so an outcome has to be chosen on
+                       purpose before the form will go. #}
+                    <option value="" disabled{% if msg.state not in outcomes %} selected{% endif %}>{{ t("Bitte wählen") }}</option>
                     {% for value in outcomes %}
                       <option value="{{ value }}"{% if msg.state == value %} selected{% endif %}>{{ t(state_labels[value]) }}</option>
                     {% endfor %}

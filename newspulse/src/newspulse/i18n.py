@@ -399,6 +399,7 @@ _EN: dict[str, str] = {
     "von %(who)s freigegeben und verschickt": "released and sent by %(who)s",
     "Ergebnis eingetragen": "Outcome recorded",
     "Was kam zurück": "What came back",
+    "Bitte wählen": "Please choose",
     "In einem Satz: was kam zurück.": "In one sentence: what came back.",
     "Eintragen": "Record",
     "Nichts geht von hier aus raus. Der Knopf hält fest, dass Sie das Anschreiben gelesen, freigegeben und selbst verschickt haben.":
