@@ -494,7 +494,10 @@ def test_a_letter_with_an_outcome_shows_that_state_and_its_note(factory, web):
     body = web.get(f"/client/{client_id}/advice").text
 
     assert _badges(body) == ["Veröffentlicht"]
-    assert "Zahl im Stück vom 16.08." in body
+    # Under the badge as prose, not only prefilled into the form: the note is
+    # what a reader of the card needs, and a form value is not readable.
+    assert '<span class="trail__note">Zahl im Stück vom 16.08.</span>' in body
+    assert "Ergebnis eingetragen" in body
 
 
 def test_a_silent_letter_is_marked_beside_its_state_not_instead_of_it(factory, web):
