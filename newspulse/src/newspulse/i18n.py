@@ -375,6 +375,34 @@ _EN: dict[str, str] = {
     "Nicht gegengelesen — es ist kein Zweitmodell hinterlegt.":
         "Not cross-checked: no second model is configured.",
     "Bezieht sich auf": "Refers to",
+    # --- The ledger: the release, and what came back --------------------------
+    # The five states a letter can be in. "Verschickt" rather than "Freigegeben"
+    # because the consultant did both, and the record is about the letter having
+    # left the house. "Ohne Reaktion" is not one of them: it is "verschickt" plus
+    # fourteen days, derived rather than stored, and it sits beside the badge
+    # instead of replacing it.
+    "Entwurf": "Draft",
+    "Verschickt": "Sent",
+    "Antwort": "Reply",
+    "Absage": "Declined",
+    "Veröffentlicht": "Published",
+    "Ohne Reaktion": "No response",
+    "Freigegeben am": "Released on",
+    "Ergebnis am": "Outcome on",
+    "seit": "for",
+    "Tagen still": "days now",
+    "Geschrieben": "Written",
+    "noch nicht freigegeben": "not released yet",
+    "Freigegeben und verschickt": "Released and sent",
+    "freigegeben und verschickt": "released and sent",
+    "von": "by",
+    "Ergebnis eingetragen": "Outcome recorded",
+    "Was kam zurück": "What came back",
+    "In einem Satz: was kam zurück.": "In one sentence: what came back.",
+    "Eintragen": "Record",
+    "Nichts geht von hier aus raus. Der Knopf hält fest, dass Sie das Anschreiben gelesen, freigegeben und selbst verschickt haben.":
+        "Nothing leaves from here. The button records that you read the letter, "
+        "released it and sent it yourself.",
     "Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.":
         "Written from headlines and feed snippets, not from the articles "
         "themselves. Check it against the item before sending.",

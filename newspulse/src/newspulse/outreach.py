@@ -24,6 +24,15 @@ No contact details are invented, here or anywhere. The recipient's name and
 outlet come from a byline the feed actually carried or from the contact book the
 consultant filled in himself; the model is told to sign with the mandate's name
 and nothing else, because a plausible invented signature is worse than none.
+
+The ledger
+----------
+What the tool never learned was whether any of it went out. :func:`release`
+records that a person read a letter and let it go, :func:`record_outcome` records
+what came back, and :func:`is_silent` derives the one state nobody enters. From
+the moment a letter is released its text is frozen: :func:`store` overwrites only
+a draft, so a redraft for the same recipient becomes a new row rather than
+destroying the record of what was actually sent.
 """
 
 from __future__ import annotations
@@ -37,15 +46,29 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config, gemini, guide, prose
+from . import config, contacts, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
-from .models import Analysis, Angle, Article, Client, Outreach, visible_coverage
+from .models import (
+    SILENT_AFTER_DAYS,
+    Analysis,
+    Angle,
+    Article,
+    Client,
+    Outreach,
+    OutreachState,
+    visible_coverage,
+)
 from .pitch import PitchTarget
 from .schemas import MessageReview, PersonalMessage
 
 _log = logging.getLogger(__name__)
 
 _PROMPT_RESOURCE = "prompts/outreach.txt"
+
+#: No user accounts exist in this tool, so a release is signed the way a
+#: hand-filled profile fact is: by the only distinction that matters here, which
+#: is that a person and not the machine did it. See ``ClientFact.filled_by``.
+DEFAULT_RELEASED_BY = "mensch"
 
 #: How far back the mandate's own coverage counts as a reason for a journalist to
 #: care. Longer than the angle prompt's week: a pitch may point at a piece from
@@ -288,15 +311,27 @@ def store(
     reviewed_by: str = "",
 ) -> Outreach:
     """Persist one message. Re-writing for the same recipient replaces the old
-    one: two drafts at the same journalist are two attempts, not two pitches."""
+    one *while it is still a draft*: two drafts at the same journalist are two
+    attempts, not two pitches.
+
+    Once a letter has been released that upsert would be data loss, and of the
+    worst kind: it would overwrite the only record of the text a journalist
+    actually received with one nobody sent. So a released row is never touched
+    here and the redraft becomes a new row beside it.
+    """
     journalist = (target.journalist or "") if target else ""
     outlet = (target.outlet or "") if target else ""
     existing = session.scalars(
-        select(Outreach).where(
+        select(Outreach)
+        .where(
             Outreach.angle_id == angle.id,
             Outreach.journalist == journalist,
             Outreach.outlet == outlet,
+            Outreach.state == OutreachState.ENTWURF,
         )
+        # At most one draft per recipient exists, but ordering makes which one
+        # is meant a fact rather than a coincidence of insertion order.
+        .order_by(Outreach.id.desc())
     ).first()
     row = existing or Outreach(angle_id=angle.id, client_id=client.id)
     row.journalist = journalist
@@ -318,6 +353,121 @@ def store(
     session.add(row)
     session.commit()
     return row
+
+
+# --- The ledger -----------------------------------------------------------------
+
+#: What each state is called on screen. German, because the interface is; the
+#: English side lives in :mod:`newspulse.i18n` like every other label. Kept here
+#: rather than in the template so the badge, the outcome form and any later view
+#: cannot drift into calling the same state two different things.
+STATE_LABELS: dict[OutreachState, str] = {
+    OutreachState.ENTWURF: "Entwurf",
+    # Not "Freigegeben": what the consultant did was release *and* send it, and
+    # the ledger's whole claim is about the letter having left the house.
+    OutreachState.RAUS: "Verschickt",
+    OutreachState.ANTWORT: "Antwort",
+    OutreachState.ABSAGE: "Absage",
+    OutreachState.VEROEFFENTLICHT: "Veröffentlicht",
+}
+
+#: The states a person may record as an outcome. ``ENTWURF`` and ``RAUS`` are not
+#: outcomes: one is where a letter starts and the other is what releasing does.
+OUTCOMES: tuple[OutreachState, ...] = (
+    OutreachState.ANTWORT,
+    OutreachState.ABSAGE,
+    OutreachState.VEROEFFENTLICHT,
+)
+
+
+def release(
+    session: Session, row: Outreach, released_by: str = ""
+) -> Outreach:
+    """Record that a person read this letter, released it and sent it.
+
+    This is the moment the product's L5 claim — "ein Mensch liest, ändert, gibt
+    frei" — stops being a description and becomes a row. Three things happen and
+    the order of them is the point: the release is stamped, the recipient is
+    resolved against the contact book, and the text is frozen from here on
+    (:func:`store` will no longer overwrite it).
+
+    Releasing twice is not an error and not a second release: the first timestamp
+    stands. A double submit, a reloaded confirmation page or a second consultant
+    clicking the same button must not rewrite when the decision was made.
+    """
+    if row.released_at is not None:
+        return row
+    row.released_at = dt.datetime.now(dt.UTC)
+    row.released_by = (released_by or "").strip() or DEFAULT_RELEASED_BY
+    row.state = OutreachState.RAUS
+    # Resolved once, here, rather than matched again on every read. Left null
+    # when the book has no entry: the letter still names its recipient in its own
+    # ``journalist``/``outlet``, and a guessed link is worse than none.
+    match = contacts.find(session, row.journalist, row.outlet)
+    row.contact_id = match.id if match is not None else None
+    session.add(row)
+    session.commit()
+    return row
+
+
+def record_outcome(
+    session: Session, row: Outreach, state: OutreachState | str, note: str = ""
+) -> Outreach:
+    """Record what came back. Raises :class:`ValueError` on anything else.
+
+    Two refusals, both of them about not letting the ledger hold a sentence
+    nobody could have said. A letter that was never released has no outcome —
+    there is nothing it could be the answer to — and ``entwurf`` or ``raus`` are
+    not results, so neither can be entered as one. Both raise *before* the row is
+    touched, so a refused outcome leaves the letter exactly as it was.
+
+    ``note`` is stored as typed, minus surrounding whitespace. It is the one text
+    on this row a human wrote, so the house rule on dashes that
+    :func:`store` enforces on generated prose has no business here.
+    """
+    if row.released_at is None:
+        raise ValueError(
+            "Ein Anschreiben, das nie freigegeben wurde, kann kein Ergebnis haben."
+        )
+    try:
+        wanted = OutreachState(state)
+    except ValueError as exc:
+        raise ValueError(f"Unbekanntes Ergebnis: {state!r}") from exc
+    if wanted not in OUTCOMES:
+        raise ValueError(f"{STATE_LABELS[wanted]} ist kein Ergebnis.")
+    row.state = wanted
+    row.outcome_note = (note or "").strip()
+    row.outcome_at = dt.datetime.now(dt.UTC)
+    session.add(row)
+    session.commit()
+    return row
+
+
+def is_silent(row: Outreach, *, now: dt.datetime | None = None) -> bool:
+    """Whether this letter has been out for too long with nothing recorded.
+
+    Derived rather than stored, which is the whole reason there is no "ohne
+    Reaktion" state. Silence is an absence: nobody enters it, it becomes true on
+    a day no one is looking, and it stops being true the moment an outcome
+    arrives. A stored version would need a nightly job to keep a claim about
+    nothing up to date, and would be wrong between two runs.
+    """
+    if row.state != OutreachState.RAUS or row.released_at is None:
+        return False
+    moment = now or dt.datetime.now(dt.UTC)
+    return moment - row.released_at >= dt.timedelta(days=SILENT_AFTER_DAYS)
+
+
+def days_out(row: Outreach, *, now: dt.datetime | None = None) -> int:
+    """Whole days since this letter was released; 0 while it is a draft.
+
+    Rendered next to the silent marker, because "seit 14 Tagen still" is
+    actionable and "still" alone is a mood.
+    """
+    if row.released_at is None:
+        return 0
+    moment = now or dt.datetime.now(dt.UTC)
+    return max((moment - row.released_at).days, 0)
 
 
 def for_angle(session: Session, angle_id: int) -> list[Outreach]:
@@ -349,4 +499,17 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
     return grouped
 
 
-__all__ = ["draft", "crosscheck", "store", "for_angle", "by_angle"]
+__all__ = [
+    "DEFAULT_RELEASED_BY",
+    "OUTCOMES",
+    "STATE_LABELS",
+    "by_angle",
+    "crosscheck",
+    "days_out",
+    "draft",
+    "for_angle",
+    "is_silent",
+    "record_outcome",
+    "release",
+    "store",
+]

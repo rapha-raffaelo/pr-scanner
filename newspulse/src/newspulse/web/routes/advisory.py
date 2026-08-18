@@ -29,7 +29,7 @@ from ... import angles, job, outreach, pitch
 from ...db import get_session
 from ..runlock import guard as _run_guard
 from .. import themework
-from ...models import Angle, Article, Client, TopicHit
+from ...models import Angle, Article, Client, Outreach, TopicHit
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
 
@@ -59,6 +59,23 @@ def _backing(
             if found:
                 out[row.id] = found
     return out
+
+
+def _silence(messages: dict[int, list]) -> dict[int, int]:
+    """Days out, per letter that has gone quiet for too long.
+
+    Only the silent ones are in the map, so the template asks one question
+    ("is this letter in here?") instead of repeating the threshold. The value is
+    the day count, because "seit 21 Tagen still" is actionable where "still"
+    alone is a mood.
+    """
+    now = dt.datetime.now(dt.UTC)
+    return {
+        row.id: outreach.days_out(row, now=now)
+        for rows in messages.values()
+        for row in rows
+        if outreach.is_silent(row, now=now)
+    }
 
 
 @router.get("/client/{client_id}/advice", response_class=HTMLResponse)
@@ -116,6 +133,12 @@ def advice_view(
             # geschrieben" has to be checkable where it is read, not two scrolls
             # down in the pitch list.
             "evidence": _backing(messages, targets),
+            # The one letter state nobody enters, computed where the page is
+            # built rather than in the template: it is a judgement about time,
+            # and Jinja is the wrong place to do arithmetic on a timestamp.
+            "silent": _silence(messages),
+            "state_labels": outreach.STATE_LABELS,
+            "outcomes": outreach.OUTCOMES,
             "message_error": _last_message_error.get(client_id, ""),
             # Whether a radar is possible at all, which is a question about the
             # client's themes — not about whether it has found anything yet. Read
@@ -374,4 +397,70 @@ def write_message(
         ).start()
     return RedirectResponse(
         f"/client/{client_id}/advice#impulse-{angle_id}", status_code=_SEE_OTHER
+    )
+
+
+# --- The ledger: the human act at the end of the pipeline ------------------------
+
+
+def _letter(session: Session, client_id: int, outreach_id: int) -> Outreach:
+    """One letter of this mandate, or a 404.
+
+    The mandate is checked as well as the id: a letter id is a small integer in a
+    URL, and without this a guessed one would release another client's pitch.
+    """
+    row = session.get(Outreach, outreach_id)
+    if row is None or row.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Outreach not found")
+    return row
+
+
+@router.post("/client/{client_id}/outreach/{outreach_id}/release")
+def release_letter(
+    client_id: int,
+    outreach_id: int,
+    released_by: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Record that a person read this letter, released it and sent it.
+
+    Nothing leaves the house here — this build has no mailbox — and the card says
+    so in as many words. What the button produces is the record that was missing:
+    the product's own L5 claim is that a human reads, edits and releases, and
+    until now that act left no trace anywhere in the tool.
+
+    ``released_by`` is a form field with no control behind it yet, because there
+    are no user accounts; it defaults to "mensch", the same answer a hand-filled
+    profile fact gives.
+    """
+    row = _letter(session, client_id, outreach_id)
+    outreach.release(session, row, released_by=released_by)
+    _log.info("outreach %d released by %r", row.id, row.released_by)
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
+    )
+
+
+@router.post("/client/{client_id}/outreach/{outreach_id}/outcome")
+def record_letter_outcome(
+    client_id: int,
+    outreach_id: int,
+    state: str = Form(...),
+    note: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Record what came back on a letter that went out.
+
+    A 400 rather than a redirect when the letter was never released or the state
+    is not an outcome: this is a form the page only renders on a released letter,
+    so a request that fails either test did not come from the card, and answering
+    it with a cheerful redirect would hide that.
+    """
+    row = _letter(session, client_id, outreach_id)
+    try:
+        outreach.record_outcome(session, row, state, note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
     )

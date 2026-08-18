@@ -859,6 +859,53 @@ a:hover { text-decoration: underline; }
 .crosscheck--none a { color: var(--accent); }
 .crosscheck__clean { color: #15803d; }
 
+/* The state strip: where one letter stands, and what a person did to it. One
+   badge, always — a card that shows two states has told the reader nothing. The
+   "ohne Reaktion" chip is deliberately a second, quieter badge rather than a
+   replacement for the first: silence is "verschickt" plus time, not a state
+   anybody entered, and swallowing the release would claim otherwise. */
+.state {
+  margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.state__badge {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; border-radius: var(--radius); padding: 2px 8px;
+  border: 1px solid var(--line); color: var(--muted); background: var(--bg);
+}
+.state__badge--raus { color: #0b4f8a; background: rgba(0, 113, 227, 0.1); border-color: rgba(0, 113, 227, 0.28); }
+.state__badge--antwort { color: #14532d; background: rgba(36, 138, 61, 0.1); border-color: rgba(36, 138, 61, 0.3); }
+.state__badge--absage { color: #b25000; background: rgba(178, 80, 0, 0.1); border-color: rgba(178, 80, 0, 0.28); }
+.state__badge--veroeffentlicht { color: #14532d; background: rgba(36, 138, 61, 0.16); border-color: rgba(36, 138, 61, 0.4); }
+.state__when { font-size: var(--t-caption); color: var(--muted); }
+.state__acts { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+/* The honest note under an unreleased letter. Nothing is sent from here, and the
+   button must not be read as if it were. */
+.state__note { margin-top: 8px; font-size: var(--t-caption2); color: var(--muted); max-width: 72ch; }
+.state__form {
+  margin-top: 10px; padding: 10px 12px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.state__form label {
+  display: block; font-size: var(--t-caption2); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px;
+}
+.state__row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.state__row select, .state__row input {
+  font: inherit; font-size: var(--t-footnote); padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--card);
+}
+.state__row input { flex: 1; min-width: 220px; }
+/* What was done to this letter, in the order it happened. */
+.trail {
+  margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line);
+  font-size: var(--t-caption); color: var(--muted);
+}
+.trail ul { list-style: none; margin: 0; padding: 0; }
+.trail li { padding: 2px 0; }
+.trail b { color: var(--ink); font-weight: 600; }
+.trail__note { color: var(--ink); }
+
 /* --- Shared surfaces ------------------------------------------------------ */
 /* Card, table and status box. Every one of these was declared only in
    settings.html, so the same markup produced a card on one page and a bare run
