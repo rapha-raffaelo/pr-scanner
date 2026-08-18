@@ -19,6 +19,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -29,7 +30,7 @@ from ... import angles, job, outreach, pitch
 from ...db import get_session
 from ..runlock import guard as _run_guard
 from .. import themework
-from ...models import Angle, Article, Client, TopicHit
+from ...models import Angle, Article, Client, Outreach, TopicHit
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
 
@@ -40,7 +41,7 @@ _SEE_OTHER = 303
 
 
 def _backing(
-    messages: dict[int, list], targets: dict[int, list[pitch.PitchTarget]]
+    messages: dict[int, list[Outreach]], targets: dict[int, list[pitch.PitchTarget]]
 ) -> dict[int, tuple[str, ...]]:
     """Headlines per stored message, matched on (journalist, outlet).
 
@@ -61,6 +62,105 @@ def _backing(
     return out
 
 
+def _silence(messages: dict[int, list[Outreach]]) -> dict[int, int]:
+    """Days out, per letter that has gone quiet for too long.
+
+    Only the silent ones are in the map, so the template asks one question
+    ("is this letter in here?") instead of repeating the threshold. The value is
+    the day count, because "seit 21 Tagen still" is actionable where "still"
+    alone is a mood.
+    """
+    now = dt.datetime.now(dt.UTC)
+    return {
+        row.id: outreach.days_out(row, now=now)
+        for rows in messages.values()
+        for row in rows
+        if outreach.is_silent(row, now=now)
+    }
+
+
+def _advice_context(session: Session, client: Client) -> dict:
+    """Everything advice.html renders for one mandate, in one place."""
+    drafts = angles.for_client(session, client.id)
+    targets = {a.id: pitch.targets_for(session, client, a) for a in drafts}
+    messages = outreach.by_angle(session, [a.id for a in drafts])
+    return {
+        "client": client,
+        "drafting": _drafting.locked(),
+        "writing": _writing.locked(),
+        # Why the last click came back empty, if it did. Shown instead of the
+        # generic "the radar has collected nothing", which was wrong as often
+        # as it was right.
+        # The click's own answer if there was one this session, otherwise
+        # what the last sweep recorded — which is the usual case, since the
+        # sweep runs at 06:10 and the page is opened at nine.
+        "impulse_refusal": _last_refusal.get(client.id) or client.impulse_note,
+        "impulse_checked_at": client.impulse_checked_at,
+        # The remedy for the commonest refusal, offered where the refusal is
+        # read rather than on a settings screen the reader has never opened.
+        "theme_work": themework.state.get(client.id),
+        "angles": drafts,
+        # The stories each draft rests on, keyed by angle id. The page's own
+        # lead promises that "jede Aussage nennt die Meldungen, auf die sie
+        # sich stützt" — and this card, the detailed view of a draft the Today
+        # column already shows in full, was the one place that named none of
+        # them. It showed strictly less than the overview it is reached from.
+        "sources": {
+            a.id: session.scalars(
+                select(Article).where(Article.id.in_(a.article_ids or [-1]))
+            ).all()
+            for a in drafts
+        },
+        # Who to send each draft to, keyed by angle id. Computed per draft
+        # because the strongest signal is specific to it: the bylines on the
+        # very stories it answers.
+        "pitch_targets": targets,
+        # The messages already written off each impulse, keyed the same way.
+        "messages": messages,
+        # And, per message, the recipient's own headlines — the ones the
+        # letter claims to have read. A pitch that says "Sie haben über X
+        # geschrieben" has to be checkable where it is read, not two scrolls
+        # down in the pitch list.
+        "evidence": _backing(messages, targets),
+        # The one letter state nobody enters, computed where the page is
+        # built rather than in the template: it is a judgement about time,
+        # and Jinja is the wrong place to do arithmetic on a timestamp.
+        "silent": _silence(messages),
+        "state_labels": outreach.STATE_LABELS,
+        "outcomes": outreach.OUTCOMES,
+        "message_error": _last_message_error.get(client.id, ""),
+        # Whether a radar is possible at all, which is a question about the
+        # client's themes — not about whether it has found anything yet. Read
+        # off the hit count, a mandate with twenty-five themes and a radar that
+        # has simply not run yet was told it had no radar.
+        "has_themes": bool(client.keywords or client.alert_topics),
+        # Rendered rather than written into the template, so the sentence and
+        # the window can never disagree.
+        "impulse_days": job.IMPULSE_LOOKBACK.days,
+        "pitch_days": pitch.LOOKBACK_DAYS,
+        # Two different numbers, and conflating them is why a page could say
+        # "the radar collected 2 items and made nothing of them" about a
+        # mandate that had no usable material at all. What the radar found is
+        # ``market_seen``; what an impulse can be built from is
+        # ``market_usable`` — inside the window, and not coverage of the
+        # mandate itself, which is what the draft actually reads.
+        "market_seen": session.scalar(
+            select(func.count()).select_from(TopicHit).where(
+                TopicHit.client_id == client.id
+            )
+        ) or 0,
+        "market_usable": len(
+            job.market_material(
+                session,
+                client,
+                dt.datetime.now(dt.UTC) - job.IMPULSE_LOOKBACK,
+            )
+        ),
+        "last_run": _fetch_last_run(session),
+        "header_date": dt.datetime.now(_local_tz()).date(),
+    }
+
+
 @router.get("/client/{client_id}/advice", response_class=HTMLResponse)
 def advice_view(
     request: Request,
@@ -71,82 +171,8 @@ def advice_view(
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-
-    drafts = angles.for_client(session, client_id)
-    targets = {a.id: pitch.targets_for(session, client, a) for a in drafts}
-    messages = outreach.by_angle(session, [a.id for a in drafts])
     return templates.TemplateResponse(
-        request,
-        "advice.html",
-        {
-            "client": client,
-            "drafting": _drafting.locked(),
-            "writing": _writing.locked(),
-            # Why the last click came back empty, if it did. Shown instead of the
-            # generic "the radar has collected nothing", which was wrong as often
-            # as it was right.
-            # The click's own answer if there was one this session, otherwise
-            # what the last sweep recorded — which is the usual case, since the
-            # sweep runs at 06:10 and the page is opened at nine.
-            "impulse_refusal": _last_refusal.get(client_id) or client.impulse_note,
-            "impulse_checked_at": client.impulse_checked_at,
-            # The remedy for the commonest refusal, offered where the refusal is
-            # read rather than on a settings screen the reader has never opened.
-            "theme_work": themework.state.get(client_id),
-            "angles": drafts,
-            # The stories each draft rests on, keyed by angle id. The page's own
-            # lead promises that "jede Aussage nennt die Meldungen, auf die sie
-            # sich stützt" — and this card, the detailed view of a draft the Today
-            # column already shows in full, was the one place that named none of
-            # them. It showed strictly less than the overview it is reached from.
-            "sources": {
-                a.id: session.scalars(
-                    select(Article).where(Article.id.in_(a.article_ids or [-1]))
-                ).all()
-                for a in drafts
-            },
-            # Who to send each draft to, keyed by angle id. Computed per draft
-            # because the strongest signal is specific to it: the bylines on the
-            # very stories it answers.
-            "pitch_targets": targets,
-            # The messages already written off each impulse, keyed the same way.
-            "messages": messages,
-            # And, per message, the recipient's own headlines — the ones the
-            # letter claims to have read. A pitch that says "Sie haben über X
-            # geschrieben" has to be checkable where it is read, not two scrolls
-            # down in the pitch list.
-            "evidence": _backing(messages, targets),
-            "message_error": _last_message_error.get(client_id, ""),
-            # Whether a radar is possible at all, which is a question about the
-            # client's themes — not about whether it has found anything yet. Read
-            # off the hit count, a mandate with twenty-five themes and a radar that
-            # has simply not run yet was told it had no radar.
-            "has_themes": bool(client.keywords or client.alert_topics),
-            # Rendered rather than written into the template, so the sentence and
-            # the window can never disagree.
-            "impulse_days": job.IMPULSE_LOOKBACK.days,
-            "pitch_days": pitch.LOOKBACK_DAYS,
-            # Two different numbers, and conflating them is why a page could say
-            # "the radar collected 2 items and made nothing of them" about a
-            # mandate that had no usable material at all. What the radar found is
-            # ``market_seen``; what an impulse can be built from is
-            # ``market_usable`` — inside the window, and not coverage of the
-            # mandate itself, which is what the draft actually reads.
-            "market_seen": session.scalar(
-                select(func.count()).select_from(TopicHit).where(
-                    TopicHit.client_id == client_id
-                )
-            ) or 0,
-            "market_usable": len(
-                job.market_material(
-                    session,
-                    client,
-                    dt.datetime.now(dt.UTC) - job.IMPULSE_LOOKBACK,
-                )
-            ),
-            "last_run": _fetch_last_run(session),
-            "header_date": dt.datetime.now(_local_tz()).date(),
-        },
+        request, "advice.html", _advice_context(session, client)
     )
 
 
@@ -374,4 +400,102 @@ def write_message(
         ).start()
     return RedirectResponse(
         f"/client/{client_id}/advice#impulse-{angle_id}", status_code=_SEE_OTHER
+    )
+
+
+# --- The ledger: the human act at the end of the pipeline ------------------------
+
+
+def _refuse_foreign_origin(request: Request) -> None:
+    """Refuse a browser POST that arrived from another site's page.
+
+    These two routes mint the audit record — "a human released this" — and the
+    app has no CSRF token yet, so any open web page could auto-submit a form at
+    the loopback bind and the browser would attach the cached Basic-auth
+    credentials. A browser names the submitting page in ``Origin`` (or at least
+    ``Referer``); when that name is not this app, the request was made *by* the
+    consultant's browser but not *from* this tool, and writing the ledger off it
+    would let any website forge the very claim the ledger exists to make.
+
+    A request with neither header passes: that is not a browser (curl, a test
+    client), and a non-browser carries no ambient credentials for a foreign page
+    to ride on. An app-wide same-site token remains the real fix; this closes
+    the hole where it costs the most first.
+    """
+    named = request.headers.get("origin") or request.headers.get("referer") or ""
+    if not named:
+        return
+    # ``Origin: null`` (sandboxed frames, data: pages) has an empty netloc and
+    # fails the comparison too, which is the right answer for it.
+    if urlsplit(named).netloc != request.url.netloc:
+        raise HTTPException(
+            status_code=403,
+            detail="Anfrage von einer fremden Seite — nicht eingetragen.",
+        )
+
+
+def _letter(session: Session, client_id: int, outreach_id: int) -> Outreach:
+    """One letter of this mandate, or a 404.
+
+    The mandate is checked as well as the id: a letter id is a small integer in a
+    URL, and without this a guessed one would release another client's pitch.
+    """
+    row = session.get(Outreach, outreach_id)
+    if row is None or row.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Outreach not found")
+    return row
+
+
+@router.post("/client/{client_id}/outreach/{outreach_id}/release")
+def release_letter(
+    request: Request,
+    client_id: int,
+    outreach_id: int,
+    released_by: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Record that a person read this letter, released it and sent it.
+
+    Nothing leaves the house here — this build has no mailbox — and the card says
+    so in as many words. What the button produces is the record that was missing:
+    the product's own L5 claim is that a human reads, edits and releases, and
+    until now that act left no trace anywhere in the tool.
+
+    ``released_by`` is a form field with no control behind it yet, because there
+    are no user accounts; it defaults to "mensch", the same answer a hand-filled
+    profile fact gives.
+    """
+    _refuse_foreign_origin(request)
+    row = _letter(session, client_id, outreach_id)
+    outreach.release(session, row, released_by=released_by)
+    _log.info("outreach %d released by %r", row.id, row.released_by)
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
+    )
+
+
+@router.post("/client/{client_id}/outreach/{outreach_id}/outcome")
+def record_letter_outcome(
+    request: Request,
+    client_id: int,
+    outreach_id: int,
+    state: str = Form(...),
+    note: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Record what came back on a letter that went out.
+
+    A 400 rather than a redirect when the letter was never released or the state
+    is not an outcome: this is a form the page only renders on a released letter,
+    so a request that fails either test did not come from the card, and answering
+    it with a cheerful redirect would hide that.
+    """
+    _refuse_foreign_origin(request)
+    row = _letter(session, client_id, outreach_id)
+    try:
+        outreach.record_outcome(session, row, state, note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
     )

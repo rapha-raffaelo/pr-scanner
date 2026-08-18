@@ -114,6 +114,36 @@ class RunStatus(StrEnum):
     FAILED = "failed"
 
 
+class OutreachState(StrEnum):
+    """Where one letter stands between being written and having produced something.
+
+    The list is short on purpose, and one obvious member is missing: there is no
+    "ohne Reaktion". Silence is not something anybody enters — it is ``RAUS`` plus
+    time, derived at read (:func:`newspulse.outreach.is_silent`), so the ledger
+    never claims a fact nobody recorded. Storing it would mean a nightly job that
+    rewrites rows to assert an absence, and a row that says "no answer" on a day
+    the answer arrived.
+
+    ``ENTWURF`` is the only state a machine may set; the other four are a person's
+    reading of what came back. That is why ``ABSAGE`` and ``VEROEFFENTLICHT`` are
+    separate from ``ANTWORT``: "danke, nichts für uns" and "schicken Sie mehr" are
+    the same event to a matcher and opposite events to a consultant.
+    """
+
+    ENTWURF = "entwurf"
+    RAUS = "raus"
+    ANTWORT = "antwort"
+    ABSAGE = "absage"
+    VEROEFFENTLICHT = "veroeffentlicht"
+
+
+#: How long a released letter may go unanswered before the card calls it still.
+#: Two weeks: a journalist who has not replied inside one is busy, and one who has
+#: not replied inside three was never going to. It is a display threshold, not a
+#: stored state — see :class:`OutreachState`.
+SILENT_AFTER_DAYS = 14
+
+
 def _utcnow() -> dt.datetime:
     """Timezone-aware UTC now, used as a Python-side column default."""
     return dt.datetime.now(dt.UTC)
@@ -756,6 +786,12 @@ class Outreach(Base):
 
     ``journalist`` may be empty: a feed carries a byline about one time in ten,
     and an outlet with no name attached is still a valid address for a pitch.
+
+    From the release ledger on, a row is also a record of a human act. The text of
+    a released letter is frozen — a redraft for the same recipient becomes a new
+    row rather than overwriting the one that went out — because the point of the
+    ledger is to say what was actually sent, and an upsert would destroy exactly
+    that.
     """
 
     __tablename__ = "outreach"
@@ -789,6 +825,42 @@ class Outreach(Base):
     #: The checker's own send/hold flag. True unless it objected.
     review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # --- The ledger: the human act, and what came back --------------------------
+    #: The contact book entry this went to, resolved once at release rather than
+    #: matched again on every read. Nullable and ``SET NULL`` on delete: the
+    #: recipient is also written into ``journalist``/``outlet`` on this row, so a
+    #: deleted contact costs the link but never the record of who was written to.
+    contact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    state: Mapped[OutreachState] = mapped_column(
+        SAEnum(
+            OutreachState,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+        ),
+        nullable=False,
+        default=OutreachState.ENTWURF,
+        server_default=OutreachState.ENTWURF.value,
+    )
+    #: When a person released it. Null while it is a draft, and the one field that
+    #: answers "did this leave the house": the state can be moved on by an
+    #: outcome, this cannot go backwards.
+    released_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, index=True
+    )
+    #: Who released it. No user accounts exist in this tool, so it defaults to
+    #: "mensch" the way :attr:`ClientFact.filled_by` does — the point of the field
+    #: is that a human, rather than the machine, is the accountable party.
+    released_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    #: When the outcome was recorded, which is not when it happened: a reply read
+    #: on Monday may have arrived on Saturday, and the ledger says what it knows.
+    outcome_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: What came back, in the consultant's own words. Stored as typed: this is the
+    #: one text on the row a human wrote, so the house rules that police generated
+    #: prose have no business touching it.
+    outcome_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
 
 __all__ = [
     "Base",
@@ -803,7 +875,10 @@ __all__ = [
     "Advisory",
     "Angle",
     "ClientFact",
+    "Contact",
     "Outreach",
+    "OutreachState",
+    "SILENT_AFTER_DAYS",
     "TopicHit",
     "GuideSource",
     "Run",

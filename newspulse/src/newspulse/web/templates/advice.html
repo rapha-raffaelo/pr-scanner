@@ -249,6 +249,97 @@
             <p class="letter__caveat">
               {{ t("Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.") }}
             </p>
+
+            {# The state strip: the human act at the end of the pipeline, made a
+               record. Exactly one badge names where the letter stands; "ohne
+               Reaktion" sits beside it rather than replacing it, because silence
+               is not a state anybody entered — it is "verschickt" plus time, and
+               a badge that swallowed the release would claim otherwise. #}
+            {% set quiet_days = silent.get(msg.id) %}
+            <div class="state">
+              <span class="state__badge state__badge--{{ msg.state }}">{{ t(state_labels[msg.state]) }}</span>
+              {% if quiet_days %}
+                <span class="state__badge state__badge--still">{{ t("Ohne Reaktion") }}</span>
+              {% endif %}
+              <span class="state__when">
+                {% if msg.released_at %}
+                  {{ t("Freigegeben am") }} {{ msg.released_at | de_short_date }}
+                  {% if msg.outcome_at %}
+                    <span class="dot">·</span> {{ t("Ergebnis am") }} {{ msg.outcome_at | de_short_date }}
+                  {% elif quiet_days %}
+                    <span class="dot">·</span> {{ t("seit") }} {{ quiet_days }} {{ t("Tagen still") }}
+                  {% endif %}
+                {% else %}
+                  {{ t("Geschrieben") }} {{ msg.generated_at | de_short_date }}
+                  <span class="dot">·</span> {{ t("noch nicht freigegeben") }}
+                {% endif %}
+              </span>
+              {% if not msg.released_at %}
+                <span class="state__acts">
+                  <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/release">
+                    <button type="submit" class="btn">{{ t("Freigegeben und verschickt") }}</button>
+                  </form>
+                </span>
+              {% endif %}
+            </div>
+
+            {% if msg.released_at %}
+              {# The trail, under the badge: two lines at most, each one a thing a
+                 person did. It is the audit answer to "wer hat das freigegeben",
+                 which had none before this. #}
+              <div class="trail">
+                <ul>
+                  <li>
+                    <b>{{ msg.released_at | de_datetime }}</b>
+                    {# The default signer follows client_profile's filled_by
+                       precedent: "mensch" is a stored token, not a name, and is
+                       never shown. A named releaser renders through one
+                       interpolated string rather than glued fragments, so the
+                       English keeps its own word order instead of German's. #}
+                    {% if msg.released_by == "mensch" %}
+                      {{ t("Freigegeben und verschickt") }}
+                    {% else %}
+                      {{ t("von %(who)s freigegeben und verschickt") | format(who=msg.released_by) }}
+                    {% endif %}
+                  </li>
+                  {% if msg.outcome_at %}
+                    <li>
+                      <b>{{ msg.outcome_at | de_datetime }}</b>
+                      {{ t("Ergebnis eingetragen") }}{% if msg.outcome_note %}:
+                        <span class="trail__note">{{ msg.outcome_note }}</span>{% endif %}
+                    </li>
+                  {% endif %}
+                </ul>
+              </div>
+              {# Only on a released letter: a result before there was anything to
+                 answer is refused by the route, so offering the form would be an
+                 invitation to a 400. #}
+              <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/outcome"
+                    class="state__form">
+                <label for="outcome-{{ msg.id }}">{{ t("Was kam zurück") }}</label>
+                <div class="state__row">
+                  <select name="state" id="outcome-{{ msg.id }}" required>
+                    {# On a letter with no outcome yet, nothing may be preselected:
+                       no option matches "raus", and the browser would quietly fall
+                       back to the first one — a stray "Eintragen" click would then
+                       record a reply nobody had. The placeholder is disabled and
+                       the select required, so an outcome has to be chosen on
+                       purpose before the form will go. #}
+                    <option value="" disabled{% if msg.state not in outcomes %} selected{% endif %}>{{ t("Bitte wählen") }}</option>
+                    {% for value in outcomes %}
+                      <option value="{{ value }}"{% if msg.state == value %} selected{% endif %}>{{ t(state_labels[value]) }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="text" name="note" value="{{ msg.outcome_note }}"
+                         placeholder="{{ t('In einem Satz: was kam zurück.') }}">
+                  <button type="submit" class="btn btn--ghost">{{ t("Eintragen") }}</button>
+                </div>
+              </form>
+            {% else %}
+              <p class="state__note">
+                {{ t("Nichts geht von hier aus raus. Der Knopf hält fest, dass Sie das Anschreiben gelesen, freigegeben und selbst verschickt haben.") }}
+              </p>
+            {% endif %}
           </article>
         {% endfor %}
 
