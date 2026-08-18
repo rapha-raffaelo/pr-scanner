@@ -5,6 +5,8 @@
   <span class="mono-badge" style="background: {{ name | brand_colour }}" title="{{ name }}">{{ name | monogram }}</span>
 {% endmacro %}
 
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
 {% block content %}
 {% set t = translator(request) %}
 {% set active = 'map' %}

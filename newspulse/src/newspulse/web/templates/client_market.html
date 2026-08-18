@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{{ translator(request)("Marktumfeld") }} · {{ client.name }} · RauteOS{% endblock %}
 
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
 {% block content %}
 {% set t = translator(request) %}
 {% set active = 'market' %}
 {% include '_client_tabs.html' %}
 
 <style>
-  .market__lead { font-size: 0.9rem; color: var(--muted); max-width: 62ch; margin-bottom: 1.1rem; }
+  .market__lead { font-size: var(--t-body); color: var(--muted); max-width: 62ch; margin-bottom: 1.1rem; }
   .market__themes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.4rem; }
   .market__theme { font-size: var(--t-caption); background: #eef2ff; color: #3730a3; padding: 3px 10px; border-radius: 999px; }
   .market__cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 22px; align-items: start; }

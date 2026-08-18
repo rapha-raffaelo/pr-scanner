@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ translator(request)("Impulse") }} · {{ client.name }} · RauteOS{% endblock %}
 
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
 {% block content %}
 {% set t = translator(request) %}
 {% set active = 'advice' %}

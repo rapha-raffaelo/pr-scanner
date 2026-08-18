@@ -243,6 +243,8 @@
 {% endmacro %}
 
 
+{% block pagetitle %}{{ translator(request)("Einstellungen") }}{% endblock %}
+
 {% block content %}
 {% set t = translator(request) %}
 <style>
@@ -251,7 +253,6 @@
      now live in app.css. They were never settings-specific: the same class names
      appear on the client, map and guide views, where declaring them here left
      them unstyled. Anything below is genuinely this page and nowhere else. */
-  .settings h1 { margin: 0 0 1.25rem; font-size: 1.5rem; }
   .settings-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -265,7 +266,7 @@
   .add-client-toggle { margin-bottom: 0.9rem; }
   .add-client-toggle > summary {
     cursor: pointer;
-    font-size: 0.82rem;
+    font-size: var(--t-subhead);
     font-weight: 600;
     color: var(--accent);
     padding: 0.3rem 0;
@@ -276,7 +277,7 @@
     position: sticky;
     top: 0;
     background: var(--surface);
-    font-size: 0.7rem;
+    font-size: var(--t-caption);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     z-index: 1;
@@ -296,7 +297,7 @@
   /* Setup status on the client's own row. Normal weight and small: it is a
      transient fact about one mandate, not a second name for it. */
   .setup {
-    display: inline-block; margin-left: 0.5rem; font-size: 0.7rem;
+    display: inline-block; margin-left: 0.5rem; font-size: var(--t-caption);
     font-weight: 400; color: var(--muted); white-space: nowrap;
   }
   .setup--busy { color: var(--accent); }
@@ -305,15 +306,15 @@
   .tag--topic { background: var(--alert-bg); color: #b91c1c; margin-right: 0.25rem; text-transform: none; }
   .client-edit-tr > td { background: #f9fafb; white-space: normal; padding: 0.85rem 0.5rem; }
   .mutebox { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--border); }
-  .mutebox__label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  .mutebox__label { font-size: var(--t-caption); font-weight: 700; text-transform: uppercase;
                     letter-spacing: 0.04em; color: var(--muted); margin-right: 0.75rem; }
   .mutebox__one { display: inline-flex; gap: 0.3rem; align-items: baseline;
-                  margin-right: 0.9rem; font-size: 0.78rem; color: var(--text); }
+                  margin-right: 0.9rem; font-size: var(--t-footnote); color: var(--text); }
   .mutebox .fieldhint { margin: 0.35rem 0 0; }
   /* A block inside the edit row: competitors, themes. Same weight as the
      fields above them, because they configure the same mandate. */
   .editblock { margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px dashed var(--border); }
-  .editblock__label { display: block; font-size: 0.72rem; font-weight: 700;
+  .editblock__label { display: block; font-size: var(--t-caption); font-weight: 700;
                       text-transform: uppercase; letter-spacing: 0.04em;
                       color: var(--muted); margin-bottom: 0.4rem; }
   .editblock .rivals { margin-bottom: 0.5rem; }
@@ -321,13 +322,13 @@
   .feed-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 1rem; margin-bottom: 0.75rem; }
   @media (max-width: 620px) { .feed-list { grid-template-columns: 1fr; } }
   .feed-list label { display: flex; gap: 0.4rem; align-items: baseline; color: var(--text); margin: 0; }
-  .feed-list .feed-industry { color: var(--muted); font-size: 0.72rem; }
+  .feed-list .feed-industry { color: var(--muted); font-size: var(--t-caption); }
   .feedgroup { margin-bottom: 0.9rem; }
   .feedgroup__head { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.35rem; }
-  .feedgroup__name { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
-  .feedgroup__n { font-size: 0.7rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .feedgroup__name { font-size: var(--t-caption); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .feedgroup__n { font-size: var(--t-caption); color: var(--muted); font-variant-numeric: tabular-nums; }
   .panel .feedgroup__all {
-    font: inherit; font-size: 0.7rem; font-weight: 600; padding: 1px 8px;
+    font: inherit; font-size: var(--t-caption); font-weight: 600; padding: 1px 8px;
     border: 1px solid var(--border); border-radius: 999px;
     background: var(--surface); color: var(--accent); cursor: pointer; margin-left: auto;
   }
@@ -339,7 +340,6 @@
 </style>
 
 <div class="settings">
-  <h1>{{ t("Einstellungen") }}</h1>
 
   {# --- Theme proposals, with what each one actually returns ----------------
      A proposed theme reads plausible whether or not the press covers it, and the

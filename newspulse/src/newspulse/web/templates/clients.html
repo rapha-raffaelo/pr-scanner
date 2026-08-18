@@ -1,70 +1,49 @@
 {% extends "base.html" %}
 {% block title %}{{ translator(request)("Mandanten") }} · RauteOS{% endblock %}
 
+{% block pagetitle %}{{ translator(request)("Portfolio") }}{% endblock %}
+
 {% block content %}
 {% set t = translator(request) %}
 
-<div class="colhead">{{ t("Mandanten") }} <span class="n">{{ rows | length }}</span></div>
-
 {% if rows %}
   <div class="portfolio">
+    {# The three labels, printed once. They used to be repeated against every
+       mandate, which put twenty-one identical words on the screen and left the
+       numbers — the only thing anyone comes here to read — as the quietest
+       element in the row. #}
+    <div class="phead-row" aria-hidden="true">
+      <span>{{ t("Mandant") }}</span>
+      <span>{{ t("Heute") }}</span>
+      <span>{{ t("Warnungen") }}</span>
+      <span>{{ t("Impulse") }}</span>
+    </div>
     {% for row in rows %}
-      <a class="pcard pcard--link{% if not row.active %} pcard--inactive{% endif %}" href="/client/{{ row.id }}">
-        <div class="phead">
+      <a class="pcard pcard--link{% if not row.active %} pcard--inactive{% endif %}" href="/client/{{ row.id }}/heute">
+        <span class="phead">
           {% if row.logo_url %}
-            <img class="plogo" src="{{ row.logo_url | logo_src }}" alt="{{ row.name }}">
+            <img class="plogo" src="{{ row.logo_url | logo_src }}" alt="">
           {% else %}
             <span class="plogo plogo--mono" style="background: {{ row.name | brand_colour }}">{{ row.name | monogram }}</span>
           {% endif %}
-          <div>
-            <div class="pname">{{ row.name }}</div>
-            <div class="pind">
-              {{ row.industry or t('Ohne Branche') }}{% if not row.active %} · {{ t("inaktiv") }}{% endif %}
-            </div>
-          </div>
-        </div>
-        {# Three numbers, always the same three, always in this order: what came in,
-           what is on fire, what is ready to send. The archive total used to sit
-           here and was the largest figure on every card — a fact about the past,
-           given the emphasis of a decision. #}
-        <div class="pcounts">
-          <div{% if not row.today_count %} class="is-zero"{% endif %}>
-            <b>{{ row.today_count }}</b> {{ t("heute") }}
-          </div>
-          <div class="{% if row.alerts_today %}is-alert{% else %}is-zero{% endif %}">
-            <b>{{ row.alerts_today }}</b> {{ t("Warnungen") }}
-          </div>
-          <div{% if not row.open_impulses %} class="is-zero"{% endif %}>
-            <b>{{ row.open_impulses }}</b> {{ t("Impulse") }}
-          </div>
-        </div>
-        {# Labelled, because the two lists mean different things and an unlabelled
-           wall of chips was read as "keywords" when it was alert topics — a card
-           with no chips then looked unconfigured while its keywords were fine. #}
-        {% if row.keywords %}
-          <div class="ptags">
-            <span class="ptags__label">{{ t("Suchbegriffe") }}</span>
-            {% for word in row.keywords %}<span class="ptag">{{ word }}</span>{% endfor %}
-            {% if row.extra_keywords %}<span class="ptag ptag--more">+{{ row.extra_keywords }}</span>{% endif %}
-          </div>
-        {% endif %}
-        {% if row.alert_topics %}
-          <div class="ptags">
-            <span class="ptags__label">{{ t("Alarm-Themen") }}</span>
-            {% for topic in row.alert_topics %}<span class="ptopic">{{ topic }}</span>{% endfor %}
-            {% if row.extra_topics %}<span class="ptopic ptopic--more">+{{ row.extra_topics }}</span>{% endif %}
-          </div>
-        {% endif %}
-        {% if not row.keywords and not row.alert_topics %}
-          {# Neither set: no topic radar, so no impulses will ever appear for this
-             mandate. Saying so on the card is cheaper than wondering later. #}
-          <p class="pnotags">{{ t("Keine Themen hinterlegt — kein Themen-Radar.") }}</p>
-        {% endif %}
+          <span style="min-width:0">
+            <span class="pname">{{ row.name }}</span>
+            <span class="pind">
+              {{ row.industry or t('Ohne Branche') }}{% if not row.active %} · {{ t("inaktiv") }}{% endif %}{% if not row.keywords and not row.alert_topics %} · {{ t("kein Themen-Radar") }}{% endif %}
+            </span>
+          </span>
+        </span>
+        {# What arrived, what is on fire, what is ready to send — always these
+           three, always this order, and each carries its own colour so the row
+           can be read without reading the header again. #}
+        <span class="pcount{% if not row.today_count %} is-zero{% endif %}">{{ row.today_count }}</span>
+        <span class="pcount {% if row.alerts_today %}is-alert{% else %}is-zero{% endif %}">{{ row.alerts_today }}</span>
+        <span class="pcount {% if row.open_impulses %}is-impulse{% else %}is-zero{% endif %}">{{ row.open_impulses }}</span>
       </a>
     {% endfor %}
   </div>
   {% if voice %}
-    <div class="colhead" style="margin-top:26px">Share of Voice <span class="colhead__note">letzte 30 Tage</span></div>
+    <div class="colhead" style="margin-top:var(--s6)">Share of Voice <span class="colhead__note">letzte 30 Tage</span></div>
     <table class="data sov">
       <thead><tr><th>Unternehmen</th><th>Rolle</th><th>Meldungen</th><th>Alerts</th><th>Anteil</th></tr></thead>
       <tbody>

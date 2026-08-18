@@ -1,0 +1,13 @@
+{# The mandate's name and its own colour, in the toolbar.
+
+   The workspace tabs used to carry this and the sidebar now carries it too, so
+   putting it in the title is not a third copy: it is the one place a title
+   belongs, and the other two are navigation. The colour is derived from the
+   name (see branding.colour), so a mandate is the same colour in the sidebar,
+   in the portfolio and here. #}
+{%- if client.logo_url -%}
+  <img class="tbar__av" src="{{ client.logo_url | logo_src }}" alt="">
+{%- else -%}
+  <span class="tbar__av tbar__av--mono" style="background: {{ client.name | brand_colour }}">{{ client.name | monogram }}</span>
+{%- endif -%}
+<span>{{ client.name }}</span>

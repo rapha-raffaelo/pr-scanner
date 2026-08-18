@@ -60,6 +60,8 @@
   </div>
 {% endmacro %}
 
+{% block pagetitle %}{{ translator(request)("Heute") }}{% endblock %}
+
 {% block content %}
 {% set t = translator(request) %}
 {# Entered from a mandate's workspace, the day is that mandate's day and keeps the

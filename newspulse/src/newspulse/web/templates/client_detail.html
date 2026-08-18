@@ -22,6 +22,8 @@
   </article>
 {% endmacro %}
 
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
 {% block content %}
 {% set t = translator(request) %}
 {% set active = 'overview' %}

@@ -21,6 +21,8 @@
   </article>
 {% endmacro %}
 
+{% block pagetitle %}{{ translator(request)("Archiv") }}{% endblock %}
+
 {% block content %}
 {% set t = translator(request) %}
 

@@ -16,52 +16,83 @@
 <body>
   {% set t = translator(request) %}
   {% set lang = request_language(request) %}
-  <div class="wrap">
-    <header class="top">
-      <div class="brand"><a href="/"><span class="brand__mark">#</span>RauteOS</a></div>
-      {% include "partials/runmeta.html" %}
-    </header>
+  <div class="app">
 
-    <div class="navbar">
-    <nav class="tabs">
-      <a data-n="01" href="/"{% if request.url.path == '/' %} class="active" aria-current="page"{% endif %}>{{ t("Portfolio") }}</a>
-      <a data-n="02" href="/today"{% if request.url.path.startswith('/today') %} class="active" aria-current="page"{% endif %}>{{ t("Heute") }}</a>
-      <a data-n="03" href="/archive"{% if request.url.path.startswith('/archive') %} class="active" aria-current="page"{% endif %}>{{ t("Archiv") }}</a>
-      <a data-n="04" href="/contacts"{% if request.url.path.startswith('/contacts') %} class="active" aria-current="page"{% endif %}>{{ t("Kontakte") }}</a>
-      <a data-n="05" href="/settings"{% if request.url.path.startswith('/settings') %} class="active" aria-current="page"{% endif %}>{{ t("Einstellungen") }}</a>
-      {# Fetching news is the one action wanted from any page, so it lives in the
-         nav rather than three clicks deep in Einstellungen. redirect_to returns
-         the reader to where they clicked instead of bouncing them to Settings. #}
-      {# Language toggle. A POST because it writes a cookie, and `next` returns
-         the reader to the page they were on rather than the dashboard root. #}
-    </nav>
-      <div class="navbar__actions">
-      <div class="langtoggle" role="group" aria-label="{{ t('Sprache') }}">
-        {% for code, flag, label in [('de', '🇩🇪', 'Deutsch'), ('en', '🇬🇧', 'English')] %}
-          <form method="post" action="/language/{{ code }}?next={{ request.url.path }}{% if request.url.query %}%3F{{ request.url.query | urlencode }}{% endif %}">
-            <button type="submit" class="langbtn{% if lang == code %} langbtn--on{% endif %}"
-                    title="{{ label }}" aria-pressed="{{ 'true' if lang == code else 'false' }}">{{ flag }}</button>
-          </form>
-        {% endfor %}
-      </div>
-      <form method="post" action="/settings/run" class="nav-refresh nav-refresh--tight">
-        <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
-        {# Disabled while a sweep is in flight: the trigger refuses a second run
-           anyway, and a button that looks clickable while the answer is "nein"
-           reads as a broken control. The header carries the reason. #}
-        {% if run_active() %}
-          <button type="submit" class="nav-refresh__btn nav-refresh__btn--busy" disabled
-                  title="{{ t('Ein Lauf läuft bereits') }}"><span class="spinner" aria-hidden="true"></span>{{ t("Läuft…") }}</button>
-        {% else %}
-          <button type="submit" title="{{ t('Feeds jetzt abrufen und analysieren — läuft im Hintergrund') }}">{{ t("↻ Aktualisieren") }}</button>
+    {# The source list. The mandates live *in* the navigation because they are
+       what this tool is about — putting them behind a "Portfolio" link makes the
+       list of them the subject and the mandate a detail of it, which is backwards
+       for someone who opens the app already knowing whose morning it is. #}
+    <aside class="side">
+      <a class="side__brand" href="/"><span class="side__mark">#</span>RauteOS</a>
+
+      <nav class="side__nav" aria-label="{{ t('Navigation') }}">
+        <div class="side__sect">{{ t("Übersicht") }}</div>
+        <a href="/today" class="side__row{% if request.url.path.startswith('/today') %} is-on{% endif %}"{% if request.url.path.startswith('/today') %} aria-current="page"{% endif %}>{{ t("Heute") }}</a>
+        <a href="/" class="side__row{% if request.url.path == '/' %} is-on{% endif %}"{% if request.url.path == '/' %} aria-current="page"{% endif %}>{{ t("Portfolio") }}</a>
+        <a href="/archive" class="side__row{% if request.url.path.startswith('/archive') %} is-on{% endif %}">{{ t("Archiv") }}</a>
+        <a href="/contacts" class="side__row{% if request.url.path.startswith('/contacts') %} is-on{% endif %}">{{ t("Kontakte") }}</a>
+
+        {% set roster = nav_clients(request) %}
+        {% if roster %}
+          <div class="side__sect">{{ t("Mandanten") }}<span class="side__n">{{ roster | length }}</span></div>
+          {% for c in roster %}
+            {# Selected on any page of that mandate's workspace, so the sidebar
+               keeps saying whose desk this is while the tabs move underneath. #}
+            {% set on = request.url.path.startswith('/client/' ~ c.id) %}
+            <a href="/client/{{ c.id }}/heute" class="side__row side__cl{% if on %} is-on{% endif %}{% if not c.active %} is-off{% endif %}"{% if on %} aria-current="page"{% endif %}>
+              <span class="side__dot" style="background: {{ c.name | brand_colour }}"></span>
+              <span class="side__nm">{{ c.name }}</span>
+              {% if c.alerts %}<span class="side__badge">{{ c.alerts }}</span>{% endif %}
+            </a>
+          {% endfor %}
         {% endif %}
-      </form>
-    </div>
-    </div>
+      </nav>
 
-    <main class="content">
-      {% block content %}{% endblock %}
-    </main>
+      <div class="side__foot">
+        <a href="/settings" class="side__row{% if request.url.path.startswith('/settings') %} is-on{% endif %}">{{ t("Einstellungen") }}</a>
+      </div>
+    </aside>
+
+    <div class="main">
+      {# The toolbar: what this page is, what the data is worth, and the two
+         actions that belong to no page in particular. #}
+      <header class="tbar">
+        <div class="tbar__l">
+          <h1 class="tbar__title">{%- block pagetitle -%}{%- endblock -%}</h1>
+          {% include "partials/runmeta.html" %}
+        </div>
+        <div class="tbar__r">
+          {# A real segmented control, and the labels are words. A flag stands
+             for a country, not a language, which is why Apple never ships one
+             as a language switch. #}
+          <div class="seg" role="group" aria-label="{{ t('Sprache') }}">
+            {% for code, label in [('de', 'DE'), ('en', 'EN')] %}
+              <form method="post" action="/language/{{ code }}?next={{ request.url.path }}{% if request.url.query %}%3F{{ request.url.query | urlencode }}{% endif %}">
+                <button type="submit" class="seg__b{% if lang == code %} is-on{% endif %}"
+                        aria-pressed="{{ 'true' if lang == code else 'false' }}">{{ label }}</button>
+              </form>
+            {% endfor %}
+          </div>
+          <form method="post" action="/settings/run" class="nav-refresh">
+            <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+            {# Disabled while a sweep is in flight: the trigger refuses a second
+               run anyway, and a button that looks clickable while the answer is
+               "nein" reads as a broken control. #}
+            {% if run_active() %}
+              <button type="submit" class="btn btn--busy" disabled
+                      title="{{ t('Ein Lauf läuft bereits') }}"><span class="spinner" aria-hidden="true"></span>{{ t("Läuft…") }}</button>
+            {% else %}
+              <button type="submit" class="btn btn--go"
+                      title="{{ t('Feeds jetzt abrufen und analysieren — läuft im Hintergrund') }}">{{ t("Aktualisieren") }}</button>
+            {% endif %}
+          </form>
+        </div>
+      </header>
+
+      <main class="content">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
   </div>
 
   {# The assistant drawer. Available from every page and seeded with what the

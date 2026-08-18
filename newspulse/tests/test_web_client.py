@@ -11,6 +11,7 @@ and to compose, correctly.
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -115,6 +116,28 @@ def _headline_count(body: str) -> int:
 
 # A month per calendar quarter so the multi-month archive spans a real range.
 _JAN = dt.date(2026, 1, 15)
+
+
+def _counts(fragment: str) -> list[str]:
+    """The three numbers in one portfolio row, in column order.
+
+    The row is a grid of `<span class="pcount ...">`, so reading the cells is
+    the honest assertion: matching a rendered string like "<b>1</b> heute" tied
+    every count test to one particular piece of markup and broke all of them the
+    day the labels moved into a header row.
+    """
+    return re.findall(r'<span class="pcount[^"]*">(\d+)</span>', fragment)
+
+
+def _content(body: str) -> str:
+    """The page's own content, without the shared chrome.
+
+    The sidebar lists every mandate on every page by design, so an assertion
+    about what a *page* offers has to exclude it or it is really asserting that
+    the navigation is empty.
+    """
+    return body.split('<main class="content">', 1)[-1].split("</main>", 1)[0]
+
 _FEB = dt.date(2026, 2, 15)
 _MAR = dt.date(2026, 3, 15)
 _APR = dt.date(2026, 4, 15)
@@ -407,14 +430,21 @@ def test_clients_index_lists_portfolio_with_counts(factory, client):
     assert "Beta AG" in body
     assert "Chemie" in body
     # Alpha: 1 today of 2 archived; Beta: 0 today of 1 archived.
-    alpha_card = body.split("Alpha AG", 1)[1].split("Beta AG", 1)[0]
-    assert "<b>1</b> heute" in alpha_card
-    # The card carries the three numbers a morning decision needs. The archive
-    # total was the biggest figure on it and the least useful: a fact about the
-    # past, given the emphasis of a decision.
-    assert "heute" in alpha_card
-    assert "Warnungen" in alpha_card
-    assert "Impulse" in alpha_card
+    # The row carries the three numbers a morning decision needs, in order:
+    # what arrived, what is on fire, what is ready to send. The archive total is
+    # deliberately not among them — a fact about the past, given the emphasis of
+    # a decision. The labels are a header row printed once, so they are asserted
+    # against the table rather than against every mandate.
+    # Scoped to the content: the sidebar names every mandate too, so splitting
+    # the whole document on "Alpha AG" lands in the navigation, not the table.
+    table = _content(body)
+    alpha_row = table.split("Alpha AG", 1)[1].split("Beta AG", 1)[0]
+    assert _counts(alpha_row) == ["1", "0", "0"]
+    beta_row = table.split("Beta AG", 1)[1]
+    assert _counts(beta_row) == ["0", "0", "0"]
+    header = table.split('phead-row', 1)[1].split("</div>", 1)[0]
+    for label in ("Mandant", "Heute", "Warnungen", "Impulse"):
+        assert label in header
 
 
 def test_clients_index_excludes_irrelevant_and_handles_empty(factory, client):
@@ -431,9 +461,8 @@ def test_clients_index_excludes_irrelevant_and_handles_empty(factory, client):
         s.commit()
 
     body = client.get("/clients").text
-    card = body.split("Alpha AG", 1)[1]
-    # A dismissed match must not be counted anywhere on the card.
-    assert "<b>0</b> heute" in card
+    # A dismissed match must not be counted anywhere on the row.
+    assert _counts(_content(body).split("Alpha AG", 1)[1]) == ["0", "0", "0"]
 
 
 # --- Per-client competitor sets ------------------------------------------------
@@ -581,10 +610,12 @@ def test_only_companies_marked_as_competitors_can_be_added(factory, client):
 
     body = client.get(f"/client/{subject_id}").text
 
-    # Nowhere on the page, not merely absent from one control: the mandate is
-    # never a yardstick, whichever picker it would appear in.
-    assert "About You" in body
-    assert "IB-7 Beauty Tech GmbH" not in body
+    # Nowhere in the page's own content, not merely absent from one control:
+    # the mandate is never a yardstick, whichever picker it would appear in.
+    # The sidebar is excluded because listing every mandate is its whole job.
+    content = _content(body)
+    assert "About You" in content
+    assert "IB-7 Beauty Tech GmbH" not in content
 
 
 def test_with_no_competitor_anywhere_the_page_offers_the_manual_field(factory, client):

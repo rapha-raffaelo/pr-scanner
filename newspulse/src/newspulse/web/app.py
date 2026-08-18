@@ -14,14 +14,14 @@ import urllib.parse
 from collections.abc import Iterator
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from .. import branding, config, gnews, i18n
 from ..db import get_session
-from . import runlock
+from . import navigation, runlock
 from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
 
 # The web package ships its own templates/ and static/ next to this module, so
@@ -221,6 +221,10 @@ templates.env.globals["shares_field"] = gnews.same_field
 templates.env.globals["translator"] = translator
 templates.env.globals["request_language"] = request_language
 templates.env.globals["LANGUAGES"] = i18n.LANGUAGES
+# The sidebar lists the mandates on every page, so the roster is a global for
+# the same reason ``run_active`` is: the shared layout needs it and no route
+# should have to remember to pass it.
+templates.env.globals["nav_clients"] = navigation.nav_clients
 templates.env.filters["monogram"] = branding.monogram
 templates.env.filters["brand_colour"] = branding.colour
 
@@ -237,9 +241,20 @@ def get_db() -> Iterator[Session]:
         yield session
 
 
+def stash_db(request: Request, session: Session = Depends(get_db)) -> None:
+    """Put the request's session where the shared layout can reach it.
+
+    Registered as an app-wide dependency, and depending on ``get_db`` rather
+    than opening its own session is the whole point: FastAPI caches a
+    dependency per request, so this is the *same* session the route is using,
+    and an override in a test reaches the sidebar too.
+    """
+    request.state.db = session
+
+
 def create_app() -> FastAPI:
     """Build the FastAPI app: mount static assets and register the routes."""
-    app = FastAPI(title="NewsPulse")
+    app = FastAPI(title="NewsPulse", dependencies=[Depends(stash_db)])
     # Added first so it wraps every route, including the SSE stream and the
     # static mount's siblings.
     app.add_middleware(BasicAuthMiddleware)

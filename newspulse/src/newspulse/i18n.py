@@ -38,6 +38,8 @@ _EN: dict[str, str] = {
     "Kontakte": "Contacts",
     "Einstellungen": "Settings",
     "↻ Aktualisieren": "↻ Refresh",
+    "Aktualisieren": "Refresh",
+    "kein Themen-Radar": "no topic radar",
     "Feeds jetzt abrufen und analysieren — läuft im Hintergrund":
         "Fetch and analyse feeds now — runs in the background",
     "Letzter Lauf": "Last run",

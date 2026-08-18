@@ -2,13 +2,15 @@
 {% block title %}{{ translator(request)("Kommunikations-Guide") }} · {{ client.name }} · RauteOS{% endblock %}
 
 
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
 {% block content %}
 {% set t = translator(request) %}
 {% set active = 'guide' %}
 {% include '_client_tabs.html' %}
 
 <style>
-  .guide__lead { font-size: 0.9rem; color: var(--muted); max-width: 64ch; margin-bottom: 1.2rem; }
+  .guide__lead { font-size: var(--t-body); color: var(--muted); max-width: 64ch; margin-bottom: 1.2rem; }
   .guide__cols { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 26px; align-items: start; }
   @media (max-width: 980px) { .guide__cols { grid-template-columns: 1fr; } }
   .glabel { display: block; font-size: var(--t-caption2); text-transform: uppercase; letter-spacing: 0.04em;

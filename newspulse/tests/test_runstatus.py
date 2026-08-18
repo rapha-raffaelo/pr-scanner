@@ -79,7 +79,7 @@ def test_the_refresh_button_is_disabled_while_a_sweep_runs(client, running):
     while the answer is "no" reads as a broken control."""
     body = client.get("/today").text
 
-    assert "nav-refresh__btn--busy" in body
+    assert "btn--busy" in body
     assert "disabled" in body.split("nav-refresh", 1)[1].split("</form>", 1)[0]
 
 
