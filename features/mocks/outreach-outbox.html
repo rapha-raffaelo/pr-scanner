@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ausgang · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --purple:#8944ab; --teal:#0071a4; --pink:#d30f45;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px; --t-large:32px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground); color:var(--ink); font-size:var(--t-body); line-height:1.45;
+  letter-spacing:-.006em; -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+}
+a{color:var(--tint);text-decoration:none}
+a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.side__badge{margin-left:auto;font-size:var(--t-caption2);font-weight:700;background:var(--alert);color:#fff;
+  border-radius:980px;padding:1px 6px}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7);border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;letter-spacing:-.01em;padding:8px 16px;
+  border:0;border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.08)}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.linkbtn{font:inherit;font-size:var(--t-caption);font-weight:500;background:none;border:0;color:var(--muted);
+  cursor:pointer;text-decoration:underline;padding:0}
+.linkbtn:hover{color:var(--tint)}
+
+.lede{font-size:var(--t-subhead);color:var(--muted);max-width:76ch;margin-bottom:var(--s5)}
+
+/* the four numbers */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s3);margin-bottom:var(--s5)}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:var(--s4)}
+.stat__n{font-size:var(--t-large);font-weight:700;letter-spacing:-.03em;line-height:1.1}
+.stat__l{font-size:var(--t-footnote);color:var(--muted);margin-top:2px}
+.stat--out .stat__n{color:var(--tint)}
+.stat--good .stat__n{color:var(--good)}
+.stat--warn .stat__n{color:var(--warn)}
+
+/* filters */
+.filters{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center;margin-bottom:var(--s3)}
+.chip{font:inherit;font-size:var(--t-footnote);font-weight:500;padding:5px 12px;border-radius:980px;
+  border:1px solid var(--line);background:var(--card);color:var(--ink-2);cursor:pointer}
+.chip:hover{background:var(--fill-2)}
+.chip.is-on{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+.filters__search{margin-left:auto}
+.filters__search input{font:inherit;font-size:var(--t-footnote);padding:6px 12px;border:1px solid var(--line);
+  border-radius:var(--radius-s);min-width:220px;background:var(--card)}
+
+/* the table */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);text-align:left;padding:10px var(--s4);border-bottom:1px solid var(--line);background:var(--fill-2)}
+tbody td{padding:12px var(--s4);border-bottom:1px solid var(--line);vertical-align:top;font-size:var(--t-subhead)}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--fill-2)}
+.who{font-weight:600}
+.who__outlet{color:var(--muted);font-weight:400}
+.sub{display:block;font-size:var(--t-caption);color:var(--muted);margin-top:3px;max-width:52ch}
+.cl{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-footnote);color:var(--ink-2)}
+.cl__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.when{font-size:var(--t-footnote);color:var(--muted);white-space:nowrap}
+.badge{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  border-radius:var(--radius);padding:2px 8px;border:1px solid;white-space:nowrap}
+.b-raus{color:#0b4f8a;background:rgba(0,113,227,.10);border-color:rgba(0,113,227,.28)}
+.b-antwort{color:#14532d;background:rgba(36,138,61,.10);border-color:rgba(36,138,61,.30)}
+.b-pub{color:#14532d;background:rgba(36,138,61,.16);border-color:rgba(36,138,61,.36)}
+.b-absage{color:var(--warn);background:rgba(178,80,0,.10);border-color:rgba(178,80,0,.28)}
+.b-still{color:var(--muted);background:var(--fill-2);border-color:var(--line)}
+.b-entwurf{color:var(--muted);background:var(--fill-2);border-color:var(--line)}
+.act{white-space:nowrap;text-align:right}
+.hit{display:inline-block;margin-top:6px;font-size:var(--t-caption);color:#7c4a03;background:#fffbeb;
+  border:1px solid #fde68a;border-radius:var(--radius);padding:3px 9px}
+.empty{padding:var(--s6) var(--s4);text-align:center;color:var(--muted);font-size:var(--t-subhead)}
+.foot{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s4);max-width:76ch}
+@media (max-width:1000px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto}
+  .tbar,.content{padding-left:var(--s4);padding-right:var(--s4)}
+  .card{overflow-x:auto}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <div class="side__sect">Übersicht</div>
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <a href="#" class="side__row is-on">Ausgang<span class="side__count" style="color:rgba(255,255,255,.75)">9</span></a>
+      <div class="side__sect">Mandanten<span class="side__count">4</span></div>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#8944ab"></span>Nordlicht Energie</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#0071a4"></span>Vermont Robotics<span class="side__badge">2</span></a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#d30f45"></span>Haaner Pharma</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#248a3d"></span>Trimont Bau</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="tbar">
+      <div>
+        <h1 class="tbar__title">Ausgang</h1>
+        <div class="tbar__sub">Letzte 90 Tage · alle Mandate</div>
+      </div>
+      <button class="btn">Aktualisieren</button>
+    </header>
+
+    <main class="content">
+      <p class="lede">Jedes Anschreiben, das freigegeben wurde, mit dem was zurückkam. RauteOS verschickt nichts:
+        die Zeile entsteht in dem Moment, in dem Sie ein Anschreiben freigeben und selbst rausschicken.</p>
+
+      <div class="stats">
+        <div class="stat stat--out"><div class="stat__n">9</div><div class="stat__l">offen, warten auf Reaktion</div></div>
+        <div class="stat stat--good"><div class="stat__n">5</div><div class="stat__l">Antwort bekommen</div></div>
+        <div class="stat stat--good"><div class="stat__n">3</div><div class="stat__l">daraus veröffentlicht</div></div>
+        <div class="stat stat--warn"><div class="stat__n">2</div><div class="stat__l">länger als 14 Tage still</div></div>
+      </div>
+
+      <div class="filters">
+        <button class="chip is-on" type="button">Alle 21</button>
+        <button class="chip" type="button">Offen 9</button>
+        <button class="chip" type="button">Antwort 5</button>
+        <button class="chip" type="button">Veröffentlicht 3</button>
+        <button class="chip" type="button">Absage 4</button>
+        <span class="filters__search"><input type="text" placeholder="Name, Medium oder Mandant"></span>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Empfänger</th>
+              <th>Mandant</th>
+              <th>Freigegeben</th>
+              <th>Stand</th>
+              <th class="act">&nbsp;</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <span class="who">Tobias Reh</span> <span class="who__outlet">· Süddeutsche Zeitung</span>
+                <span class="sub">Betreff: 19 Monate bis zum Netzanschluss: die Zahl hinter der Netzentgeltdebatte</span>
+                <span class="hit">Möglicher Treffer: hat am 16.08. über Nordlicht geschrieben</span>
+              </td>
+              <td><span class="cl"><span class="cl__dot" style="background:#8944ab"></span>Nordlicht Energie</span></td>
+              <td class="when">12.08. · vor 6 Tagen</td>
+              <td><span class="badge b-raus">Offen</span></td>
+              <td class="act"><button class="btn btn--ghost" type="button">Ergebnis</button></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="who">Marlene Kühn</span> <span class="who__outlet">· Handelsblatt</span>
+                <span class="sub">Betreff: Anschlussdauer statt Netzentgelt: Zahlen aus 340 Industrieanschlüssen</span>
+              </td>
+              <td><span class="cl"><span class="cl__dot" style="background:#8944ab"></span>Nordlicht Energie</span></td>
+              <td class="when">12.08. · vor 6 Tagen</td>
+              <td><span class="badge b-antwort">Antwort</span>
+                <span class="sub">Will die Auswertung sehen, Rückruf Donnerstag</span></td>
+              <td class="act"><button class="linkbtn" type="button">ändern</button></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="who">Dr. Ines Falkenberg</span> <span class="who__outlet">· FAZ</span>
+                <span class="sub">Betreff: Warum Chirurgierobotik in Deutschland langsamer zugelassen wird</span>
+              </td>
+              <td><span class="cl"><span class="cl__dot" style="background:#0071a4"></span>Vermont Robotics</span></td>
+              <td class="when">02.08. · vor 16 Tagen</td>
+              <td><span class="badge b-pub">Veröffentlicht</span>
+                <span class="sub">Stück vom 09.08., These und Zahl übernommen</span></td>
+              <td class="act"><button class="linkbtn" type="button">ändern</button></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="who">Jan Osterloh</span> <span class="who__outlet">· WirtschaftsWoche</span>
+                <span class="sub">Betreff: Zulassungsdauer als Standortfrage: Daten aus vier Märkten</span>
+              </td>
+              <td><span class="cl"><span class="cl__dot" style="background:#0071a4"></span>Vermont Robotics</span></td>
+              <td class="when">28.07. · vor 21 Tagen</td>
+              <td><span class="badge b-still">Offen, still</span>
+                <span class="sub">Seit 21 Tagen keine Reaktion</span></td>
+              <td class="act"><button class="btn btn--ghost" type="button">Ergebnis</button></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="who">Fachredaktion</span> <span class="who__outlet">· pv magazine</span>
+                <span class="sub">Betreff: Anschlussdauer als Kostentreiber: Auswertung aus 340 Verfahren</span>
+              </td>
+              <td><span class="cl"><span class="cl__dot" style="background:#8944ab"></span>Nordlicht Energie</span></td>
+              <td class="when">05.08. · vor 13 Tagen</td>
+              <td><span class="badge b-absage">Absage</span>
+                <span class="sub">Kein Interesse an Herstellerzahlen ohne unabhängige Prüfung</span></td>
+              <td class="act"><button class="linkbtn" type="button">ändern</button></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="who">Petra Lindt</span> <span class="who__outlet">· Ärzte Zeitung</span>
+                <span class="sub">Betreff: Lieferengpass Metformin: was ein Mittelständler anders macht</span>
+              </td>
+              <td><span class="cl"><span class="cl__dot" style="background:#d30f45"></span>Haaner Pharma</span></td>
+              <td class="when">14.08. · vor 4 Tagen</td>
+              <td><span class="badge b-raus">Offen</span></td>
+              <td class="act"><button class="btn btn--ghost" type="button">Ergebnis</button></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="who">Sven Kaltenbach</span> <span class="who__outlet">· Baugewerbe Magazin</span>
+                <span class="sub">Betreff: Serieller Holzbau: die Zahlen aus 60 Projekten</span>
+              </td>
+              <td><span class="cl"><span class="cl__dot" style="background:#248a3d"></span>Trimont Bau</span></td>
+              <td class="when">15.08. · vor 3 Tagen</td>
+              <td><span class="badge b-raus">Offen</span></td>
+              <td class="act"><button class="btn btn--ghost" type="button">Ergebnis</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="foot">Ein Klick auf einen Namen zeigt alles, was diese Person je bekommen hat und was daraus wurde.
+        Wer in den letzten 90 Tagen schon zu einem Thema angeschrieben wurde, wird bei den Empfängervorschlägen
+        entsprechend markiert.</p>
+    </main>
+  </div>
+</div>
+<script>
+document.querySelectorAll('.chip').forEach(function (chip) {
+  chip.addEventListener('click', function () {
+    document.querySelectorAll('.chip').forEach(function (c) { c.classList.remove('is-on'); });
+    chip.classList.add('is-on');
+  });
+});
+</script>
+</body>
+</html>

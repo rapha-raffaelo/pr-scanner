@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gmail nur lesen · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --purple:#8944ab;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7);border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;letter-spacing:-.01em;padding:8px 16px;
+  border:0;border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.08)}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.linkbtn{font:inherit;font-size:var(--t-caption);font-weight:500;background:none;border:0;color:var(--muted);
+  cursor:pointer;text-decoration:underline;padding:0}
+.linkbtn:hover{color:var(--tint)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:var(--s5);padding:var(--s4)}
+.panel h2{font-size:var(--t-title3);font-weight:700;letter-spacing:-.015em;margin-bottom:var(--s1)}
+.panel-hint{font-size:var(--t-footnote);color:var(--muted);max-width:70ch}
+.impulse__label{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);margin-right:6px}
+.thesis{font-size:var(--t-body);line-height:1.55;margin-top:var(--s3);max-width:74ch}
+.mailbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--radius);padding:10px var(--s4);margin-bottom:var(--s5);
+  font-size:var(--t-footnote);color:var(--muted)}
+.mailbar__dot{width:8px;height:8px;border-radius:50%;background:var(--good);flex:none}
+.mailbar b{color:var(--ink-2);font-weight:600}
+.mailbar__r{margin-left:auto;display:flex;gap:10px;align-items:center}
+.letter{margin-top:var(--s3);border:1px solid var(--line);border-left:3px solid #059669;
+  border-radius:var(--radius);background:var(--card);padding:14px 16px}
+.letter--out{border-left-color:var(--tint)}
+.letter--done{border-left-color:var(--good)}
+.letter__head{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.letter__to{font-size:var(--t-caption);color:var(--muted)}
+.letter__to a{color:var(--tint);font-weight:600}
+.letter__copy{margin-left:auto;font-size:var(--t-caption);background:var(--fill);border:0;
+  border-radius:var(--radius-s);padding:4px 10px;cursor:pointer;color:var(--ink-2);font-weight:600}
+.letter__body{font-size:var(--t-footnote);line-height:1.65;white-space:pre-wrap}
+.letter__subject{font-weight:700;margin-bottom:10px}
+.crosscheck{margin-top:10px;padding:8px 10px;border-radius:var(--radius);background:#f0fdf4;
+  border:1px solid #bbf7d0;font-size:var(--t-caption);color:#14532d}
+.state{margin-top:12px;padding-top:11px;border-top:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.state__badge{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  border-radius:var(--radius);padding:2px 8px;border:1px solid}
+.b-entwurf{color:var(--muted);background:var(--fill-2);border-color:var(--line)}
+.b-raus{color:#0b4f8a;background:rgba(0,113,227,.10);border-color:rgba(0,113,227,.28)}
+.b-antwort{color:#14532d;background:rgba(36,138,61,.10);border-color:rgba(36,138,61,.30)}
+.state__when{font-size:var(--t-caption);color:var(--muted)}
+.state__acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+.reply{margin-top:10px;border:1px solid rgba(36,138,61,.30);background:rgba(36,138,61,.06);
+  border-radius:var(--radius);padding:10px 12px}
+.reply__head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.reply__from{font-size:var(--t-caption);font-weight:600;color:#14532d}
+.reply__src{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);border:1px solid var(--line);border-radius:var(--radius);padding:1px 7px;background:var(--card)}
+.reply__when{font-size:var(--t-caption);color:var(--muted);margin-left:auto}
+.reply__text{font-size:var(--t-footnote);line-height:1.6;color:var(--ink-2)}
+.reply__acts{margin-top:8px;display:flex;gap:10px;align-items:center}
+.note{font-size:var(--t-caption2);color:var(--muted);margin-top:8px;max-width:74ch}
+.callout{background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius);padding:10px 12px;
+  font-size:var(--t-caption);color:#7c4a03;margin-top:var(--s4);max-width:78ch}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto}
+  .tbar,.content{padding-left:var(--s4);padding-right:var(--s4)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <div class="side__sect">Übersicht</div>
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandanten<span class="side__count">4</span></div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#8944ab"></span>Nordlicht Energie</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#0071a4"></span>Vermont Robotics</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#d30f45"></span>Haaner Pharma</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#248a3d"></span>Trimont Bau</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="tbar">
+      <div>
+        <h1 class="tbar__title">Impulse · Nordlicht Energie</h1>
+        <div class="tbar__sub">Variante A · Postfach nur lesen</div>
+      </div>
+      <button class="btn">Aktualisieren</button>
+    </header>
+
+    <main class="content">
+
+      <div class="mailbar">
+        <span class="mailbar__dot"></span>
+        Postfach verbunden: <b>lucas@raute.example</b> · nur Lesezugriff · zuletzt gelesen heute 06:14
+        <span class="mailbar__r"><a href="#">Einstellungen</a></span>
+      </div>
+
+      <section class="panel">
+        <h2>Netzentgelte: wer zahlt den Ausbau</h2>
+        <p class="panel-hint">Aus 6 Meldungen der letzten 7 Tage.</p>
+        <p class="thesis"><span class="impulse__label">These</span>
+          Die Debatte über Netzentgelte wird als Verbraucherfrage geführt, obwohl der Kostentreiber die
+          Anschlussdauer für Industriekunden ist. Nordlicht kann das mit eigenen Zahlen belegen.</p>
+
+        <article class="letter letter--done">
+          <div class="letter__head">
+            <span class="letter__to">An: <a href="#">Marlene Kühn</a> · Handelsblatt</span>
+            <button class="letter__copy" type="button">Kopieren</button>
+          </div>
+          <div class="letter__body"><div class="letter__subject">Betreff: Anschlussdauer statt Netzentgelt: Zahlen aus 340 Industrieanschlüssen</div>Sehr geehrte Frau Kühn,
+
+Sie haben vergangene Woche geschrieben, dass die Netzentgeltdebatte an den Industriekunden vorbeigeht. Wir haben dazu Zahlen aus 340 Anschlussverfahren, die genau das belegen: im Schnitt 19 Monate von der Anfrage bis zum Netzanschluss, in Bayern 27.</div>
+          <div class="crosscheck"><span class="impulse__label">Gegengelesen von gemini-2.5-pro</span> keine Einwände</div>
+
+          <div class="state">
+            <span class="state__badge b-antwort">Antwort</span>
+            <span class="state__when">Freigegeben am 12.08. · Antwort am 14.08.</span>
+          </div>
+
+          <div class="reply">
+            <div class="reply__head">
+              <span class="reply__from">Marlene Kühn</span>
+              <span class="reply__src">aus dem Postfach</span>
+              <span class="reply__when">14.08. 08:05</span>
+            </div>
+            <div class="reply__text">Danke, das ist interessant. Schicken Sie mir die Auswertung gern vorab,
+              ich melde mich Donnerstag für einen Rückruf.</div>
+            <div class="reply__acts">
+              <span class="state__badge b-antwort">als Antwort eingetragen</span>
+              <button class="linkbtn" type="button">passt nicht zu diesem Brief</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="letter">
+          <div class="letter__head">
+            <span class="letter__to">An: <a href="#">Tobias Reh</a> · Süddeutsche Zeitung</span>
+            <button class="letter__copy" type="button">Kopieren</button>
+          </div>
+          <div class="letter__body"><div class="letter__subject">Betreff: 19 Monate bis zum Netzanschluss: die Zahl hinter der Netzentgeltdebatte</div>Sehr geehrter Herr Reh,
+
+in Ihrem Stück zur Industriestrompreis-Diskussion fehlte die Anschlussdauer als Kostenfaktor.</div>
+          <div class="crosscheck"><span class="impulse__label">Gegengelesen von gemini-2.5-pro</span> keine Einwände</div>
+
+          <div class="state">
+            <span class="state__badge b-entwurf">Entwurf</span>
+            <span class="state__when">Geschrieben heute 06:20</span>
+            <span class="state__acts">
+              <button class="btn" type="button">Freigegeben und verschickt</button>
+            </span>
+          </div>
+          <p class="note">Kopieren, in Gmail einfügen, selbst senden. Der Knopf hält nur fest, dass es raus ist.</p>
+        </article>
+
+        <p class="callout"><strong>Was diese Variante kostet:</strong> weil der Brief außerhalb von RauteOS
+          verschickt wird, gibt es keinen sicheren Faden zwischen Brief und Antwort. Die Zuordnung läuft über
+          Adresse, Betreff und Zeitfenster, und liegt manchmal daneben, darum die Korrekturmöglichkeit an
+          jeder Antwort.</p>
+      </section>
+    </main>
+  </div>
+</div>
+</body>
+</html>

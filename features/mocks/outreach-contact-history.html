@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verlauf am Kontakt · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --purple:#8944ab; --teal:#0071a4; --pink:#d30f45;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px; --t-large:32px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground); color:var(--ink); font-size:var(--t-body); line-height:1.45;
+  letter-spacing:-.006em; -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+}
+a{color:var(--tint);text-decoration:none}
+a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.side__badge{margin-left:auto;font-size:var(--t-caption2);font-weight:700;background:var(--alert);color:#fff;
+  border-radius:980px;padding:1px 6px}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7);border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;letter-spacing:-.01em;padding:8px 16px;
+  border:0;border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.08)}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.linkbtn{font:inherit;font-size:var(--t-caption);font-weight:500;background:none;border:0;color:var(--muted);
+  cursor:pointer;text-decoration:underline;padding:0}
+.linkbtn:hover{color:var(--tint)}
+
+/* two panes: the contact book left, the relationship file right */
+.split{display:grid;grid-template-columns:262px minmax(0,1fr);gap:var(--s5);align-items:start}
+.book{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.book__head{padding:var(--s3) var(--s4);border-bottom:1px solid var(--line);background:var(--fill-2)}
+.book__head input{font:inherit;font-size:var(--t-footnote);padding:6px 10px;border:1px solid var(--line);
+  border-radius:var(--radius-s);width:100%;background:var(--card)}
+.book__row{display:block;padding:10px var(--s4);border-bottom:1px solid var(--line);color:var(--ink);cursor:pointer}
+.book__row:last-child{border-bottom:0}
+.book__row:hover{background:var(--fill-2);text-decoration:none}
+.book__row.is-on{background:rgba(0,113,227,.08);box-shadow:inset 3px 0 0 var(--tint)}
+.book__nm{font-size:var(--t-subhead);font-weight:600;display:block}
+.book__ol{font-size:var(--t-caption);color:var(--muted)}
+.book__n{float:right;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+
+.file{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:var(--s5) var(--s5) var(--s4)}
+.file__head{display:flex;align-items:flex-start;gap:var(--s4);flex-wrap:wrap;
+  border-bottom:1px solid var(--line);padding-bottom:var(--s4);margin-bottom:var(--s4)}
+.file__name{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.file__outlet{font-size:var(--t-subhead);color:var(--muted);margin-top:2px}
+.file__meta{font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s2)}
+.file__meta b{color:var(--ink-2);font-weight:600}
+.file__acts{margin-left:auto;display:flex;gap:var(--s2)}
+.tally{display:flex;gap:var(--s5);margin-bottom:var(--s5);flex-wrap:wrap}
+.tally div{min-width:96px}
+.tally__n{font-size:var(--t-title1);font-weight:700;letter-spacing:-.03em;line-height:1.1}
+.tally__l{font-size:var(--t-caption);color:var(--muted)}
+.tally .good .tally__n{color:var(--good)}
+.tally .warn .tally__n{color:var(--warn)}
+
+.lbl{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);margin-bottom:var(--s3);display:block}
+
+/* the timeline */
+.tl{list-style:none;position:relative;padding-left:var(--s5)}
+.tl:before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:1px;background:var(--line-strong)}
+.tl li{position:relative;padding:0 0 var(--s5) 0}
+.tl li:last-child{padding-bottom:0}
+.tl__pin{position:absolute;left:calc(var(--s5)*-1);top:5px;width:11px;height:11px;border-radius:50%;
+  background:var(--card);border:2px solid var(--faint)}
+.tl__pin--out{border-color:var(--tint)}
+.tl__pin--good{border-color:var(--good);background:var(--good)}
+.tl__pin--warn{border-color:var(--warn)}
+.tl__when{font-size:var(--t-caption);color:var(--muted)}
+.tl__what{font-size:var(--t-subhead);margin-top:2px}
+.tl__what b{font-weight:600}
+.tl__cl{display:inline-flex;align-items:center;gap:5px;font-size:var(--t-footnote);color:var(--muted);
+  border:1px solid var(--line);border-radius:980px;padding:1px 9px;margin-left:6px;vertical-align:1px}
+.tl__cl span{width:7px;height:7px;border-radius:50%}
+.tl__quote{font-size:var(--t-footnote);color:var(--muted);margin-top:4px;font-style:italic;max-width:66ch}
+.tl__sub{font-size:var(--t-footnote);color:var(--muted);margin-top:3px;max-width:66ch}
+.tl__src{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);border:1px solid var(--line);border-radius:var(--radius);padding:1px 7px;
+  background:var(--fill-2);margin-left:6px;vertical-align:1px;white-space:nowrap}
+.tl__mail{margin-top:6px;padding:8px 10px;border-left:2px solid rgba(36,138,61,.35);
+  background:rgba(36,138,61,.05);border-radius:0 var(--radius-s) var(--radius-s) 0;
+  font-size:var(--t-footnote);line-height:1.6;color:var(--ink-2);max-width:66ch}
+.badge{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  border-radius:var(--radius);padding:2px 8px;border:1px solid;white-space:nowrap;margin-left:6px}
+.b-raus{color:#0b4f8a;background:rgba(0,113,227,.10);border-color:rgba(0,113,227,.28)}
+.b-antwort{color:#14532d;background:rgba(36,138,61,.10);border-color:rgba(36,138,61,.30)}
+.b-pub{color:#14532d;background:rgba(36,138,61,.16);border-color:rgba(36,138,61,.36)}
+.b-absage{color:var(--warn);background:rgba(178,80,0,.10);border-color:rgba(178,80,0,.28)}
+.note{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s5);padding-top:var(--s3);
+  border-top:1px dashed var(--line);max-width:76ch}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto}
+  .split{grid-template-columns:1fr}
+  .tbar,.content{padding-left:var(--s4);padding-right:var(--s4)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <div class="side__sect">Übersicht</div>
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row is-on">Kontakte</a>
+      <div class="side__sect">Mandanten<span class="side__count">4</span></div>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#8944ab"></span>Nordlicht Energie</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#0071a4"></span>Vermont Robotics<span class="side__badge">2</span></a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#d30f45"></span>Haaner Pharma</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#248a3d"></span>Trimont Bau</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="tbar">
+      <div>
+        <h1 class="tbar__title">Kontakte</h1>
+        <div class="tbar__sub">18 Einträge · 21 Anschreiben in 90 Tagen</div>
+      </div>
+      <button class="btn">Neuer Kontakt</button>
+    </header>
+
+    <main class="content">
+      <div class="split">
+
+        <div class="book">
+          <div class="book__head"><input type="text" placeholder="Name oder Medium"></div>
+          <a class="book__row" href="#"><span class="book__n">3</span>
+            <span class="book__nm">Dr. Ines Falkenberg</span><span class="book__ol">FAZ</span></a>
+          <a class="book__row is-on" href="#"><span class="book__n">4</span>
+            <span class="book__nm">Marlene Kühn</span><span class="book__ol">Handelsblatt</span></a>
+          <a class="book__row" href="#"><span class="book__n">2</span>
+            <span class="book__nm">Jan Osterloh</span><span class="book__ol">WirtschaftsWoche</span></a>
+          <a class="book__row" href="#"><span class="book__n">1</span>
+            <span class="book__nm">Petra Lindt</span><span class="book__ol">Ärzte Zeitung</span></a>
+          <a class="book__row" href="#"><span class="book__n">2</span>
+            <span class="book__nm">Tobias Reh</span><span class="book__ol">Süddeutsche Zeitung</span></a>
+          <a class="book__row" href="#">
+            <span class="book__nm">Sven Kaltenbach</span><span class="book__ol">Baugewerbe Magazin</span></a>
+        </div>
+
+        <div class="file">
+          <div class="file__head">
+            <div>
+              <div class="file__name">Marlene Kühn</div>
+              <div class="file__outlet">Handelsblatt · Energie und Industrie</div>
+              <div class="file__meta">m.kuehn@handelsblatt.example · <b>zuletzt angeschrieben vor 6 Tagen</b></div>
+              <div class="file__meta">Postfach <b>lucas@raute.example</b> verbunden, zuletzt gelesen heute 06:14 ·
+                <a href="#">Einstellungen</a></div>
+            </div>
+            <div class="file__acts">
+              <button class="btn btn--ghost" type="button">Bearbeiten</button>
+            </div>
+          </div>
+
+          <div class="tally">
+            <div><div class="tally__n">4</div><div class="tally__l">Anschreiben</div></div>
+            <div class="good"><div class="tally__n">3</div><div class="tally__l">Antworten</div></div>
+            <div class="good"><div class="tally__n">2</div><div class="tally__l">Veröffentlicht</div></div>
+            <div class="warn"><div class="tally__n">1</div><div class="tally__l">ohne Reaktion</div></div>
+          </div>
+
+          <span class="lbl">Verlauf</span>
+          <ul class="tl">
+            <li>
+              <span class="tl__pin tl__pin--out"></span>
+              <div class="tl__when">14.08.2026 · 08:05</div>
+              <div class="tl__what"><b>Antwort</b> auf das Anschreiben zu den Netzentgelten
+                <span class="tl__cl"><span style="background:#8944ab"></span>Nordlicht Energie</span>
+                <span class="badge b-antwort">Antwort</span>
+                <span class="tl__src">aus dem Postfach</span></div>
+              <div class="tl__mail">Danke, das ist interessant. Schicken Sie mir die Auswertung gern vorab,
+                ich melde mich Donnerstag für einen Rückruf.</div>
+            </li>
+            <li>
+              <span class="tl__pin tl__pin--out"></span>
+              <div class="tl__when">12.08.2026 · 09:41 · freigegeben von Mensch</div>
+              <div class="tl__what"><b>Anschreiben verschickt</b>
+                <span class="tl__cl"><span style="background:#8944ab"></span>Nordlicht Energie</span>
+                <span class="tl__src">in Gmail erkannt</span></div>
+              <div class="tl__quote">„Anschlussdauer statt Netzentgelt: Zahlen aus 340 Industrieanschlüssen“</div>
+            </li>
+            <li>
+              <span class="tl__pin tl__pin--good"></span>
+              <div class="tl__when">09.07.2026</div>
+              <div class="tl__what"><b>Veröffentlicht</b>: „Der teure Weg ans Netz“
+                <span class="tl__cl"><span style="background:#8944ab"></span>Nordlicht Energie</span>
+                <span class="badge b-pub">Veröffentlicht</span>
+                <span class="tl__src">von Hand eingetragen</span></div>
+              <div class="tl__sub">These und Zahl aus dem Anschreiben vom 02.07. übernommen.</div>
+            </li>
+            <li>
+              <span class="tl__pin tl__pin--out"></span>
+              <div class="tl__when">02.07.2026 · freigegeben von Mensch</div>
+              <div class="tl__what"><b>Anschreiben verschickt</b>
+                <span class="tl__cl"><span style="background:#8944ab"></span>Nordlicht Energie</span></div>
+              <div class="tl__quote">„Was ein Netzanschluss wirklich kostet: 340 Verfahren ausgewertet“</div>
+            </li>
+            <li>
+              <span class="tl__pin tl__pin--warn"></span>
+              <div class="tl__when">19.05.2026 · 16:22</div>
+              <div class="tl__what"><b>Absage</b>
+                <span class="tl__cl"><span style="background:#0071a4"></span>Vermont Robotics</span>
+                <span class="badge b-absage">Absage</span>
+                <span class="tl__src">aus dem Postfach</span></div>
+              <div class="tl__mail">Das liegt nicht auf meinem Ressort. Wenden Sie sich am besten an die
+                Technikredaktion, Kollege Warnke macht das.</div>
+            </li>
+            <li>
+              <span class="tl__pin"></span>
+              <div class="tl__when">17.05.2026 · freigegeben von Mensch</div>
+              <div class="tl__what"><b>Anschreiben verschickt</b>
+                <span class="tl__cl"><span style="background:#0071a4"></span>Vermont Robotics</span></div>
+              <div class="tl__quote">„Zulassungsdauer für Chirurgierobotik: vier Märkte im Vergleich“</div>
+            </li>
+          </ul>
+
+          <p class="note">Der Verlauf entsteht aus zwei Quellen, und jede Zeile sagt aus welcher. Eine Zeile
+            entsteht, wenn Sie ein Anschreiben freigeben. Antworten holt RauteOS aus dem verbundenen Postfach,
+            und zwar nur aus Verläufen, die zu einem freigegebenen Anschreiben gehören. Alles andere in Ihrem
+            Postfach wird nicht gelesen und nicht gespeichert. Was veröffentlicht wurde, tragen Sie ein.</p>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+document.querySelectorAll('.book__row').forEach(function (row) {
+  row.addEventListener('click', function (e) {
+    e.preventDefault();
+    document.querySelectorAll('.book__row').forEach(function (r) { r.classList.remove('is-on'); });
+    row.classList.add('is-on');
+  });
+});
+</script>
+</body>
+</html>

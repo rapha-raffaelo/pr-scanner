@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fragebogen im Werkzeug · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --purple:#8944ab;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7);border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.08)}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.linkbtn{font:inherit;font-size:var(--t-caption);background:none;border:0;color:var(--muted);
+  cursor:pointer;text-decoration:underline;padding:0}
+.linkbtn:hover{color:var(--tint)}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:var(--s5);align-items:start}
+
+/* progress rail */
+.rail{position:sticky;top:var(--s5);background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);padding:var(--s4)}
+.rail__n{font-size:var(--t-title1);font-weight:700;letter-spacing:-.03em;line-height:1.1}
+.rail__n span{font-size:var(--t-body);font-weight:600;color:var(--muted)}
+.rail__l{font-size:var(--t-footnote);color:var(--muted);margin-bottom:var(--s3)}
+.bar{height:5px;border-radius:99px;background:var(--fill);overflow:hidden;margin-bottom:var(--s4)}
+.bar i{display:block;height:100%;background:var(--tint);width:60%}
+.rail__sect{display:flex;align-items:center;gap:var(--s2);padding:5px 0;font-size:var(--t-footnote);
+  color:var(--ink-2);border-top:1px solid var(--line)}
+.rail__sect:first-of-type{border-top:0}
+.rail__tick{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--faint);flex:none}
+.rail__tick.is-done{background:var(--good);border-color:var(--good)}
+.rail__tick.is-part{border-color:var(--tint);background:linear-gradient(90deg,var(--tint) 50%,transparent 50%)}
+.rail__cnt{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.rail__note{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s4);padding-top:var(--s3);
+  border-top:1px dashed var(--line)}
+
+/* form sections */
+.sect{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:var(--s5);overflow:hidden}
+.sect__head{padding:var(--s4);border-bottom:1px solid var(--line);background:var(--fill-2)}
+.sect__t{font-size:var(--t-title3);font-weight:700;letter-spacing:-.015em}
+.sect__d{font-size:var(--t-footnote);color:var(--muted);margin-top:2px;max-width:70ch}
+.q{padding:var(--s4);border-top:1px solid var(--line)}
+.q:first-of-type{border-top:0}
+.q__label{display:block;font-size:var(--t-subhead);font-weight:600;margin-bottom:3px}
+.q__help{font-size:var(--t-footnote);color:var(--muted);margin-bottom:var(--s2);max-width:66ch}
+.q input[type=text],.q textarea{font:inherit;font-size:var(--t-subhead);width:100%;padding:9px 11px;
+  border:1px solid var(--line);border-radius:var(--radius-s);background:var(--card);resize:vertical}
+.q textarea{min-height:74px;line-height:1.55}
+.q input:focus,.q textarea:focus{outline:2px solid rgba(0,113,227,.35);outline-offset:-1px;border-color:var(--tint)}
+.q__feeds{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);margin-top:7px}
+.q__feeds b{color:var(--tint);font-weight:700}
+.q--done{background:rgba(36,138,61,.03)}
+.q__saved{float:right;font-size:var(--t-caption);color:var(--good);font-weight:600}
+.chiprow{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--s2)}
+.chipx{font-size:var(--t-footnote);background:var(--fill-2);border:1px solid var(--line);
+  border-radius:99px;padding:3px 10px;color:var(--ink-2);display:inline-flex;gap:6px;align-items:center}
+.chipx button{background:none;border:0;color:var(--muted);cursor:pointer;font-size:var(--t-footnote);padding:0}
+.foot{display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap;margin-top:var(--s5)}
+.foot__hint{font-size:var(--t-footnote);color:var(--muted);max-width:60ch}
+@media (max-width:1000px){.split{grid-template-columns:1fr}.rail{position:static}}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto}
+  .tbar,.content{padding-left:var(--s4);padding-right:var(--s4)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <div class="side__sect">Übersicht</div>
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandanten<span class="side__count">5</span></div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#0071a4"></span>Vermont Robotics</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#8944ab"></span>Nordlicht Energie</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#d30f45"></span>Haaner Pharma</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#248a3d"></span>Trimont Bau</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="tbar">
+      <div>
+        <h1 class="tbar__title">Kickoff · Vermont Robotics</h1>
+        <div class="tbar__sub">Variante A · im Werkzeug, vom Berater ausgefüllt</div>
+      </div>
+      <button class="btn btn--ghost">Als PDF drucken</button>
+    </header>
+
+    <main class="content">
+      <div class="split">
+        <div>
+
+          <section class="sect">
+            <div class="sect__head">
+              <div class="sect__t">Was das Unternehmen ist</div>
+              <div class="sect__d">Vier Fragen, die jeder Text braucht. Antworten hier ersetzen, was die
+                Recherche geraten hat.</div>
+            </div>
+
+            <div class="q q--done">
+              <span class="q__saved">gespeichert</span>
+              <label class="q__label">Was verkaufen Sie, in einem Satz, ohne Fachbegriffe?</label>
+              <p class="q__help">Wenn der Satz eine Erklärung braucht, ist es noch nicht der Satz.</p>
+              <textarea>Roboterarme, die in Operationssälen den Chirurgen führen, statt ihn zu ersetzen.</textarea>
+              <div class="q__feeds">Füllt <b>Profil · Geschäftsfeld</b> und <b>Guide · Kernbotschaft</b></div>
+            </div>
+
+            <div class="q q--done">
+              <span class="q__saved">gespeichert</span>
+              <label class="q__label">Wer spricht für das Unternehmen, und wozu?</label>
+              <p class="q__help">Name, Rolle, und für welche Themen diese Person zitierbar ist.</p>
+              <div class="chiprow">
+                <span class="chipx">Dr. Anna Verhoeven, CEO · Strategie, Markt <button>×</button></span>
+                <span class="chipx">Milan Roth, CTO · Technik, Zulassung <button>×</button></span>
+              </div>
+              <input type="text" placeholder="Weitere Person, Rolle, Themen" style="margin-top:8px">
+              <div class="q__feeds">Füllt <b>Profil · Sprecher</b>, wird in jedem Anschreiben verwendet</div>
+            </div>
+
+            <div class="q">
+              <label class="q__label">Wen halten Sie für Ihren wichtigsten Wettbewerber, und warum?</label>
+              <p class="q__help">Wichtig für den Share of Voice. Die Vergleichsgruppe ist sonst geraten.</p>
+              <input type="text" placeholder="Unternehmen, und in einem Halbsatz warum">
+              <div class="q__feeds">Füllt <b>Vergleichsgruppe</b></div>
+            </div>
+          </section>
+
+          <section class="sect">
+            <div class="sect__head">
+              <div class="sect__t">Was gesagt werden darf, und was nie</div>
+              <div class="sect__d">Der Teil, den kein Modell erraten kann. Aus diesen Antworten entsteht der
+                Guide, gegen den später jeder Text geprüft wird.</div>
+            </div>
+
+            <div class="q q--done">
+              <span class="q__saved">gespeichert</span>
+              <label class="q__label">Welchen Satz sollen wir über Sie nie schreiben?</label>
+              <p class="q__help">Wörtlich, so wie er nicht dastehen soll.</p>
+              <textarea>„Der Roboter operiert.“ Er operiert nicht. Das ist zulassungsrechtlich falsch und für unsere Kunden ein Kündigungsgrund.</textarea>
+              <div class="q__feeds">Wird <b>No-Go</b> · jeder Text wird dagegen geprüft</div>
+            </div>
+
+            <div class="q">
+              <label class="q__label">Gibt es ein Thema, zu dem Sie grundsätzlich schweigen?</label>
+              <p class="q__help">Laufende Verfahren, Preise, Kundennamen, eine Personalie.</p>
+              <textarea placeholder="Thema, und ob Schweigen oder eine Sprachregelung gilt"></textarea>
+              <div class="q__feeds">Wird <b>No-Go</b></div>
+            </div>
+
+            <div class="q">
+              <label class="q__label">Was behaupten Ihre Wettbewerber, das schlicht nicht stimmt?</label>
+              <p class="q__help">Die ergiebigste Frage im Fragebogen. Hier liegen die Thesen.</p>
+              <textarea placeholder="Behauptung, und womit Sie dagegenhalten können"></textarea>
+              <div class="q__feeds">Füllt <b>Themenfelder</b> · Material für Impulse</div>
+            </div>
+          </section>
+
+          <div class="foot">
+            <button class="btn">Guide daraus erzeugen</button>
+            <span class="foot__hint">Schreibt aus den Antworten einen Vorschlag für den Guide. Sie lesen und
+              ändern ihn, bevor er gilt. 8 der 20 Fragen sind noch offen, das reicht bereits.</span>
+          </div>
+        </div>
+
+        <aside class="rail">
+          <div class="rail__n">12<span> / 20</span></div>
+          <div class="rail__l">beantwortet, zuletzt heute 14:20</div>
+          <div class="bar"><i></i></div>
+          <div class="rail__sect"><span class="rail__tick is-done"></span>Was das Unternehmen ist<span class="rail__cnt">4/4</span></div>
+          <div class="rail__sect"><span class="rail__tick is-part"></span>Sagen und schweigen<span class="rail__cnt">3/6</span></div>
+          <div class="rail__sect"><span class="rail__tick is-part"></span>Ziele<span class="rail__cnt">3/4</span></div>
+          <div class="rail__sect"><span class="rail__tick"></span>Medien und Beziehungen<span class="rail__cnt">2/4</span></div>
+          <div class="rail__sect"><span class="rail__tick"></span>Zusammenarbeit<span class="rail__cnt">0/2</span></div>
+          <p class="rail__note">Jede Antwort wird beim Tippen gespeichert. Der Fragebogen muss nicht in einem
+            Zug fertig werden, und was fehlt, bleibt sichtbar offen statt geraten.</p>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

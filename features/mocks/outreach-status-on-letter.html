@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Status am Brief · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --purple:#8944ab;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground); color:var(--ink); font-size:var(--t-body); line-height:1.45;
+  letter-spacing:-.006em; -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+}
+a{color:var(--tint);text-decoration:none}
+a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1)}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.side__badge{margin-left:auto;font-size:var(--t-caption2);font-weight:700;background:var(--alert);color:#fff;
+  border-radius:980px;padding:1px 6px}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7);border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;letter-spacing:-.01em;padding:8px 16px;
+  border:0;border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.08)}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.btn--quiet{background:var(--fill);color:var(--ink-2);font-weight:500}
+.linkbtn{font:inherit;font-size:var(--t-caption);font-weight:500;background:none;border:0;color:var(--muted);
+  cursor:pointer;text-decoration:underline;padding:0}
+.linkbtn:hover{color:var(--tint)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:var(--s5);padding:var(--s4)}
+.panel h2{font-size:var(--t-title3);font-weight:700;letter-spacing:-.015em;margin-bottom:var(--s1)}
+.panel-hint{font-size:var(--t-footnote);color:var(--muted);max-width:70ch}
+.impulse__label{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);margin-right:6px}
+.thesis{font-size:var(--t-body);line-height:1.55;margin-top:var(--s3);max-width:74ch}
+.notthesis{margin-top:var(--s2);font-size:var(--t-footnote);color:var(--muted);max-width:74ch}
+
+/* the letter card */
+.letter{margin-top:var(--s3);border:1px solid var(--line);border-left:3px solid #059669;
+  border-radius:var(--radius);background:var(--card);padding:14px 16px}
+.letter--out{border-left-color:var(--tint)}
+.letter--done{border-left-color:var(--good)}
+.letter__head{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.letter__to{font-size:var(--t-caption);color:var(--muted)}
+.letter__to a{color:var(--tint);font-weight:600}
+.letter__copy{margin-left:auto;font-size:var(--t-caption);background:var(--fill);border:0;
+  border-radius:var(--radius-s);padding:4px 10px;cursor:pointer;color:var(--ink-2);font-weight:600}
+.letter__body{font-size:var(--t-footnote);line-height:1.65;white-space:pre-wrap}
+.letter__subject{font-weight:700;margin-bottom:10px}
+.letter__hook{margin-top:10px;padding-top:9px;border-top:1px dashed var(--line);font-size:var(--t-caption);color:var(--muted)}
+.crosscheck{margin-top:10px;padding:8px 10px;border-radius:var(--radius);background:#f0fdf4;
+  border:1px solid #bbf7d0;font-size:var(--t-caption);color:#14532d}
+
+/* the new part: the state strip */
+.state{margin-top:12px;padding-top:11px;border-top:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.state__badge{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  border-radius:var(--radius);padding:2px 8px;border:1px solid}
+.b-entwurf{color:var(--muted);background:var(--fill-2);border-color:var(--line)}
+.b-raus{color:#0b4f8a;background:rgba(0,113,227,.10);border-color:rgba(0,113,227,.28)}
+.b-antwort{color:#14532d;background:rgba(36,138,61,.10);border-color:rgba(36,138,61,.30)}
+.b-absage{color:var(--warn);background:rgba(178,80,0,.10);border-color:rgba(178,80,0,.28)}
+.b-still{color:var(--muted);background:var(--fill-2);border-color:var(--line)}
+.state__when{font-size:var(--t-caption);color:var(--muted)}
+.state__acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+.state__form{display:none;margin-top:10px;padding:10px 12px;background:var(--fill-2);
+  border:1px solid var(--line);border-radius:var(--radius)}
+.state__form.is-open{display:block}
+.state__form label{display:block;font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--muted);margin-bottom:6px}
+.state__row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.state__row select,.state__row input{font:inherit;font-size:var(--t-footnote);padding:7px 10px;
+  border:1px solid var(--line);border-radius:var(--radius-s);background:var(--card)}
+.state__row input{flex:1;min-width:220px}
+.trail{margin-top:10px;font-size:var(--t-caption);color:var(--muted);
+  border-top:1px dashed var(--line);padding-top:8px}
+.trail ul{list-style:none}
+.trail li{padding:2px 0}
+.trail b{color:var(--ink-2);font-weight:600}
+.hitnote{margin-top:10px;padding:8px 10px;border-radius:var(--radius);background:#fffbeb;
+  border:1px solid #fde68a;font-size:var(--t-caption);color:#7c4a03;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hitnote .btn{padding:5px 12px;font-size:var(--t-caption)}
+.note{font-size:var(--t-caption2);color:var(--muted);margin-top:8px;max-width:72ch}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto}
+  .tbar,.content{padding-left:var(--s4);padding-right:var(--s4)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <div class="side__sect">Übersicht</div>
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandanten<span style="margin-left:auto;color:var(--faint)">4</span></div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#8944ab"></span>Nordlicht Energie</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#0071a4"></span>Vermont Robotics<span class="side__badge">2</span></a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#d30f45"></span>Haaner Pharma</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#248a3d"></span>Trimont Bau</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="tbar">
+      <div>
+        <h1 class="tbar__title">Impulse · Nordlicht Energie</h1>
+        <div class="tbar__sub">Letzter Lauf heute 06:12 · 41 Meldungen gelesen</div>
+      </div>
+      <button class="btn">Aktualisieren</button>
+    </header>
+
+    <main class="content">
+
+      <section class="panel">
+        <h2>Netzentgelte: wer zahlt den Ausbau</h2>
+        <p class="panel-hint">Aus 6 Meldungen der letzten 7 Tage.</p>
+        <p class="thesis"><span class="impulse__label">These</span>
+          Die Debatte über Netzentgelte wird als Verbraucherfrage geführt, obwohl der Kostentreiber die
+          Anschlussdauer für Industriekunden ist. Nordlicht kann das mit eigenen Zahlen belegen.</p>
+        <p class="notthesis"><span class="impulse__label">Nicht die These</span>
+          Dass die Netzentgelte insgesamt zu hoch sind. Dafür hat Nordlicht keine Belege und die Aussage
+          würde jeder Wettbewerber genauso treffen.</p>
+
+        <!-- LETTER 1: released, answered -->
+        <article class="letter letter--done">
+          <div class="letter__head">
+            <span class="letter__to">An: <a href="#">Marlene Kühn</a> · Handelsblatt</span>
+            <button class="letter__copy" type="button">Kopieren</button>
+          </div>
+          <div class="letter__body"><div class="letter__subject">Betreff: Anschlussdauer statt Netzentgelt: Zahlen aus 340 Industrieanschlüssen</div>Sehr geehrte Frau Kühn,
+
+Sie haben vergangene Woche geschrieben, dass die Netzentgeltdebatte an den Industriekunden vorbeigeht. Wir haben dazu Zahlen aus 340 Anschlussverfahren, die genau das belegen: im Schnitt 19 Monate von der Anfrage bis zum Netzanschluss, in Bayern 27.
+
+Wenn das für Sie interessant ist, schicke ich Ihnen die Auswertung gern vorab.</div>
+          <div class="letter__hook"><span class="impulse__label">Warum diese</span>
+            Hat am 11.08. selbst über Anschlussdauern geschrieben und dabei nach belastbaren Zahlen gefragt.</div>
+          <div class="crosscheck"><span class="impulse__label">Gegengelesen von gemini-2.5-pro</span> keine Einwände</div>
+
+          <div class="state">
+            <span class="state__badge b-antwort">Antwort</span>
+            <span class="state__when">Freigegeben am 12.08. · Antwort am 14.08.</span>
+            <span class="state__acts">
+              <button class="linkbtn" type="button" onclick="toggle('t1')">Verlauf</button>
+            </span>
+          </div>
+          <div class="trail" id="t1">
+            <ul>
+              <li><b>12.08. 09:40</b> von Mensch freigegeben und verschickt</li>
+              <li><b>14.08. 08:05</b> Antwort eingetragen: will die Auswertung sehen, Rückruf Donnerstag</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- LETTER 2: released, silent, with an automatic coverage hit -->
+        <article class="letter letter--out">
+          <div class="letter__head">
+            <span class="letter__to">An: <a href="#">Tobias Reh</a> · Süddeutsche Zeitung</span>
+            <button class="letter__copy" type="button">Kopieren</button>
+          </div>
+          <div class="letter__body"><div class="letter__subject">Betreff: 19 Monate bis zum Netzanschluss: die Zahl hinter der Netzentgeltdebatte</div>Sehr geehrter Herr Reh,
+
+in Ihrem Stück zur Industriestrompreis-Diskussion fehlte die Anschlussdauer als Kostenfaktor. Wir haben sie gemessen, über 340 Verfahren hinweg, und die Spreizung zwischen den Bundesländern ist der eigentliche Befund.</div>
+          <div class="letter__hook"><span class="impulse__label">Warum dieser</span>
+            Schreibt seit Juni regelmäßig über Industriestrompreise, zuletzt am 09.08.</div>
+          <div class="crosscheck"><span class="impulse__label">Gegengelesen von gemini-2.5-pro</span> keine Einwände</div>
+
+          <div class="state">
+            <span class="state__badge b-still">Ohne Reaktion</span>
+            <span class="state__when">Freigegeben am 12.08. · seit 6 Tagen still</span>
+            <span class="state__acts">
+              <button class="btn btn--ghost" type="button" onclick="toggle('f2')">Ergebnis eintragen</button>
+            </span>
+          </div>
+          <div class="hitnote">
+            Möglicher Treffer: Tobias Reh hat am 16.08. über Nordlicht Energie geschrieben, vier Tage nach dem Anschreiben.
+            <button class="btn" type="button">Als Veröffentlichung übernehmen</button>
+          </div>
+          <div class="state__form" id="f2">
+            <label>Was kam zurück</label>
+            <div class="state__row">
+              <select>
+                <option>Antwort</option>
+                <option>Absage</option>
+                <option selected>Veröffentlicht</option>
+              </select>
+              <input type="text" value="Hat die Zahl in seinem Stück vom 16.08. aufgegriffen">
+              <button class="btn" type="button">Eintragen</button>
+            </div>
+          </div>
+        </article>
+
+        <!-- LETTER 3: still a draft -->
+        <article class="letter">
+          <div class="letter__head">
+            <span class="letter__to">An: <a href="#">Fachredaktion</a> · pv magazine</span>
+            <button class="letter__copy" type="button">Kopieren</button>
+          </div>
+          <div class="letter__body"><div class="letter__subject">Betreff: Anschlussdauer als Kostentreiber: Auswertung aus 340 Verfahren</div>Sehr geehrte Redaktion,
+
+die Debatte über Netzentgelte wird als Verbraucherfrage geführt. Unsere Auswertung zeigt einen anderen Kostentreiber.</div>
+          <div class="crosscheck" style="background:var(--fill-2);border-color:var(--line);color:var(--muted)">
+            <span class="impulse__label">Zweitmodell rät ab</span> Der Satz „die Debatte wird falsch geführt“ ist eine Wertung ohne Beleg im Anschreiben.</div>
+
+          <div class="state">
+            <span class="state__badge b-entwurf">Entwurf</span>
+            <span class="state__when">Geschrieben heute 06:20 · noch nicht freigegeben</span>
+            <span class="state__acts">
+              <button class="btn" type="button">Freigegeben und verschickt</button>
+            </span>
+          </div>
+          <p class="note">Nichts geht von hier aus raus. Der Knopf hält fest, dass Sie das Anschreiben gelesen,
+            freigegeben und selbst verschickt haben.</p>
+        </article>
+      </section>
+
+    </main>
+  </div>
+</div>
+<script>
+function toggle(id){
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('is-open');
+  if (el.classList.contains('trail')) {
+    el.style.display = (el.style.display === 'none' ? '' : 'none');
+  }
+}
+document.querySelectorAll('.letter__copy').forEach(function(b){
+  b.addEventListener('click', function(){
+    var old = b.textContent; b.textContent = 'Kopiert';
+    setTimeout(function(){ b.textContent = old; }, 1200);
+  });
+});
+</script>
+</body>
+</html>

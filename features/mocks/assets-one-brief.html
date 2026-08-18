@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ein Anlass, ein Paket · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --purple:#8944ab;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7);border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.08)}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.btn--big{font-size:var(--t-body);padding:11px 22px;border-radius:var(--radius)}
+.btn--sm{font-size:var(--t-caption);padding:5px 12px}
+.lbl{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);margin-right:6px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:var(--s5);padding:var(--s5)}
+.panel h2{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em;margin-bottom:var(--s1)}
+.panel-hint{font-size:var(--t-footnote);color:var(--muted);max-width:70ch}
+.thesis{font-size:var(--t-body);line-height:1.55;margin-top:var(--s3);max-width:74ch}
+
+/* the package */
+.pack{margin-top:var(--s5);padding-top:var(--s4);border-top:1px solid var(--line)}
+.pack__head{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s4)}
+.pack__t{font-size:var(--t-title3);font-weight:700}
+.pack__st{font-size:var(--t-footnote);color:var(--muted)}
+.pack__acts{margin-left:auto;display:flex;gap:var(--s2)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:var(--s4);overflow-x:auto}
+.tab{font:inherit;font-size:var(--t-subhead);font-weight:500;background:none;border:0;cursor:pointer;
+  padding:9px 14px;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:7px}
+.tab:hover{color:var(--ink)}
+.tab.is-on{color:var(--ink);font-weight:600;border-bottom-color:var(--tint)}
+.tab .dot{width:6px;height:6px;border-radius:50%;flex:none}
+.dot--ok{background:var(--good)} .dot--draft{background:var(--faint)} .dot--hold{background:var(--warn)}
+.dot--none{background:transparent;border:1px dashed var(--faint)}
+.tab--add{color:var(--tint)}
+
+.pane{display:none}
+.pane.is-on{display:block}
+.pane__bar{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;margin-bottom:var(--s3)}
+.pane__when{font-size:var(--t-caption);color:var(--muted)}
+.pane__acts{margin-left:auto;display:flex;gap:var(--s2)}
+.sheet{background:var(--fill-2);border:1px solid var(--line);border-radius:var(--radius);
+  padding:var(--s5);max-width:72ch}
+.sheet h3{font-size:var(--t-title3);font-weight:700;line-height:1.3;margin-bottom:var(--s2)}
+.sheet .dl{font-size:var(--t-footnote);color:var(--muted);margin-bottom:var(--s3)}
+.sheet p{font-size:var(--t-subhead);line-height:1.7;margin-bottom:var(--s3)}
+.sheet p:last-child{margin-bottom:0}
+.sheet blockquote{font-size:var(--t-subhead);line-height:1.7;margin:0 0 var(--s3);padding-left:var(--s3);
+  border-left:2px solid var(--line-strong);color:var(--ink-2)}
+.qa dt{font-size:var(--t-subhead);font-weight:700;margin-top:var(--s3)}
+.qa dt:first-child{margin-top:0}
+.qa dd{font-size:var(--t-subhead);line-height:1.7;color:var(--ink-2);margin-top:3px}
+.qa .hot{color:var(--warn);font-weight:700;font-size:var(--t-caption2);text-transform:uppercase;
+  letter-spacing:.04em;margin-left:6px}
+.chk{margin-top:var(--s3);padding:8px 11px;border-radius:var(--radius);font-size:var(--t-caption);
+  max-width:72ch}
+.chk--ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d}
+.chk--hold{background:#fffbeb;border:1px solid #fde68a;color:#7c4a03}
+.empty{background:var(--fill-2);border:1px dashed var(--line-strong);border-radius:var(--radius);
+  padding:var(--s6);text-align:center;max-width:72ch}
+.empty p{font-size:var(--t-subhead);color:var(--muted);margin-bottom:var(--s3);max-width:52ch;
+  margin-left:auto;margin-right:auto}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto}
+  .tbar,.content{padding-left:var(--s4);padding-right:var(--s4)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <div class="side__sect">Übersicht</div>
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandanten<span class="side__count">4</span></div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#8944ab"></span>Nordlicht Energie</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#0071a4"></span>Vermont Robotics</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#d30f45"></span>Haaner Pharma</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="tbar">
+      <div>
+        <h1 class="tbar__title">Impulse · Nordlicht Energie</h1>
+        <div class="tbar__sub">Variante C · ein Anlass, ein Paket</div>
+      </div>
+      <button class="btn">Aktualisieren</button>
+    </header>
+
+    <main class="content">
+      <section class="panel">
+        <h2>Netzentgelte: wer zahlt den Ausbau</h2>
+        <p class="panel-hint">Aus 6 Meldungen der letzten 7 Tage.</p>
+        <p class="thesis"><span class="lbl">These</span>
+          Die Debatte über Netzentgelte wird als Verbraucherfrage geführt, obwohl der Kostentreiber die
+          Anschlussdauer für Industriekunden ist. Nordlicht kann das mit eigenen Zahlen belegen.</p>
+
+        <div class="pack">
+          <div class="pack__head">
+            <span class="pack__t">Das Paket zu diesem Anlass</span>
+            <span class="pack__st">4 von 7 Formaten geschrieben · 1 freigegeben</span>
+            <span class="pack__acts">
+              <button class="btn btn--ghost btn--sm">Alles kopieren</button>
+              <button class="btn btn--big">Fehlende schreiben</button>
+            </span>
+          </div>
+
+          <div class="tabs">
+            <button class="tab is-on"><span class="dot dot--hold"></span>Pressemitteilung</button>
+            <button class="tab"><span class="dot dot--ok"></span>Statement</button>
+            <button class="tab"><span class="dot dot--draft"></span>Q&amp;A</button>
+            <button class="tab"><span class="dot dot--ok"></span>Anschreiben <span style="color:var(--muted);font-weight:400">3</span></button>
+            <button class="tab"><span class="dot dot--none"></span>Talking Points</button>
+            <button class="tab"><span class="dot dot--none"></span>Gastbeitrag</button>
+            <button class="tab tab--add">+ Format</button>
+          </div>
+
+          <div class="pane is-on">
+            <div class="pane__bar">
+              <span class="pane__when">Entwurf · geschrieben heute 09:12</span>
+              <span class="pane__acts">
+                <button class="btn btn--ghost btn--sm">Kopieren</button>
+                <button class="btn btn--ghost btn--sm">Neu schreiben</button>
+                <button class="btn btn--sm">Freigeben</button>
+              </span>
+            </div>
+            <div class="sheet">
+              <h3>19 Monate bis zum Netzanschluss: Nordlicht legt Zahlen aus 340 Verfahren vor</h3>
+              <div class="dl">Hamburg, 18. August 2026</div>
+              <p>Die Debatte über steigende Netzentgelte konzentriert sich auf private Haushalte. Eine
+                Auswertung des Hamburger Energiedienstleisters Nordlicht Energie verschiebt den Blick:
+                Ausschlaggebend für die Kosten sei nicht der Verbrauch, sondern die Dauer bis zum Netzanschluss
+                von Industriekunden.</p>
+              <p>Nordlicht hat dafür 340 Anschlussverfahren der Jahre 2023 bis 2026 ausgewertet. Im
+                Bundesdurchschnitt vergehen 19 Monate von der Anfrage bis zum fertigen Anschluss, in Bayern 27,
+                in Schleswig-Holstein 11.</p>
+              <blockquote>„Jeder Monat Wartezeit ist ein Monat, in dem eine geplante Anlage nicht ans Netz geht
+                und der Ausbau trotzdem bezahlt wird“, sagt Dr. Katrin Sauer, Vorstandsvorsitzende von Nordlicht
+                Energie.</blockquote>
+            </div>
+            <div class="chk chk--ok"><span class="lbl">Gegengelesen von gemini-2.5-pro</span> keine Einwände</div>
+            <div class="chk chk--hold"><span class="lbl">Guide-Prüfung</span>
+              „verschiebt den Blick“ ist eine Wertung im Nachrichtenteil. Der Guide verlangt Wertungen nur im Zitat.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" style="opacity:.75">
+        <h2>Speicherausbau Nord</h2>
+        <p class="panel-hint">Aus 4 Meldungen der letzten 7 Tage.</p>
+        <div class="pack">
+          <div class="pack__head">
+            <span class="pack__t">Das Paket zu diesem Anlass</span>
+            <span class="pack__st">noch nichts geschrieben</span>
+          </div>
+          <div class="empty">
+            <p>Zu diesem Anlass gibt es eine These und noch keinen Text. Sieben Formate stehen bereit.</p>
+            <button class="btn btn--big">Paket schreiben</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<script>
+document.querySelectorAll('.tab:not(.tab--add)').forEach(function(t){
+  t.addEventListener('click',function(){
+    var tabs = t.parentElement.querySelectorAll('.tab');
+    tabs.forEach(function(x){x.classList.remove('is-on')});
+    t.classList.add('is-on');
+  });
+});
+</script>
+</body>
+</html>

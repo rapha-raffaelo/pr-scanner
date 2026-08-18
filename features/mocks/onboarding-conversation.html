@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fragebogen als Gespräch · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7);border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.08)}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:var(--s5);align-items:start}
+
+/* the conversation */
+.talk{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  display:flex;flex-direction:column;min-height:560px}
+.talk__head{padding:var(--s3) var(--s4);border-bottom:1px solid var(--line);display:flex;
+  align-items:center;gap:var(--s2);background:var(--fill-2)}
+.cc{width:22px;height:22px;border-radius:50%;background:var(--tint);color:#fff;display:grid;
+  place-items:center;font-size:var(--t-caption);font-weight:800;flex:none}
+.talk__who{font-size:var(--t-subhead);font-weight:700}
+.talk__st{font-size:var(--t-caption);color:var(--muted);margin-left:auto}
+.talk__body{padding:var(--s5) var(--s4);display:flex;flex-direction:column;gap:var(--s4);flex:1}
+.msg{max-width:62ch;font-size:var(--t-subhead);line-height:1.6}
+.msg--a{display:flex;gap:var(--s3);align-items:flex-start}
+.msg--a .cc{margin-top:1px}
+.msg--a div{background:var(--fill-2);border-radius:var(--radius);padding:11px 14px;color:var(--ink-2)}
+.msg--q{align-self:flex-end;background:var(--tint);color:#fff;border-radius:var(--radius);
+  padding:11px 14px;max-width:52ch}
+.msg__ask{font-weight:600;color:var(--ink);display:block;margin-bottom:4px}
+.msg__probe{font-size:var(--t-footnote);color:var(--muted);margin-top:6px;font-style:italic}
+.captured{margin-top:8px;border-left:2px solid var(--good);background:rgba(36,138,61,.06);
+  border-radius:0 var(--radius-s) var(--radius-s) 0;padding:8px 11px}
+.captured__l{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--good);display:block;margin-bottom:3px}
+.captured__v{font-size:var(--t-footnote);color:var(--ink-2)}
+.captured__acts{margin-top:6px;display:flex;gap:10px}
+.captured__acts button{font:inherit;font-size:var(--t-caption);background:none;border:0;color:var(--muted);
+  cursor:pointer;text-decoration:underline;padding:0}
+.talk__ask{border-top:1px solid var(--line);padding:var(--s3) var(--s4);display:flex;gap:var(--s2);align-items:center}
+.talk__ask input{flex:1;font:inherit;font-size:var(--t-subhead);padding:9px 12px;border:1px solid var(--line);
+  border-radius:var(--radius-s);background:var(--card)}
+.talk__ask input:focus{outline:2px solid rgba(0,113,227,.35);outline-offset:-1px;border-color:var(--tint)}
+.talk__skip{font:inherit;font-size:var(--t-footnote);background:none;border:0;color:var(--muted);
+  cursor:pointer;text-decoration:underline;white-space:nowrap}
+
+/* the filling profile */
+.fills{position:sticky;top:var(--s5);background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);overflow:hidden}
+.fills__head{padding:var(--s3) var(--s4);border-bottom:1px solid var(--line);background:var(--fill-2)}
+.fills__t{font-size:var(--t-subhead);font-weight:700}
+.fills__s{font-size:var(--t-caption);color:var(--muted);margin-top:1px}
+.fill{padding:9px var(--s4);border-bottom:1px solid var(--line);display:flex;gap:var(--s2);align-items:flex-start}
+.fill:last-child{border-bottom:0}
+.fill__tick{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--faint);flex:none;margin-top:2px}
+.fill__tick.is-on{background:var(--good);border-color:var(--good)}
+.fill__k{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);display:block}
+.fill__v{font-size:var(--t-footnote);color:var(--ink-2);margin-top:1px}
+.fill__v.is-empty{color:var(--faint);font-style:italic}
+.fills__foot{padding:var(--s3) var(--s4);border-top:1px solid var(--line);background:var(--fill-2)}
+.fills__foot p{font-size:var(--t-caption);color:var(--muted);margin-bottom:var(--s2)}
+@media (max-width:1000px){.split{grid-template-columns:1fr}.fills{position:static}}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto}
+  .tbar,.content{padding-left:var(--s4);padding-right:var(--s4)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <div class="side__sect">Übersicht</div>
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandanten<span class="side__count">5</span></div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#0071a4"></span>Vermont Robotics</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#8944ab"></span>Nordlicht Energie</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#d30f45"></span>Haaner Pharma</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="tbar">
+      <div>
+        <h1 class="tbar__title">Kickoff · Vermont Robotics</h1>
+        <div class="tbar__sub">Variante C · als Gespräch, Captain Comms fragt</div>
+      </div>
+      <button class="btn btn--ghost">Lieber als Formular</button>
+    </header>
+
+    <main class="content">
+      <div class="split">
+
+        <div class="talk">
+          <div class="talk__head">
+            <span class="cc">#</span>
+            <span class="talk__who">Captain Comms</span>
+            <span class="talk__st">Frage 8 von 20 · 12 beantwortet</span>
+          </div>
+
+          <div class="talk__body">
+            <div class="msg msg--a">
+              <span class="cc">#</span>
+              <div>
+                <span class="msg__ask">Wer spricht für Vermont Robotics, und wozu?</span>
+                Name und Rolle reichen. Wichtig ist, für welche Themen die Person zitierbar sein soll.
+              </div>
+            </div>
+
+            <div class="msg msg--q">Anna Verhoeven, CEO. Strategie und Markt. Für alles Technische Milan Roth, CTO.</div>
+
+            <div class="msg msg--a">
+              <span class="cc">#</span>
+              <div>
+                Notiert.
+                <div class="captured">
+                  <span class="captured__l">ins Profil übernommen · Sprecher</span>
+                  <span class="captured__v">Dr. Anna Verhoeven, CEO, für Strategie und Markt · Milan Roth, CTO, für Technik und Zulassung</span>
+                  <div class="captured__acts">
+                    <button>ändern</button><button>verwerfen</button>
+                  </div>
+                </div>
+                <p class="msg__probe">Den Doktortitel habe ich aus der Website übernommen. Stimmt das so, und
+                  soll er in Anschreiben mitgeführt werden?</p>
+              </div>
+            </div>
+
+            <div class="msg msg--a">
+              <span class="cc">#</span>
+              <div>
+                <span class="msg__ask">Welchen Satz sollen wir über Sie nie schreiben?</span>
+                Gern wörtlich. Jeder Text, den RauteOS später schreibt, wird gegen diese Sätze geprüft, also
+                ist das hier die Frage mit der längsten Halbwertszeit.
+              </div>
+            </div>
+          </div>
+
+          <form class="talk__ask" onsubmit="return false">
+            <input type="text" placeholder="Antwort schreiben…" autofocus>
+            <button class="talk__skip" type="button">überspringen</button>
+            <button class="btn" type="submit">↑</button>
+          </form>
+        </div>
+
+        <aside class="fills">
+          <div class="fills__head">
+            <div class="fills__t">Was dabei entsteht</div>
+            <div class="fills__s">füllt sich mit, während Sie antworten</div>
+          </div>
+          <div class="fill"><span class="fill__tick is-on"></span><span>
+            <span class="fill__k">Geschäftsfeld</span>
+            <span class="fill__v">Chirurgierobotik, führend statt ersetzend</span></span></div>
+          <div class="fill"><span class="fill__tick is-on"></span><span>
+            <span class="fill__k">Sprecher</span>
+            <span class="fill__v">Verhoeven (CEO) · Roth (CTO)</span></span></div>
+          <div class="fill"><span class="fill__tick is-on"></span><span>
+            <span class="fill__k">Vergleichsgruppe</span>
+            <span class="fill__v">Intuitive, Medtronic, Brainlab</span></span></div>
+          <div class="fill"><span class="fill__tick"></span><span>
+            <span class="fill__k">No-Gos</span>
+            <span class="fill__v is-empty">noch offen, Frage läuft gerade</span></span></div>
+          <div class="fill"><span class="fill__tick"></span><span>
+            <span class="fill__k">Themenfelder</span>
+            <span class="fill__v is-empty">noch offen</span></span></div>
+          <div class="fill"><span class="fill__tick"></span><span>
+            <span class="fill__k">Guide</span>
+            <span class="fill__v is-empty">entsteht am Ende aus allem</span></span></div>
+          <div class="fills__foot">
+            <p>Nichts hiervon gilt, bevor Sie es freigeben. Das Gespräch schlägt vor, Sie entscheiden.</p>
+            <button class="btn" style="width:100%">Jetzt Guide erzeugen</button>
+          </div>
+        </aside>
+
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

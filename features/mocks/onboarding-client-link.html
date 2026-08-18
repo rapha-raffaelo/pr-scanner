@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fragebogen beim Mandanten · RauteOS</title>
+<style>
+:root{
+  --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px; --t-large:32px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+
+/* no sidebar on purpose: the client is not inside RauteOS */
+.head{background:var(--card);border-bottom:1px solid var(--line);padding:var(--s5) var(--s4)}
+.head__in{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap}
+.head__mark{font-size:var(--t-title3);font-weight:800;color:var(--tint)}
+.head__who{font-size:var(--t-subhead);font-weight:600}
+.head__sub{font-size:var(--t-caption);color:var(--muted)}
+.head__r{margin-left:auto;font-size:var(--t-caption);color:var(--muted);text-align:right}
+
+.wrap{max-width:720px;margin:0 auto;padding:var(--s6) var(--s4) var(--s7)}
+.lede{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:var(--s5);margin-bottom:var(--s5)}
+.lede h1{font-size:var(--t-title1);font-weight:700;letter-spacing:-.025em;margin-bottom:var(--s2)}
+.lede p{font-size:var(--t-subhead);color:var(--ink-2);max-width:60ch;margin-bottom:var(--s2)}
+.lede p:last-child{margin-bottom:0;color:var(--muted);font-size:var(--t-footnote)}
+
+.prog{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s5);flex-wrap:wrap}
+.prog__t{font-size:var(--t-footnote);color:var(--muted);white-space:nowrap}
+.bar{flex:1;min-width:160px;height:6px;border-radius:99px;background:var(--fill);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--tint);width:35%}
+
+.q{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:var(--s5);margin-bottom:var(--s3)}
+.q--now{border-color:rgba(0,113,227,.35);box-shadow:0 0 0 3px rgba(0,113,227,.07)}
+.q__n{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);margin-bottom:var(--s2)}
+.q__label{display:block;font-size:var(--t-title3);font-weight:600;letter-spacing:-.015em;margin-bottom:var(--s2)}
+.q__help{font-size:var(--t-footnote);color:var(--muted);margin-bottom:var(--s3);max-width:58ch}
+.q textarea,.q input[type=text]{font:inherit;font-size:var(--t-body);width:100%;padding:11px 13px;
+  border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--card);resize:vertical}
+.q textarea{min-height:92px;line-height:1.6}
+.q textarea:focus,.q input:focus{outline:2px solid rgba(0,113,227,.35);outline-offset:-1px;border-color:var(--tint)}
+.q__acts{display:flex;gap:var(--s3);align-items:center;margin-top:var(--s3);flex-wrap:wrap}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:9px 18px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.btn--quiet{background:var(--fill);color:var(--ink-2)}
+.skip{font-size:var(--t-footnote);color:var(--muted);text-decoration:underline;background:none;border:0;cursor:pointer}
+.q--done{background:var(--card);border-color:var(--line)}
+.q--done .q__label{font-size:var(--t-subhead);font-weight:600;color:var(--muted)}
+.answered{font-size:var(--t-subhead);color:var(--ink-2);background:var(--fill-2);
+  border-left:2px solid var(--good);padding:8px 12px;border-radius:0 var(--radius-s) var(--radius-s) 0;
+  margin-top:var(--s2)}
+.q--done .q__acts{margin-top:var(--s2)}
+.q--skipped .answered{border-left-color:var(--faint);color:var(--muted);font-style:italic}
+
+.privacy{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:var(--s4);margin-top:var(--s5);font-size:var(--t-footnote);color:var(--muted);max-width:64ch}
+.privacy b{color:var(--ink-2)}
+.savednote{text-align:center;font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s5)}
+</style>
+</head>
+<body>
+  <header class="head">
+    <div class="head__in">
+      <span class="head__mark">#</span>
+      <span>
+        <span class="head__who">RAUTE für Vermont Robotics</span><br>
+        <span class="head__sub">Kickoff-Fragebogen</span>
+      </span>
+      <span class="head__r">7 von 20 beantwortet<br>Ihr Link, gültig bis 30.09.</span>
+    </div>
+  </header>
+
+  <div class="wrap">
+
+    <div class="lede">
+      <h1>Zwanzig Fragen, damit wir nicht raten müssen</h1>
+      <p>Wir haben schon recherchiert, was öffentlich über Sie zu finden ist. Was wir nicht recherchieren
+        können, ist, was Sie sagen wollen und was auf keinen Fall über Sie stehen darf. Genau das steht hier.</p>
+      <p>Sie müssen nicht alles auf einmal beantworten, der Link merkt sich Ihren Stand. Fragen, die Sie
+        überspringen, bleiben offen und werden nicht geraten.</p>
+    </div>
+
+    <div class="prog">
+      <span class="prog__t">7 von 20</span>
+      <span class="bar"><i></i></span>
+      <span class="prog__t">etwa 15 Minuten</span>
+    </div>
+
+    <div class="q q--done">
+      <div class="q__n">Frage 1</div>
+      <label class="q__label">Was verkaufen Sie, in einem Satz, ohne Fachbegriffe?</label>
+      <div class="answered">Roboterarme, die in Operationssälen den Chirurgen führen, statt ihn zu ersetzen.</div>
+      <div class="q__acts"><button class="skip">ändern</button></div>
+    </div>
+
+    <div class="q q--done q--skipped">
+      <div class="q__n">Frage 2</div>
+      <label class="q__label">Wie groß ist das Unternehmen, in Mitarbeitenden und Umsatz?</label>
+      <div class="answered">übersprungen</div>
+      <div class="q__acts"><button class="skip">doch beantworten</button></div>
+    </div>
+
+    <div class="q q--now">
+      <div class="q__n">Frage 8 von 20</div>
+      <label class="q__label">Welchen Satz sollen wir über Sie nie schreiben?</label>
+      <p class="q__help">Gern wörtlich, so wie er nicht dastehen soll. Wir prüfen später jeden Text, den wir
+        für Sie schreiben, gegen diese Sätze.</p>
+      <textarea autofocus placeholder="Zum Beispiel: „Der Roboter operiert.“ Weil …"></textarea>
+      <div class="q__acts">
+        <button class="btn">Weiter</button>
+        <button class="skip">überspringen</button>
+      </div>
+    </div>
+
+    <div class="q">
+      <div class="q__n">Frage 9</div>
+      <label class="q__label">Gibt es ein Thema, zu dem Sie grundsätzlich schweigen?</label>
+      <p class="q__help">Ein laufendes Verfahren, Preise, Kundennamen, eine Personalie.</p>
+    </div>
+
+    <div class="q">
+      <div class="q__n">Frage 10</div>
+      <label class="q__label">Was behaupten Ihre Wettbewerber, das schlicht nicht stimmt?</label>
+      <p class="q__help">Erfahrungsgemäß die ergiebigste Frage. Hier liegen die Themen, mit denen Sie in
+        die Presse kommen.</p>
+    </div>
+
+    <p class="savednote">Automatisch gespeichert. Sie können den Link jederzeit erneut öffnen.</p>
+
+    <div class="privacy">
+      <b>Wer das liest:</b> Ihre Antworten gehen an Ihr Beratungsteam bei RAUTE und werden dort für Ihre
+      Kommunikation verwendet. Der Link ist persönlich und nicht öffentlich auffindbar. Fragen dazu
+      beantwortet Ihnen Lucas Berger direkt.
+    </div>
+  </div>
+</body>
+</html>

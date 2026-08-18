@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Texte als eigener Arbeitsplatz · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --purple:#8944ab;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s6);border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.08)}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.btn--sm{font-size:var(--t-caption);padding:5px 12px}
+
+/* three panes: assets, document, checks */
+.work{display:grid;grid-template-columns:250px minmax(0,1fr) 268px;gap:0;flex:1;min-height:0}
+.pane{border-right:1px solid var(--line);min-width:0}
+.pane:last-child{border-right:0}
+
+.list__head{padding:var(--s3) var(--s4);border-bottom:1px solid var(--line);background:var(--fill-2);
+  display:flex;align-items:center;gap:var(--s2)}
+.list__t{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.list__new{margin-left:auto}
+.grp{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s4) var(--s4) var(--s1)}
+.item{display:block;padding:9px var(--s4);border-left:2px solid transparent;cursor:pointer}
+.item:hover{background:var(--fill-2);text-decoration:none}
+.item.is-on{background:rgba(0,113,227,.07);border-left-color:var(--tint)}
+.item__k{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.item__t{font-size:var(--t-subhead);color:var(--ink);display:block;margin-top:1px;line-height:1.35}
+.item__m{font-size:var(--t-caption);color:var(--muted);margin-top:2px;display:block}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:1px}
+.dot--draft{background:var(--faint)}
+.dot--ok{background:var(--good)}
+.dot--hold{background:var(--warn)}
+
+.doc{padding:var(--s6);overflow-y:auto}
+.doc__bar{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;margin-bottom:var(--s5);
+  padding-bottom:var(--s4);border-bottom:1px solid var(--line)}
+.doc__kind{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--ink-2);border:1px solid var(--line);border-radius:var(--radius);padding:2px 8px;background:var(--fill-2)}
+.doc__when{font-size:var(--t-caption);color:var(--muted)}
+.doc__acts{margin-left:auto;display:flex;gap:var(--s2)}
+.sheet{max-width:68ch;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:var(--s6) var(--s6) var(--s5)}
+.sheet h1{font-size:var(--t-title1);font-weight:700;letter-spacing:-.025em;line-height:1.25;margin-bottom:var(--s3)}
+.sheet .dl{font-size:var(--t-footnote);color:var(--muted);margin-bottom:var(--s4)}
+.sheet p{font-size:var(--t-body);line-height:1.72;margin-bottom:var(--s4)}
+.sheet blockquote{font-size:var(--t-body);line-height:1.72;margin:0 0 var(--s4);padding-left:var(--s4);
+  border-left:2px solid var(--line-strong);color:var(--ink-2)}
+.sheet .boiler{font-size:var(--t-footnote);color:var(--muted);line-height:1.65;border-top:1px solid var(--line);
+  padding-top:var(--s4)}
+.doc__from{margin-top:var(--s4);font-size:var(--t-caption);color:var(--muted);max-width:68ch}
+
+.checks{padding:var(--s4);overflow-y:auto}
+.checks__t{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);margin-bottom:var(--s3)}
+.chk{border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:var(--s3);
+  font-size:var(--t-caption);line-height:1.55}
+.chk--ok{background:#f0fdf4;border-color:#bbf7d0;color:#14532d}
+.chk--hold{background:#fffbeb;border-color:#fde68a;color:#7c4a03}
+.chk--none{background:var(--fill-2);color:var(--muted)}
+.chk__t{font-weight:700;display:block;margin-bottom:3px}
+.chk ul{margin:4px 0 0 15px}
+.src{border-top:1px dashed var(--line);margin-top:var(--s4);padding-top:var(--s3)}
+.src li{list-style:none;font-size:var(--t-caption);color:var(--muted);font-style:italic;padding:2px 0}
+@media (max-width:1100px){.work{grid-template-columns:1fr}.pane{border-right:0;border-bottom:1px solid var(--line)}}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <div class="side__sect">Übersicht</div>
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <a href="#" class="side__row is-on">Texte<span class="side__count" style="color:rgba(255,255,255,.75)">12</span></a>
+      <div class="side__sect">Mandanten<span class="side__count">4</span></div>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#8944ab"></span>Nordlicht Energie</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#0071a4"></span>Vermont Robotics</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="tbar">
+      <div>
+        <h1 class="tbar__title">Texte · Nordlicht Energie</h1>
+        <div class="tbar__sub">Variante B · eigener Arbeitsplatz für alle Formate</div>
+      </div>
+      <button class="btn">Neuer Text</button>
+    </header>
+
+    <div class="work">
+
+      <div class="pane">
+        <div class="list__head">
+          <span class="list__t">Texte</span>
+          <span class="list__new"><button class="btn btn--ghost btn--sm">+ Format</button></span>
+        </div>
+        <div class="grp">Netzentgelte: wer zahlt den Ausbau</div>
+        <a class="item is-on">
+          <span class="item__k">Pressemitteilung</span>
+          <span class="item__t">19 Monate bis zum Netzanschluss</span>
+          <span class="item__m"><span class="dot dot--hold"></span>Entwurf · heute 09:12</span>
+        </a>
+        <a class="item">
+          <span class="item__k">Statement</span>
+          <span class="item__t">Sauer zur Netzentgeltdebatte</span>
+          <span class="item__m"><span class="dot dot--ok"></span>freigegeben · gestern</span>
+        </a>
+        <a class="item">
+          <span class="item__k">Anschreiben · Marlene Kühn</span>
+          <span class="item__t">Anschlussdauer statt Netzentgelt</span>
+          <span class="item__m"><span class="dot dot--ok"></span>verschickt · 12.08.</span>
+        </a>
+        <a class="item">
+          <span class="item__k">Q&amp;A</span>
+          <span class="item__t">14 Fragen zur Auswertung</span>
+          <span class="item__m"><span class="dot dot--draft"></span>Entwurf · 13.08.</span>
+        </a>
+        <div class="grp">Speicherausbau Nord</div>
+        <a class="item">
+          <span class="item__k">Gastbeitrag</span>
+          <span class="item__t">Warum Speicher keine Brücke sind</span>
+          <span class="item__m"><span class="dot dot--draft"></span>Entwurf · 04.08.</span>
+        </a>
+        <a class="item">
+          <span class="item__k">Talking Points</span>
+          <span class="item__t">Interview NDR, 06.08.</span>
+          <span class="item__m"><span class="dot dot--ok"></span>freigegeben · 05.08.</span>
+        </a>
+      </div>
+
+      <div class="pane doc">
+        <div class="doc__bar">
+          <span class="doc__kind">Pressemitteilung</span>
+          <span class="doc__when">Entwurf · geschrieben heute 09:12 · zuletzt geändert 09:48</span>
+          <span class="doc__acts">
+            <button class="btn btn--ghost btn--sm">Kopieren</button>
+            <button class="btn btn--ghost btn--sm">Neu schreiben</button>
+            <button class="btn btn--sm">Freigeben</button>
+          </span>
+        </div>
+
+        <article class="sheet" contenteditable="true">
+          <h1>19 Monate bis zum Netzanschluss: Nordlicht legt Zahlen aus 340 Verfahren vor</h1>
+          <div class="dl">Hamburg, 18. August 2026</div>
+          <p>Die Debatte über steigende Netzentgelte konzentriert sich auf private Haushalte. Eine Auswertung
+            des Hamburger Energiedienstleisters Nordlicht Energie verschiebt den Blick: Ausschlaggebend für die
+            Kosten sei nicht der Verbrauch, sondern die Dauer bis zum Netzanschluss von Industriekunden.</p>
+          <p>Nordlicht hat dafür 340 Anschlussverfahren der Jahre 2023 bis 2026 ausgewertet. Im
+            Bundesdurchschnitt vergehen 19 Monate von der Anfrage bis zum fertigen Anschluss, in Bayern 27, in
+            Schleswig-Holstein 11.</p>
+          <blockquote>„Jeder Monat Wartezeit ist ein Monat, in dem eine geplante Anlage nicht ans Netz geht und
+            der Ausbau trotzdem bezahlt wird“, sagt Dr. Katrin Sauer, Vorstandsvorsitzende von Nordlicht
+            Energie. „Diese Spreizung zwischen den Bundesländern ist kein Naturgesetz, sondern eine Frage der
+            Verfahren.“</blockquote>
+          <p>Die vollständige Auswertung stellt Nordlicht auf Anfrage zur Verfügung.</p>
+          <div class="boiler">Über Nordlicht Energie: Nordlicht Energie plant, baut und betreibt Anlagen zur
+            Erzeugung erneuerbarer Energie in Norddeutschland. Das Unternehmen mit Sitz in Hamburg beschäftigt
+            410 Mitarbeitende.</div>
+        </article>
+
+        <p class="doc__from">Direkt im Text bearbeitbar. Änderungen werden gespeichert, und der Text wird
+          nach jeder Änderung erneut gegengelesen, bevor er freigegeben werden kann.</p>
+      </div>
+
+      <div class="pane checks">
+        <div class="checks__t">Prüfungen</div>
+        <div class="chk chk--ok">
+          <span class="chk__t">Gegengelesen · gemini-2.5-pro</span>
+          Keine Erfindungen, keine Übertreibung, keine Werbesprache. Die Zahlen decken sich mit dem Profil.
+        </div>
+        <div class="chk chk--hold">
+          <span class="chk__t">Guide-Prüfung · 1 Einwand</span>
+          <ul><li>„verschiebt den Blick“ ist eine Wertung im Nachrichtenteil. Der Guide verlangt Wertungen nur
+            im Zitat.</li></ul>
+        </div>
+        <div class="chk chk--none">
+          <span class="chk__t">Freigabe</span>
+          Noch nicht freigegeben. Ohne Freigabe verlässt der Text RauteOS nicht.
+        </div>
+
+        <div class="checks__t" style="margin-top:var(--s5)">Worauf er steht</div>
+        <ul class="src">
+          <li>„Netzentgelte steigen 2027 erneut“ · Handelsblatt, 14.08.</li>
+          <li>„Industrie klagt über Anschlusszeiten“ · SZ, 09.08.</li>
+          <li>Profil · 340 ausgewertete Anschlussverfahren, Stand 07/2026</li>
+          <li>Guide · Wertungen nur im Zitat, keine Superlative</li>
+        </ul>
+        <div class="src">
+          <li>Aus Schlagzeilen und Anrissen geschrieben, nicht aus den Artikeln selbst.</li>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script>
+document.querySelectorAll('.item').forEach(function(a){
+  a.addEventListener('click',function(){
+    document.querySelectorAll('.item').forEach(function(x){x.classList.remove('is-on')});
+    a.classList.add('is-on');
+  });
+});
+</script>
+</body>
+</html>
