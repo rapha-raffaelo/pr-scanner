@@ -235,7 +235,7 @@ _EN: dict[str, str] = {
     "Branche": "Industry",
     "Land": "Country",
     "Aliase": "Aliases",
-    "Von": "From",
+    "Von": "By",
     "Bis": "To",
     "Quelle": "Source",
     "Alle Quellen": "All sources",
@@ -245,7 +245,7 @@ _EN: dict[str, str] = {
     "Rolle": "Role",
     "Alerts": "Alerts",
     "Anteil": "Share",
-    "Wettbewerber": "Competitor",
+    "Wettbewerber": "Competitors",
     "entfernen": "remove",
     "Wettbewerber hinzufügen": "Add competitor",
     "Branche als Suchfilter": "Industry as a search filter",
@@ -277,7 +277,6 @@ _EN: dict[str, str] = {
     "keinem Mandanten": "no client",
     "Wird überwacht, aber keinem Mandanten zugeordnet — die Meldungen zählen nirgends.":
         "Monitored but linked to no client \u2014 its items count towards nothing.",
-    "Wettbewerber": "Competitors",
     "Wettbewerber für": "Competitors for",
     "In Einstellungen vorschlagen lassen": "Get suggestions under Settings",
     "Keine Wettbewerber vorgeschlagen — das Modell kennt dieses Unternehmen nicht sicher genug. Lieber keiner als ein erfundener.":
@@ -304,7 +303,7 @@ _EN: dict[str, str] = {
     "Wettbewerb links": "competitors left",
     "rechts": "right",
     "nach Ungleichgewicht sortiert": "sorted by imbalance",
-    "Wettbewerb": "Competitors",
+    "Wettbewerb": "Competition",
     "Vollständige Tabelle": "Full table",
     "Medien": "outlets",
     "Medium": "Outlet",
@@ -335,7 +334,6 @@ _EN: dict[str, str] = {
         "Generating — this takes about a minute. Reload the page.",
     "Lage": "Situation",
     "Erzeugt am": "Generated",
-    "aus": "from",
     "Artikeln.": "articles.",
     "Maßnahmen": "Actions",
     "Grundlage": "Based on",
@@ -451,7 +449,6 @@ _EN: dict[str, str] = {
     "reaktiv": "reactive",
     "proaktiv": "proactive",
     "beobachten": "monitor",
-    "heute": "today",
     "diese woche": "this week",
     "laufend": "ongoing",
     # --- Settings ------------------------------------------------------------
@@ -478,13 +475,11 @@ _EN: dict[str, str] = {
     "Zuordnungen entfernen": "links",
     "Start": "Start",
     "Status": "Status",
-    "Fehler": "Errors",
+    "Fehler": "Error",
     "Clients": "Clients",
     "+ Client hinzufügen": "+ Add client",
     "Name": "Name",
     "Aliasse": "Aliases",
-    "Suchbegriffe": "Search terms",
-    "Alarm-Themen": "Alert topics",
     "Website": "Website",
     "Andere Schreibweisen des Unternehmens: „Zalando SE“, „About You“.":
         "Other spellings of the company: \u201cZalando SE\u201d, \u201cAbout You\u201d.",
@@ -513,7 +508,6 @@ _EN: dict[str, str] = {
     "Gemessen an der echten Suche: so viele Marktmeldungen brächte jedes Thema in 90 Tagen. Ein Klick übernimmt es und sucht sofort.":
         "Measured against the real search: that is how many market items each theme "
         "would bring in over 90 days. One click adopts it and searches straight away.",
-    "Wettbewerber vorschlagen": "Suggest competitors",
     "Wettbewerber werden vorgeschlagen — das dauert einen Moment.":
         "Competitors are being proposed \u2014 this takes a moment.",
     "Vorschlag fehlgeschlagen": "Proposal failed",
@@ -535,7 +529,6 @@ _EN: dict[str, str] = {
     "unten ausfüllen und speichern.": "fill in below and save.",
     "Eintrag bearbeiten": "Edit entry",
     "Neuer Kontakt": "New contact",
-    "Medium": "Outlet",
     "E-Mail": "Email",
     "Telefon": "Phone",
     "Themengebiet": "Beat",
@@ -615,7 +608,6 @@ _EN: dict[str, str] = {
     # --- Assistant drawer ----------------------------------------------------
     "Captain Comms": "Captain Comms",
     # Streaming status and failure text, read inside the drawer.
-    "Kontext": "Context",
     "verbunden": "connected",
     "denkt nach": "thinking",
     "Keine Frage gestellt.": "No question asked.",
@@ -627,7 +619,6 @@ _EN: dict[str, str] = {
     "Unerwarteter Fehler": "Unexpected error",
     "Antwort zu lang, abgebrochen.": "Answer too long, stopped.",
     "Keine Antwort erhalten.": "No answer received.",
-    "Fehler": "Error",
     "Verbindung unterbrochen.": "Connection lost.",
     "Kommunikationsstrategie zur Berichterstattung auf dieser Seite":
         "Communication strategy for the coverage on this page",
@@ -646,7 +637,6 @@ _EN: dict[str, str] = {
     "Was übersehen wir gerade?": "What are we missing?",
     "Portfolio": "Portfolio",
     "Profil": "Profile",
-    "Wettbewerb": "Competition",
     "Mit KI ausfüllen": "Fill with AI",
     "Liest das offene Netz und schlägt Werte vor — mit Quelle, und ohne etwas zu speichern. Was hier steht, entscheiden Sie.":
         "Reads the open web and proposes values, with the source, storing nothing. "
@@ -664,10 +654,6 @@ _EN: dict[str, str] = {
         "What this company is, in fourteen lines. Every line feeds the openings, "
         "the letters and Captain Comms, and every line says where it came from.",
     "Felder gefüllt": "fields filled",
-    "Von": "By",
-    "Quelle": "Source",
-    "Unternehmen": "Company",
-    "Anteil": "Share",
     "Noch keine Vergleichsgruppe.": "No peer group yet.",
     "Ein Anteil ohne Vergleich ist immer 100 % und sagt nichts. Unten lässt sich ein Wettbewerber hinzufügen.":
         "A share with nothing to compare against is always 100% and says nothing. "
@@ -713,7 +699,6 @@ _EN: dict[str, str] = {
     "Vorschlag aus den Unterlagen — noch nicht gespeichert":
         "Proposal from the documents — not saved yet",
     "Übernehmen": "Apply",
-    "Verwerfen": "Discard",
     "Quellen": "Sources",
     "Zeichen": "characters",
     "Vorschlag erzeugen": "Propose a guide",
@@ -723,7 +708,6 @@ _EN: dict[str, str] = {
     "PDF, TXT oder Markdown · höchstens": "PDF, TXT or Markdown · at most",
     "Gespeichert wird der extrahierte Text, nicht die Datei.":
         "The extracted text is stored, not the file.",
-    "Speichern": "Save",
     "Wirkt auf": "Feeds into",
     "Kurz halten: der Guide wird jedem erzeugten Text vorangestellt.":
         "Keep it short: the guide precedes every generated text.",
@@ -751,8 +735,6 @@ _EN: dict[str, str] = {
         "Coverage from the client's subject area — items that do not name them. "
         "This is the material the openings are drafted from, and it shows who "
         "writes about the subject.",
-    "Letzte": "Last",
-    "in": "in",
     "Das Themen-Radar hat in diesem Zeitraum nichts gefunden.":
         "The topic radar found nothing in this period.",
     "Die hinterlegten Themen sind womöglich zu eng gefasst — zwei bis drei "
