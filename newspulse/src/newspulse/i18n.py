@@ -771,6 +771,9 @@ _EN: dict[str, str] = {
     "Verwerfen heißt: Dieser Widerspruch wird beim nächsten Abgleich nicht erneut gemeldet.":
         "Discarding means this contradiction is not reported again at the next "
         "check.",
+    "Diese Vorschläge gab es nicht mehr — der Abgleich hatte sie inzwischen ersetzt. Nichts wurde geändert; unten steht der aktuelle Stand.":
+        "Those proposals were already gone; the check had replaced them in the "
+        "meantime. Nothing was changed, and what you see below is current.",
     "bisher nicht gefüllt": "previously empty",
     "Ihre Angabe": "Your entry",
     # The profile's own field names. Every review row is labelled with one, and

@@ -109,6 +109,16 @@
   </p>
 {% endif %}
 
+{% if stale_click %}
+  {# The click named rows the sweep had already replaced, so nothing happened.
+     That is the promise working — a finding nobody has read is never swept up by
+     a button drawn before it existed — but silence reads as a broken button, and
+     a reader who is not told re-clicks it. What he is looking at now is current. #}
+  <div class="notice notice--error">
+    {{ t("Diese Vorschläge gab es nicht mehr — der Abgleich hatte sie inzwischen ersetzt. Nichts wurde geändert; unten steht der aktuelle Stand.") }}
+  </div>
+{% endif %}
+
 <div id="profilebody">
 {% if proposals %}
   {# What changed since the last look: one row per field, each carrying the value

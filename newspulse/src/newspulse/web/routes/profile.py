@@ -22,6 +22,22 @@ router = APIRouter()
 _log = logging.getLogger(__name__)
 _SEE_OTHER = 303
 
+# Said back to a click that landed on nothing. The review buttons carry row ids,
+# and the 06:10 sweep replaces rows: a tab left open overnight posts ids that no
+# longer exist, which is right — nothing it never showed gets swept up — but
+# redirecting in silence leaves the reader watching a button do nothing and
+# clicking it again. A flag in the query string rather than a session: it
+# describes the redirect it rode in on and must not survive the next reload.
+_STALE_FLAG = "veraltet"
+
+
+def _back(client_id: int, *, acted: bool) -> RedirectResponse:
+    """Back to the profile page, saying so when the click reached no rows."""
+    query = "" if acted else f"?{_STALE_FLAG}=1"
+    return RedirectResponse(
+        f"/client/{client_id}/profil{query}", status_code=_SEE_OTHER
+    )
+
 # One research run at a time, process-wide: it is a model call with a web search
 # behind it, and a second click while one is running would spend another.
 _researching = threading.Lock()
@@ -127,6 +143,11 @@ def profile_view(
             "checked": profiles.checked(
                 client.profile_checked_at, now=dt.datetime.now(dt.UTC)
             ),
+            # The last click found none of the rows it named. The sweep had
+            # replaced them, which is the rule working — nothing the reader never
+            # saw was touched — but a button that appears to do nothing teaches
+            # the reader that the page is broken.
+            "stale_click": bool(request.query_params.get(_STALE_FLAG)),
             # Compared against, never printed: the page says "Ihre Angabe" where
             # the column says "mensch". Passed rather than written into the
             # template so the authority level has one definition.
@@ -253,7 +274,7 @@ def accept_proposals(
             filled_by=profiles.BY_HAND,
         )
     profile_refresh.clear(session, client_id, [p.id for p in taken])
-    return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
+    return _back(client_id, acted=bool(taken) or not pid)
 
 
 @router.post("/client/{client_id}/profil/discard")
@@ -279,4 +300,4 @@ def discard_proposals(
         session, client_id, pid, now=dt.datetime.now(dt.UTC)
     )
     _log.info("profile proposals for client %s: %d discarded", client_id, refused)
-    return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
+    return _back(client_id, acted=bool(refused) or not pid)
