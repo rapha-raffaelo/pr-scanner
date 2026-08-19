@@ -414,6 +414,9 @@ _EN: dict[str, str] = {
     # order, and "senden" alone is generic enough to be reused later for a
     # different verb and pick up the wrong translation.
     "lesen und senden": "read and send",
+    #: What the same strip says on a connection that was never granted the send
+    #: permission — every mailbox connected before DEC-4's send path.
+    "nur lesen": "read only",
     "Diese Variante ändert die Grundannahme.":
         "This variant changes the founding assumption.",
     "Bisher gilt: keine Engine verschickt etwas an einen Journalisten. Mit Sendrecht verlässt ein Text das Haus, weil in RauteOS ein Knopf gedrückt wurde, nicht weil jemand in seinem eigenen Postfach auf Senden geht. Der Unterschied ist klein am Bildschirm und groß, wenn eine Nachricht falsch war.":

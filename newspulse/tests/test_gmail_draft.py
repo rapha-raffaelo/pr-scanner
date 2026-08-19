@@ -111,6 +111,10 @@ class FakeGmail:
     #: Set to a message to make the next send fail the way an unreachable Google
     #: would, leaving the composed draft behind.
     send_fails: str = ""
+    #: The worse failure: the send *happens* and the answer never arrives. The
+    #: draft is gone, the letter is in the journalist's inbox, and this side
+    #: knows neither — which is the state ``sent_in_thread`` exists for.
+    lose_send_answer: bool = False
 
     def __call__(
         self,
@@ -131,6 +135,8 @@ class FakeGmail:
             return self._compose(_DRAFT_ID, json_body or {})
         if "/drafts/" in url:
             return self._compose(url.rsplit("/", 1)[-1], json_body or {})
+        if "/messages/" in url:
+            return self._message(url)
         if "/threads/" in url:
             return self._thread(url)
         raise AssertionError(f"unexpected endpoint {url}")
@@ -150,8 +156,18 @@ class FakeGmail:
             raise gmail_link.GmailError(self.send_fails)
         raw = self.drafts.pop(body["id"])
         self.threads.setdefault(_THREAD_ID, []).append(raw)
+        if self.lose_send_answer:
+            raise gmail_link.GmailError("Google antwortete nicht mehr: test")
+        # What the real API answers: a *minimal* Message. No internalDate — the
+        # send date has to be read back off the message itself, and a fake that
+        # invented one here would let a test pass on behaviour Gmail never shows.
+        return {"id": _MESSAGE_ID, "threadId": _THREAD_ID, "labelIds": ["SENT"]}
+
+    def _message(self, url: str) -> dict[str, Any]:
+        """``messages.get?format=minimal`` — the ids, the labels, the moment."""
+        message_id = url.rsplit("/", 1)[-1].split("?")[0]
         return {
-            "id": _MESSAGE_ID,
+            "id": message_id,
             "threadId": _THREAD_ID,
             "labelIds": ["SENT"],
             "internalDate": str(int(_SENT_AT.timestamp() * 1000)),
@@ -159,12 +175,16 @@ class FakeGmail:
 
     def _thread(self, url: str) -> dict[str, Any]:
         thread_id = url.rsplit("/", 1)[-1].split("?")[0]
-        return {
-            "id": thread_id,
-            "messages": [
-                _as_gmail_message(raw) for raw in self.threads.get(thread_id, [])
-            ],
-        }
+        messages = [_as_gmail_message(raw) for raw in self.threads.get(thread_id, [])]
+        if thread_id == _THREAD_ID:
+            # A draft lives in its own thread too, and Gmail labels it DRAFT.
+            # Modelled because the difference is the whole question on a retry:
+            # a draft in the thread means the letter did not go out.
+            messages += [
+                _as_gmail_message(raw, labels=("DRAFT",))
+                for raw in self.drafts.values()
+            ]
+        return {"id": thread_id, "messages": messages}
 
     # -- what a test asks it afterwards ------------------------------------------
 
@@ -180,7 +200,7 @@ def _decode(raw: str) -> bytes:
     return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
 
 
-def _as_gmail_message(raw: str) -> dict[str, Any]:
+def _as_gmail_message(raw: str, labels: tuple[str, ...] = ("SENT",)) -> dict[str, Any]:
     """One stored RFC 5322 message in the shape ``threads.get?format=full`` returns.
 
     Gmail decodes the transfer encoding for you and hands the body back as
@@ -192,7 +212,7 @@ def _as_gmail_message(raw: str) -> dict[str, Any]:
     return {
         "id": _MESSAGE_ID,
         "threadId": _THREAD_ID,
-        "labelIds": ["SENT"],
+        "labelIds": list(labels),
         "internalDate": str(int(_SENT_AT.timestamp() * 1000)),
         "payload": {
             "mimeType": "text/plain",
@@ -229,6 +249,28 @@ def mailbox(volume):
                 dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
             ).isoformat(),
             "scopes": list(gmail_link.SCOPES),
+            "email": _MAILBOX,
+            "connected_at": dt.datetime.now(dt.UTC).isoformat(),
+            "lost": "",
+        }
+    )
+    return volume
+
+
+@pytest.fixture
+def readonly_mailbox(volume):
+    """A mailbox connected without the permission to compose and send.
+
+    Every connection made before DEC-4's send path is in exactly this state:
+    Google fixes the granted scopes at consent time and no later request widens
+    them, so the card has to notice rather than offer a button that 403s.
+    """
+    gmail_link._write(
+        {
+            "refresh_token": _REFRESH,
+            "access_token": _ACCESS,
+            "expires_at": (dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)).isoformat(),
+            "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
             "email": _MAILBOX,
             "connected_at": dt.datetime.now(dt.UTC).isoformat(),
             "lost": "",
@@ -342,6 +384,18 @@ def test_the_subject_and_body_survive_the_round_trip_through_gmail(mailbox, gmai
     assert back.body == _BODY
 
 
+def test_a_header_with_a_newline_is_refused_as_a_gmail_error(mailbox):
+    """:mod:`email` raises ValueError on a CR or LF in a header, and the subject
+    is model-written text. Refused as the one exception type the route handles,
+    so a stray newline is a sentence on the card rather than a 500 in the second
+    after "Ja, senden" was pressed."""
+    with pytest.raises(gmail_link.GmailError):
+        gmail_link.build_message(_ADDRESS, "Netzentgelte\nBcc: fremd@example", _BODY)
+
+    with pytest.raises(gmail_link.GmailError):
+        gmail_link.build_message("m.kuehn@x.example\nBcc: fremd@example", _SUBJECT, _BODY)
+
+
 def test_the_recipient_is_the_address_it_was_given(mailbox, gmail):
     gmail_link.create_draft(_ADDRESS, _SUBJECT, _BODY)
 
@@ -382,10 +436,49 @@ def test_a_second_compose_updates_the_draft_instead_of_making_another(mailbox, g
     assert gmail.calls[-1].url.endswith(f"/drafts/{_DRAFT_ID}")
 
 
-def test_send_reports_gmails_own_send_date(mailbox, gmail):
+def test_send_reports_gmails_own_send_date_read_off_the_message(mailbox, gmail):
+    """Google's answer to a send is a minimal Message and carries no date, so the
+    moment is read back off the message rather than taken from this clock —
+    which would say when the row was written, not when the letter left."""
     draft = gmail_link.create_draft(_ADDRESS, _SUBJECT, _BODY)
 
-    assert gmail_link.send(draft.draft_id).sent_at == _SENT_AT
+    sent = gmail_link.send(draft.draft_id)
+
+    assert sent.sent_at == _SENT_AT
+    assert any(f"/messages/{_MESSAGE_ID}?format=minimal" in url for url in gmail.urls())
+
+
+def test_a_send_date_gmail_will_not_state_is_left_open_rather_than_invented(
+    mailbox, gmail, monkeypatch
+):
+    """The read that follows the send must never fail the send: the letter has
+    already gone. A caller that gets no moment falls back to its own clock."""
+    draft = gmail_link.create_draft(_ADDRESS, _SUBJECT, _BODY)
+    monkeypatch.setattr(
+        gmail_link, "_stamped", lambda *a, **k: None
+    )
+
+    assert gmail_link.send(draft.draft_id).sent_at is None
+
+
+def test_a_sent_message_is_found_in_the_thread_and_a_draft_is_not(mailbox, gmail):
+    """What a retry asks after a send whose answer was lost. A composed draft
+    sits in the very same thread carrying Gmail's DRAFT label, and reading that
+    as a sent letter would claim an act nobody performed."""
+    assert gmail_link.sent_in_thread(_THREAD_ID) is None
+
+    gmail_link.create_draft(_ADDRESS, _SUBJECT, _BODY)
+    assert gmail_link.sent_in_thread(_THREAD_ID) is None
+
+    gmail_link.send(_DRAFT_ID)
+
+    gone = gmail_link.sent_in_thread(_THREAD_ID)
+    assert gone is not None
+    assert (gone.message_id, gone.thread_id, gone.sent_at) == (
+        _MESSAGE_ID,
+        _THREAD_ID,
+        _SENT_AT,
+    )
 
 
 def test_a_thread_is_asked_for_by_its_id_and_by_nothing_else(mailbox, gmail):
@@ -457,21 +550,27 @@ def test_the_release_is_stamped_at_gmails_own_send_date(mailbox, gmail, web, ses
     assert row.released_by == outreach.DEFAULT_RELEASED_BY
 
 
-def test_a_letter_released_by_hand_keeps_its_own_release_time(
+def test_a_letter_released_by_hand_is_not_sent_again_through_gmail(
     mailbox, gmail, web, session
 ):
-    """The first release stands. A human took responsibility at that moment, and
-    a later push must not rewrite when that was."""
+    """OUT-01's release button says "Freigegeben und verschickt": the consultant
+    sent that letter from their own client. Pushing it through Gmail as well
+    would put a second copy of the same pitch in the journalist's inbox — the one
+    irreversible harm the two clicks exist to prevent. The card offers no send on
+    a released letter; the route is what enforces it for a tab opened before the
+    release happened elsewhere. The hand release stands untouched."""
     row = _letter(session)
     outreach.release(session, row, released_by="Lucas")
     by_hand = row.released_at
 
-    _push(web, row)
+    response = _push(web, row)
 
+    assert response.status_code == 400
+    assert gmail.calls == []
     session.refresh(row)
     assert row.released_at == by_hand
     assert row.released_by == "Lucas"
-    assert row.gmail_message_id == _MESSAGE_ID
+    assert row.gmail_message_id == ""
 
 
 def test_the_recipient_is_resolved_to_the_contact_book_entry(
@@ -521,6 +620,32 @@ def test_a_failed_send_keeps_the_draft_so_the_retry_updates_it(
     assert gmail.calls[-2].method == "PUT"  # the retry updated it
 
 
+def test_a_send_whose_answer_was_lost_is_recorded_rather_than_sent_a_second_time(
+    mailbox, gmail, web, session
+):
+    """The hole the two-step cannot close on its own: Gmail sent the letter and
+    the answer never came back, so this side has a draft id for a draft that no
+    longer exists. Updating it would 404 forever and the letter would never be
+    recorded as released — while the journalist has had it since Tuesday. The
+    retry asks the thread instead."""
+    row = _letter(session)
+    gmail.lose_send_answer = True
+    _push(web, row)
+    session.refresh(row)
+    assert row.gmail_message_id == ""  # nothing was recorded
+    assert row.released_at is None
+
+    gmail.lose_send_answer = False
+    response = _push(web, row)
+
+    assert response.status_code == 303
+    session.refresh(row)
+    assert row.gmail_message_id == _MESSAGE_ID
+    assert row.released_at == _SENT_AT
+    # And nothing was sent twice: one send call in total, from the first push.
+    assert len([c for c in gmail.calls if c.url.endswith("/drafts/send")]) == 1
+
+
 # --- The address this tool refuses to invent ------------------------------------
 
 
@@ -567,6 +692,20 @@ def test_with_no_mailbox_connected_the_route_sends_nothing(volume, gmail, web, s
     assert gmail.calls == []
 
 
+def test_a_mailbox_connected_without_the_send_permission_is_refused(
+    readonly_mailbox, gmail, web, session
+):
+    """Google fixes the granted scopes at consent time, so a mailbox connected
+    before DEC-4's send path can read and nothing else. Refused here rather than
+    by a 403 from Google after the confirmation was clicked."""
+    row = _letter(session)
+
+    assert _push(web, row).status_code == 400
+    assert gmail.calls == []
+    session.refresh(row)
+    assert row.gmail_message_id == ""
+
+
 def test_a_post_from_another_site_is_refused(mailbox, gmail, web, session):
     row = _letter(session)
 
@@ -596,6 +735,9 @@ def test_the_card_offers_the_two_click_send_and_names_the_address(
 
     assert "Freigeben und senden" in body
     assert "Ja, senden" in body
+    # Both of the locked mock's choices, and the send half of it is a plain form
+    # rather than a script: an irreversible act must not need JavaScript.
+    assert "Abbrechen" in body
     assert f"/client/{row.client_id}/outreach/{row.id}/gmail-draft" in body
     # The confirmation names where it is about to go.
     assert _ADDRESS in body
@@ -621,9 +763,51 @@ def test_a_sent_letter_links_into_its_thread_and_loses_the_kopieren_button(
     body = _card(web, row)
 
     assert "Verlauf in Gmail öffnen" in body
-    assert gmail_link.thread_url(_THREAD_ID) in body
+    # Addressed by the connected mailbox, not by account index 0: a browser
+    # signed into a personal account as well has this one at /u/1/, where an
+    # indexed link opens the right thread id in the wrong mailbox.
+    assert gmail_link.thread_url(_THREAD_ID, account=_MAILBOX) in body
+    assert f"/mail/u/{_MAILBOX}/" in body
     assert f'data-copy-from="letter-text-{row.id}"' not in body
     assert "Von RauteOS gesendet am" in body
+
+
+def test_a_composed_but_unsent_letter_keeps_the_release_form(
+    mailbox, gmail, web, session, monkeypatch
+):
+    """A draft Gmail accepted and never sent has a thread and no release. If the
+    mailbox then goes away, the card must not offer a link into a conversation
+    nobody received — it has to fall back to OUT-01's "Freigegeben und
+    verschickt", which is then the only way left to record what happened."""
+    row = _letter(session)
+    gmail.send_fails = "Google ist nicht erreichbar: test"
+    _push(web, row)
+    session.refresh(row)
+    assert row.gmail_thread_id == _THREAD_ID and not row.sent_through_gmail
+
+    monkeypatch.setattr(gmail_link, "connected", lambda: None)
+    body = _card(web, row)
+
+    assert "Verlauf in Gmail öffnen" not in body
+    assert f"/client/{row.client_id}/outreach/{row.id}/release" in body
+
+
+def test_a_mailbox_without_the_send_permission_shows_the_way_to_fix_it(
+    readonly_mailbox, gmail, web, session
+):
+    """Not a fact about this recipient, so no contact entry would cure it: the
+    card names the mailbox's missing permission and links to where it is
+    regranted."""
+    row = _letter(session)
+
+    body = _card(web, row)
+
+    assert "Dieses Postfach ist nur zum Lesen verbunden." in body
+    assert "Postfach neu verbinden" in body
+    assert "disabled" in body
+    assert f"/client/{row.client_id}/outreach/{row.id}/gmail-draft" not in body
+    # And the hand release is still there, which is the whole path that works.
+    assert f"/client/{row.client_id}/outreach/{row.id}/release" in body
 
 
 def test_a_letter_with_no_address_shows_the_action_disabled_with_the_reason(

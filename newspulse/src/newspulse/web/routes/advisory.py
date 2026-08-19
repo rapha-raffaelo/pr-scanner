@@ -592,11 +592,13 @@ _last_gmail_error: dict[int, str] = {}
 def _refuse_unsendable(session: Session, row: Outreach) -> Recipient:
     """Every reason this letter must not go out through Gmail, in one place.
 
-    All four are 400 and all four are checked before anything is composed. The
-    card renders none of them as an available action, so a request that hits one
-    did not come from the card — it came from a tab that was opened before the
-    letter's state changed, which is exactly the case the route has to catch
-    rather than trust.
+    Five reasons, all of them a 400 and all of them checked before anything is
+    composed: no mailbox, a mailbox without the send permission, a letter this
+    tool already sent, a letter a person already released, and a recipient with
+    no address in the contact book. The card renders none of them as an
+    available action, so a request that hits one did not come from the card — it
+    came from a tab opened before the letter's state changed, which is exactly
+    the case the route has to catch rather than trust.
 
     The release check is the one that matters most. OUT-01's button says
     "Freigegeben und verschickt": a hand release *is* a send, performed by the

@@ -84,18 +84,24 @@
   <div class="mailbar">
     <span class="mailbar__dot"></span>
     {{ t("Postfach verbunden") }}: <b>{{ mailbox.email }}</b>
-    {# One string, not two glued fragments: "lesen und" + "senden" translates
-       into a pair of English words that only happen to line up in this order. #}
-    <span class="dot">·</span> <b>{{ t("lesen und senden") }}</b>
+    {# What this connection may actually do, read off the granted scopes rather
+       than off the fact that there is one. One string and not two glued
+       fragments: "lesen und" + "senden" translates into a pair of English words
+       that only happen to line up in this order. #}
+    <span class="dot">·</span> <b>{% if mailbox.may_send %}{{ t("lesen und senden") }}{% else %}{{ t("nur lesen") }}{% endif %}</b>
     <span class="mailbar__r"><a href="/settings#gmail">{{ t("Einstellungen") }}</a></span>
   </div>
   {# Not decoration. DEC-4 option C is the one decision in this product that
      contradicts its own founding sentence, and the screen where it is exercised
-     is where that has to be readable. #}
-  <div class="warnband">
-    <strong>{{ t("Diese Variante ändert die Grundannahme.") }}</strong>
-    {{ t("Bisher gilt: keine Engine verschickt etwas an einen Journalisten. Mit Sendrecht verlässt ein Text das Haus, weil in RauteOS ein Knopf gedrückt wurde, nicht weil jemand in seinem eigenen Postfach auf Senden geht. Der Unterschied ist klein am Bildschirm und groß, wenn eine Nachricht falsch war.") }}
-  </div>
+     is where that has to be readable — but only where it is *exercised*: on a
+     mailbox that was never granted the send permission, nothing leaves the
+     house and the warning would be describing a power this build does not have. #}
+  {% if mailbox.may_send %}
+    <div class="warnband">
+      <strong>{{ t("Diese Variante ändert die Grundannahme.") }}</strong>
+      {{ t("Bisher gilt: keine Engine verschickt etwas an einen Journalisten. Mit Sendrecht verlässt ein Text das Haus, weil in RauteOS ein Knopf gedrückt wurde, nicht weil jemand in seinem eigenen Postfach auf Senden geht. Der Unterschied ist klein am Bildschirm und groß, wenn eine Nachricht falsch war.") }}
+    </div>
+  {% endif %}
 {% endif %}
 {% if gmail_error %}
   <p class="sect__empty sect__refusal"><strong>{{ t("Nicht verschickt.") }}</strong> {{ gmail_error }}</p>

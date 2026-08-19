@@ -52,11 +52,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from importlib import resources
 from string import Template
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from . import config, contacts, gemini, gmail_link, guide, prose
+from . import config, contacts, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import (
     SILENT_AFTER_DAYS,
@@ -70,6 +71,13 @@ from .models import (
 )
 from .pitch import PitchTarget
 from .schemas import MessageReview, PersonalMessage
+
+if TYPE_CHECKING:
+    # Only for the two signatures below. The ledger records *that* a letter went
+    # out and when; how it was reached is the transport's business, and importing
+    # the Gmail client at runtime to write a type would make this module depend
+    # on it for nothing.
+    from . import gmail_link
 
 _log = logging.getLogger(__name__)
 
