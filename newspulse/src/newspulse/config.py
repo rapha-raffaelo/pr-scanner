@@ -66,6 +66,27 @@ _ENV_AUTH_PASSWORD = "NEWSPULSE_AUTH_PASSWORD"
 _ENV_BASE_URL = "NEWSPULSE_BASE_URL"
 _ENV_GEMINI_API_KEY = "NEWSPULSE_GEMINI_API_KEY"
 _ENV_GEMINI_MODEL = "NEWSPULSE_GEMINI_MODEL"
+_ENV_GMAIL_CLIENT_ID = "NEWSPULSE_GMAIL_CLIENT_ID"
+_ENV_GMAIL_CLIENT_SECRET = "NEWSPULSE_GMAIL_CLIENT_SECRET"
+
+# The OAuth client of the Google Cloud project the mailbox is connected through
+# (DEC-5: an *Internal* app inside RAUTE's own Workspace, so no Google
+# verification and no annual security assessment). Empty means the integration is
+# not offered at all — Settings says so rather than rendering a button that would
+# fail at Google with invalid_client.
+#
+# Both halves come from the environment, exactly like GEMINI_API_KEY. The refresh
+# token cannot: it is obtained at runtime, so it goes to a 0600 file beside the
+# database (see newspulse.gmail_link) and never into a table, where a database
+# copy or the Excel export would carry it out of the machine.
+_DEFAULT_GMAIL_CLIENT_ID = ""
+_DEFAULT_GMAIL_CLIENT_SECRET = ""
+
+# Where Google sends the consent result. Derived from BASE_URL rather than
+# configured on its own: the value must match an authorised redirect URI in the
+# Cloud console *verbatim*, and two independently-spelled copies of the same
+# address is how a working client id starts answering redirect_uri_mismatch.
+GMAIL_CALLBACK_PATH = "/settings/gmail/callback"
 
 # Gemini is the *fallback* provider, used only when the Claude subscription
 # reports that its usage limit is exhausted (see newspulse.quota). It is off
@@ -263,6 +284,12 @@ AUTH_PASSWORD: str = os.environ.get(_ENV_AUTH_PASSWORD, _DEFAULT_AUTH_PASSWORD)
 BASE_URL: str = os.environ.get(_ENV_BASE_URL, _DEFAULT_BASE_URL).rstrip("/")
 GEMINI_API_KEY: str = os.environ.get(_ENV_GEMINI_API_KEY, _DEFAULT_GEMINI_API_KEY).strip()
 GEMINI_MODEL: str = os.environ.get(_ENV_GEMINI_MODEL, _DEFAULT_GEMINI_MODEL).strip()
+GMAIL_CLIENT_ID: str = os.environ.get(
+    _ENV_GMAIL_CLIENT_ID, _DEFAULT_GMAIL_CLIENT_ID
+).strip()
+GMAIL_CLIENT_SECRET: str = os.environ.get(
+    _ENV_GMAIL_CLIENT_SECRET, _DEFAULT_GMAIL_CLIENT_SECRET
+).strip()
 
 
 def resolve_local_zone() -> dt.tzinfo:
@@ -408,6 +435,37 @@ def review_model() -> str:
 def review_configured() -> bool:
     """Whether a second model can read a letter at all."""
     return bool(review_api_key())
+
+
+def gmail_client_id() -> str:
+    """The OAuth client id, read live for the same reason as the Gemini key."""
+    return os.environ.get(_ENV_GMAIL_CLIENT_ID, GMAIL_CLIENT_ID).strip()
+
+
+def gmail_client_secret() -> str:
+    """The OAuth client secret. Never rendered, never logged."""
+    return os.environ.get(_ENV_GMAIL_CLIENT_SECRET, GMAIL_CLIENT_SECRET).strip()
+
+
+def gmail_configured() -> bool:
+    """Whether a mailbox can be connected at all.
+
+    Both halves are required: an id without a secret gets through the consent
+    screen and then fails at the token exchange, which is a worse failure than
+    never offering the button, because it happens after the operator has already
+    granted access to their mailbox.
+    """
+    return bool(gmail_client_id() and gmail_client_secret())
+
+
+def gmail_redirect_uri() -> str:
+    """The address Google returns consent to — :func:`base_url` plus the callback.
+
+    Whatever this returns has to be registered in the Cloud console character for
+    character, which is why it is derived rather than configured: a deployment
+    that sets NEWSPULSE_BASE_URL already said where it lives.
+    """
+    return f"{base_url()}{GMAIL_CALLBACK_PATH}"
 
 
 def base_url() -> str:
