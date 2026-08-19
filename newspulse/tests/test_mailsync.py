@@ -13,7 +13,8 @@ Four properties carry the weight here, and each is asserted rather than inferred
   Veröffentlicht, and an outcome a person already recorded survives untouched.
 * **A failed read never costs the sweep.** Google unreachable and access revoked
   are both exercised: they log at ERROR, change no stored row, and leave the
-  daily run green.
+  daily run standing. Standing, not silent — the run says ``partial`` rather than
+  claiming a clean morning it did not have.
 
 Nothing here reaches Google: :mod:`newspulse.gmail_link` has one network boundary
 and :class:`FakeGmail` replaces it, answering with the payloads the real API
@@ -39,12 +40,14 @@ from sqlalchemy.pool import StaticPool
 from newspulse import config, contacts, gmail_link, job, mailsync, outreach
 from newspulse.ingest import FeedItem
 from newspulse.models import (
+    OUTCOME_BY_MAILBOX,
     Angle,
     Base,
     Client,
     Outreach,
     OutreachReply,
     OutreachState,
+    Run,
     RunStatus,
 )
 from newspulse.web.app import create_app, get_db
@@ -332,6 +335,21 @@ class _NoAnalyzer:
         raise AssertionError("the analyzer was called on an empty sweep")
 
 
+@pytest.fixture
+def quiet_post_run(monkeypatch):
+    """The drafting and theme work that follows a sweep, stubbed out.
+
+    Every test here is about the mailbox. Left alone, the steps after the run row
+    reach the real ``claude -p`` for a mandate whose radar is empty — the sweep
+    swallows the failure, so the assertions would still pass while the suite
+    spends a minute in a subprocess.
+    """
+    from newspulse import angles, themes
+
+    monkeypatch.setattr(angles, "suggest", lambda *args, **kwargs: None)
+    monkeypatch.setattr(themes, "settle", lambda *args, **kwargs: [])
+
+
 def _no_feed(*_args, **_kwargs) -> list[FeedItem]:
     """A fetch that returns nothing, so the sweep is only its wiring."""
     return []
@@ -356,6 +374,45 @@ def test_only_the_threads_of_released_letters_are_fetched(session, mailbox, gmai
     mailsync.sync(session, fetch=gmail, now=_NOW)
 
     assert gmail.threads_asked_for() == [released.gmail_thread_id]
+
+
+def test_a_letter_released_before_the_window_is_not_asked_about(
+    session, mailbox, gmail, caplog
+):
+    """Every qualifying letter is one request every morning, forever. Without a
+    window the daily cost grows with every letter the agency has ever sent, and a
+    conversation that ended in March is re-fetched for the rest of time."""
+    recent = _letter(session)
+    _letter(
+        session,
+        thread_id="18a-letztes-jahr",
+        released_at=_NOW - mailsync._REPLY_WINDOW - dt.timedelta(days=1),
+        mandate="Vermont Robotics",
+    )
+
+    with caplog.at_level(logging.INFO, logger="newspulse.mailsync"):
+        report = mailsync.sync(session, fetch=gmail, now=_NOW)
+
+    assert gmail.threads_asked_for() == [recent.gmail_thread_id]
+    # Counted and said out loud: a sync that silently reads less than it looks
+    # like is indistinguishable from a mailbox with nothing in it.
+    assert report.aged_out == 1
+    assert any("past the window" in record.getMessage() for record in caplog.records)
+
+
+def test_a_letter_inside_the_window_is_still_asked_about(session, mailbox, gmail):
+    """The other edge of the same rule. Ninety days rather than thirty because a
+    pitch answered eight weeks later is an ordinary event in trade press."""
+    _letter(
+        session,
+        released_at=_NOW - mailsync._REPLY_WINDOW + dt.timedelta(days=1),
+    )
+    gmail.threads[_THREAD_ID].append(_journalist_reply())
+
+    report = mailsync.sync(session, fetch=gmail, now=_NOW)
+
+    assert report.aged_out == 0
+    assert len(_replies(session)) == 1
 
 
 def test_the_gmail_query_is_the_thread_id_and_nothing_else(session, mailbox, gmail):
@@ -551,6 +608,40 @@ def test_an_outcome_a_person_recorded_survives_and_the_reply_is_still_stored(
     assert len(_replies(session)) == 1
 
 
+def test_the_outcome_the_sync_writes_is_signed_as_the_machines(
+    session, mailbox, gmail
+):
+    """The ledger's first question about any line is who said it. Stored on the
+    row rather than inferred later from state, note and a matching reply time:
+    that inference reads a reply row, and a retention rule deleting one would
+    turn this line back into a sentence a consultant never typed."""
+    row = _letter(session)
+    gmail.threads[_THREAD_ID].append(_journalist_reply())
+
+    mailsync.sync(session, fetch=gmail, now=_NOW)
+
+    session.refresh(row)
+    assert row.outcome_by == OUTCOME_BY_MAILBOX
+    assert row.outcome_from_mailbox
+    # And it survives the reply row being deleted, which is the whole point of
+    # storing it: ``fetched_at`` exists so a retention rule can do exactly this.
+    session.delete(_replies(session)[0])
+    session.commit()
+    session.refresh(row)
+    assert row.outcome_from_mailbox
+
+
+def test_the_outcome_a_person_records_is_signed_as_a_humans(session):
+    """The other half of the same rule, and the reason the field is not a
+    boolean: a hand-typed outcome is signed the way a release is."""
+    row = _letter(session)
+
+    outreach.record_outcome(session, row, OutreachState.ABSAGE, "Telefonisch abgesagt.")
+
+    assert row.outcome_by == outreach.DEFAULT_RELEASED_BY
+    assert not row.outcome_from_mailbox
+
+
 def test_a_later_reply_does_not_move_the_first_ones_timestamp(session, mailbox, gmail):
     """"The first reply moves the letter" means the first: the moment the letter
     stopped being unanswered does not drift forward with every follow-up."""
@@ -672,7 +763,12 @@ def test_a_failing_mail_sync_never_fails_the_daily_sweep(
 ):
     """The guard the story asks for. The day's coverage is already stored by the
     time Google is asked anything, and losing it to an unreadable mailbox would
-    trade the part that worked for the part that did not."""
+    trade the part that worked for the part that did not.
+
+    Partial and never failed: the run stands, every stored row stands, and the
+    post-run work below it still runs. What changes is only that the sweep says
+    so — see the test below.
+    """
 
     def _explode(*args, **kwargs):
         raise RuntimeError("Google ist nicht erreichbar")
@@ -688,12 +784,49 @@ def test_a_failing_mail_sync_never_fails_the_daily_sweep(
             now=lambda: _NOW,
         )
 
-    assert report.status is RunStatus.OK
-    assert report.errors == []
+    assert report.status is not RunStatus.FAILED
     assert any("mail sync failed" in record.message for record in caplog.records)
     # And the session is usable afterwards: a caught exception is not a clean
     # transaction, and everything after this point in the sweep runs on it.
     assert session.scalars(select(Outreach)).all() == []
+
+
+def test_an_unreadable_mailbox_marks_the_run_partial_rather_than_green(
+    session, mailbox, gmail, quiet_post_run
+):
+    """A mailbox nobody can read for a week is a fact about the installation, and
+    a run row saying ``ok`` with an empty error list hides it in a log nobody
+    tails. The sweep is not failed by it — no stored row moves — but it is not
+    clean either, and the row has to say which."""
+    _letter(session)
+    gmail.unreachable = "Google ist nicht erreichbar: timed out"
+
+    report = job.run(
+        session, feeds=[], fetch=_no_feed, analyzer=_NoAnalyzer(), now=lambda: _NOW
+    )
+
+    assert report.status is RunStatus.PARTIAL
+    assert any(_THREAD_ID in error for error in report.errors)
+    stored = session.scalars(select(Run).order_by(Run.id.desc())).first()
+    assert stored.status is RunStatus.PARTIAL
+    assert any(_THREAD_ID in error for error in stored.errors)
+
+
+def test_the_run_stamps_the_copy_it_took_with_its_own_clock(
+    session, mailbox, gmail, quiet_post_run
+):
+    """``fetched_at`` is the one field that answers "when did this tool take a
+    copy of somebody else's mail". A sweep on a frozen clock has to be able to
+    answer it, so the run's clock reaches the sync rather than the wall's."""
+    _letter(session)
+    gmail.threads[_THREAD_ID].append(_journalist_reply())
+
+    job.run(session, feeds=[], fetch=_no_feed, analyzer=_NoAnalyzer(), now=lambda: _NOW)
+
+    (reply,) = _replies(session)
+    assert reply.fetched_at == _NOW
+    # And the receipt time is still Gmail's own, which is a different fact.
+    assert reply.received_at == _REPLY_AT
 
 
 # --- The contact's file ----------------------------------------------------------
@@ -865,6 +998,95 @@ def test_the_timeline_orders_a_reply_between_the_release_and_a_later_outcome(
     assert events[1].at == _REPLY_AT
 
 
+# --- The letter card, on the page the letter was written from --------------------
+
+
+def _seed_card(factory) -> int:
+    """One released letter with a reply filed against it; returns the mandate id."""
+    with factory() as session:
+        row = _letter(session)
+        session.add(
+            OutreachReply(
+                outreach_id=row.id,
+                gmail_message_id=_REPLY_ID,
+                from_name=_JOURNALIST,
+                from_email=_ADDRESS,
+                received_at=_REPLY_AT,
+                body=_REPLY_TEXT,
+                fetched_at=_NOW,
+            )
+        )
+        outreach.record_reply(session, row, at=_REPLY_AT)
+        return row.client_id
+
+
+def test_the_letter_card_shows_the_answer_in_the_journalists_own_words(web, factory):
+    """The locked mock's reply box (features/mocks/gmail-send.html), where the
+    consultant actually reads the letter he sent."""
+    client_id = _seed_card(factory)
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert _REPLY_TEXT in body
+    # In the mock's own box, so the answer reads as somebody else's words rather
+    # than as another paragraph of the letter above it.
+    assert 'class="reply__from"' in body
+    assert "Antwort im selben Verlauf" in body
+
+
+def test_the_cards_trail_does_not_sign_the_syncs_line_with_a_human(web, factory):
+    """The same trap as on the contact's file, on the second page that draws an
+    ``outcome_at``: the trail promises "each one a thing a person did", and the
+    line the mailbox wrote is not one."""
+    client_id = _seed_card(factory)
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "Antwort im Postfach gelesen" in body
+    assert "Ergebnis eingetragen" not in body
+
+
+def test_the_cards_trail_still_says_so_when_a_person_typed_the_outcome(web, factory):
+    """And the consultant's own line keeps the words that say he typed it."""
+    with factory() as session:
+        row = _letter(session)
+        outreach.record_outcome(
+            session, row, OutreachState.VEROEFFENTLICHT, "Stück läuft am Freitag."
+        )
+        client_id = row.client_id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "Ergebnis eingetragen" in body
+    assert "Stück läuft am Freitag." in body
+    assert "Antwort im Postfach gelesen" not in body
+
+
+def test_a_reply_carrying_markup_is_text_on_the_card_too(web, factory):
+    """Nobody at this agency reviewed this text before it was stored, and it is
+    rendered on two pages now."""
+    with factory() as session:
+        row = _letter(session)
+        session.add(
+            OutreachReply(
+                outreach_id=row.id,
+                gmail_message_id=_REPLY_ID,
+                from_name=_JOURNALIST,
+                from_email=_ADDRESS,
+                received_at=_REPLY_AT,
+                body="<img src=x onerror=alert(1)> Danke!",
+                fetched_at=_NOW,
+            )
+        )
+        session.commit()
+        client_id = row.client_id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "<img src=x onerror=alert(1)>" not in body
+    assert "&lt;img src=x onerror=alert(1)&gt; Danke!" in body
+
+
 # --- Nothing outlives the letter it belonged to ----------------------------------
 
 
@@ -935,5 +1157,24 @@ def test_the_migration_creates_the_replies_table(tmp_path, monkeypatch):
         (key,) = inspector.get_foreign_keys("outreach_replies")
         assert key["referred_table"] == "outreach"
         assert key["options"]["ondelete"].upper() == "CASCADE"
+    finally:
+        engine.dispose()
+
+
+def test_the_migration_adds_the_author_of_an_outcome(tmp_path, monkeypatch):
+    """0021. Who recorded an outcome is stored beside when, because a machine can
+    record one now and both pages that draw it have to say which it was."""
+    db_path = tmp_path / "migrated.db"
+    monkeypatch.setattr(config, "DATABASE_PATH", db_path)
+    cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_PROJECT_ROOT / "migrations"))
+
+    command.upgrade(cfg, "head")
+
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    try:
+        columns = {c["name"]: c for c in inspect(engine).get_columns("outreach")}
+        assert "outcome_by" in columns
+        assert columns["outcome_by"]["nullable"] is False
     finally:
         engine.dispose()
