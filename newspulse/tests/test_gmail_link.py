@@ -487,6 +487,20 @@ def test_a_callback_with_no_state_at_all_connects_nothing(volume, web, google):
     assert not gmail_link.token_path().exists()
 
 
+def test_a_hand_crafted_state_is_refused_rather_than_crashing(volume, web, google):
+    """The value comes off the query string, so it can be anything at all —
+    including the non-ASCII that a constant-time compare refuses to take."""
+    web.get("/settings/gmail/start", follow_redirects=False)
+
+    response = web.get(
+        "/settings/gmail/callback?code=auth-code&state=übergabe", follow_redirects=False
+    )
+
+    assert response.status_code == 303
+    assert GmailNotice.STATE.value in response.headers["location"]
+    assert not gmail_link.token_path().exists()
+
+
 def test_a_completed_callback_shows_the_address_and_the_granted_scopes(
     volume, web, google
 ):

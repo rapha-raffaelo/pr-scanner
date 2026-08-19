@@ -1340,6 +1340,18 @@ async def import_commit_route(
 # whatever else it carries.
 
 
+def _state_matches(given: str, expected: str) -> bool:
+    """Whether the callback carries the state this browser was issued.
+
+    Encoded before comparing: ``compare_digest`` raises TypeError on a str with
+    a non-ASCII character, and this value comes straight off the query string —
+    so a crafted callback would be a 500 rather than the refusal it deserves.
+    """
+    if not given or not expected:
+        return False
+    return secrets.compare_digest(given.encode("utf-8"), expected.encode("utf-8"))
+
+
 def _back_to_panel(notice: GmailNotice) -> RedirectResponse:
     """Return to the settings page with one sentence about what just happened."""
     return RedirectResponse(
@@ -1390,7 +1402,7 @@ def gmail_callback_route(
     """
     expected = request.cookies.get(_GMAIL_STATE_COOKIE, "")
     response: Response
-    if not state or not expected or not secrets.compare_digest(state, expected):
+    if not _state_matches(state, expected):
         _log.warning("Gmail callback refused: state did not match")
         response = _back_to_panel(GmailNotice.STATE)
     elif error:
