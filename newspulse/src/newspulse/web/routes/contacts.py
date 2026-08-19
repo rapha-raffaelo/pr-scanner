@@ -31,6 +31,33 @@ router = APIRouter()
 _SEE_OTHER = 303
 
 
+def _one_contact(session: Session, raw: str) -> contacts.Contact | None:
+    """The contact a query parameter points at, or ``None`` for anything else.
+
+    Taken as text and parsed here rather than declared ``int`` on the signature,
+    because FastAPI would answer an unparseable value with a 422 JSON document
+    *before* the handler ran — and this page promises the opposite: a stale,
+    copied or truncated link (``?id=``, ``?id=abc``) lands on the plain book,
+    because there is nothing broken about the page itself.
+    """
+    wanted = (raw or "").strip()
+    return session.get(contacts.Contact, int(wanted)) if wanted.isdigit() else None
+
+
+def _local_target(redirect_to: str, fallback: str = "/contacts") -> str:
+    """A redirect target that cannot leave this site.
+
+    One leading slash, no second slash anywhere — and no backslash either, which
+    is the part a plain ``//`` check misses: browsers normalise the separator, so
+    ``/\\evil.example`` is protocol-relative by the time it is followed and takes
+    the reader off-site. The two characters have to be treated as one.
+    """
+    candidate = (redirect_to or "").strip()
+    if not candidate.startswith("/") or "//" in candidate or "\\" in candidate:
+        return fallback
+    return candidate
+
+
 def _days_since_last(history: list[outreach.HistoryEntry]) -> int | None:
     """Calendar days since the newest released letter, or ``None`` with none.
 
@@ -97,10 +124,10 @@ def contact_book(
     search: str = "",
     name: str = "",
     outlet: str = "",
-    edit: int | None = None,
+    edit: str = "",
     # The URL keeps ``?id=`` — the alias — while the local name does not shadow
     # the builtin ``id`` for the rest of the function.
-    contact: int | None = Query(None, alias="id"),
+    contact: str = Query("", alias="id"),
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """The book, the form for one entry, and the file of one journalist.
@@ -110,9 +137,12 @@ def contact_book(
     feed knew, so recording a new contact is one field and a save.
 
     ``?id=`` selects a contact and opens their file: every released letter across
-    all mandates, newest first, with the four tallies over it. An id that matches
-    nothing — a deleted contact, a stale link — renders the plain book rather
-    than an error, because there is nothing broken about the page itself.
+    all mandates, newest first, with the four tallies over it. It wins over
+    ``?name=``, so a recipient clicked on the impulse page lands on the
+    relationship file rather than on a form. An id that matches nothing — a
+    deleted contact, a stale or truncated link, a value that is not a number at
+    all — renders the plain book rather than an error, because there is nothing
+    broken about the page itself (:func:`_one_contact`).
 
     The roster filter arrives as ``?q=`` — what the search box submits — and is
     also read from ``?search=``, the name the book itself uses for the term
@@ -122,8 +152,12 @@ def contact_book(
     """
     term = q or search
     existing = contacts.find(session, name, outlet) if name else None
-    editing = session.get(contacts.Contact, edit) if edit else existing
-    selected = session.get(contacts.Contact, contact) if contact else None
+    selected = _one_contact(session, contact)
+    # ``?edit=`` is the explicit request for the form; a bare ``?name=`` still
+    # opens one (that is the click the pitch list's "Kontakt hinterlegen" makes),
+    # but never over an open file — a reader who asked for a journalist by id
+    # asked for the relationship file.
+    editing = _one_contact(session, edit) or (existing if selected is None else None)
 
     return templates.TemplateResponse(
         request,
@@ -154,12 +188,13 @@ def save_contact(
     redirect_to: str = Form(""),
     session: Session = Depends(get_db),
 ) -> Response:
-    """Create or update one entry, then go back where the reader came from."""
-    back = (
-        redirect_to
-        if redirect_to.startswith("/") and "//" not in redirect_to
-        else "/contacts"
-    )
+    """Create or update one entry, then go back where the reader came from.
+
+    "Where the reader came from" is now two bits of state — the open file and the
+    roster filter — and the form carries both, because since the split saving an
+    edit otherwise closed the very file being edited.
+    """
+    back = _local_target(redirect_to)
     try:
         contacts.save(
             session,
@@ -187,7 +222,15 @@ def save_contact(
 
 @router.post("/contacts/{contact_id}/delete")
 def delete_contact(
-    contact_id: int, session: Session = Depends(get_db)
+    contact_id: int,
+    redirect_to: str = Form(""),
+    session: Session = Depends(get_db),
 ) -> RedirectResponse:
+    """Remove one entry and return to the book the reader was looking at.
+
+    The roster filter travels back; the deleted contact's own ``?id=``
+    deliberately does not, because there is no file left to open. The letters
+    themselves survive — the link is the book's, the record is the letter's.
+    """
     contacts.delete(session, contact_id)
-    return RedirectResponse("/contacts", status_code=_SEE_OTHER)
+    return RedirectResponse(_local_target(redirect_to), status_code=_SEE_OTHER)

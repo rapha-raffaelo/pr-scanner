@@ -514,6 +514,59 @@ def test_an_id_that_matches_nothing_renders_the_book_rather_than_an_error(web, f
     assert "Marlene Kühn" in resp.text
 
 
+def test_an_unparseable_id_renders_the_book_too(web, factory):
+    """A truncated or copied link is not an error page.
+
+    Declared as ``int`` the parameter was rejected by the framework before the
+    route ran, so ``/contacts?id=`` — one character short of a working link —
+    answered with a raw 422 JSON document instead of the book.
+    """
+    _seed_page(factory)
+
+    for stale in ("", "abc", "3.5", " "):
+        resp = web.get(f"/contacts?id={stale}")
+        assert resp.status_code == 200, (stale, resp.status_code)
+        assert "Kontaktbuch" in resp.text, stale
+
+
+def test_saving_an_edit_returns_to_the_open_file(web, factory):
+    """The form carries both bits of state back: the file being edited and the
+    filter the roster was narrowed to. Bare ``/contacts`` closes the first and
+    drops the second, which is what a missing ``redirect_to`` fell back to."""
+    contact_id, _ = _seed_page(factory)
+    back = f"/contacts?id={contact_id}&q=Handelsblatt"
+
+    page = web.get(f"/contacts?id={contact_id}&edit={contact_id}&q=Handelsblatt").text
+    form = page.split('class="contact-form"')[1].split("</form>")[0]
+    assert f'name="redirect_to" value="/contacts?id={contact_id}&amp;q=Handelsblatt"' in form
+
+    posted = web.post(
+        "/contacts",
+        data={
+            "contact_id": str(contact_id), "name": "Marlene Kühn",
+            "outlet": "Handelsblatt", "email": "", "phone": "", "beat": "",
+            "notes": "", "redirect_to": back,
+        },
+        follow_redirects=False,
+    )
+
+    assert posted.headers["location"] == back
+
+
+def test_a_backslash_redirect_is_refused(web, factory):
+    """``/\\evil.example`` passes a plain ``//`` check and is protocol-relative by
+    the time the browser follows it."""
+    _seed_page(factory)
+
+    posted = web.post(
+        "/contacts",
+        data={"name": "Marlene Kühn", "redirect_to": "/\\evil.example"},
+        follow_redirects=False,
+    )
+
+    assert posted.headers["location"] == "/contacts"
+
+
 def test_the_file_pane_translates_its_chrome(web, factory):
     """A two-language interface fails as a *mixed* one, so the new pane's labels
     have to switch with the rest of the chrome."""

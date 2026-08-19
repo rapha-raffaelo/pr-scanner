@@ -93,6 +93,14 @@
 
 {% if error %}<div class="notice notice--error">{{ error }}</div>{% endif %}
 
+{# The page's own address, in two pieces, because three things have to agree on
+   it: every roster link, the "Abbrechen" link, and the hidden redirect_to a POST
+   comes back through. Written once here — a form that forgot it dropped the open
+   file and the filter on save. #}
+{% set term = "&q=" ~ (search | urlencode) if search else "" %}
+{% set book = "/contacts?q=" ~ (search | urlencode) if search else "/contacts" %}
+{% set here = "/contacts?id=" ~ selected.id ~ term if selected else book %}
+
 {% if came_from_pitch and not editing %}
   <div class="notice notice--ok">
     {{ t("Noch kein Eintrag für") }} <strong>{{ prefill_name }}</strong>{% if prefill_outlet %} ({{ prefill_outlet }}){% endif %} —
@@ -118,7 +126,6 @@
                aria-label="{{ t('Suche') }}">
       </form>
     </div>
-    {% set term = "&q=" ~ (search | urlencode) if search else "" %}
     <a class="book__new" href="/contacts">+ {{ t("Neuer Kontakt") }}</a>
     {% for c in contacts %}
       <a class="book__row{% if selected and selected.id == c.id %} is-on{% endif %}"
@@ -141,6 +148,11 @@
         <h2>{{ t("Eintrag bearbeiten") if editing else t("Neuer Kontakt") }}</h2>
         <form method="post" action="/contacts" class="contact-form">
           {% if editing %}<input type="hidden" name="contact_id" value="{{ editing.id }}">{% endif %}
+          {# Where saving returns to. Without it a save closed the file the reader
+             had open and dropped the roster filter, because the bare fallback is
+             /contacts — harmless before the split, when form and roster were the
+             same view. #}
+          <input type="hidden" name="redirect_to" value="{{ here }}">
           <div class="import-fields">
             <div>
               <label for="c-name">{{ t("Name") }}*</label>
@@ -172,7 +184,7 @@
           <div class="actions">
             <button type="submit">{{ t("Speichern") }}</button>
             {% if editing %}
-              <a class="rowlink" href="/contacts{% if selected %}?id={{ selected.id }}{{ term }}{% endif %}">{{ t("Abbrechen") }}</a>
+              <a class="rowlink" href="{{ here }}">{{ t("Abbrechen") }}</a>
             {% endif %}
           </div>
         </form>
@@ -204,6 +216,9 @@
           <div class="file__acts">
             <a class="btn btn--ghost" href="/contacts?id={{ selected.id }}&edit={{ selected.id }}{{ term }}">{{ t("Bearbeiten") }}</a>
             <form method="post" action="/contacts/{{ selected.id }}/delete">
+              {# Back to the book, filter intact — but not to this file's ``?id=``:
+                 there is nothing left to open. #}
+              <input type="hidden" name="redirect_to" value="{{ book }}">
               <button type="submit" class="linkbtn linkbtn--danger">{{ t("Löschen") }}</button>
             </form>
           </div>
