@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
@@ -66,6 +66,12 @@ REFRESH_PER_RUN = 5
 #: thing there is — a profile filled at kick-off and never looked at since is
 #: exactly what this feature exists for — so it sorts ahead of every dated one.
 _NEVER_CHECKED = dt.datetime.min.replace(tzinfo=dt.UTC)
+
+# A callable shaped like :func:`newspulse.gemini.search`: a prompt in, the raw
+# answer and the pages it was read from out. Injected so a test can drive the
+# whole pass over a canned answer with no network anywhere near it, exactly as
+# ``FetchFeed`` is injected through the sweep.
+Generate = Callable[[str], tuple[str, list[tuple[str, str]]]]
 
 
 # --- Which profiles have earned a look -----------------------------------------
@@ -234,7 +240,7 @@ def refresh(
     client: Client,
     *,
     now: dt.datetime,
-    generate=None,
+    generate: Generate | None = None,
     proposed_by: str | None = None,
 ) -> int:
     """Re-research one mandate and store what came back as proposals.
@@ -275,7 +281,7 @@ def run(
     *,
     now: dt.datetime,
     limit: int = REFRESH_PER_RUN,
-    generate=None,
+    generate: Generate | None = None,
 ) -> int:
     """Refresh the profiles that have earned a look. At most ``limit`` of them.
 
@@ -313,6 +319,7 @@ def run(
 __all__ = [
     "DUE_AFTER",
     "REFRESH_PER_RUN",
+    "Generate",
     "discard",
     "due",
     "outstanding",
