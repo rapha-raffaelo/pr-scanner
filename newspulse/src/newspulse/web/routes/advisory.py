@@ -19,6 +19,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -26,11 +27,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import angles, job, outreach, pitch
+from ... import angles, contacts, gmail_link, job, outreach, pitch
 from ...db import get_session
 from ..runlock import guard as _run_guard
 from .. import themework
-from ...models import Angle, Article, Client, Outreach, TopicHit
+from ...models import Angle, Article, Client, Contact, Outreach, TopicHit
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
 
@@ -76,6 +77,86 @@ def _silence(messages: dict[int, list[Outreach]]) -> dict[int, int]:
         for rows in messages.values()
         for row in rows
         if outreach.is_silent(row, now=now)
+    }
+
+
+# --- Who a letter can actually be sent to ---------------------------------------
+#
+# The contact book is the only source of an address in this tool, and it is filled
+# by hand. Nothing here derives one: a "vorname.nachname@medium.de" built from a
+# byline is plausible, gets used, and reaches a stranger — which under DEC-4
+# option C would mean RauteOS itself sent a client's pitch to the wrong person.
+# So a missing address disables the action and says which of the three reasons it
+# is, because they need three different answers from the reader.
+
+#: No byline at all. The letter is addressed to a desk, and a desk has no entry.
+NO_NAME = "Kein Name zu diesem Anschreiben — nur die Redaktion."
+#: A name the book has never seen. One click away from being fixed.
+NOT_IN_BOOK = "Nicht im Kontaktbuch. RauteOS leitet keine Adresse aus Name oder Medium ab."
+#: In the book, but the address field was left empty.
+NO_ADDRESS = "Im Kontaktbuch, aber ohne E-Mail-Adresse."
+
+
+@dataclass(frozen=True, slots=True)
+class Recipient:
+    """The address one letter would go to, or why there is none.
+
+    ``email`` is empty exactly when the letter cannot be sent, and ``reason`` is
+    then never empty: a disabled button with no explanation is the thing this
+    dataclass exists to prevent.
+    """
+
+    email: str = ""
+    reason: str = ""
+    contact_id: int | None = None
+
+    @property
+    def is_reachable(self) -> bool:
+        return bool(self.email)
+
+
+def _recipient(session: Session, row: Outreach) -> Recipient:
+    """The contact book's answer for one letter's recipient.
+
+    Prefers the contact the ledger already resolved at release
+    (``Outreach.contact_id``) over a fresh name match: that link was made when a
+    person released the letter, and it is the stronger fact — a journalist who
+    has since moved masthead would otherwise match a different entry, or none.
+    """
+    known: Contact | None = None
+    if row.contact_id is not None:
+        known = session.get(Contact, row.contact_id)
+    if known is None:
+        if not row.journalist:
+            return Recipient(reason=NO_NAME)
+        known = contacts.find(session, row.journalist, row.outlet)
+    if known is None:
+        return Recipient(reason=NOT_IN_BOOK)
+    if not known.email:
+        return Recipient(reason=NO_ADDRESS, contact_id=known.id)
+    return Recipient(email=known.email, contact_id=known.id)
+
+
+def _recipients(
+    session: Session, messages: dict[int, list[Outreach]]
+) -> dict[int, Recipient]:
+    """The address question answered once per letter, for the whole page."""
+    return {
+        row.id: _recipient(session, row)
+        for rows in messages.values()
+        for row in rows
+    }
+
+
+def _thread_links(messages: dict[int, list[Outreach]]) -> dict[int, str]:
+    """Where to open each letter's conversation in Gmail, for the ones that have
+    one. Absent rather than empty for the rest, so the template asks one question
+    instead of testing a string."""
+    return {
+        row.id: gmail_link.thread_url(row.gmail_thread_id)
+        for rows in messages.values()
+        for row in rows
+        if row.gmail_thread_id
     }
 
 
@@ -129,6 +210,14 @@ def _advice_context(session: Session, client: Client) -> dict:
         "state_labels": outreach.STATE_LABELS,
         "outcomes": outreach.OUTCOMES,
         "message_error": _last_message_error.get(client.id, ""),
+        # The mailbox, and what it makes possible on each card. ``gmail`` is
+        # None or an unconnected Link when no mailbox is attached, and the card
+        # then offers no send action at all — the Kopieren path is the whole
+        # answer, exactly as it was before this feature existed.
+        "gmail": gmail_link.connected(),
+        "recipients": _recipients(session, messages),
+        "gmail_threads": _thread_links(messages),
+        "gmail_error": _last_gmail_error.get(client.id, ""),
         # Whether a radar is possible at all, which is a question about the
         # client's themes — not about whether it has found anything yet. Read
         # off the hit count, a mandate with twenty-five themes and a radar that
@@ -469,6 +558,87 @@ def release_letter(
     row = _letter(session, client_id, outreach_id)
     outreach.release(session, row, released_by=released_by)
     _log.info("outreach %d released by %r", row.id, row.released_by)
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
+    )
+
+
+# Why the last push to Gmail failed, per client. Same shape and the same reason
+# as the two dicts above: it describes one click, not the mandate, and going
+# stale on restart is the right behaviour for a "what just happened" line. It
+# matters more here than anywhere else in this file, because the reader has to
+# know whether a letter went out — silence after pressing send is unbearable.
+_last_gmail_error: dict[int, str] = {}
+
+
+@router.post("/client/{client_id}/outreach/{outreach_id}/gmail-draft")
+def send_through_gmail(
+    request: Request,
+    client_id: int,
+    outreach_id: int,
+    released_by: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Release this letter and send it from the connected mailbox.
+
+    DEC-4 locked option C, and this is the sentence it changes: a text leaves the
+    house because a button in RauteOS was pressed. The card asks twice before it
+    gets here, and the confirmation names the address, because the first click in
+    a full week happens quickly and this one cannot be taken back.
+
+    In two Gmail calls, not one. The draft is composed first — repeating that is
+    harmless, and a repeat updates the draft already there rather than leaving a
+    second copy in the mailbox — and only then is it sent. A send that fails
+    after Gmail accepted the draft therefore leaves a draft the consultant can
+    see and this route can re-send, instead of an unanswerable question about
+    whether a journalist has the letter.
+
+    Three refusals, all 400 and all before anything is sent: no mailbox, no
+    address, or a letter that already went out. The card renders none of those as
+    an available action, so a request that hits one did not come from it.
+    """
+    _refuse_foreign_origin(request)
+    row = _letter(session, client_id, outreach_id)
+    _last_gmail_error.pop(client_id, None)
+    link = gmail_link.connected()
+    if link is None or not link.is_connected:
+        raise HTTPException(status_code=400, detail="Kein Postfach verbunden.")
+    if row.sent_through_gmail:
+        raise HTTPException(
+            status_code=400, detail="Dieses Anschreiben ist bereits verschickt."
+        )
+    recipient = _recipient(session, row)
+    if not recipient.is_reachable:
+        raise HTTPException(status_code=400, detail=recipient.reason)
+
+    try:
+        draft = gmail_link.create_draft(
+            recipient.email,
+            row.subject,
+            row.message,
+            draft_id=row.gmail_draft_id,
+            thread_id=row.gmail_thread_id,
+        )
+        outreach.record_draft(session, row, draft)
+        sent = gmail_link.send(draft.draft_id)
+    except gmail_link.GmailError as exc:
+        # Never swallowed and never fatal to the page: the letter is untouched,
+        # the draft id (if one was composed) is stored, and the card says what
+        # happened so the reader knows the message did not go.
+        _log.error("Gmail send failed for outreach %d: %s", row.id, exc)
+        _last_gmail_error[client_id] = (
+            f"Die Nachricht wurde nicht verschickt: {exc}"
+        )
+        return RedirectResponse(
+            f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
+        )
+
+    outreach.record_sent(session, row, sent, draft_id=draft.draft_id, released_by=released_by)
+    # The thread, never the text: what this line has to prove later is which
+    # conversation the letter belongs to.
+    _log.info(
+        "outreach %d sent through Gmail (thread %s)", row.id, row.gmail_thread_id
+    )
     return RedirectResponse(
         f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
     )

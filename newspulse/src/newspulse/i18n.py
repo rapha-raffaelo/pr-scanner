@@ -403,6 +403,50 @@ _EN: dict[str, str] = {
     "Nichts geht von hier aus raus. Der Knopf hält fest, dass Sie das Anschreiben gelesen, freigegeben und selbst verschickt haben.":
         "Nothing leaves from here. The button records that you read the letter, "
         "released it and sent it yourself.",
+    # --- The letter goes out through Gmail (DEC-4 option C) -------------------
+    # The strip above the impulses, and the warning that belongs with it. The
+    # warning is not boilerplate: with the send scope granted, the product's own
+    # founding sentence no longer holds, and the screen where that is exercised
+    # is where it has to be readable.
+    "Postfach verbunden": "Mailbox connected",
+    "lesen und": "read and",
+    "senden": "send",
+    "Diese Variante ändert die Grundannahme.":
+        "This variant changes the founding assumption.",
+    "Bisher gilt: keine Engine verschickt etwas an einen Journalisten. Mit Sendrecht verlässt ein Text das Haus, weil in RauteOS ein Knopf gedrückt wurde, nicht weil jemand in seinem eigenen Postfach auf Senden geht. Der Unterschied ist klein am Bildschirm und groß, wenn eine Nachricht falsch war.":
+        "Until now the rule was: no engine sends anything to a journalist. With "
+        "the send permission, a text leaves the building because a button was "
+        "pressed in RauteOS, not because somebody hit send in their own mailbox. "
+        "The difference is small on screen and large when a message was wrong.",
+    "Freigeben und senden": "Release and send",
+    "Ja, senden": "Yes, send",
+    "Zum Abbrechen zuklappen.": "Collapse to cancel.",
+    "Diese Nachricht geht jetzt an": "This message now goes to",
+    "Sie ist danach nicht mehr zurückzuholen. Gegengelesen wurde sie von einem zweiten Modell, nicht von einem Menschen.":
+        "It cannot be recalled afterwards. It was checked by a second model, not "
+        "by a human.",
+    "Zwei Klicks statt einem, weil der erste in einer vollen Woche schnell passiert.":
+        "Two clicks instead of one, because in a busy week the first one happens "
+        "quickly.",
+    "Von RauteOS gesendet am": "Sent by RauteOS on",
+    "Verlauf in Gmail öffnen": "Open the thread in Gmail",
+    "Nicht verschickt.": "Not sent.",
+    "Freigegeben und von RauteOS über Gmail verschickt":
+        "Released, and sent by RauteOS through Gmail",
+    # One string, not fragments — same reason as the release trail above.
+    "von %(who)s freigegeben, von RauteOS über Gmail verschickt":
+        "released by %(who)s, sent by RauteOS through Gmail",
+    # Why the send is not on offer. Three reasons, because they need three
+    # different answers, and none of them is ever "we guessed an address".
+    "Kein Name zu diesem Anschreiben — nur die Redaktion.":
+        "No name on this letter, only the desk.",
+    "Nicht im Kontaktbuch. RauteOS leitet keine Adresse aus Name oder Medium ab.":
+        "Not in the contact book. RauteOS derives no address from a name or an "
+        "outlet.",
+    "Im Kontaktbuch, aber ohne E-Mail-Adresse.":
+        "In the contact book, but with no email address.",
+    # ("Kontakt hinterlegen" is already translated further down, with the pitch
+    # list that first needed it.)
     # --- The relationship file: one journalist, across all mandates -----------
     # The contact book's right-hand pane (DEC-2). "Anschreiben" is the tally of
     # letters, not the verb, so it counts things: "Letters".
