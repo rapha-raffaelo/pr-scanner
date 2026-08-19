@@ -476,14 +476,19 @@ def test_the_facts_of_a_broken_client_are_untouched(session):
 # --- The wiring: it has to actually run every morning --------------------------
 
 
-def test_the_daily_sweep_reaches_the_refresh(session, monkeypatch):
+def test_the_daily_sweep_reaches_the_refresh(session, monkeypatch, no_sweep_profile_refresh):
     """The gap that lets a feature be "built" and still never happen.
 
     A mandate whose profile was never checked must come out of an ordinary sweep
     with proposals on file and a check date on the client.
+
+    Puts back the real helper the suite-wide fixture stubs out — otherwise this
+    test would pass against a sweep that had been silently disconnected, which is
+    the exact failure it exists to catch.
     """
     from newspulse import job
 
+    monkeypatch.setattr(job, "_refresh_profiles", no_sweep_profile_refresh)
     client = _client(session, checked=None)
     monkeypatch.setattr(
         profiles,
@@ -508,7 +513,9 @@ def test_the_daily_sweep_reaches_the_refresh(session, monkeypatch):
     assert session.get(Client, client.id).profile_checked_at == _NOW
 
 
-def test_a_broken_refresh_never_fails_the_sweep(session, monkeypatch, caplog):
+def test_a_broken_refresh_never_fails_the_sweep(
+    session, monkeypatch, caplog, no_sweep_profile_refresh
+):
     """A stale profile is one mandate's problem. A failed sweep is the whole
     portfolio's, and the second must never be caused by the first.
 
@@ -526,7 +533,7 @@ def test_a_broken_refresh_never_fails_the_sweep(session, monkeypatch, caplog):
     monkeypatch.setattr(job.profile_refresh, "run", _explode)
 
     with caplog.at_level(logging.ERROR, logger="newspulse.job"):
-        assert job._refresh_profiles(session, _NOW) == 0
+        assert no_sweep_profile_refresh(session, _NOW) == 0
 
     assert "profile refresh failed" in caplog.text
     # And the session is usable afterwards, so the notification and everything

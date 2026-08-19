@@ -149,6 +149,29 @@ def no_live_profile_research(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_sweep_profile_refresh(monkeypatch):
+    """Keep the sweep's profile pass out of the tests that are not about it.
+
+    ``no_live_profile_research`` above closes the network boundary, which is the
+    part that must never depend on whose laptop the suite runs on. It leaves the
+    pass *running*, though, and that is its own problem: every test that drives
+    ``job.run`` walks up to ``REFRESH_PER_RUN`` never-checked mandates, has each
+    one refuse, and logs an ERROR with a traceback per mandate. Dozens of tests
+    with nothing to do with profiles then print a wall of stack traces, which is
+    how a real failure stops being visible in the output.
+
+    So the boundary stays closed *and* the feature is switched off here. Yields
+    the real helper, so the two tests that are about the wiring can put it back
+    and assert the sweep genuinely reaches it.
+    """
+    from newspulse import job
+
+    original = job._refresh_profiles
+    monkeypatch.setattr(job, "_refresh_profiles", lambda session, now: 0)
+    return original
+
+
+@pytest.fixture(autouse=True)
 def no_theme_settling(monkeypatch):
     """Stop the sweep from proposing themes in a test run.
 
