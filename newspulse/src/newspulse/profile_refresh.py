@@ -72,7 +72,7 @@ _MOVED_CATEGORIES = (Category.PERSONALIE, Category.FINANZEN)
 #: UNIQUE (client_id, key). The web route's own lock only ever kept a second
 #: *click* out — the sweep never asked it anything — so the promise has to be
 #: made here, where both callers actually meet.
-_researching = threading.Lock()
+_research_guard = threading.Lock()
 
 #: What :attr:`~newspulse.models.Client.profile_note` says after a check that
 #: broke. German, because it is rendered: the note is for the consultant reading
@@ -336,7 +336,7 @@ def refresh(
     automatic pass that overwrote a fact the consultant entered by hand would
     destroy the most valuable data in the tool, and it would do it quietly.
 
-    Serialised process-wide on :data:`_researching`: the sweep runs in the same
+    Serialised process-wide on :data:`_research_guard`: the sweep runs in the same
     process as the dashboard, and two refreshes of the same client racing on its
     proposal rows would lose one side's findings. The wait is bounded by one
     research call and only ever falls on a background worker.
@@ -347,7 +347,7 @@ def refresh(
     (:func:`run` decides it is not).
     """
     author = proposed_by or config.review_model()
-    with _researching:
+    with _research_guard:
         try:
             found = profile.research(client, generate=generate)
         except Exception as exc:

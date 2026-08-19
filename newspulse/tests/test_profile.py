@@ -331,6 +331,53 @@ def test_only_contradictions_left_still_offers_a_way_to_clear_them(factory, web)
         assert profile_refresh.outstanding(session, client_id) == []
 
 
+def test_a_contradiction_is_visible_beside_an_ordinary_proposal(factory, web):
+    """The two piles are independent. Hanging the contradictions off "there are no
+    proposals" hid them on every mandate that also had one ordinary offer — which
+    is most of them — and an accepted offer then left the held-back row on file,
+    invisible, until the next refresh."""
+    with factory() as session:
+        client = _client(session)
+        profiles.save(session, client, "ceo", "Weiß ich besser")
+        client_id = client.id
+        _propose(
+            session, client_id,
+            ceo=("Jemand anderes", "", ""),
+            sitz=("Paris", "", ""),
+        )
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Paris" in body, "the offer is drawn"
+    assert "das Netz sagt etwas anderes" in body, "and so is the one held back"
+
+
+def test_the_reason_a_check_broke_reaches_the_page(factory, web):
+    """The sweep researches at 06:10 and the page is opened at nine, in a process
+    that never saw the failure. Without the stored note the page shows a profile
+    that was "checked" with no reason and no way to find one."""
+    from newspulse.web.routes import profile as profile_routes
+
+    def _boom(prompt):
+        raise RuntimeError("die Suche ist nicht erreichbar")
+
+    with factory() as session:
+        client = _client(session)
+        client_id = client.id
+        with pytest.raises(RuntimeError):
+            profile_refresh.refresh(
+                session, client, now=dt.datetime(2031, 3, 5, 6, 10, tzinfo=dt.UTC),
+                generate=_boom,
+            )
+        assert client.profile_note
+    # Nothing in memory: the sweep runs elsewhere and leaves this dict empty.
+    profile_routes._errors.pop(client_id, None)
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "nicht erreichbar" in body, "the sweep's failure is invisible on the page"
+
+
 def test_discarding_clears_the_proposals_from_the_database(factory, web):
     """The dict this replaced lost them on a restart; the button has to be the
     only thing that does."""

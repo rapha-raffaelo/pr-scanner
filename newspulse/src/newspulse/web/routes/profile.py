@@ -36,7 +36,17 @@ _errors: dict[int, str] = {}
 
 
 def _run_research(client_id: int) -> None:
-    """Read the web for one mandate on a worker thread; always release the lock."""
+    """Read the web for one mandate on a worker thread; always release the lock.
+
+    Routed through :func:`profile_refresh.refresh` rather than calling the
+    research directly, so a click and the 06:10 sweep produce the same rows by
+    the same rules. One consequence is deliberate and worth stating: a click now
+    stamps ``profile_checked_at`` too, which takes the mandate out of the sweep's
+    age rotation for the next sixty days. That is the honest record — the profile
+    really was re-read this morning, by a person — and re-reading it again
+    unattended a day later would spend the daily budget on the answer we already
+    have. A click that *fails* leaves its note, which keeps the mandate due.
+    """
     try:
         with _run_guard:
             with get_session() as session:
@@ -79,13 +89,23 @@ def profile_view(
             "filled": len(facts),
             "fillable": profiles.FILLABLE,
             "proposals": pending,
-            # Held back from the list above, and still on file. Counted so the
-            # page can offer to clear them: a row nobody can see and nobody can
-            # discard is a row that sits there until the next refresh overwrites
-            # it, which is the sort of invisible state this feature exists to end.
-            "contradictions": len(proposed) - len(pending),
+            # Held back from the list above, and still on file. Handed over as
+            # rows rather than a count so the page can name them in its own
+            # discard form: a row nobody can see and nobody can clear sits there
+            # until the next refresh overwrites it, which is the sort of
+            # invisible state this feature exists to end.
+            "contradictions": [
+                p for p in proposed if not profile_refresh.may_replace(facts, p.key)
+            ],
             "researching": _researching.locked(),
-            "research_error": _errors.get(client_id, ""),
+            # The click's own answer if there was one in this process, otherwise
+            # what the last check recorded — which is the usual case, since the
+            # sweep researches at 06:10 and the page is opened at nine. Without
+            # the fallback a failure from the sweep is invisible: the page shows
+            # a profile that was "checked" with no reason and no way to find one.
+            # Exactly what ``advisory.py`` does with ``impulse_note``.
+            "research_error": _errors.get(client_id) or client.profile_note,
+            "checked_at": client.profile_checked_at,
             "last_run": _fetch_last_run(session),
             "header_date": dt.datetime.now(_local_tz()).date(),
         },
@@ -176,6 +196,18 @@ def accept_proposals(
 
 
 @router.post("/client/{client_id}/profil/discard")
-def discard_proposals(client_id: int, session: Session = Depends(get_db)) -> Response:
-    profile_refresh.discard(session, client_id)
+def discard_proposals(
+    client_id: int,
+    key: list[str] = Form(default_factory=list),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Throw away proposals: the named fields, or all of them when none is named.
+
+    Named, because the page draws two piles now — the offers with a checkbox and
+    the contradictions against hand-filled fields, which have none — and each
+    carries its own discard. A single button that always cleared everything meant
+    clearing the contradictions also threw away the offers beside them, which the
+    consultant had not decided on yet.
+    """
+    profile_refresh.discard(session, client_id, key or None)
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)

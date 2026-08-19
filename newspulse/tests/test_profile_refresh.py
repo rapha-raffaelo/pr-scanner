@@ -381,6 +381,43 @@ def test_a_good_check_clears_the_note_the_broken_one_left(session):
     assert session.get(Client, client.id).profile_note == ""
 
 
+def test_a_failed_refresh_does_not_consume_the_event_trigger(session):
+    """A rate-limited morning must not quiet a CEO change for sixty days.
+
+    The stamp a failed attempt leaves is honest — it happened — but it is not an
+    answer, and using it as the watermark buried the personnel item that made the
+    mandate due behind a read that never took place. The note the failure leaves
+    keeps the mandate due until a read actually succeeds.
+    """
+    client = _client(session, checked=_NOW - dt.timedelta(days=10))
+    _coverage(session, client, category=Category.PERSONALIE, analyzed_at=_YESTERDAY)
+    assert profile_refresh.due(session, [client], now=_NOW) == [client]
+
+    assert profile_refresh.run(session, now=_NOW, generate=_boom) == 0
+
+    tomorrow = _NOW + dt.timedelta(days=1)
+    assert profile_refresh.due(session, [client], now=tomorrow) == [client], (
+        "the CEO change was never read; a 429 must not quiet it for 60 days"
+    )
+
+
+def test_an_empty_answer_does_not_wipe_an_undecided_proposal(session):
+    """A thin ``felder`` object is a read that covered nothing, not a finding that
+    everything is settled — and an undecided proposal is the one thing a store
+    like this must never drop on its own."""
+    client = _client(session)
+    profile_refresh.refresh(
+        session, client, now=_NOW, generate=_answer(ceo="Alexandre Prot")
+    )
+    assert len(profile_refresh.outstanding(session, client.id)) == 1
+
+    profile_refresh.refresh(
+        session, client, now=_NOW + dt.timedelta(days=61), generate=_answer()
+    )
+
+    assert [p.key for p in profile_refresh.outstanding(session, client.id)] == ["ceo"]
+
+
 def test_a_failed_research_leaves_the_existing_proposals_alone(session):
     """A broken search must not be read as "nothing to propose any more" — that
     would throw away findings nobody has seen yet."""
@@ -438,6 +475,17 @@ def test_with_nothing_due_the_run_is_a_no_op(session):
 
     assert profile_refresh.run(session, now=_NOW, generate=_never) == 0
     assert session.scalar(select(func.count()).select_from(ProfileProposal)) == 0
+
+
+def test_a_run_with_nothing_due_still_says_so_on_the_run_line(session, caplog):
+    """"Nothing was due" and "the pass never ran" producing the same empty log is
+    the confusion the count exists to prevent."""
+    _client(session, checked=_YESTERDAY)
+
+    with caplog.at_level(logging.INFO, logger="newspulse.profile_refresh"):
+        profile_refresh.run(session, now=_NOW, generate=_answer())
+
+    assert "0 of 0 due mandate(s) refreshed" in caplog.text
 
 
 def test_one_broken_client_does_not_stop_the_rest_of_the_run(session, caplog):
