@@ -68,8 +68,8 @@ _MOVED_CATEGORIES = (Category.PERSONALIE, Category.FINANZEN)
 #: One live research at a time in this process, whoever asked for it. The manual
 #: button and the 06:10 sweep both land in :func:`refresh`, each with its own
 #: session, and each does a DELETE-then-INSERT over one client's proposals.
-#: Interleaved, that either loses one side's findings or trips
-#: UNIQUE (client_id, key). The web route's own lock only ever kept a second
+#: Interleaved, that either loses one side's findings or trips the unique index
+#: over the open rows. The web route's own lock only ever kept a second
 #: *click* out — the sweep never asked it anything — so the promise has to be
 #: made here, where both callers actually meet.
 _research_guard = threading.Lock()
