@@ -779,6 +779,16 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.03em; color: #a16207; background: #fffbeb;
   border: 1px solid #fde68a; border-radius: var(--radius); padding: 1px 7px; margin-right: 6px;
 }
+/* Already written to about this very angle, within the quarter the list reads.
+   Warm rather than alarming: it is a caution the reader may override, not a
+   block, so it must not shout louder than the "never wrote about the client"
+   mark beside it. */
+.pitchlist__seen {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.03em; color: var(--warn); background: rgba(178, 80, 0, 0.10);
+  border: 1px solid rgba(178, 80, 0, 0.28); border-radius: var(--radius);
+  padding: 1px 7px; margin-right: 6px;
+}
 .pitchlist__why { color: var(--muted); }
 .pitchlist__mail { font-size: var(--t-caption); color: var(--accent); margin-right: 6px; }
 .pitchlist__add { font-size: var(--t-caption2); color: var(--muted); margin-right: 6px; text-decoration: underline; }

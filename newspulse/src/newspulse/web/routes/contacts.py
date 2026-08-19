@@ -87,6 +87,7 @@ def _page_context(
 def contact_book(
     request: Request,
     q: str = "",
+    search: str = "",
     name: str = "",
     outlet: str = "",
     edit: int | None = None,
@@ -103,7 +104,14 @@ def contact_book(
     all mandates, newest first, with the four tallies over it. An id that matches
     nothing — a deleted contact, a stale link — renders the plain book rather
     than an error, because there is nothing broken about the page itself.
+
+    The roster filter arrives as ``?q=`` — what the search box submits — and is
+    also read from ``?search=``, the name the book itself uses for the term
+    (:func:`newspulse.contacts.list_all`) and the one a hand-written link tends
+    to carry. ``?q=`` wins when both are present, because that one came from the
+    form the reader actually typed into.
     """
+    term = q or search
     existing = contacts.find(session, name, outlet) if name else None
     editing = session.get(contacts.Contact, edit) if edit else existing
     selected = session.get(contacts.Contact, id) if id else None
@@ -114,7 +122,7 @@ def contact_book(
         _page_context(
             request,
             session,
-            q=q,
+            q=term,
             editing=editing,
             selected=selected,
             # What the pitch list knew, for a contact that does not exist yet.

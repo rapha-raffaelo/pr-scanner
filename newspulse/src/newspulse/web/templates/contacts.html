@@ -54,6 +54,12 @@
   .tl__quote { font-size: var(--t-footnote); color: var(--muted); margin-top: 4px; font-style: italic; max-width: 66ch; }
   .tl__sub { font-size: var(--t-footnote); color: var(--muted); margin-top: 3px; max-width: 66ch; }
   .tl__empty { font-size: var(--t-footnote); color: var(--muted); }
+  /* Where a line came from. Two looks on purpose, because the difference is the
+     one an auditor asks about: a sentence somebody typed carries more weight and
+     less certainty than a timestamp the machine stamped when a button was
+     pressed. Same chip idiom as .reply__src in the sibling mock. */
+  .tl__src { display: inline-block; font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius); padding: 1px 7px; background: var(--card); margin-left: 6px; vertical-align: 1px; }
+  .tl__src--hand { color: var(--ink-2); background: var(--fill-2); border-color: var(--line-strong); }
   .badge { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; border-radius: var(--radius); padding: 2px 8px; border: 1px solid; white-space: nowrap; margin-left: 6px; }
   .b-antwort { color: #14532d; background: rgba(36, 138, 61, 0.10); border-color: rgba(36, 138, 61, 0.30); }
   .b-veroeffentlicht { color: #14532d; background: rgba(36, 138, 61, 0.16); border-color: rgba(36, 138, 61, 0.36); }
@@ -204,20 +210,23 @@
               {% if letter.outcome_at %}
                 <li>
                   <span class="tl__pin {% if letter.state == 'veroeffentlicht' %}tl__pin--good{% elif letter.state == 'absage' %}tl__pin--warn{% else %}tl__pin--out{% endif %}"></span>
-                  <div class="tl__when">{{ letter.outcome_at | de_datetime }} · {{ t("von Hand eingetragen") }}</div>
+                  <div class="tl__when">{{ letter.outcome_at | de_datetime }}
+                    <span class="tl__src tl__src--hand">{{ t("von Hand eingetragen") }}</span></div>
                   <div class="tl__what"><b>{{ t(state_labels[letter.state]) }}</b>
                     <span class="tl__cl"><span style="background: {{ entry.mandate | brand_colour }}"></span>{{ entry.mandate }}</span>
                     <span class="badge b-{{ letter.state }}">{{ t(state_labels[letter.state]) }}</span></div>
                   {% if letter.outcome_note %}<div class="tl__sub">{{ letter.outcome_note }}</div>{% endif %}
                 </li>
               {% endif %}
-              {# The release: recorded by the system at the moment the button was
-                 pressed, and saying so — the trail line names who let it go. #}
+              {# The release: nobody typed this one. The system stamped it the
+                 moment the button was pressed, and the chip says so — while the
+                 trail line still names the person who let the letter go. #}
               <li>
                 <span class="tl__pin tl__pin--out"></span>
                 <div class="tl__when">
                   {{ letter.released_at | de_datetime }} ·
                   {% if letter.released_by == "mensch" %}{{ t("freigegeben von Mensch") }}{% else %}{{ t("freigegeben von %(who)s") | format(who=letter.released_by) }}{% endif %}
+                  <span class="tl__src">{{ t("bei der Freigabe festgehalten") }}</span>
                 </div>
                 <div class="tl__what"><b>{{ t("Anschreiben verschickt") }}</b>
                   <span class="tl__cl"><span style="background: {{ entry.mandate | brand_colour }}"></span>{{ entry.mandate }}</span></div>
