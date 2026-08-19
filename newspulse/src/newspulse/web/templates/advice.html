@@ -66,6 +66,23 @@
      of it: the reader has to see that the action exists and what is missing. */
   .state__why { font-size: var(--t-caption); color: var(--muted); }
   .state__why a { color: var(--accent); font-weight: 600; }
+  /* The journalist's answer, in the box the locked mock gives it (.reply in
+     features/mocks/gmail-send.html): green-tinted and set apart from the letter
+     above it, because this is the only text on the card that somebody outside
+     the agency wrote. Page-local like the rest of this block — the contact's
+     file draws its own version inside the timeline (.tl__reply), where the
+     surrounding markup is a list row rather than a card. */
+  .reply { margin-top: 10px; border: 1px solid rgba(36, 138, 61, .30);
+           background: rgba(36, 138, 61, .06); border-radius: var(--radius); padding: 10px 12px; }
+  .reply__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .reply__from { font-size: var(--t-caption); font-weight: 600; color: #14532d; }
+  .reply__src { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+                letter-spacing: .04em; color: var(--muted); border: 1px solid var(--line);
+                border-radius: var(--radius); padding: 1px 7px; background: var(--card); }
+  .reply__when { font-size: var(--t-caption); color: var(--muted); margin-left: auto; }
+  /* pre-wrap beyond the mock: a mail body carries its own paragraphs, and
+     collapsing them turns a three-line answer into one run-on sentence. */
+  .reply__text { font-size: var(--t-footnote); line-height: 1.6; color: var(--ink-2); white-space: pre-wrap; }
 </style>
 
 <div class="client-profile">
@@ -478,12 +495,41 @@
                   {% if msg.outcome_at %}
                     <li>
                       <b>{{ msg.outcome_at | de_datetime }}</b>
-                      {{ t("Ergebnis eingetragen") }}{% if msg.outcome_note %}:
-                        <span class="trail__note">{{ msg.outcome_note }}</span>{% endif %}
+                      {# Not every outcome is a thing a person did any more: since
+                         the mailbox is read, ``antwort`` can be the sync's own
+                         entry. Drawing that one as "Ergebnis eingetragen" would
+                         put a consultant's name on a line the machine wrote, so
+                         the trail says which of the two it is — off the stored
+                         author, not off a guess. #}
+                      {% if msg.outcome_from_mailbox %}
+                        {{ t("Antwort im Postfach gelesen") }}
+                      {% else %}
+                        {{ t("Ergebnis eingetragen") }}{% if msg.outcome_note %}:
+                          <span class="trail__note">{{ msg.outcome_note }}</span>{% endif %}
+                      {% endif %}
                     </li>
                   {% endif %}
                 </ul>
               </div>
+              {# What came back, where the letter is — the locked mock's .reply box
+                 (features/mocks/gmail-send.html), in the journalist's own words.
+                 Every one of them, not just the first: an answer, a follow-up
+                 question and the note two weeks later that the piece is running
+                 are three things, and a card showing only the newest would hide
+                 the two the consultant has to act on. Nothing here is
+                 interpreted — the text is rendered as it arrived, and Jinja
+                 escapes it, because it was written by somebody outside this
+                 house. #}
+              {% for reply in msg.replies %}
+                <div class="reply">
+                  <div class="reply__head">
+                    <span class="reply__from">{{ reply.sender }}</span>
+                    <span class="reply__src">{{ t("Antwort im selben Verlauf") }}</span>
+                    <span class="reply__when">{{ reply.received_at | de_datetime }}</span>
+                  </div>
+                  <div class="reply__text">{{ reply.body }}</div>
+                </div>
+              {% endfor %}
               {# Only on a released letter: a result before there was anything to
                  answer is refused by the route, so offering the form would be an
                  invitation to a 400. #}

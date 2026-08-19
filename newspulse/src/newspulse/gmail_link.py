@@ -185,6 +185,13 @@ _MAX_ERROR_BYTES = 4096
 # file does.
 _UNAUTHORIZED = 401
 
+# Gmail's answer when the thing asked for is not there: a conversation deleted in
+# the mailbox, or an id that never named one. Told apart from every other failure
+# because it is a fact about that one conversation and about nothing else — the
+# reply sync walks a few hundred of them and must not read one deleted thread as
+# "the mailbox is gone" (see :mod:`newspulse.mailsync`).
+_NOT_FOUND = 404
+
 # What ``threads.get`` is asked for. "full" carries the headers and the decoded
 # body parts; "metadata" would carry neither, and the round trip this module
 # promises — the subject and text that were sent, read back byte for byte — needs
@@ -230,6 +237,17 @@ class GmailUnauthorized(GmailError):
     Its own type so one call site can retry with a renewed token instead of every
     caller pattern-matching on Google's message. Still a :class:`GmailError`, so
     a caller that does not care about the difference is unaffected.
+    """
+
+
+class GmailMissing(GmailError):
+    """Gmail has no such conversation — deleted in the mailbox, or never there.
+
+    Its own type for the same reason :class:`GmailUnauthorized` has one: it is
+    the one failure that says nothing at all about the connection. A caller
+    walking many threads (:mod:`newspulse.mailsync`) has to tell "this
+    conversation is gone" from "Google is unreachable", because the second is a
+    reason to stop for today and the first is a reason to read the next one.
     """
 
 
@@ -699,8 +717,10 @@ def token(
 def _raise_for_api_error(payload: dict[str, Any], what: str) -> None:
     """Turn a Gmail API error payload into the right exception, or return.
 
-    A 401 is told apart from the rest, because it is the one error the caller can
-    do something about: the token was refused, so a renewed one may work.
+    Two codes are told apart from the rest, because they are the two a caller can
+    do something about: a 401 means the token was refused, so a renewed one may
+    work, and a 404 means this one conversation is gone while the connection is
+    fine.
 
     Shared by every Gmail call rather than repeated at each: Google nests the
     Gmail API's error under ``error.message`` and the OAuth endpoints' under a
@@ -711,8 +731,11 @@ def _raise_for_api_error(payload: dict[str, Any], what: str) -> None:
     if not detail:
         return
     message = detail.get("message") if isinstance(detail, dict) else _error_text(payload)
-    if isinstance(detail, dict) and detail.get("code") == _UNAUTHORIZED:
+    code = detail.get("code") if isinstance(detail, dict) else None
+    if code == _UNAUTHORIZED:
         raise GmailUnauthorized(f"Gmail lehnte den Zugriff ab ({message})")
+    if code == _NOT_FOUND:
+        raise GmailMissing(f"{what} ({message})")
     raise GmailError(f"{what} ({message})")
 
 
@@ -904,6 +927,11 @@ class ThreadMessage:
     body: str
     received_at: dt.datetime | None = None
     label_ids: tuple[str, ...] = ()
+    #: Who this one was addressed to. Read off the mailbox's *own* message in a
+    #: conversation, it is the record of where the letter actually went — which
+    #: is what tells a journalist's answer apart from a bounce or an
+    #: out-of-office note that Gmail threaded into the same conversation.
+    to_email: str = ""
 
 
 def thread_url(thread_id: str, *, account: str = "") -> str:
@@ -1144,6 +1172,10 @@ def _message(raw: dict[str, Any]) -> ThreadMessage:
     payload = raw.get("payload")
     part = payload if isinstance(payload, dict) else {}
     name, address = parseaddr(_header(part, "From"))
+    # The first addressee only, the way ``build_message`` writes exactly one:
+    # a letter from this tool names one journalist, and the question this answers
+    # is "where did our own message go", not "who else was on it".
+    _, addressed_to = parseaddr(_header(part, "To"))
     labels = raw.get("labelIds") or ()
     return ThreadMessage(
         message_id=str(raw.get("id") or ""),
@@ -1154,6 +1186,7 @@ def _message(raw: dict[str, Any]) -> ThreadMessage:
         body=_plain_text(part),
         received_at=_sent_at(raw),
         label_ids=tuple(str(label) for label in labels),
+        to_email=addressed_to,
     )
 
 
@@ -1175,6 +1208,20 @@ def thread(thread_id: str, *, fetch: Fetch | None = None) -> list[ThreadMessage]
         for raw in answer.get("messages") or ()
         if isinstance(raw, dict)
     ]
+
+
+def is_own_message(message: ThreadMessage) -> bool:
+    """Whether this mailbox wrote the message, by Gmail's own labels.
+
+    ``SENT`` is the letter this tool put in the journalist's inbox; ``DRAFT`` is
+    one that never left at all. Neither is an answer to anything, and the reply
+    sync (:mod:`newspulse.mailsync`) asks exactly this question of every message
+    in every conversation it reads. It lives here rather than there because the
+    two label strings are Gmail's vocabulary, and a second copy of them in
+    another module is a drift risk on the one check that keeps this tool's own
+    words out of a contact's file as somebody else's.
+    """
+    return bool({_SENT_LABEL, _DRAFT_LABEL} & set(message.label_ids))
 
 
 def sent_in_thread(thread_id: str, *, fetch: Fetch | None = None) -> Sent | None:
@@ -1206,6 +1253,7 @@ __all__ = [
     "SCOPES",
     "Draft",
     "GmailError",
+    "GmailMissing",
     "GmailUnauthorized",
     "Link",
     "Profile",
@@ -1218,6 +1266,7 @@ __all__ = [
     "create_draft",
     "disconnect",
     "exchange",
+    "is_own_message",
     "new_state",
     "profile",
     "scope_words",

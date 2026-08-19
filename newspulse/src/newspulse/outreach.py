@@ -34,6 +34,11 @@ the moment a letter is released its text is frozen: :func:`store` overwrites onl
 a draft, so a redraft for the same recipient becomes a new row rather than
 destroying the record of what was actually sent.
 
+:func:`record_reply` is the one entry a machine may make in that ledger, and it
+may make exactly one: this letter was answered. What the answer *meant* — a
+rejection, an invitation — stays the consultant's reading, because the two look
+identical to a matcher and opposite to a person.
+
 One honest caveat on the word "record": the routes that write these rows share
 the app's trust boundary, which is HTTP Basic behind a loopback bind by default
 and — like every POST in this tool — no CSRF token yet. The two ledger routes
@@ -55,17 +60,19 @@ from string import Template
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from . import config, contacts, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import (
+    OUTCOME_BY_MAILBOX,
     SILENT_AFTER_DAYS,
     Analysis,
     Angle,
     Article,
     Client,
     Outreach,
+    OutreachReply,
     OutreachState,
     visible_coverage,
 )
@@ -580,9 +587,57 @@ def record_outcome(
     row.state = wanted
     row.outcome_note = (note or "").strip()
     row.outcome_at = dt.datetime.now(dt.UTC)
+    # Signed, because the other writer of this field is a machine. There are no
+    # user accounts here, so the signature is the same token a release carries.
+    row.outcome_by = DEFAULT_RELEASED_BY
     session.add(row)
     session.commit()
     return row
+
+
+def record_reply(session: Session, row: Outreach, *, at: dt.datetime) -> bool:
+    """The letter was answered. Move it to ``antwort``, unless a person already has.
+
+    Called by the mailbox sync once a reply has been added to the session, and it
+    commits both together: the stored reply and the state it may have moved are
+    one fact about one letter, and a crash between two commits would leave a
+    filed answer beside a letter that still reads as unanswered.
+
+    The one state a machine may set here is ``ANTWORT``, and only that. A matcher
+    can see that a human wrote back; it cannot see *what* they wrote, and "danke,
+    nichts für uns" and "schicken Sie mehr" are the same event to it and opposite
+    events to a consultant. So Absage and Veröffentlicht stay a person's reading,
+    and any outcome already on the row — including an ``antwort`` from the first
+    reply — is left exactly as it stands. Returns whether the state moved.
+
+    ``at`` is the message's own received time, which is why it is a parameter
+    rather than a clock call: a reply that arrived on Saturday and was read on
+    Monday belongs to Saturday, and ``outcome_at`` is meant to say when the thing
+    happened as far as anyone can know it.
+
+    It is never taken as earlier than the release, though. ``at`` comes from
+    Gmail, which threads messages by more than the letter this tool sent, so a
+    conversation can carry a message older than the pitch inside it. As an
+    ``outcome_at`` that would read as a letter answered years before it went out,
+    and the contact's file sorts on exactly that field — the answer would render
+    below the release it answers.
+    """
+    if row.state in OUTCOMES or row.released_at is None:
+        # Either a person has already recorded what came back, or this letter
+        # never left the house and has nothing to be the answer to. In both cases
+        # the reply is still stored — this only decides whether the state moves.
+        session.commit()
+        return False
+    row.state = OutreachState.ANTWORT
+    row.outcome_at = max(at, row.released_at)
+    # And signed as the machine's, so neither page ever draws this line as
+    # something a consultant typed. Stored rather than inferred at render time
+    # from state, note and timestamp: that inference reads the reply row, and a
+    # retention rule deleting one would turn this line back into a human's.
+    row.outcome_by = OUTCOME_BY_MAILBOX
+    session.add(row)
+    session.commit()
+    return True
 
 
 def is_silent(row: Outreach, *, now: dt.datetime | None = None) -> bool:
@@ -657,40 +712,79 @@ class Tally:
 
 
 class TimelineKind(StrEnum):
-    """The two kinds of line a file holds, which are also the two sources.
+    """The three kinds of line a file holds, which are also its three sources.
 
     ``RELEASE`` is stamped by the machine the moment a person pressed the button;
-    ``OUTCOME`` is a sentence somebody typed afterwards. The page has to tell them
-    apart, so the distinction is a value rather than a template condition.
+    ``OUTCOME`` is a sentence somebody typed afterwards; ``REPLY`` is the
+    journalist's own words, read out of the mailbox by the daily sync. The page
+    has to tell them apart — an auditor's first question about any line here is
+    who wrote it — so the distinction is a value rather than a template
+    condition.
     """
 
     RELEASE = "release"
+    REPLY = "reply"
     OUTCOME = "outcome"
+
+
+#: Which line sits on top when two share a second. A reply above the release it
+#: answers, an outcome above the reply that prompted it — the order the day
+#: actually ran in. Only ever a tie-break; the timestamps decide everything else.
+_KIND_ORDER: dict[TimelineKind, int] = {
+    TimelineKind.RELEASE: 0,
+    TimelineKind.REPLY: 1,
+    TimelineKind.OUTCOME: 2,
+}
 
 
 @dataclass(frozen=True, slots=True)
 class TimelineEvent:
-    """One line on a contact's timeline, with the moment it belongs to."""
+    """One line on a contact's timeline, with the moment it belongs to.
+
+    ``reply`` is set on exactly the ``REPLY`` lines and is the journalist's
+    message itself, so the template renders stored text rather than reaching back
+    through the letter for it.
+    """
 
     at: dt.datetime
     kind: TimelineKind
     letter: Outreach
     mandate: str
+    reply: OutreachReply | None = None
+
+
+def _outcome_is_the_reply(letter: Outreach) -> bool:
+    """Whether the outcome on this letter is the one the sync recorded itself.
+
+    Read off ``outcome_by``, which :func:`record_reply` and
+    :func:`record_outcome` each stamp with their own author. It was once
+    inferred from state, note and a matching reply timestamp; that inference was
+    re-run on every render and would have flipped the moment a retention rule
+    deleted the reply row it read — redrawing a machine's line as a consultant's
+    sentence in the one place in this tool that exists to be audited.
+
+    It matters because the file draws every outcome as "von Hand eingetragen",
+    which for this one would be a sentence nobody said. The reply itself is
+    already on the timeline, at the same moment, with its text and its own
+    marker — so the outcome line is dropped rather than mislabelled.
+    """
+    return letter.outcome_from_mailbox
 
 
 def timeline(history: list[HistoryEntry]) -> list[TimelineEvent]:
     """Every line the file renders, strictly newest first.
 
-    A letter contributes up to two lines and they carry *different* timestamps:
-    the release, and the outcome recorded later. So the outcome cannot simply be
-    drawn above the letter it belongs to — a reply typed yesterday to a pitch from
-    July belongs at the top of the page, above a letter released last week, and
-    nesting the two would put July's reply below it. That interleaving is the
-    common case, not an exotic one: a journalist answering an older pitch after a
-    newer one has gone out is an ordinary week.
+    A letter contributes up to three kinds of line and they carry *different*
+    timestamps: the release, every reply the sync filed against it, and the
+    outcome recorded later. So a line cannot simply be drawn under the letter it
+    belongs to — a reply that arrived yesterday to a pitch from July belongs at
+    the top of the page, above a letter released last week, and nesting the two
+    would put July's reply below it. That interleaving is the common case, not an
+    exotic one: a journalist answering an older pitch after a newer one has gone
+    out is an ordinary week.
 
     Flattened here rather than in the template because "newest first" is a sort,
-    and Jinja cannot do one over two timestamps on the same row.
+    and Jinja cannot do one over three timestamps hanging off the same row.
     """
     events: list[TimelineEvent] = []
     for entry in history:
@@ -704,7 +798,17 @@ def timeline(history: list[HistoryEntry]) -> list[TimelineEvent]:
                 mandate=entry.mandate,
             )
         )
-        if letter.outcome_at is not None:
+        events.extend(
+            TimelineEvent(
+                at=reply.received_at,
+                kind=TimelineKind.REPLY,
+                letter=letter,
+                mandate=entry.mandate,
+                reply=reply,
+            )
+            for reply in letter.replies
+        )
+        if letter.outcome_at is not None and not _outcome_is_the_reply(letter):
             events.append(
                 TimelineEvent(
                     at=letter.outcome_at,
@@ -713,13 +817,16 @@ def timeline(history: list[HistoryEntry]) -> list[TimelineEvent]:
                     mandate=entry.mandate,
                 )
             )
-    # Ties are broken the way the query already breaks them (newest id first), and
-    # an outcome sharing its letter's second sits above the release it answers.
+    # Ties are broken the way the query already breaks them (newest id first),
+    # then by which line the day would have produced last (:data:`_KIND_ORDER`),
+    # and finally by the reply's own id so two mails in the same second keep the
+    # order Gmail gave them.
     events.sort(
         key=lambda event: (
             event.at,
             event.letter.id,
-            event.kind is TimelineKind.OUTCOME,
+            _KIND_ORDER[event.kind],
+            event.reply.id if event.reply is not None else 0,
         ),
         reverse=True,
     )
@@ -740,10 +847,15 @@ def history_for_contact(
     Capped at ``limit`` (:data:`MAX_HISTORY`) newest first, so one long
     relationship cannot turn the page into a thousand-row render. The view says
     when the cap was reached; it never silently shows a shortened file.
+
+    The replies come along in one further query rather than one per letter: the
+    timeline renders every one of them, so a lazy load would be a hundred
+    round trips on a long file.
     """
     rows = session.execute(
         select(Outreach, Client.name)
         .join(Client, Client.id == Outreach.client_id)
+        .options(selectinload(Outreach.replies))
         .where(
             Outreach.contact_id == contact_id,
             Outreach.released_at.is_not(None),
@@ -814,6 +926,10 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
 
     One query for the page rather than one per card: the client view renders up to
     five impulses and the Today column renders one per mandate.
+
+    The replies come along in one further query for the same reason: every
+    released card draws the answers filed against it, and a lazy load would be
+    one round trip per letter on a page that renders a dozen.
     """
     if not angle_ids:
         return {}
@@ -821,6 +937,7 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
     for row in session.scalars(
         select(Outreach)
         .where(Outreach.angle_id.in_(angle_ids))
+        .options(selectinload(Outreach.replies))
         .order_by(Outreach.generated_at.desc(), Outreach.id.desc())
     ).all():
         grouped.setdefault(row.angle_id, []).append(row)
@@ -845,6 +962,7 @@ __all__ = [
     "is_silent",
     "record_draft",
     "record_outcome",
+    "record_reply",
     "record_sent",
     "release",
     "released_count_by_contact",

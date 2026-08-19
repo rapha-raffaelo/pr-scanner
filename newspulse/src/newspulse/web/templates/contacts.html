@@ -64,6 +64,12 @@
      pressed. Same chip idiom as .reply__src in the sibling mock. */
   .tl__src { display: inline-block; font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius); padding: 1px 7px; background: var(--card); margin-left: 6px; vertical-align: 1px; }
   .tl__src--hand { color: var(--ink-2); background: var(--fill-2); border-color: var(--line-strong); }
+  /* The journalist's own words, in the box the locked mock gives a reply
+     (.reply in features/mocks/gmail-send.html): green-tinted, bordered, and set
+     apart from every other line on the page — this is the only text here that
+     somebody outside the agency wrote. */
+  .tl__reply { margin-top: 6px; border: 1px solid rgba(36, 138, 61, 0.30); background: rgba(36, 138, 61, 0.06); border-radius: var(--radius); padding: 8px 11px; max-width: 72ch; }
+  .tl__reply-text { font-size: var(--t-footnote); line-height: 1.6; color: var(--ink-2); white-space: pre-wrap; }
   /* One rule per OutreachState, because the class is generated from the stored
      value (b-{{ state }}) — a state with no rule renders as a colourless box
      with a hairline border, and `border: 1px solid` above makes that look like
@@ -258,6 +264,21 @@
                     <span class="badge b-{{ letter.state }}">{{ t(state_labels[letter.state]) }}</span></div>
                   {% if letter.outcome_note %}<div class="tl__sub">{{ letter.outcome_note }}</div>{% endif %}
                 </li>
+              {% elif event.kind == "reply" %}
+                {# What came back, in the journalist's own words, read out of the
+                   mailbox by the daily sync. Marked as coming from there rather
+                   than from a person at this agency: it is the only text on this
+                   page written by somebody who never agreed to be in RauteOS,
+                   and the clock time stays on it because "wann kam die Antwort"
+                   is a different question from "an welchem Tag". #}
+                <li>
+                  <span class="tl__pin tl__pin--good"></span>
+                  <div class="tl__when">{{ event.at | de_datetime }}
+                    <span class="tl__src">{{ t("aus dem Postfach gelesen") }}</span></div>
+                  <div class="tl__what"><b>{{ t("Antwort von %(who)s") | format(who=event.reply.sender) }}</b>
+                    <span class="tl__cl" title="{{ t('Mandant') }}: {{ event.mandate }}"><span style="background: {{ event.mandate | brand_colour }}"></span>{{ event.mandate }}</span></div>
+                  <div class="tl__reply"><div class="tl__reply-text">{{ event.reply.body }}</div></div>
+                </li>
               {% else %}
                 {# The release: nobody typed this one. The system stamped it the
                    moment the button was pressed, and the chip says so — while the
@@ -291,8 +312,12 @@
           </p>
         {% endif %}
 
+        {# The note has to be true, and since dem Postfach-Anschluss the old one
+           was not: RauteOS does send, and it does read replies. What it still
+           does not do is look at anything else in the mailbox, and that is the
+           sentence worth keeping on the page. #}
         <p class="note">
-          {{ t("Der Verlauf entsteht nur aus dem, was hier eingetragen wurde. RauteOS verschickt keine Mails und liest kein Postfach: eine Zeile entsteht, wenn Sie ein Anschreiben freigeben, und die zweite, wenn Sie festhalten was zurückkam.") }}
+          {{ t("Der Verlauf entsteht aus drei Quellen, und jede Zeile sagt, aus welcher: aus der Freigabe eines Anschreibens, aus dem, was Sie selbst festhalten, und aus den Antworten der Journalistinnen und Journalisten. Aus dem Postfach liest RauteOS dabei nur die Verläufe, die es selbst begonnen hat — alles andere wird nicht abgefragt.") }}
         </p>
       </div>
     {% endif %}
