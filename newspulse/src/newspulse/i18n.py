@@ -773,6 +773,24 @@ _EN: dict[str, str] = {
         "check.",
     "bisher nicht gefüllt": "previously empty",
     "Ihre Angabe": "Your entry",
+    # The profile's own field names. Every review row is labelled with one, and
+    # the labels live in ``profile.FIELDS`` rather than in a template, so no
+    # ``t("...")`` in the markup names them and the string sweep never saw them.
+    # "Positionierung" and "Wettbewerber" are further up, from the pages that
+    # used them first. ``test_every_german_string_on_the_review_pages_is_
+    # translated`` now reads ``profile.FIELDS`` directly for exactly this reason.
+    "Geschäftsfeld": "Line of business",
+    "Geschäftsführung": "Management",
+    "Pressekontakt": "Press contact",
+    "Gegründet": "Founded",
+    "Sitz": "Headquarters",
+    "Mitarbeitende": "Employees",
+    "Umsatz / Finanzierung": "Revenue / funding",
+    "Eigentümer": "Owners",
+    "Zielgruppe": "Target audience",
+    "Produkte": "Products",
+    "Öffentliche Themen": "Public debates",
+    "Reputationsrisiken": "Reputation risks",
     "Das Netz sagt": "The web says",
     # "Übernehmen" itself is further down, where the guide page's adopt button
     # put it. One German string, one English word: two entries for it would

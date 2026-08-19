@@ -1118,3 +1118,11 @@ def test_every_german_string_on_the_review_pages_is_translated():
     ]
 
     assert missing == []
+
+
+def test_every_field_label_a_review_row_prints_is_translated():
+    """The regex above only sees literal ``t("...")``. Every review row labels
+    itself with ``t(field.label)``, and those labels live in ``profile.FIELDS``
+    rather than in the markup, so the sweep walked straight past twelve German
+    field names on the English page."""
+    assert [f.label for f in profiles.FIELDS if f.label not in i18n._EN] == []
