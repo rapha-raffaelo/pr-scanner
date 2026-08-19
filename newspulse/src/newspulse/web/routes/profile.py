@@ -81,9 +81,20 @@ def profile_view(
     # A proposal with no source is not drawn in either pile. It is a machine
     # asserting something it cannot back up, and a value the reader cannot check
     # is not a decision anyone should be asked to make. The refresh no longer
-    # stores one (``profile_refresh._unrefused``); this is the render side of the
+    # stores one (``profile_refresh._sourced``); this is the render side of the
     # same rule, for rows written before it existed.
-    proposed = [p for p in profile_refresh.outstanding(session, client_id) if p.source_url]
+    #
+    # Nor is a row the profile has caught up with. The refresh files no proposal
+    # that agrees with the profile, but the profile moves under a row that is
+    # already on the pile: the consultant reads what the web says and types it in
+    # himself, and the row would then be drawn as a contradiction between Paris
+    # and Paris, with a button that records a refusal against the value he just
+    # entered (see ``profile_refresh.contradicts``).
+    proposed = [
+        p
+        for p in profile_refresh.outstanding(session, client_id)
+        if p.source_url and profile_refresh.contradicts(facts, p)
+    ]
     pending = [p for p in proposed if profile_refresh.may_replace(facts, p.key)]
     return templates.TemplateResponse(
         request,
