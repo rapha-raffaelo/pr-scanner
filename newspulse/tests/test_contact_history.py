@@ -422,6 +422,23 @@ def test_the_roster_shows_the_count_and_keeps_filtering(web, factory):
         assert "Sven Kaltenbach" not in narrowed, params
 
 
+def test_opening_a_file_keeps_the_filter_and_filtering_keeps_the_file(web, factory):
+    """Two bits of state in one query string. Clicking a name must not throw the
+    filter away, and filtering must not close the file that is open — a book
+    narrowed to one masthead is exactly when you go looking at one of its names."""
+    with factory() as session:
+        kuehn = contacts.save(session, name="Marlene Kühn", outlet="Handelsblatt")
+        contacts.save(session, name="Sven Kaltenbach", outlet="Baugewerbe Magazin")
+        contact_id = kuehn.id
+
+    narrowed = web.get("/contacts", params={"q": "Handelsblatt"}).text
+    assert f"/contacts?id={contact_id}&amp;q=Handelsblatt" in narrowed
+
+    opened = web.get("/contacts", params={"id": contact_id, "q": "Handelsblatt"}).text
+    assert f'<input type="hidden" name="id" value="{contact_id}">' in opened
+    assert "Sven Kaltenbach" not in opened
+
+
 # --- The rendered page ----------------------------------------------------------
 
 

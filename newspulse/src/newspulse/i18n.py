@@ -560,7 +560,7 @@ _EN: dict[str, str] = {
         "The journalists you know. The tool proposes who to approach from what the "
         "press published; how to reach them lives here, and only what you put in it.",
     "Noch kein Eintrag für": "No entry yet for",
-    "unten ausfüllen und speichern.": "fill in below and save.",
+    "jetzt ausfüllen und speichern.": "fill it in and save.",
     "Eintrag bearbeiten": "Edit entry",
     "Neuer Kontakt": "New contact",
     "E-Mail": "Email",

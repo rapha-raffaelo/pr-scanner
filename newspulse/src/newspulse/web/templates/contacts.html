@@ -30,7 +30,11 @@
   .file__outlet { font-size: var(--t-subhead); color: var(--muted); margin-top: 2px; }
   .file__meta { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s2); }
   .file__meta b { color: var(--ink-2); font-weight: 600; }
+  /* "Bearbeiten" is a link that navigates, so it is an <a> wearing .btn — and
+     the global a:hover would underline it, which no other button in the app
+     does. Beaten on specificity here rather than by changing .btn app-wide. */
   .file__acts { margin-left: auto; display: flex; gap: var(--s2); align-items: center; }
+  .file__acts .btn:hover { text-decoration: none; }
   .tally { display: flex; gap: var(--s5); margin-bottom: var(--s5); flex-wrap: wrap; }
   .tally div { min-width: 96px; }
   .tally__n { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
@@ -60,7 +64,15 @@
      pressed. Same chip idiom as .reply__src in the sibling mock. */
   .tl__src { display: inline-block; font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius); padding: 1px 7px; background: var(--card); margin-left: 6px; vertical-align: 1px; }
   .tl__src--hand { color: var(--ink-2); background: var(--fill-2); border-color: var(--line-strong); }
+  /* One rule per OutreachState, because the class is generated from the stored
+     value (b-{{ state }}) — a state with no rule renders as a colourless box
+     with a hairline border, and `border: 1px solid` above makes that look like
+     a mistake rather than a neutral badge. ENTWURF and RAUS cannot reach the
+     timeline today (record_outcome refuses them), but OUT-04's mailbox sync is
+     already anticipated as a writer that stamps released_at outside release(). */
   .badge { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; border-radius: var(--radius); padding: 2px 8px; border: 1px solid; white-space: nowrap; margin-left: 6px; }
+  .b-entwurf { color: var(--muted); background: var(--fill-2); border-color: var(--line); }
+  .b-raus { color: #0b4f8a; background: rgba(0, 113, 227, 0.10); border-color: rgba(0, 113, 227, 0.28); }
   .b-antwort { color: #14532d; background: rgba(36, 138, 61, 0.10); border-color: rgba(36, 138, 61, 0.30); }
   .b-veroeffentlicht { color: #14532d; background: rgba(36, 138, 61, 0.16); border-color: rgba(36, 138, 61, 0.36); }
   .b-absage { color: var(--warn); background: rgba(178, 80, 0, 0.10); border-color: rgba(178, 80, 0, 0.28); }
@@ -84,7 +96,9 @@
 {% if came_from_pitch and not editing %}
   <div class="notice notice--ok">
     {{ t("Noch kein Eintrag für") }} <strong>{{ prefill_name }}</strong>{% if prefill_outlet %} ({{ prefill_outlet }}){% endif %} —
-    {{ t("unten ausfüllen und speichern.") }}
+    {# Layout-neutral: since the split the form sits *beside* the roster, and
+       only stacks below it under 900px. #}
+    {{ t("jetzt ausfüllen und speichern.") }}
   </div>
 {% endif %}
 
@@ -94,16 +108,21 @@
      went to them. The count is released letters only — drafts reached nobody. #}
   <div class="book">
     <div class="book__head">
+      {# The open file survives a filter and the filter survives opening a file:
+         both bits of state travel in the query string, so neither click throws
+         the other away. #}
       <form method="get" action="/contacts">
+        {% if selected %}<input type="hidden" name="id" value="{{ selected.id }}">{% endif %}
         <input type="search" name="q" value="{{ search }}"
                placeholder="{{ t('Name, Medium oder Themengebiet') }}"
                aria-label="{{ t('Suche') }}">
       </form>
     </div>
+    {% set term = "&q=" ~ (search | urlencode) if search else "" %}
     <a class="book__new" href="/contacts">+ {{ t("Neuer Kontakt") }}</a>
     {% for c in contacts %}
       <a class="book__row{% if selected and selected.id == c.id %} is-on{% endif %}"
-         href="/contacts?id={{ c.id }}">
+         href="/contacts?id={{ c.id }}{{ term }}">
         {% if letter_counts.get(c.id) %}<span class="book__n">{{ letter_counts.get(c.id) }}</span>{% endif %}
         <span class="book__nm">{{ c.name }}</span>
         <span class="book__ol">{{ c.outlet or '—' }}</span>
@@ -153,7 +172,7 @@
           <div class="actions">
             <button type="submit">{{ t("Speichern") }}</button>
             {% if editing %}
-              <a class="rowlink" href="/contacts{% if selected %}?id={{ selected.id }}{% endif %}">{{ t("Abbrechen") }}</a>
+              <a class="rowlink" href="/contacts{% if selected %}?id={{ selected.id }}{{ term }}{% endif %}">{{ t("Abbrechen") }}</a>
             {% endif %}
           </div>
         </form>
@@ -183,7 +202,7 @@
             {% if selected.notes %}<div class="file__meta">{{ selected.notes }}</div>{% endif %}
           </div>
           <div class="file__acts">
-            <a class="btn btn--ghost" href="/contacts?id={{ selected.id }}&edit={{ selected.id }}">{{ t("Bearbeiten") }}</a>
+            <a class="btn btn--ghost" href="/contacts?id={{ selected.id }}&edit={{ selected.id }}{{ term }}">{{ t("Bearbeiten") }}</a>
             <form method="post" action="/contacts/{{ selected.id }}/delete">
               <button type="submit" class="linkbtn linkbtn--danger">{{ t("Löschen") }}</button>
             </form>

@@ -235,6 +235,33 @@ def _already_pitched(
     return latest
 
 
+def _enrich(
+    session: Session,
+    target: PitchTarget,
+    pitched: dict[tuple[str, str], dt.datetime],
+) -> PitchTarget:
+    """What the book and the ledger already know about this byline.
+
+    Two lookups, both of them recorded facts rather than inferences: what the
+    consultant typed into the contact book — the only source of contact details in
+    the tool — and whether this angle already went to this person, released and
+    dated, so the list warns before proposing the same subject to them twice.
+    """
+    known = (
+        contactbook.find(session, target.journalist, target.outlet)
+        if target.journalist
+        else None
+    )
+    if known is not None:
+        target = replace(target, contact_id=known.id, contact_email=known.email)
+    written = pitched.get(
+        ((target.journalist or "").casefold(), target.outlet.casefold())
+    )
+    if written is not None:
+        target = replace(target, already_pitched_at=written)
+    return target
+
+
 def targets_for(
     session: Session,
     client: Client,
@@ -261,24 +288,7 @@ def targets_for(
         if key in seen or len(targets) >= MAX_TARGETS:
             return
         seen.add(key)
-        # What the consultant already recorded about this byline, if anything.
-        # Looked up, never inferred: the book is the only source of contact
-        # details in the tool, and it is filled in by hand.
-        known = (
-            contactbook.find(session, target.journalist, target.outlet)
-            if target.journalist
-            else None
-        )
-        if known is not None:
-            target = replace(target, contact_id=known.id, contact_email=known.email)
-        # Whether this angle already went to them, released and dated — so the
-        # list warns before proposing the same subject to the same person twice.
-        written = pitched.get(
-            ((target.journalist or "").casefold(), target.outlet.casefold())
-        )
-        if written is not None:
-            target = replace(target, already_pitched_at=written)
-        targets.append(target)
+        targets.append(_enrich(session, target, pitched))
 
     # 1. The bylines on the very stories this draft answers.
     if angle is not None:
