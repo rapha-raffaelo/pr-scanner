@@ -758,6 +758,8 @@ _EN: dict[str, str] = {
         "Researching — the page will refresh itself once the proposals are ready.",
     "Keine Recherche.": "No research.",
     "Vorschläge aus dem Netz": "proposals from the web",
+    "Feld(er) von Hand gefüllt — das Netz sagt etwas anderes":
+        "field(s) filled in by hand — the web says otherwise",
     "Ausgewählte übernehmen": "Accept selected",
     "Verwerfen": "Discard",
     "Profil speichern": "Save profile",

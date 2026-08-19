@@ -31,14 +31,21 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from . import config, profile
 from .clients import list_clients
-from .models import Analysis, Category, Client, ProfileProposal, visible_coverage
+from .models import (
+    Analysis,
+    Category,
+    Client,
+    ClientFact,
+    ProfileProposal,
+    visible_coverage,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -139,6 +146,25 @@ def due(
 
 
 # --- The proposal store ---------------------------------------------------------
+
+
+def may_replace(facts: Mapping[str, ClientFact], key: str) -> bool:
+    """Whether a proposal for ``key`` is allowed to be written over what is on file.
+
+    A fact the consultant typed is never overwritten — it may be contradicted,
+    visibly, and he decides. That invariant used to live only in the template's
+    render filter, which was defensible while the proposal pile was a dict one
+    button wrote to: nothing could put a row there that the page had not just
+    drawn. It is not defensible now. The unattended sweep files proposals for
+    hand-filled fields too (:func:`_as_rows` compares values, not authorship, so
+    the contradiction is kept rather than dropped), and a filter that only decides
+    what to *draw* is one stale form post away from being walked past.
+
+    So both the review page and the accept route ask this one question. An
+    invariant enforced where the page renders is not enforced.
+    """
+    fact = facts.get(key)
+    return fact is None or fact.filled_by != profile.BY_HAND
 
 
 def outstanding(session: Session, client_id: int) -> list[ProfileProposal]:

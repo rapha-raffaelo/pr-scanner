@@ -282,6 +282,55 @@ def test_a_field_the_consultant_filled_is_not_proposed_over(factory, web):
     assert "Paris" in body
 
 
+def test_posting_a_hand_filled_key_to_accept_does_not_overwrite_it(factory, web):
+    """The page draws no checkbox for a hand-filled field, but the form body is
+    not the page: a tab left open while the value was typed in elsewhere posts a
+    key nobody ticked. The write boundary refuses it rather than trusting the
+    render filter, which is one stale POST away from being walked past."""
+    with factory() as session:
+        client = _client(session)
+        profiles.save(session, client, "ceo", "Weiß ich besser")
+        client_id = client.id
+        _propose(
+            session, client_id,
+            ceo=("Jemand anderes", "https://irgendwo.de", "Irgendwo"),
+            sitz=("Paris", "", ""),
+        )
+
+    web.post(f"/client/{client_id}/profil/accept", data={"key": ["ceo", "sitz"]},
+             follow_redirects=False)
+
+    with factory() as session:
+        facts = profiles.stored(session, client_id)
+        left = {p.key for p in profile_refresh.outstanding(session, client_id)}
+    assert facts["ceo"].value == "Weiß ich besser", "the human's value stands"
+    assert facts["ceo"].filled_by == "mensch", "and it is still stamped as his"
+    assert facts["sitz"].value == "Paris", "the field nobody typed into is taken"
+    # The refused one is still on file: it is a contradiction PRF-02 renders, not
+    # something to silently drop because the accept did not honour it.
+    assert left == {"ceo"}
+
+
+def test_only_contradictions_left_still_offers_a_way_to_clear_them(factory, web):
+    """A proposal against a hand-filled field gets no checkbox, so a client whose
+    profile was typed in entirely by hand used to accumulate rows that were
+    invisible *and* unclearable — the discard button lived inside the block that
+    the filter had just emptied."""
+    with factory() as session:
+        client = _client(session)
+        profiles.save(session, client, "ceo", "Weiß ich besser")
+        client_id = client.id
+        _propose(session, client_id, ceo=("Jemand anderes", "", ""))
+
+    body = web.get(f"/client/{client_id}/profil").text
+    assert "Verwerfen" in body, "the rows are reachable"
+
+    web.post(f"/client/{client_id}/profil/discard", follow_redirects=False)
+
+    with factory() as session:
+        assert profile_refresh.outstanding(session, client_id) == []
+
+
 def test_discarding_clears_the_proposals_from_the_database(factory, web):
     """The dict this replaced lost them on a restart; the button has to be the
     only thing that does."""

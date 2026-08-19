@@ -104,6 +104,21 @@
       </div>
     </form>
   </div>
+{% elif contradictions %}
+  {# Nothing to offer, but the refresh did find something the web disagrees with
+     on a field that was filled in by hand. Those are never proposed over, so
+     they get no checkbox — but they are on file, and a pile nobody can clear is
+     worse than no pile. PRF-02 shows what they say. #}
+  <div class="props">
+    <div class="eyebrow">
+      {{ contradictions }} {{ t("Feld(er) von Hand gefüllt — das Netz sagt etwas anderes") }}
+    </div>
+    <form method="post" action="/client/{{ client.id }}/profil/discard">
+      <div class="props__act">
+        <button type="submit" class="btn btn--ghost">{{ t("Verwerfen") }}</button>
+      </div>
+    </form>
+  </div>
 {% endif %}
 
 {# --- The profile itself, always editable ------------------------------- #}

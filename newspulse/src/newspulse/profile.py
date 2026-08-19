@@ -75,6 +75,12 @@ FIELDS_BY_KEY = {f.key: f for f in FIELDS}
 #: What a filled profile looks like, for the progress line on the page.
 FILLABLE = len(FIELDS)
 
+#: What :attr:`~newspulse.models.ClientFact.filled_by` holds for a value a person
+#: typed in, as opposed to the model that proposed it. Named because it is an
+#: authority level and not a label: a fact carrying this may be contradicted by
+#: the web and may never be overwritten by it.
+BY_HAND = "mensch"
+
 
 @dataclass(frozen=True, slots=True)
 class Proposal:
@@ -102,7 +108,7 @@ def save(
     *,
     source_url: str = "",
     source_title: str = "",
-    filled_by: str = "mensch",
+    filled_by: str = BY_HAND,
 ) -> ClientFact | None:
     """Write one field. An empty value clears it rather than storing a blank.
 

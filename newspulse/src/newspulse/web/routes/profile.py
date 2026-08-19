@@ -63,13 +63,12 @@ def profile_view(
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     facts = profiles.stored(session, client_id)
-    # Only the fields the research actually changes: a proposal identical to what
-    # is already on file is noise, and a proposal for a field a person filled in
-    # by hand is worse than noise.
-    pending = [
-        p for p in profile_refresh.outstanding(session, client_id)
-        if p.key not in facts or facts[p.key].filled_by != "mensch"
-    ]
+    # Only the fields the research may actually write: a proposal identical to
+    # what is on file never becomes a row at all, and a proposal against a field a
+    # person filled in by hand is a contradiction rather than an offer — PRF-02
+    # renders those under whatever DEC-2 locks as.
+    proposed = profile_refresh.outstanding(session, client_id)
+    pending = [p for p in proposed if profile_refresh.may_replace(facts, p.key)]
     return templates.TemplateResponse(
         request,
         "client_profile.html",
@@ -80,6 +79,11 @@ def profile_view(
             "filled": len(facts),
             "fillable": profiles.FILLABLE,
             "proposals": pending,
+            # Held back from the list above, and still on file. Counted so the
+            # page can offer to clear them: a row nobody can see and nobody can
+            # discard is a row that sits there until the next refresh overwrites
+            # it, which is the sort of invisible state this feature exists to end.
+            "contradictions": len(proposed) - len(pending),
             "researching": _researching.locked(),
             "research_error": _errors.get(client_id, ""),
             "last_run": _fetch_last_run(session),
@@ -143,12 +147,22 @@ def accept_proposals(
 
     Only the ticked ones go: the rest stay on offer rather than vanishing with the
     click, because a decision not made is not a decision to discard.
+
+    A key naming a hand-filled fact is refused here and not only hidden upstream.
+    The page does not draw a checkbox for one, but the form body is not the page:
+    a tab left open while the field was typed into elsewhere posts a key the
+    consultant never ticked, and honouring it would replace what he wrote with
+    what a model read and stamp the model's name on it.
     """
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     wanted = set(key)
-    taken = [p for p in profile_refresh.outstanding(session, client_id) if p.key in wanted]
+    facts = profiles.stored(session, client_id)
+    taken = [
+        p for p in profile_refresh.outstanding(session, client_id)
+        if p.key in wanted and profile_refresh.may_replace(facts, p.key)
+    ]
     for proposal in taken:
         profiles.save(
             session, client, proposal.key, proposal.value,
