@@ -61,34 +61,73 @@ _API_ROOT = "https://gmail.googleapis.com/gmail/v1/users/me"
 _PROFILE_ENDPOINT = f"{_API_ROOT}/profile"
 _DRAFTS_ENDPOINT = f"{_API_ROOT}/drafts"
 _DRAFTS_SEND_ENDPOINT = f"{_API_ROOT}/drafts/send"
+_MESSAGES_ENDPOINT = f"{_API_ROOT}/messages"
 _THREADS_ENDPOINT = f"{_API_ROOT}/threads"
 
 # Where a person opens the conversation this tool started. Gmail addresses a
 # thread by its own id in the web client's fragment, so the link the card renders
 # is the same conversation the sync reads, not a search that might find another.
-_THREAD_WEB_URL = "https://mail.google.com/mail/u/0/#all/{thread_id}"
+_THREAD_WEB_URL = "https://mail.google.com/mail/u/{account}/#all/{thread_id}"
+
+# Which signed-in account the link opens in when the connected address is not
+# known. Gmail numbers the accounts a browser is signed into and 0 is the first
+# one — the right guess for a single-account browser, and only a guess.
+_DEFAULT_ACCOUNT = "0"
 
 # --- What the connection is allowed to do (DEC-4, option C: lesen und senden) ---
 #
-# Two scopes, and the narrowest pair that covers it. Not `gmail.modify`, which
-# would also let the tool delete and relabel; not `mail.google.com`, which is
-# everything. What is asked for here is what the person sees on Google's own
-# consent screen, so this tuple is the promise made to them.
+# Two scopes, and the narrowest pair that covers what this module actually calls.
+# Not `gmail.modify`, which would also let the tool delete and relabel; not
+# `mail.google.com`, which is everything. What is asked for here is what the
+# person sees on Google's own consent screen, so this tuple is the promise made
+# to them.
+#
+# `gmail.compose` rather than the `gmail.send` this file asked for before there
+# was a letter to send: Google documents `gmail.send` as "send messages only, no
+# read or modify privileges on mailbox", and it covers exactly one method —
+# `messages.send`. Every `users.drafts.*` call refuses it. The two-step this
+# module performs (compose a draft, then send *that draft*) is what makes a
+# repeated push safe instead of a second letter at the same journalist, and
+# `gmail.compose` is the narrowest scope that licenses it.
+#
+# A mailbox connected before this line changed therefore has to be connected
+# again — granted scopes are fixed at consent time, and no request widens them.
+# :attr:`Link.may_send` is what notices, so the card disables the action and says
+# why rather than failing with a 403 after the confirmation was clicked. The
+# operator-facing consent screen has to list the same two scopes.
 SCOPES: tuple[str, ...] = (
     "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.compose",
+)
+
+# Any one of these covers `drafts.create`, `drafts.update` and `drafts.send`.
+# Three rather than one, because a grant this tool never asks for can still be on
+# the connection — an account that consented to `mail.google.com` for the same
+# Google project, or a grant Google widened — and disabling the send on a mailbox
+# that plainly may send is its own kind of wrong.
+_SEND_CAPABLE_SCOPES: frozenset[str] = frozenset(
+    {
+        "https://www.googleapis.com/auth/gmail.compose",
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://mail.google.com/",
+    }
 )
 
 # The same permissions in words, because "gmail.readonly" is not a sentence a
 # person can consent to twice. Shown in Settings beside the connected address.
 #
-# The last three are never asked for here. Google adds them to a grant on its own
-# when the consent screen is an OpenID one, and they arrive in the token
-# response's `scope` — which is what the panel renders. Without a word for them
-# the panel would print a URL where it promised words.
+# Six of these are never asked for here. `gmail.send` is what connections made
+# before DEC-4's send path carry, `gmail.modify` and `mail.google.com` are grants
+# a Workspace account may already have; the last three Google adds to a grant on
+# its own when the consent screen is an OpenID one. All of them arrive in the
+# token response's `scope` — which is what the panel renders. Without a word for
+# them the panel would print a URL where it promised words.
 _SCOPE_WORDS: dict[str, str] = {
     "https://www.googleapis.com/auth/gmail.readonly": "Nachrichten lesen",
+    "https://www.googleapis.com/auth/gmail.compose": "Nachrichten verfassen und senden",
     "https://www.googleapis.com/auth/gmail.send": "Nachrichten senden",
+    "https://www.googleapis.com/auth/gmail.modify": "Nachrichten verwalten",
+    "https://mail.google.com/": "Vollzugriff auf das Postfach",
     "openid": "Anmeldung bei Google",
     "https://www.googleapis.com/auth/userinfo.email": "E-Mail-Adresse des Kontos",
     "https://www.googleapis.com/auth/userinfo.profile": "Name des Kontos",
@@ -151,6 +190,17 @@ _UNAUTHORIZED = 401
 # promises — the subject and text that were sent, read back byte for byte — needs
 # the body.
 _THREAD_FORMAT = "full"
+
+# What ``messages.get`` is asked for when the only question is *when* Gmail sent
+# something. "minimal" answers with the ids, the labels and ``internalDate`` and
+# leaves the letter itself on Google's side, which is all this needs.
+_MINIMAL_FORMAT = "minimal"
+
+# Gmail's own labels on the messages in a thread this tool started. A message it
+# sent carries SENT; one still sitting as a draft carries DRAFT. Telling those
+# two apart is the whole question after a send whose answer was lost.
+_SENT_LABEL = "SENT"
+_DRAFT_LABEL = "DRAFT"
 
 # Gmail states a message's own moment as milliseconds since the epoch, in a
 # string. It is the send date for a message this tool sent and the receipt date
@@ -235,6 +285,19 @@ class Link:
     @property
     def is_connected(self) -> bool:
         return bool(self.email)
+
+    @property
+    def may_send(self) -> bool:
+        """Whether this grant actually covers composing and sending a letter.
+
+        "Connected" and "may send" are two different questions and the card asks
+        this one: a person can untick a permission on Google's consent screen,
+        and a mailbox connected under an older scope list carries only what it
+        was granted then (see :data:`SCOPES`). Offering the send on the first
+        question means a 403 *after* the confirmation was clicked — the one
+        moment in this tool where the reader must know what happened.
+        """
+        return self.is_connected and bool(_SEND_CAPABLE_SCOPES & set(self.scopes))
 
     @property
     def scope_words(self) -> list[str]:
@@ -653,10 +716,48 @@ def _raise_for_api_error(payload: dict[str, Any], what: str) -> None:
     raise GmailError(f"{what} ({message})")
 
 
-def _profile(access: str, *, fetch: Fetch | None = None) -> Profile:
-    """The Gmail profile behind one access token."""
-    payload = _caller(fetch)(_PROFILE_ENDPOINT, token=access)
-    _raise_for_api_error(payload, "Gmail-Profil nicht lesbar")
+def _api(
+    url: str,
+    *,
+    json_body: dict[str, Any] | None = None,
+    method: str = "",
+    what: str,
+    fetch: Fetch | None = None,
+) -> dict[str, Any]:
+    """One authenticated Gmail call, with the retry every one of them needs.
+
+    The stored expiry is only Google's *statement* about a lifetime — it
+    invalidates access tokens early on a password change or a revoked session —
+    so a refusal is worth exactly one renewed attempt before it is reported. If
+    the renewal shows the whole grant is gone, that has already disconnected and
+    recorded why (see :func:`token`), so the panel explains itself on the next
+    render and this raises rather than pretending a mailbox is there.
+
+    Raises when nothing is connected: the routes decide whether to offer a Gmail
+    action at all, so reaching here with no mailbox is a bug, not a state.
+    """
+    call = _caller(fetch)
+    access = token(fetch=call)
+    if access is None:
+        raise GmailError("Kein Postfach verbunden")
+    try:
+        answer = call(url, json_body=json_body, method=method, token=access)
+        _raise_for_api_error(answer, what)
+        return answer
+    except GmailUnauthorized as refused:
+        _log.info("Gmail refused a stored access token before its expiry; renewing")
+        renewed = token(fetch=call, renew=True)
+        if renewed is None:
+            raise GmailError(
+                "Kein Postfach verbunden — der Zugriff wurde bei Google entzogen"
+            ) from refused
+        answer = call(url, json_body=json_body, method=method, token=renewed)
+        _raise_for_api_error(answer, what)
+        return answer
+
+
+def _to_profile(payload: dict[str, Any]) -> Profile:
+    """One Gmail profile answer, read rather than assembled."""
     email = str(payload.get("emailAddress") or "")
     if not email:
         raise GmailError("Gmail nannte keine Adresse für dieses Konto")
@@ -669,34 +770,29 @@ def _profile(access: str, *, fetch: Fetch | None = None) -> Profile:
     )
 
 
+def _profile(access: str, *, fetch: Fetch | None = None) -> Profile:
+    """The Gmail profile behind one *particular* access token.
+
+    Kept beside :func:`profile` for the single caller that holds a token and has
+    no stored connection yet: :func:`exchange` proves the mailbox answers before
+    it writes the file, so there is nothing for :func:`_api` to read a token from.
+    """
+    payload = _caller(fetch)(_PROFILE_ENDPOINT, token=access)
+    _raise_for_api_error(payload, "Gmail-Profil nicht lesbar")
+    return _to_profile(payload)
+
+
 def profile(*, fetch: Fetch | None = None) -> Profile:
     """Ask Gmail who this is — the proof behind "verbunden als …".
 
     Raises when nothing is connected: a caller asking for the profile of no
-    mailbox has a bug, unlike a caller asking for a token.
-
-    A refused token is retried once with a renewed one, rather than reported. The
-    stored expiry is Google's statement about a lifetime, and Google breaks it in
-    the direction that matters — a password change invalidates every access token
-    it has issued, minutes into an hour the file still considers valid. If the
-    renewal shows the whole grant is gone, that has already disconnected and
-    recorded why (see :func:`token`), so the panel explains itself on the next
-    render and this raises rather than inventing a mailbox.
+    mailbox has a bug, unlike a caller asking for a token. The refused-token
+    retry lives in :func:`_api` with every other call's, rather than in a second
+    copy here that would have to be remembered twice.
     """
-    call = _caller(fetch)
-    access = token(fetch=call)
-    if access is None:
-        raise GmailError("Kein Postfach verbunden")
-    try:
-        return _profile(access, fetch=call)
-    except GmailUnauthorized as refused:
-        _log.info("Gmail refused a stored access token before its expiry; renewing")
-        renewed = token(fetch=call, renew=True)
-        if renewed is None:
-            raise GmailError(
-                "Kein Postfach verbunden — der Zugriff wurde bei Google entzogen"
-            ) from refused
-        return _profile(renewed, fetch=call)
+    return _to_profile(
+        _api(_PROFILE_ENDPOINT, what="Gmail-Profil nicht lesbar", fetch=fetch)
+    )
 
 
 def connected() -> Link | None:
@@ -781,9 +877,10 @@ class Draft:
 class Sent:
     """A message that has left. ``sent_at`` is Gmail's own clock, not ours.
 
-    ``None`` when Google's answer to the send carried no ``internalDate``, which
-    it often does not: the caller then has to fall back to its own moment rather
-    than invent one here.
+    ``None`` only when Gmail could not be asked for the moment at all — the send
+    itself answers without one, so it is read back off the message (see
+    :func:`_stamped`). A caller that gets ``None`` falls back to its own clock
+    rather than having one invented here.
     """
 
     message_id: str
@@ -809,9 +906,35 @@ class ThreadMessage:
     label_ids: tuple[str, ...] = ()
 
 
-def thread_url(thread_id: str) -> str:
-    """Where a person opens this conversation in Gmail."""
-    return _THREAD_WEB_URL.format(thread_id=urllib.parse.quote(thread_id, safe=""))
+def thread_url(thread_id: str, *, account: str = "") -> str:
+    """Where a person opens this conversation in Gmail.
+
+    Addressed by the connected mailbox's own address when one is known, not by
+    an account index. A consultant who added a personal account to the browser
+    first has this mailbox at ``/u/1/``, and a link to ``/u/0/`` opens a correct
+    thread id in the wrong account — where Gmail answers "conversation not
+    found" and the card's promise of a working link is broken.
+    """
+    return _THREAD_WEB_URL.format(
+        account=urllib.parse.quote(account or _DEFAULT_ACCOUNT, safe="@"),
+        thread_id=urllib.parse.quote(thread_id, safe=""),
+    )
+
+
+def _header_value(what: str, value: str) -> str:
+    """One header field's value, or a refusal naming which field it was.
+
+    A CR or an LF inside a header is the one thing :mod:`email` will not encode
+    its way out of — it raises :class:`ValueError` — and both values that reach
+    here can carry one: the subject is model-written text and the address was
+    typed by hand into the contact book. Refusing as a :class:`GmailError` keeps
+    that a reported failure on the card rather than a 500 in the second after
+    "Ja, senden" was pressed, which is the second the reader most needs an
+    answer in.
+    """
+    if "\r" in value or "\n" in value:
+        raise GmailError(f"{what} enthält einen Zeilenumbruch und kann keine Kopfzeile sein")
+    return value
 
 
 def build_message(to: str, subject: str, body: str) -> str:
@@ -828,12 +951,21 @@ def build_message(to: str, subject: str, body: str) -> str:
     One normalisation, and it is the standard's rather than this module's: a mail
     body is a sequence of terminated lines, so a text that did not end in a
     newline is sent with one. Nothing inside the text is touched.
+
+    Raises :class:`GmailError` rather than :class:`ValueError` on a header the
+    standard cannot carry, so a caller still has exactly one exception type to
+    handle for "this letter did not go".
     """
     message = EmailMessage(policy=_MAIL_POLICY)
-    message["To"] = to
-    message["Subject"] = subject
-    message.set_content(body)
-    return base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+    try:
+        message["To"] = _header_value("Die Empfängeradresse", to)
+        message["Subject"] = _header_value("Der Betreff", subject)
+        message.set_content(body)
+        return base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+    except ValueError as refused:
+        # Everything :mod:`email` refuses that _header_value did not already
+        # name. Never swallowed: the card has to say the message did not go.
+        raise GmailError(f"Die Nachricht ließ sich nicht bauen ({refused})") from refused
 
 
 def _b64url(data: str) -> bytes:
@@ -848,42 +980,6 @@ def _b64url(data: str) -> bytes:
     except (binascii.Error, ValueError):
         _log.warning("a Gmail message body was not decodable base64")
         return b""
-
-
-def _api(
-    url: str,
-    *,
-    json_body: dict[str, Any] | None = None,
-    method: str = "",
-    what: str,
-    fetch: Fetch | None = None,
-) -> dict[str, Any]:
-    """One authenticated Gmail API call, with the retry that :func:`profile` has.
-
-    The stored expiry is only Google's *statement* about a lifetime — it
-    invalidates access tokens early on a password change or a revoked session —
-    so a refusal is worth exactly one renewed attempt before it is reported.
-    Raises when nothing is connected: the routes decide whether to offer a Gmail
-    action at all, so reaching here with no mailbox is a bug, not a state.
-    """
-    call = _caller(fetch)
-    access = token(fetch=call)
-    if access is None:
-        raise GmailError("Kein Postfach verbunden")
-    try:
-        answer = call(url, json_body=json_body, method=method, token=access)
-        _raise_for_api_error(answer, what)
-        return answer
-    except GmailUnauthorized as refused:
-        _log.info("Gmail refused a stored access token before its expiry; renewing")
-        renewed = token(fetch=call, renew=True)
-        if renewed is None:
-            raise GmailError(
-                "Kein Postfach verbunden — der Zugriff wurde bei Google entzogen"
-            ) from refused
-        answer = call(url, json_body=json_body, method=method, token=renewed)
-        _raise_for_api_error(answer, what)
-        return answer
 
 
 def _ids(message: dict[str, Any]) -> tuple[str, str]:
@@ -956,6 +1052,32 @@ def _sent_at(message: dict[str, Any]) -> dt.datetime | None:
     return dt.datetime.fromtimestamp(stamped / _MILLISECONDS, dt.UTC)
 
 
+def _stamped(message_id: str, *, fetch: Fetch | None = None) -> dt.datetime | None:
+    """Gmail's own moment for a message it has just accepted.
+
+    A second call, because Google's answer to a send is a *minimal* Message —
+    id, thread, labels — and carries no ``internalDate`` to read the moment off.
+    The moment is worth the call: ``released_at`` is meant to say when the
+    journalist got the letter, and this machine's clock is a different statement
+    from Gmail's.
+
+    Never raises. By the time this runs the letter has left, and no failure to
+    read a timestamp may turn an irreversible act into an error the caller would
+    report as "not sent" — a caller that gets ``None`` falls back to its clock.
+    """
+    try:
+        answer = _api(
+            f"{_MESSAGES_ENDPOINT}/{urllib.parse.quote(message_id, safe='')}"
+            f"?format={_MINIMAL_FORMAT}",
+            what="Gmail nannte die Sendezeit nicht",
+            fetch=fetch,
+        )
+    except GmailError as unread:
+        _log.warning("Gmail did not state when it sent %s: %s", message_id, unread)
+        return None
+    return _sent_at(answer)
+
+
 def send(draft_id: str, *, fetch: Fetch | None = None) -> Sent:
     """Send the composed draft. This is the irreversible one.
 
@@ -971,7 +1093,13 @@ def send(draft_id: str, *, fetch: Fetch | None = None) -> Sent:
         fetch=fetch,
     )
     message_id, thread_id = _ids(answer)
-    return Sent(message_id=message_id, thread_id=thread_id, sent_at=_sent_at(answer))
+    # The send's own answer first, on the chance Google ever states it there,
+    # and the message itself otherwise — which is the normal case.
+    return Sent(
+        message_id=message_id,
+        thread_id=thread_id,
+        sent_at=_sent_at(answer) or _stamped(message_id, fetch=fetch),
+    )
 
 
 def _header(part: dict[str, Any], name: str) -> str:
@@ -1049,6 +1177,31 @@ def thread(thread_id: str, *, fetch: Fetch | None = None) -> list[ThreadMessage]
     ]
 
 
+def sent_in_thread(thread_id: str, *, fetch: Fetch | None = None) -> Sent | None:
+    """The message this mailbox already sent in one conversation, if there is one.
+
+    The one question the two-step cannot answer from its own records: a
+    ``drafts.send`` whose *response* was lost still consumed the draft and still
+    sent the letter, and a retry that knows only the draft id would ask Gmail to
+    update a draft that no longer exists — a 404, every time, forever, on a
+    letter the journalist has had since Tuesday. The thread is the record that
+    survives that, so it is read rather than guessed.
+
+    ``SENT`` and not ``DRAFT``: a draft sitting in its own thread carries the
+    second label, and reading that as a sent letter would claim an act nobody
+    performed.
+    """
+    for message in thread(thread_id, fetch=fetch):
+        labels = set(message.label_ids)
+        if _SENT_LABEL in labels and _DRAFT_LABEL not in labels:
+            return Sent(
+                message_id=message.message_id,
+                thread_id=message.thread_id or thread_id,
+                sent_at=message.received_at,
+            )
+    return None
+
+
 __all__ = [
     "SCOPES",
     "Draft",
@@ -1069,6 +1222,7 @@ __all__ = [
     "profile",
     "scope_words",
     "send",
+    "sent_in_thread",
     "thread",
     "thread_url",
     "token",
