@@ -235,9 +235,25 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--line); border-radius: var(--radius); box-shadow: none;
   padding: 0; margin-bottom: var(--s5); overflow: hidden;
 }
-.panel > *, .sect > * { padding-left: var(--s4); padding-right: var(--s4); }
-.panel > *:first-child, .sect > *:first-child { padding-top: var(--s4); }
-.panel > *:last-child, .sect > *:last-child { padding-bottom: var(--s4); }
+/* The panel's inset is applied to its children rather than to the panel itself,
+   so a grouped row can still run edge to edge. That has to skip anything whose
+   own box is the thing you see: a button given 16px of extra side padding is not
+   an indented button, it is a wider one, and the label stops lining up with the
+   text above it. Bitten by exactly that on the mailbox panel. */
+.panel > :not(button):not(.btn):not(.linkbtn),
+.sect > :not(button):not(.btn):not(.linkbtn) {
+  padding-left: var(--s4); padding-right: var(--s4);
+}
+.panel > button, .panel > .btn, .panel > .linkbtn,
+.sect > button, .sect > .btn, .sect > .linkbtn { margin-left: var(--s4); }
+.panel > :not(button):not(.btn):not(.linkbtn):first-child,
+.sect > :not(button):not(.btn):not(.linkbtn):first-child { padding-top: var(--s4); }
+.panel > :not(button):not(.btn):not(.linkbtn):last-child,
+.sect > :not(button):not(.btn):not(.linkbtn):last-child { padding-bottom: var(--s4); }
+/* A button as the panel's last child gets the inset as margin, for the same
+   reason: padding would make the button taller, not the panel. */
+.panel > :is(button, .btn, .linkbtn):last-child,
+.sect > :is(button, .btn, .linkbtn):last-child { margin-bottom: var(--s4); }
 
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
@@ -1657,6 +1673,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 
 /* --- Buttons -------------------------------------------------------------- */
 button, .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
   font: inherit; font-size: var(--t-subhead); font-weight: 500;
   min-height: 28px; padding: 5px 12px;
   border: 1px solid var(--line); border-radius: var(--radius-s);
