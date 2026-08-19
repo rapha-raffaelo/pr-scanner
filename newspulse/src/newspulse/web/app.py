@@ -119,6 +119,18 @@ def de_datetime(value: dt.datetime) -> str:
     return _local(value).strftime("%d.%m.%Y %H:%M")
 
 
+def de_date(value: dt.datetime) -> str:
+    """Date alone in the reader's zone: ``22.07.2026``.
+
+    For the places where the clock time is noise rather than information — a
+    relationship timeline reads as a sequence of days, and "12.08.2026 09:41" on
+    a line about last month invites the reader to weigh a minute that means
+    nothing. The letter card keeps :func:`de_datetime`: there the hour is part of
+    the release record.
+    """
+    return _local(value).strftime("%d.%m.%Y")
+
+
 def de_short_date(value: dt.datetime) -> str:
     """Day and month in the reader's zone, as coverage lists cite it: ``22.07.``"""
     return _local(value).strftime("%d.%m.")
@@ -202,6 +214,7 @@ templates.env.filters["de_long_date"] = de_long_date
 # applied once, in one place, instead of per template (see _local).
 templates.env.filters["de_time"] = de_time
 templates.env.filters["de_datetime"] = de_datetime
+templates.env.filters["de_date"] = de_date
 templates.env.filters["de_short_date"] = de_short_date
 # Client identity: a monogram + stable colour stand in wherever no logo is set,
 # so the portfolio never looks half-configured.

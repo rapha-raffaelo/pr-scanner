@@ -48,10 +48,12 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+from dataclasses import dataclass
+from enum import StrEnum
 from importlib import resources
 from string import Template
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from . import config, contacts, gemini, guide, prose
@@ -553,6 +555,190 @@ def days_out(row: Outreach, *, now: dt.datetime | None = None) -> int:
     return max((moment - row.released_at).days, 0)
 
 
+# --- The relationship file --------------------------------------------------------
+
+#: The states that mean the journalist came back. ``VEROEFFENTLICHT`` belongs in
+#: here as well as in its own tally: the state machine keeps only the furthest
+#: point a letter reached, so a reply followed by a piece leaves no ``antwort``
+#: row behind, and counting the narrow way told the reader she never answered.
+_ANSWERED: tuple[OutreachState, ...] = (
+    OutreachState.ANTWORT,
+    OutreachState.VEROEFFENTLICHT,
+)
+
+#: How many released letters one file renders. A ten-year relationship is a page
+#: nobody scrolls, and the tallies are only trustworthy while the rows they were
+#: counted from are on screen — so the cap is set well above an ordinary file and
+#: the page says so when it is reached.
+MAX_HISTORY = 200
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryEntry:
+    """One released letter in a contact's file, with the mandate it went out for.
+
+    The mandate travels as its name rather than as the ``Client`` row because the
+    name is all the file shows: the line says *for whom* the agency wrote, and
+    both the chip label and its colour derive from the name alone.
+    """
+
+    letter: Outreach
+    mandate: str
+
+
+@dataclass(frozen=True, slots=True)
+class Tally:
+    """The four numbers over a contact's timeline: Anschreiben, Antworten,
+    Veröffentlicht, ohne Reaktion."""
+
+    anschreiben: int
+    antworten: int
+    veroeffentlicht: int
+    still: int
+
+
+class TimelineKind(StrEnum):
+    """The two kinds of line a file holds, which are also the two sources.
+
+    ``RELEASE`` is stamped by the machine the moment a person pressed the button;
+    ``OUTCOME`` is a sentence somebody typed afterwards. The page has to tell them
+    apart, so the distinction is a value rather than a template condition.
+    """
+
+    RELEASE = "release"
+    OUTCOME = "outcome"
+
+
+@dataclass(frozen=True, slots=True)
+class TimelineEvent:
+    """One line on a contact's timeline, with the moment it belongs to."""
+
+    at: dt.datetime
+    kind: TimelineKind
+    letter: Outreach
+    mandate: str
+
+
+def timeline(history: list[HistoryEntry]) -> list[TimelineEvent]:
+    """Every line the file renders, strictly newest first.
+
+    A letter contributes up to two lines and they carry *different* timestamps:
+    the release, and the outcome recorded later. So the outcome cannot simply be
+    drawn above the letter it belongs to — a reply typed yesterday to a pitch from
+    July belongs at the top of the page, above a letter released last week, and
+    nesting the two would put July's reply below it. That interleaving is the
+    common case, not an exotic one: a journalist answering an older pitch after a
+    newer one has gone out is an ordinary week.
+
+    Flattened here rather than in the template because "newest first" is a sort,
+    and Jinja cannot do one over two timestamps on the same row.
+    """
+    events: list[TimelineEvent] = []
+    for entry in history:
+        letter = entry.letter
+        events.append(
+            TimelineEvent(
+                # Never None: ``history_for_contact`` selects released rows only.
+                at=letter.released_at,
+                kind=TimelineKind.RELEASE,
+                letter=letter,
+                mandate=entry.mandate,
+            )
+        )
+        if letter.outcome_at is not None:
+            events.append(
+                TimelineEvent(
+                    at=letter.outcome_at,
+                    kind=TimelineKind.OUTCOME,
+                    letter=letter,
+                    mandate=entry.mandate,
+                )
+            )
+    # Ties are broken the way the query already breaks them (newest id first), and
+    # an outcome sharing its letter's second sits above the release it answers.
+    events.sort(
+        key=lambda event: (
+            event.at,
+            event.letter.id,
+            event.kind is TimelineKind.OUTCOME,
+        ),
+        reverse=True,
+    )
+    return events
+
+
+def history_for_contact(
+    session: Session, contact_id: int, *, limit: int = MAX_HISTORY
+) -> list[HistoryEntry]:
+    """The newest released letters to one contact, across all mandates.
+
+    Across mandates on purpose (DEC-2): a journalist is a relationship the agency
+    holds, and "have we already gone to her with something this month" cannot be
+    answered from inside one client's workspace — so the mandate is named on
+    every entry instead of scoping the query. Drafts never appear: the file is a
+    record of what left the house, and a draft has not.
+
+    Capped at ``limit`` (:data:`MAX_HISTORY`) newest first, so one long
+    relationship cannot turn the page into a thousand-row render. The view says
+    when the cap was reached; it never silently shows a shortened file.
+    """
+    rows = session.execute(
+        select(Outreach, Client.name)
+        .join(Client, Client.id == Outreach.client_id)
+        .where(
+            Outreach.contact_id == contact_id,
+            Outreach.released_at.is_not(None),
+        )
+        .order_by(Outreach.released_at.desc(), Outreach.id.desc())
+        .limit(limit)
+    ).all()
+    return [HistoryEntry(letter=letter, mandate=mandate) for letter, mandate in rows]
+
+
+def tally(history: list[HistoryEntry], *, now: dt.datetime | None = None) -> Tally:
+    """The tallies over a file, counted off the very rows the timeline shows, so
+    the numbers and the entries beneath them can never disagree.
+
+    The four numbers are **nested, not disjoint**: "Veröffentlicht" is a subset of
+    "Antworten", because a piece that used the letter's thesis is an answer that
+    went further, and the state machine only holds the furthest one a letter
+    reached. Counted the narrow way, a journalist who replied and then published
+    read "Antworten 0" — never answered — which is the opposite of what happened,
+    and the locked mock's 4 / 3 / 2 / 1 could not occur at all.
+
+    "Ohne Reaktion" is derived (:func:`is_silent`) rather than counted from a
+    state, for the same reason it is not stored: silence is an absence. An
+    ``absage`` sits on the timeline with its badge but has no tally of its own —
+    a rejection is an answer of a kind, but claiming it as "Antwort" would count
+    a door closing as a conversation.
+    """
+    letters = [entry.letter for entry in history]
+    return Tally(
+        anschreiben=len(letters),
+        antworten=sum(row.state in _ANSWERED for row in letters),
+        veroeffentlicht=sum(
+            row.state == OutreachState.VEROEFFENTLICHT for row in letters
+        ),
+        still=sum(is_silent(row, now=now) for row in letters),
+    )
+
+
+def released_count_by_contact(session: Session) -> dict[int, int]:
+    """Released letters per contact id — the roster's per-row count, fetched in
+    one query for the whole page rather than one per contact. Drafts do not
+    count: the number beside a name answers "how often did we actually go to
+    them", not "how often did we consider it"."""
+    rows = session.execute(
+        select(Outreach.contact_id, func.count(Outreach.id))
+        .where(
+            Outreach.contact_id.is_not(None),
+            Outreach.released_at.is_not(None),
+        )
+        .group_by(Outreach.contact_id)
+    ).all()
+    return dict(rows)
+
+
 def for_angle(session: Session, angle_id: int) -> list[Outreach]:
     """Every message written off one impulse, newest first."""
     return list(
@@ -584,15 +770,24 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
 
 __all__ = [
     "DEFAULT_RELEASED_BY",
+    "MAX_HISTORY",
     "OUTCOMES",
     "STATE_LABELS",
+    "HistoryEntry",
+    "Tally",
+    "TimelineEvent",
+    "TimelineKind",
     "by_angle",
     "crosscheck",
     "days_out",
     "draft",
     "for_angle",
+    "history_for_contact",
     "is_silent",
     "record_outcome",
     "release",
+    "released_count_by_contact",
     "store",
+    "tally",
+    "timeline",
 ]

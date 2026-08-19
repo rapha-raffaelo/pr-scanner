@@ -403,6 +403,44 @@ _EN: dict[str, str] = {
     "Nichts geht von hier aus raus. Der Knopf hält fest, dass Sie das Anschreiben gelesen, freigegeben und selbst verschickt haben.":
         "Nothing leaves from here. The button records that you read the letter, "
         "released it and sent it yourself.",
+    # --- The relationship file: one journalist, across all mandates -----------
+    # The contact book's right-hand pane (DEC-2). "Anschreiben" is the tally of
+    # letters, not the verb, so it counts things: "Letters".
+    "Verlauf": "History",
+    "Anschreiben": "Letters",
+    "Antworten": "Replies",
+    "ohne Reaktion": "no response",
+    "zuletzt angeschrieben heute": "last written to today",
+    "zuletzt angeschrieben gestern": "last written to yesterday",
+    # One string rather than "vor" + n + "Tagen": glued fragments come out in
+    # German word order once translated. Same reason as the release trail above.
+    "zuletzt angeschrieben vor %(days)s Tagen": "last written to %(days)s days ago",
+    "Anschreiben verschickt": "Letter sent",
+    "freigegeben von Mensch": "released by a human",
+    "freigegeben von %(who)s": "released by %(who)s",
+    # Where a timeline line came from. The pair matters more than either half:
+    # one is a sentence somebody typed, the other a timestamp the machine took.
+    "von Hand eingetragen": "typed by hand",
+    "bei der Freigabe festgehalten": "recorded at release",
+    # A file long enough to be shortened says so, because the four tallies above
+    # it are counted off the rows that are actually shown.
+    "Es werden die letzten %(n)s Anschreiben gezeigt; ältere stehen nicht auf dieser Seite.":
+        "Showing the most recent %(n)s letters; older ones are not on this page.",
+    "Noch kein Anschreiben freigegeben. Sobald eines an diesen Kontakt rausgeht, steht es hier.":
+        "No letter released yet. The moment one goes out to this contact, it "
+        "shows up here.",
+    "Der Verlauf entsteht nur aus dem, was hier eingetragen wurde. RauteOS verschickt keine Mails und liest kein Postfach: eine Zeile entsteht, wenn Sie ein Anschreiben freigeben, und die zweite, wenn Sie festhalten was zurückkam.":
+        "This history is made of what was entered here and nothing else. RauteOS "
+        "sends no mail and reads no mailbox: one line appears when you release a "
+        "letter, the second when you record what came back.",
+    # The mark on a pitch target that was already written to about this very
+    # angle. Not a block — the consultant may have a reason — but the date, so
+    # the second approach is a decision rather than an accident.
+    "schon angeschrieben am": "already written to on",
+    "Zu diesem Impuls ging an diese Adresse bereits ein freigegebenes Anschreiben raus. Ein zweites zum selben Thema ist das, was eine Beziehung kostet.":
+        "A released letter about this very opening already went to this "
+        "recipient. A second one on the same subject is what costs you the "
+        "relationship.",
     "Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.":
         "Written from headlines and feed snippets, not from the articles "
         "themselves. Check it against the item before sending.",
@@ -526,7 +564,7 @@ _EN: dict[str, str] = {
         "The journalists you know. The tool proposes who to approach from what the "
         "press published; how to reach them lives here, and only what you put in it.",
     "Noch kein Eintrag für": "No entry yet for",
-    "unten ausfüllen und speichern.": "fill in below and save.",
+    "jetzt ausfüllen und speichern.": "fill it in and save.",
     "Eintrag bearbeiten": "Edit entry",
     "Neuer Kontakt": "New contact",
     "E-Mail": "Email",
