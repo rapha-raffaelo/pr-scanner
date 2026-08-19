@@ -820,11 +820,14 @@ class ProfileProposal(Base):
     and a second refresh replaces that client's open proposals rather than
     stacking a fresh guess beside last week's.
 
-    A discarded row stays, stamped rather than deleted. It is the only record
-    that the consultant already said no to this exact value, and without it the
-    next refresh would read the same about page, find the same sentence and put
-    the same rejected proposal back on the page — which is how a review pile
-    becomes something nobody opens.
+    A discarded row stays, stamped rather than deleted. It is the only record that
+    the consultant already said no to this exact value, and without it the next
+    refresh would read the same about page, find the same sentence and put the
+    same rejected proposal back on the page — which is how a review pile becomes
+    something nobody opens. The one exception is a row the profile has caught up
+    with: the field already holds the value being proposed, so there is no claim
+    left to refuse and stamping one would suppress that field's next real
+    correction (see :func:`newspulse.profile_refresh.discard`).
 
     Which is why the uniqueness is *partial*, over the open rows only. A refusal
     is of a sentence and not of a field — "not this CEO" must not mean "never ask
@@ -878,6 +881,10 @@ class ProfileProposal(Base):
     )
     #: What the profile said when this was proposed. Empty when the field was
     #: blank, which is the "found something new" case rather than a contradiction.
+    #: Re-read from the profile when the row is refused, because a refusal is
+    #: always said *against* something: "not Bob, the CEO is Anna". That is what
+    #: lets the refusal expire when Anna turns out to be wrong and is cleared —
+    #: see :func:`newspulse.profile_refresh._refused`.
     previous_value: Mapped[str] = mapped_column(
         Text, nullable=False, default="", server_default=""
     )
