@@ -217,9 +217,11 @@ def test_the_authorisation_url_carries_the_state_and_asks_for_a_refresh_token(vo
     query = parse_qs(urlparse(gmail_link.authorize_url("state-42")).query)
     assert query["state"] == ["state-42"]
     # Without both of these Google hands back an access token that dies in an
-    # hour, and the daily sync with it.
+    # hour, and the daily sync with it. `prompt` is a space-delimited list and
+    # carries more than one value, so this asks whether consent is among them
+    # rather than whether it is the only one.
     assert query["access_type"] == ["offline"]
-    assert query["prompt"] == ["consent"]
+    assert "consent" in query["prompt"][0].split()
     assert query["redirect_uri"] == [config.gmail_redirect_uri()]
 
 
@@ -820,3 +822,23 @@ def test_no_hint_is_sent_when_nobody_is_signed_in(volume):
 
     query = parse_qs(urlparse(gmail_link.authorize_url("s")).query)
     assert "login_hint" not in query
+
+
+def test_the_account_chooser_is_forced_as_well_as_consent(volume):
+    """Both prompts, and the reason for each.
+
+    ``consent`` is what makes Google issue a *refresh* token again on a
+    reconnect. ``select_account`` is what stops a live Google session in the
+    browser from deciding which mailbox gets connected: `login_hint` alone is
+    documented as a hint and is ignored in exactly that case, which is how a
+    consent screen ended up on an unrelated work address.
+    """
+    from newspulse import gmail_link
+
+    query = parse_qs(urlparse(gmail_link.authorize_url("s")).query)
+    prompts = set(query["prompt"][0].split())
+
+    assert prompts == {"consent", "select_account"}
+    # offline is the other half of getting a refresh token; losing it would make
+    # the connection die an hour later rather than at the next disconnect.
+    assert query["access_type"] == ["offline"]
