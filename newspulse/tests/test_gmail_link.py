@@ -390,13 +390,18 @@ def test_a_token_refused_before_its_expiry_is_renewed_rather_than_reported(volum
     refusals = {"left": 1}
 
     def refuse_once(
-        url: str, *, form: dict[str, str] | None = None, token: str = ""
+        url: str,
+        *,
+        form: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
+        method: str = "",
+        token: str = "",
     ) -> dict[str, Any]:
         """Gmail refuses the stored token once, the way a password change does."""
         if "profile" in url and refusals["left"]:
             refusals["left"] -= 1
             return {"error": {"code": 401, "message": "Invalid Credentials"}}
-        return google(url, form=form, token=token)
+        return google(url, form=form, json_body=json_body, method=method, token=token)
 
     found = gmail_link.profile(fetch=refuse_once)
 
