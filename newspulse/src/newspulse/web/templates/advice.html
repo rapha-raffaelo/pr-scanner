@@ -200,7 +200,11 @@
               <span class="letter__to">
                 {{ t("An") }}:
                 {% if msg.journalist %}
-                  <a href="/contacts?name={{ msg.journalist | urlencode }}&outlet={{ msg.outlet | urlencode }}">{{ msg.journalist }}</a>
+                  {# Into the relationship file when the ledger resolved this
+                     recipient to a contact — everything ever sent to them, across
+                     all mandates (DEC-2). Only an unrecorded byline leads to the
+                     prefilled form instead. #}
+                  <a href="{% if msg.contact_id %}/contacts?id={{ msg.contact_id }}{% else %}/contacts?name={{ msg.journalist | urlencode }}&outlet={{ msg.outlet | urlencode }}{% endif %}">{{ msg.journalist }}</a>
                   <span class="dot">·</span>
                 {% endif %}
                 {{ msg.outlet or t("Fachredaktion") }}
@@ -359,11 +363,12 @@
               {% for target in targets %}
                 <li>
                   <span class="pitchlist__who">
-                    {# A name links into the contact book: onto the entry if one
-                       exists, otherwise onto a form prefilled with what the feed
-                       knew, one edit away from having it. #}
+                    {# A name links into the contact book: onto the journalist's
+                       file if the book has them — every letter ever released at
+                       them, with what came of it — otherwise onto a form
+                       prefilled with what the feed knew, one edit away. #}
                     {% if target.journalist %}
-                      <a href="/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}">{{ target.journalist }}</a>
+                      <a href="{% if target.contact_id %}/contacts?id={{ target.contact_id }}{% else %}/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}{% endif %}">{{ target.journalist }}</a>
                       <span class="dot">·</span>
                     {% endif %}{{ target.outlet }}
                   </span>

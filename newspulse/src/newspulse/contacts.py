@@ -93,11 +93,19 @@ def _link_released_letters(session: Session, contact: Contact) -> int:
     demonstrably wrote to — indistinguishable on screen from never having written
     at all, which is the one sentence that page exists to prevent.
 
-    Matched the way :func:`find` matches, and no wider: the name
-    case-insensitively, and the outlet equal or absent on one side. A letter to
-    the same name at a *different* named masthead is left alone — two journalists
-    sharing a name is likelier than one byline moving papers mid-book, and a
-    wrong link here would put somebody else's letters in this file.
+    Matched the way :func:`find` matches, and no wider — which means the entry's
+    own masthead decides how far the claim reaches:
+
+    * **The entry names a masthead.** The name matches case-insensitively and the
+      outlet must be equal or absent on the letter. A letter to the same name at a
+      *different* named masthead is left alone: two journalists sharing a name is
+      likelier than one byline moving papers mid-book, and a wrong link here puts
+      somebody else's letters in this file.
+    * **The entry names none** — the Medium field left blank. Then every released
+      letter under that byline is claimed, whichever masthead it went to, exactly
+      as :func:`find` falls back to the name alone when the outlet is unknown to
+      the book. An entry that declines to say where somebody writes cannot also
+      insist the letters went to one place.
 
     Drafts stay unlinked. A draft's recipient is resolved when it is released, and
     claiming one now would put a letter nobody sent into a relationship file.
