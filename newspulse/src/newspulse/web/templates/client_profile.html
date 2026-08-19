@@ -48,6 +48,10 @@
      changed, so the value being argued against is context and not the headline. */
   .props__was { color: var(--faint); text-decoration: line-through; }
   .props__new { color: var(--ink); }
+  /* What the web says against a hand-filled field. Quiet, but not struck
+     through: nothing is replacing it, and the consultant may well want to read
+     that sentence and type the value in himself. */
+  .props__other { color: var(--muted); }
   /* One decision per row, at the end of it. Two forms rather than two buttons in
      one, because a form may not sit inside another and the bulk actions below
      need their own. */
@@ -92,11 +96,12 @@
   {# The click's own answer, or the note the last check left — a sweep that broke
      at 06:10 is read here at nine, and the check date on its own would report a
      profile nobody managed to look at as freshly checked. #}
+  {# The reason only. The check stamp used to be repeated here, from the days
+     when a failure was the one thing that printed it; it now sits in the fill
+     bar on every visit, and saying it twice on the same screen invites the
+     reader to look for a difference between the two. #}
   <p class="sect__empty sect__refusal">
     <strong>{{ t("Keine Recherche.") }}</strong> {{ research_error }}
-    {% if checked.at %}
-      <span class="sect__when">{{ t("Zuletzt geprüft") }}: {{ checked.at | de_datetime }}</span>
-    {% endif %}
   </p>
 {% endif %}
 
@@ -182,7 +187,7 @@
         </div>
         <div class="props__val">
           <div class="props__new">{{ t("Ihre Angabe") }}: {{ fact.value if fact else "" }}</div>
-          <div class="props__was">{{ t("Das Netz sagt") }}: {{ p.value }}</div>
+          <div class="props__other">{{ t("Das Netz sagt") }}: {{ p.value }}</div>
           <div class="prof__src">
             {{ t("Quelle") }}:
             <a href="{{ p.source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ p.source_title or p.source_url }}</a>
