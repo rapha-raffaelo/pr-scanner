@@ -7,6 +7,7 @@ the machine must never overwrite the human.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 
 import pytest
@@ -16,8 +17,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from newspulse import profile as profiles
+from newspulse import profile_refresh
 from newspulse.analyzer import ParseError
-from newspulse.models import Base, Client, ClientFact
+from newspulse.models import Base, Client, ClientFact, ProfileProposal
 from newspulse.web.app import create_app, get_db
 
 
@@ -220,51 +222,173 @@ def test_an_untouched_machine_line_keeps_its_source_through_a_save(factory, web)
         assert fact.source_url == "https://x.de"
 
 
+def _propose(session, client_id, **values) -> None:
+    """Put proposals on file for a client, the way a refresh would."""
+    session.add_all(
+        ProfileProposal(
+            client_id=client_id,
+            key=key,
+            value=value,
+            source_url=url,
+            source_title=title,
+            proposed_at=dt.datetime(2026, 8, 19, 6, 10, tzinfo=dt.UTC),
+            proposed_by="gemini-2.5-flash",
+        )
+        for key, (value, url, title) in values.items()
+    )
+    session.commit()
+
+
 def test_accepting_a_proposal_records_the_model_as_its_author(factory, web):
     """The page must be able to say which half a machine wrote."""
-    from newspulse.web.routes import profile as profile_routes
-
     with factory() as session:
         client = _client(session)
         client_id = client.id
-    profile_routes._proposals[client_id] = [
-        profiles.Proposal(key="ceo", value="Alexandre Prot",
-                          source_url="https://qonto.com", source_title="Qonto"),
-        profiles.Proposal(key="sitz", value="Paris"),
-    ]
+        _propose(
+            session, client_id,
+            ceo=("Alexandre Prot", "https://qonto.com", "Qonto"),
+            sitz=("Paris", "", ""),
+        )
 
     web.post(f"/client/{client_id}/profil/accept", data={"key": "ceo"},
              follow_redirects=False)
 
     with factory() as session:
         facts = profiles.stored(session, client_id)
+        left = profile_refresh.outstanding(session, client_id)
     assert set(facts) == {"ceo"}, "only the ticked field is taken"
     assert facts["ceo"].filled_by != "mensch"
     assert facts["ceo"].source_url == "https://qonto.com"
     # The one left behind stays on offer rather than vanishing with the click.
-    assert [p.key for p in profile_routes._proposals[client_id]] == ["sitz"]
-    profile_routes._proposals.pop(client_id, None)
+    assert [p.key for p in left] == ["sitz"]
 
 
 def test_a_field_the_consultant_filled_is_not_proposed_over(factory, web):
     """The machine may fill a blank and may correct itself. It may not overrule
     the person it works for."""
-    from newspulse.web.routes import profile as profile_routes
-
     with factory() as session:
         client = _client(session)
         profiles.save(session, client, "ceo", "Weiß ich besser")
         client_id = client.id
-    profile_routes._proposals[client_id] = [
-        profiles.Proposal(key="ceo", value="Jemand anderes"),
-        profiles.Proposal(key="sitz", value="Paris"),
-    ]
+        _propose(
+            session, client_id,
+            ceo=("Jemand anderes", "", ""),
+            sitz=("Paris", "", ""),
+        )
 
     body = web.get(f"/client/{client_id}/profil").text
 
     assert "Jemand anderes" not in body
     assert "Paris" in body
-    profile_routes._proposals.pop(client_id, None)
+
+
+def test_posting_a_hand_filled_key_to_accept_does_not_overwrite_it(factory, web):
+    """The page draws no checkbox for a hand-filled field, but the form body is
+    not the page: a tab left open while the value was typed in elsewhere posts a
+    key nobody ticked. The write boundary refuses it rather than trusting the
+    render filter, which is one stale POST away from being walked past."""
+    with factory() as session:
+        client = _client(session)
+        profiles.save(session, client, "ceo", "Weiß ich besser")
+        client_id = client.id
+        _propose(
+            session, client_id,
+            ceo=("Jemand anderes", "https://irgendwo.de", "Irgendwo"),
+            sitz=("Paris", "", ""),
+        )
+
+    web.post(f"/client/{client_id}/profil/accept", data={"key": ["ceo", "sitz"]},
+             follow_redirects=False)
+
+    with factory() as session:
+        facts = profiles.stored(session, client_id)
+        left = {p.key for p in profile_refresh.outstanding(session, client_id)}
+    assert facts["ceo"].value == "Weiß ich besser", "the human's value stands"
+    assert facts["ceo"].filled_by == "mensch", "and it is still stamped as his"
+    assert facts["sitz"].value == "Paris", "the field nobody typed into is taken"
+    # The refused one is still on file: it is a contradiction PRF-02 renders, not
+    # something to silently drop because the accept did not honour it.
+    assert left == {"ceo"}
+
+
+def test_only_contradictions_left_still_offers_a_way_to_clear_them(factory, web):
+    """A proposal against a hand-filled field gets no checkbox, so a client whose
+    profile was typed in entirely by hand used to accumulate rows that were
+    invisible *and* unclearable — the discard button lived inside the block that
+    the filter had just emptied."""
+    with factory() as session:
+        client = _client(session)
+        profiles.save(session, client, "ceo", "Weiß ich besser")
+        client_id = client.id
+        _propose(session, client_id, ceo=("Jemand anderes", "", ""))
+
+    body = web.get(f"/client/{client_id}/profil").text
+    assert "Verwerfen" in body, "the rows are reachable"
+
+    web.post(f"/client/{client_id}/profil/discard", follow_redirects=False)
+
+    with factory() as session:
+        assert profile_refresh.outstanding(session, client_id) == []
+
+
+def test_a_contradiction_is_visible_beside_an_ordinary_proposal(factory, web):
+    """The two piles are independent. Hanging the contradictions off "there are no
+    proposals" hid them on every mandate that also had one ordinary offer — which
+    is most of them — and an accepted offer then left the held-back row on file,
+    invisible, until the next refresh."""
+    with factory() as session:
+        client = _client(session)
+        profiles.save(session, client, "ceo", "Weiß ich besser")
+        client_id = client.id
+        _propose(
+            session, client_id,
+            ceo=("Jemand anderes", "", ""),
+            sitz=("Paris", "", ""),
+        )
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Paris" in body, "the offer is drawn"
+    assert "das Netz sagt etwas anderes" in body, "and so is the one held back"
+
+
+def test_the_reason_a_check_broke_reaches_the_page(factory, web):
+    """The sweep researches at 06:10 and the page is opened at nine, in a process
+    that never saw the failure. Without the stored note the page shows a profile
+    that was "checked" with no reason and no way to find one."""
+    from newspulse.web.routes import profile as profile_routes
+
+    def _boom(prompt):
+        raise RuntimeError("die Suche ist nicht erreichbar")
+
+    with factory() as session:
+        client = _client(session)
+        client_id = client.id
+        with pytest.raises(RuntimeError):
+            profile_refresh.refresh(
+                session, client, now=dt.datetime(2031, 3, 5, 6, 10, tzinfo=dt.UTC),
+                generate=_boom,
+            )
+        assert client.profile_note
+    # Nothing in memory: the sweep runs elsewhere and leaves this dict empty.
+    profile_routes._errors.pop(client_id, None)
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "nicht erreichbar" in body, "the sweep's failure is invisible on the page"
+
+
+def test_discarding_clears_the_proposals_from_the_database(factory, web):
+    """The dict this replaced lost them on a restart; the button has to be the
+    only thing that does."""
+    with factory() as session:
+        client_id = _client(session).id
+        _propose(session, client_id, sitz=("Paris", "", ""))
+
+    web.post(f"/client/{client_id}/profil/discard", follow_redirects=False)
+
+    with factory() as session:
+        assert profile_refresh.outstanding(session, client_id) == []
 
 
 def test_the_competition_tab_puts_the_four_questions_in_one_place(factory, web):

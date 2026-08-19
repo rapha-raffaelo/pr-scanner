@@ -71,7 +71,15 @@
     <span class="spinner" aria-hidden="true"></span>{{ t("Recherche läuft — die Seite aktualisiert sich, sobald die Vorschläge stehen.") }}
   </div>
 {% elif research_error %}
-  <p class="sect__empty sect__refusal"><strong>{{ t("Keine Recherche.") }}</strong> {{ research_error }}</p>
+  {# The click's own answer, or the note the last check left — a sweep that broke
+     at 06:10 is read here at nine, and the check date on its own would report a
+     profile nobody managed to look at as freshly checked. #}
+  <p class="sect__empty sect__refusal">
+    <strong>{{ t("Keine Recherche.") }}</strong> {{ research_error }}
+    {% if checked_at %}
+      <span class="sect__when">{{ t("Zuletzt geprüft") }}: {{ checked_at | de_datetime }}</span>
+    {% endif %}
+  </p>
 {% endif %}
 
 <div id="profilebody">
@@ -96,11 +104,40 @@
           </div>
         </div>
       {% endfor %}
+      {# Both buttons act on the ticked rows: übernehmen takes them, Verwerfen
+         throws them away. With nothing ticked the discard clears the client's
+         whole pile, which is what it always did. #}
       <div class="props__act">
         <button type="submit" class="btn">{{ t("Ausgewählte übernehmen") }}</button>
         <button type="submit" class="btn btn--ghost" formaction="/client/{{ client.id }}/profil/discard">
           {{ t("Verwerfen") }}
         </button>
+      </div>
+    </form>
+  </div>
+{% endif %}
+
+{% if contradictions %}
+  {# The refresh found something the web disagrees with on a field that was
+     filled in by hand. Those are never proposed over, so they get no checkbox —
+     but they are on file, and a pile nobody can clear is worse than no pile.
+     PRF-02 shows what they say.
+
+     Its own block rather than the else-branch of the offers above: the two are
+     independent, and hanging this off "there are no proposals" hid every
+     contradiction on any mandate that also had one ordinary offer — which is
+     most of them. It carries the keys it is about, so clearing the
+     contradictions does not also throw away the offers beside them. #}
+  <div class="props">
+    <div class="eyebrow">
+      {{ contradictions | length }} {{ t("Feld(er) von Hand gefüllt — das Netz sagt etwas anderes") }}
+    </div>
+    <form method="post" action="/client/{{ client.id }}/profil/discard">
+      {% for p in contradictions %}
+        <input type="hidden" name="key" value="{{ p.key }}">
+      {% endfor %}
+      <div class="props__act">
+        <button type="submit" class="btn btn--ghost">{{ t("Verwerfen") }}</button>
       </div>
     </form>
   </div>

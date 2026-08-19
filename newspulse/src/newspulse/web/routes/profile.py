@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from ... import profile as profiles
+from ... import profile_refresh
 from ...db import get_session
 from ...models import Client
 from ..app import get_db, templates
@@ -25,16 +26,27 @@ _SEE_OTHER = 303
 # behind it, and a second click while one is running would spend another.
 _researching = threading.Lock()
 
-# What the last run found, per client, waiting for the page that will show it.
-# In memory on purpose: a proposal is a thing you accept or discard in the next
-# minute, and one that survived a restart would be a stale claim wearing a fresh
-# timestamp.
-_proposals: dict[int, list[profiles.Proposal]] = {}
+# Why the last research attempt produced nothing, per client. Still in memory,
+# and only this: an error message is about the click that just happened, so a
+# restart losing it costs nothing. The findings themselves are in the database
+# (``profile_proposals``) because they are not — the nightly sweep produces them
+# unattended, and a deploy dropping a pile of them silently is how a tool ends up
+# having found something nobody ever saw.
 _errors: dict[int, str] = {}
 
 
 def _run_research(client_id: int) -> None:
-    """Read the web for one mandate on a worker thread; always release the lock."""
+    """Read the web for one mandate on a worker thread; always release the lock.
+
+    Routed through :func:`profile_refresh.refresh` rather than calling the
+    research directly, so a click and the 06:10 sweep produce the same rows by
+    the same rules. One consequence is deliberate and worth stating: a click now
+    stamps ``profile_checked_at`` too, which takes the mandate out of the sweep's
+    age rotation for the next sixty days. That is the honest record — the profile
+    really was re-read this morning, by a person — and re-reading it again
+    unattended a day later would spend the daily budget on the answer we already
+    have. A click that *fails* leaves its note, which keeps the mandate due.
+    """
     try:
         with _run_guard:
             with get_session() as session:
@@ -42,9 +54,10 @@ def _run_research(client_id: int) -> None:
                 if client is None:
                     return
                 _errors.pop(client_id, None)
-                found = profiles.research(client)
-                _proposals[client_id] = found
-                _log.info("profile research for %r: %d field(s)", client.name, len(found))
+                found = profile_refresh.refresh(
+                    session, client, now=dt.datetime.now(dt.UTC)
+                )
+                _log.info("profile research for %r: %d proposal(s)", client.name, found)
     except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
         _errors[client_id] = f"Die Recherche ist abgebrochen: {exc}"
         _log.exception("profile research failed")
@@ -60,13 +73,12 @@ def profile_view(
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     facts = profiles.stored(session, client_id)
-    # Only the fields the research actually changes: a proposal identical to what
-    # is already on file is noise, and a proposal for a field a person filled in
-    # by hand is worse than noise.
-    pending = [
-        p for p in _proposals.get(client_id, [])
-        if p.key not in facts or facts[p.key].filled_by != "mensch"
-    ]
+    # Only the fields the research may actually write: a proposal identical to
+    # what is on file never becomes a row at all, and a proposal against a field a
+    # person filled in by hand is a contradiction rather than an offer — PRF-02
+    # renders those under whatever DEC-2 locks as.
+    proposed = profile_refresh.outstanding(session, client_id)
+    pending = [p for p in proposed if profile_refresh.may_replace(facts, p.key)]
     return templates.TemplateResponse(
         request,
         "client_profile.html",
@@ -77,8 +89,23 @@ def profile_view(
             "filled": len(facts),
             "fillable": profiles.FILLABLE,
             "proposals": pending,
+            # Held back from the list above, and still on file. Handed over as
+            # rows rather than a count so the page can name them in its own
+            # discard form: a row nobody can see and nobody can clear sits there
+            # until the next refresh overwrites it, which is the sort of
+            # invisible state this feature exists to end.
+            "contradictions": [
+                p for p in proposed if not profile_refresh.may_replace(facts, p.key)
+            ],
             "researching": _researching.locked(),
-            "research_error": _errors.get(client_id, ""),
+            # The click's own answer if there was one in this process, otherwise
+            # what the last check recorded — which is the usual case, since the
+            # sweep researches at 06:10 and the page is opened at nine. Without
+            # the fallback a failure from the sweep is invisible: the page shows
+            # a profile that was "checked" with no reason and no way to find one.
+            # Exactly what ``advisory.py`` does with ``impulse_note``.
+            "research_error": _errors.get(client_id) or client.profile_note,
+            "checked_at": client.profile_checked_at,
             "last_run": _fetch_last_run(session),
             "header_date": dt.datetime.now(_local_tz()).date(),
         },
@@ -136,27 +163,51 @@ def accept_proposals(
     key: list[str] = Form(default_factory=list),
     session: Session = Depends(get_db),
 ) -> Response:
-    """Take the proposed values for the named fields, sources and all."""
+    """Take the proposed values for the named fields, sources and all.
+
+    Only the ticked ones go: the rest stay on offer rather than vanishing with the
+    click, because a decision not made is not a decision to discard.
+
+    A key naming a hand-filled fact is refused here and not only hidden upstream.
+    The page does not draw a checkbox for one, but the form body is not the page:
+    a tab left open while the field was typed into elsewhere posts a key the
+    consultant never ticked, and honouring it would replace what he wrote with
+    what a model read and stamp the model's name on it.
+    """
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     wanted = set(key)
-    kept = []
-    for proposal in _proposals.get(client_id, []):
-        if proposal.key in wanted:
-            profiles.save(
-                session, client, proposal.key, proposal.value,
-                source_url=proposal.source_url,
-                source_title=proposal.source_title,
-                filled_by=profiles.config.review_model(),
-            )
-        else:
-            kept.append(proposal)
-    _proposals[client_id] = kept
+    facts = profiles.stored(session, client_id)
+    taken = [
+        p for p in profile_refresh.outstanding(session, client_id)
+        if p.key in wanted and profile_refresh.may_replace(facts, p.key)
+    ]
+    for proposal in taken:
+        profiles.save(
+            session, client, proposal.key, proposal.value,
+            source_url=proposal.source_url,
+            source_title=proposal.source_title,
+            filled_by=proposal.proposed_by or profiles.config.review_model(),
+        )
+    if taken:
+        profile_refresh.discard(session, client_id, [p.key for p in taken])
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
 
 
 @router.post("/client/{client_id}/profil/discard")
-def discard_proposals(client_id: int) -> Response:
-    _proposals.pop(client_id, None)
+def discard_proposals(
+    client_id: int,
+    key: list[str] = Form(default_factory=list),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Throw away proposals: the named fields, or all of them when none is named.
+
+    Named, because the page draws two piles now — the offers with a checkbox and
+    the contradictions against hand-filled fields, which have none — and each
+    carries its own discard. A single button that always cleared everything meant
+    clearing the contradictions also threw away the offers beside them, which the
+    consultant had not decided on yet.
+    """
+    profile_refresh.discard(session, client_id, key or None)
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
