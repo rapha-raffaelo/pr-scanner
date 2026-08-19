@@ -313,6 +313,13 @@ def _mark_checked(
     as it is set, and the profile page prints it where the check date is read.
     Cleared on a good check, so a stale note cannot outlive the failure it
     describes and cannot keep a healthy mandate permanently due.
+
+    The commit is deliberate and belongs here rather than at the end of the
+    sweep: it is the single write that lands this client's new proposals — added
+    but not yet flushed by :func:`_replace` — together with the stamp that
+    explains them. Splitting the two would allow a crash to keep one without the
+    other, and leaving both uncommitted would put the findings back in memory,
+    where a restart used to lose them.
     """
     client.profile_checked_at = now
     client.profile_note = note
