@@ -1,0 +1,21 @@
+{# When the mandate's profile was last looked at.
+
+   One partial for the profile page and the portfolio, so the same stamp cannot
+   read as "22.06.2026" on one page and "vor 58 Tagen" on the other. What counts
+   as old is decided in ``profile.checked`` and not here: a threshold in a
+   template is a threshold two templates disagree about.
+
+   Never checked says so out loud. A blank reads as "fine", and a profile nobody
+   has ever re-read is the opposite of fine — it is the state this whole feature
+   exists for. Expects ``checked`` (a ``profile.Checked``) in the context; use
+   ``{% with checked = ... %}`` inside a loop. #}
+{%- set t = translator(request) -%}
+{%- if checked.never -%}
+  {{ t("Noch nie geprüft") }}
+{%- elif checked.days == 0 -%}
+  {{ t("Heute geprüft") }}
+{%- elif checked.as_age -%}
+  {{ t("Zuletzt geprüft vor %(days)s Tagen") | format(days=checked.days) }}
+{%- else -%}
+  {{ t("Zuletzt geprüft") }}: {{ checked.at | de_date }}
+{%- endif -%}

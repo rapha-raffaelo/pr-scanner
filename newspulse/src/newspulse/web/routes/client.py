@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from ... import gnews
 from ... import angles
+from ... import profile as profiles
 from ...models import Analysis, Angle, Article, Category, Client, TopicHit, visible_coverage
 from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
@@ -362,6 +363,10 @@ class PortfolioRow:
     # a front door.
     alerts_today: int
     open_impulses: int
+    # When the mandate profile was last re-read. On the roster because a profile
+    # decays quietly: nothing about a card says its facts are two years old, and
+    # the consultant picks the mandate to work on from exactly this screen.
+    profile_checked: profiles.Checked
 
 
 # The portfolio is the front door now. A consultant does not open this tool to
@@ -423,6 +428,9 @@ def clients_index(
     )
 
     clients = session.scalars(select(Client).order_by(Client.name)).all()
+    # One clock for the whole list, so two cards checked the same morning cannot
+    # be rendered a day apart by a render that straddles midnight.
+    now = dt.datetime.now(dt.UTC)
     rows = [
         PortfolioRow(
             id=c.id,
@@ -439,6 +447,7 @@ def clients_index(
             total_count=totals.get(c.id, 0),
             alerts_today=alerts_today.get(c.id, 0),
             open_impulses=open_impulses.get(c.id, 0),
+            profile_checked=profiles.checked(c.profile_checked_at, now=now),
         )
         for c in clients
     ]

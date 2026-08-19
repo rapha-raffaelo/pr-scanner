@@ -819,6 +819,12 @@ class ProfileProposal(Base):
     Keyed on (client, key): a mandate has one CEO field, and a second refresh
     replaces that client's outstanding proposals rather than stacking a fresh
     guess beside last week's.
+
+    A discarded row stays, stamped rather than deleted. It is the only record
+    that the consultant already said no to this exact value, and without it the
+    next refresh would read the same about page, find the same sentence and put
+    the same rejected proposal back on the page — which is how a review pile
+    becomes something nobody opens.
     """
 
     __tablename__ = "profile_proposals"
@@ -860,6 +866,15 @@ class ProfileProposal(Base):
     #: propose to himself, he types the value in.
     proposed_by: Mapped[str] = mapped_column(
         String(80), nullable=False, default="", server_default=""
+    )
+    #: When the consultant said no, and the whole reason a discarded row is kept
+    #: instead of deleted: the refresh reads it before proposing, so a value that
+    #: was refused once is not offered again the next morning. An accepted row is
+    #: deleted rather than stamped — the fact it became is its own memory, and a
+    #: "no" recorded against a value the profile now holds would suppress a real
+    #: correction later.
+    discarded_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, default=None
     )
 
 

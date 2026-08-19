@@ -34,7 +34,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from . import config, profile
@@ -200,30 +200,133 @@ def may_replace(facts: Mapping[str, ClientFact], key: str) -> bool:
 
 
 def outstanding(session: Session, client_id: int) -> list[ProfileProposal]:
-    """This client's proposals still waiting for a yes, in the order proposed."""
+    """This client's proposals still waiting for a yes, in the order proposed.
+
+    Refused ones are excluded rather than gone: they stay on file as the record
+    of a decision (see :func:`discard`), and nothing outside this module has any
+    business seeing them again.
+    """
     return list(
         session.scalars(
             select(ProfileProposal)
-            .where(ProfileProposal.client_id == client_id)
+            .where(
+                ProfileProposal.client_id == client_id,
+                ProfileProposal.discarded_at.is_(None),
+            )
             .order_by(ProfileProposal.id)
         ).all()
     )
 
 
 def discard(
-    session: Session, client_id: int, keys: Sequence[str] | None = None
+    session: Session, client_id: int, ids: Sequence[int], *, now: dt.datetime
 ) -> int:
-    """Drop this client's outstanding proposals, or only the named fields.
+    """Refuse the named proposals. Stamps them rather than deleting them.
 
-    Returns how many rows went, so a caller can tell "discarded three" from
-    "there was nothing there".
+    Identified by row id and not by field, because the two are not the same
+    promise. A field name says "whatever is currently proposed for the CEO"; a
+    row id says "the thing I was looking at when I clicked". Between the page
+    being drawn and the button being pressed the 06:10 sweep may have replaced
+    that row with a different value, and sweeping the new one up under the old
+    one's name would discard a finding nobody ever saw.
+
+    The stamp is the point. A deleted row leaves no record that anyone decided
+    anything, so the next refresh reads the same about page, finds the same
+    sentence and offers the same rejected value again — see :func:`_unrefused`.
+
+    Returns how many rows were refused, so a caller can tell "discarded three"
+    from "there was nothing there".
     """
-    stmt = delete(ProfileProposal).where(ProfileProposal.client_id == client_id)
-    if keys is not None:
-        stmt = stmt.where(ProfileProposal.key.in_(list(keys)))
-    removed = session.execute(stmt).rowcount or 0
+    wanted = list(ids)
+    if not wanted:
+        return 0
+    refused = (
+        session.execute(
+            update(ProfileProposal)
+            .where(
+                ProfileProposal.client_id == client_id,
+                ProfileProposal.id.in_(wanted),
+                ProfileProposal.discarded_at.is_(None),
+            )
+            .values(discarded_at=now)
+        ).rowcount
+        or 0
+    )
+    session.commit()
+    return refused
+
+
+def clear(session: Session, client_id: int, ids: Sequence[int]) -> int:
+    """Drop the named proposals outright, for the ones that were accepted.
+
+    Deleted rather than stamped, which is the opposite of :func:`discard` and
+    deliberately so: the fact the value became is its own memory, and a refusal
+    recorded against a value the profile now holds would suppress a genuine
+    correction to it later.
+    """
+    wanted = list(ids)
+    if not wanted:
+        return 0
+    removed = (
+        session.execute(
+            delete(ProfileProposal).where(
+                ProfileProposal.client_id == client_id,
+                ProfileProposal.id.in_(wanted),
+            )
+        ).rowcount
+        or 0
+    )
     session.commit()
     return removed
+
+
+def _refused(session: Session, client_id: int) -> dict[str, ProfileProposal]:
+    """What this client has already said no to, keyed by field.
+
+    One row per field at most — the UNIQUE (client_id, key) sees to that — so a
+    dict is the whole answer rather than a convenience.
+    """
+    rows = session.scalars(
+        select(ProfileProposal).where(
+            ProfileProposal.client_id == client_id,
+            ProfileProposal.discarded_at.is_not(None),
+        )
+    ).all()
+    return {row.key: row for row in rows}
+
+
+def _unrefused(
+    session: Session, client_id: int, found: Sequence[profile.Proposal]
+) -> list[profile.Proposal]:
+    """The read, minus what this mandate has already answered or cannot back up.
+
+    Two things are dropped here, and both would otherwise reach the review page:
+
+    * A value the consultant has already discarded. The web does not change its
+      mind between Tuesday and Wednesday, so an unfiltered refresh re-proposes
+      every refused value every time it runs, and a pile that keeps asking a
+      question that was answered is a pile that stops being opened. A *different*
+      value for the same field is a new claim and does go through — the refusal
+      was of a sentence, not of the field.
+    * A value with no source. A proposal nobody can check is a machine asserting
+      something it cannot back up; the page does not show one, so storing it
+      would only put a row on file that nothing can display and nobody can clear.
+
+    Dropped here rather than in :func:`_as_rows` so the key never enters the
+    ``covered`` set either: a field the read did cover is *replaced*, and that
+    would delete the very refusal this function just read.
+    """
+    refused = _refused(session, client_id)
+    keep: list[profile.Proposal] = []
+    for item in found:
+        if not item.source_url:
+            _log.debug("profile refresh: %r came back without a source", item.key)
+            continue
+        already = refused.get(item.key)
+        if already is not None and already.value == item.value:
+            continue
+        keep.append(item)
+    return keep
 
 
 def _as_rows(
@@ -235,6 +338,9 @@ def _as_rows(
     proposed_by: str,
 ) -> list[ProfileProposal]:
     """The found values that differ from the profile, as unsaved rows.
+
+    ``found`` is what :func:`_unrefused` let through: sourced, and not something
+    this mandate has already answered.
 
     A proposal identical to what is already on file is noise — the consultant
     would be asked to confirm that nothing changed — so it never becomes a row.
@@ -365,15 +471,17 @@ def refresh(
             # due until a read actually succeeds.
             _mark_checked(session, client, now, _FAILED_NOTE.format(reason=exc))
             raise
-        rows = _as_rows(session, client, found, now=now, proposed_by=author)
-        _replace(session, client.id, rows, covered={item.key for item in found})
+        fresh = _unrefused(session, client.id, found)
+        rows = _as_rows(session, client, fresh, now=now, proposed_by=author)
+        _replace(session, client.id, rows, covered={item.key for item in fresh})
         _mark_checked(session, client, now)
         total = len(outstanding(session, client.id))
     _log.info(
-        "profile refresh for %r: %d field(s) read, %d new proposal(s), "
-        "%d outstanding",
+        "profile refresh for %r: %d field(s) read, %d already answered or "
+        "unsourced, %d new proposal(s), %d outstanding",
         client.name,
         len(found),
+        len(found) - len(fresh),
         len(rows),
         total,
     )
@@ -435,6 +543,7 @@ def run(
 __all__ = [
     "DUE_AFTER",
     "Generate",
+    "clear",
     "discard",
     "due",
     "may_replace",

@@ -82,6 +82,13 @@ FILLABLE = len(FIELDS)
 BY_HAND = "mensch"
 
 
+#: How old a check may be before the page prints its age instead of its date.
+#: Under two weeks a date still means something to the reader — he remembers the
+#: week. Past it "12.05.2026" is a number nobody subtracts today's date from, and
+#: "vor 84 Tagen" is the sentence that makes a stale profile look stale.
+AGE_AFTER = dt.timedelta(days=14)
+
+
 @dataclass(frozen=True, slots=True)
 class Proposal:
     """One proposed value, with the page it was read from."""
@@ -90,6 +97,46 @@ class Proposal:
     value: str
     source_url: str = ""
     source_title: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Checked:
+    """When the profile was last looked at, in the shape a page prints it.
+
+    A value object rather than a formatted string, because the sentence itself is
+    interface and belongs in a template where :func:`newspulse.i18n.translate` can
+    reach it. What is decided here is the thing a template must not decide: how
+    old is old, and whether "never" is a state of its own.
+    """
+
+    at: dt.datetime | None
+    #: Whole days since the check, floored at zero. ``None`` when never checked —
+    #: distinct from ``0``, which is a profile that was checked this morning.
+    days: int | None
+
+    @property
+    def never(self) -> bool:
+        """No check on record. Said out loud on the page rather than left blank:
+        a blank reads as "fine" and this is the opposite of fine."""
+        return self.at is None
+
+    @property
+    def as_age(self) -> bool:
+        """Old enough that the age says more than the date."""
+        return self.days is not None and self.days >= AGE_AFTER.days
+
+
+def checked(at: dt.datetime | None, *, now: dt.datetime) -> Checked:
+    """Classify a check stamp against the clock it is handed.
+
+    ``now`` is a value rather than a default so the page's own rendering can be
+    driven from a frozen clock in a test, the same posture the due check takes.
+    A stamp from the future — a clock skew on a restored backup — counts as
+    today rather than as a negative age.
+    """
+    if at is None:
+        return Checked(at=None, days=None)
+    return Checked(at=at, days=max((now - at).days, 0))
 
 
 def stored(session: Session, client_id: int) -> dict[str, ClientFact]:
@@ -226,5 +273,5 @@ def research(client: Client, *, generate=None) -> list[Proposal]:
     return out
 
 
-__all__ = ["FIELDS", "FIELDS_BY_KEY", "FILLABLE", "Field", "Proposal",
-           "research", "save", "stored"]
+__all__ = ["AGE_AFTER", "BY_HAND", "FIELDS", "FIELDS_BY_KEY", "FILLABLE",
+           "Checked", "Field", "Proposal", "checked", "research", "save", "stored"]

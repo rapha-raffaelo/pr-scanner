@@ -541,7 +541,14 @@ def test_the_daily_sweep_reaches_the_refresh(session, monkeypatch, no_sweep_prof
     monkeypatch.setattr(
         profiles,
         "research",
-        lambda c, *, generate=None: [profiles.Proposal(key="sitz", value="Paris")],
+        # With a source, because a proposal without one is not stored and not
+        # shown: it is a machine asserting something it cannot back up.
+        lambda c, *, generate=None: [
+            profiles.Proposal(
+                key="sitz", value="Paris", source_url="https://qonto.com/ueber-uns",
+                source_title="Qonto",
+            )
+        ],
     )
 
     class _Analyzer:

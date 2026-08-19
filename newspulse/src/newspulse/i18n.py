@@ -760,8 +760,26 @@ _EN: dict[str, str] = {
     "Vorschläge aus dem Netz": "proposals from the web",
     "Feld(er) von Hand gefüllt — das Netz sagt etwas anderes":
         "field(s) filled in by hand — the web says otherwise",
-    "Ausgewählte übernehmen": "Accept selected",
+    # --- The review pile: what changed, and who decided it --------------------
+    "Was Sie übernehmen, wird als Ihre Angabe gespeichert — mit Quelle, aber unter Ihrem Namen, weil Sie es entschieden haben. Was Sie verwerfen, wird beim nächsten Abgleich nicht erneut vorgeschlagen.":
+        "What you accept is stored as your entry, with its source but under your "
+        "name, because you are the one who decided it. What you discard is not "
+        "proposed again at the next check.",
+    "Regel: Eine Angabe von Hand wird nie überschrieben. Das Netz widerspricht hier nur — ändern können Sie den Wert selbst, unten im Feld.":
+        "Rule: an entry you made by hand is never overwritten. The web only "
+        "contradicts it here; only you can change the value, in the field below.",
+    "bisher nicht gefüllt": "previously empty",
+    "Ihre Angabe": "Your entry",
+    "Das Netz sagt": "The web says",
+    "Übernehmen": "Accept",
+    "Alle übernehmen": "Accept all",
+    "Alle verwerfen": "Discard all",
     "Verwerfen": "Discard",
+    # The check stamp, shared by the profile page and the portfolio. "Never
+    # checked" is a state of its own and is said out loud: a blank reads as fine.
+    "Noch nie geprüft": "Never checked",
+    "Heute geprüft": "Checked today",
+    "Zuletzt geprüft vor %(days)s Tagen": "Last checked %(days)s days ago",
     "Profil speichern": "Save profile",
     "Was Sie hier ändern, gilt als Ihre Angabe und wird von der KI nicht mehr überschrieben.":
         "What you change here counts as yours and the AI will not overwrite it.",
