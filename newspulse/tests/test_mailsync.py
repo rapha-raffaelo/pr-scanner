@@ -337,17 +337,17 @@ class _NoAnalyzer:
 
 @pytest.fixture
 def quiet_post_run(monkeypatch):
-    """The drafting and theme work that follows a sweep, stubbed out.
+    """The drafting that follows a sweep with a mandate in the database.
 
-    Every test here is about the mailbox. Left alone, the steps after the run row
-    reach the real ``claude -p`` for a mandate whose radar is empty — the sweep
-    swallows the failure, so the assertions would still pass while the suite
-    spends a minute in a subprocess.
+    Every test here is about the mailbox. Left alone, the drafting step after the
+    run row can reach the real ``claude -p`` — the sweep swallows the failure, so
+    the assertions would still pass while the suite spends a minute in a
+    subprocess. (The theme settling beside it is already stubbed for the whole
+    suite by ``conftest.no_theme_settling``, for the same reason.)
     """
-    from newspulse import angles, themes
+    from newspulse import angles
 
     monkeypatch.setattr(angles, "suggest", lambda *args, **kwargs: None)
-    monkeypatch.setattr(themes, "settle", lambda *args, **kwargs: [])
 
 
 def _no_feed(*_args, **_kwargs) -> list[FeedItem]:
