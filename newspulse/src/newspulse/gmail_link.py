@@ -1177,6 +1177,20 @@ def thread(thread_id: str, *, fetch: Fetch | None = None) -> list[ThreadMessage]
     ]
 
 
+def is_own_message(message: ThreadMessage) -> bool:
+    """Whether this mailbox wrote the message, by Gmail's own labels.
+
+    ``SENT`` is the letter this tool put in the journalist's inbox; ``DRAFT`` is
+    one that never left at all. Neither is an answer to anything, and the reply
+    sync (:mod:`newspulse.mailsync`) asks exactly this question of every message
+    in every conversation it reads. It lives here rather than there because the
+    two label strings are Gmail's vocabulary, and a second copy of them in
+    another module is a drift risk on the one check that keeps this tool's own
+    words out of a contact's file as somebody else's.
+    """
+    return bool({_SENT_LABEL, _DRAFT_LABEL} & set(message.label_ids))
+
+
 def sent_in_thread(thread_id: str, *, fetch: Fetch | None = None) -> Sent | None:
     """The message this mailbox already sent in one conversation, if there is one.
 
@@ -1218,6 +1232,7 @@ __all__ = [
     "create_draft",
     "disconnect",
     "exchange",
+    "is_own_message",
     "new_state",
     "profile",
     "scope_words",

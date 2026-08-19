@@ -8,10 +8,10 @@ What it does *not* do is the load-bearing part:
 
 * **It asks for threads and never for a mailbox.** DEC-6 option A: the only
   conversations RauteOS can name are the ones it started itself, so the query is
-  a thread id — one Gmail call per released letter and no search over anything
-  else. A mailbox full of client contracts, invoices and personal mail is not
-  fetched, which is why it cannot be stored. The sentence "your mailbox is not
-  read" stays literally true for everything that is not a pitch.
+  a thread id — one Gmail call per recently released letter and no search over
+  anything else. A mailbox full of client contracts, invoices and personal mail
+  is not fetched, which is why it cannot be stored. The sentence "your mailbox is
+  not read" stays literally true for everything that is not a pitch.
 * **It interprets nothing.** A reply is stored as text. The only state it may set
   is ``antwort`` — a human wrote back — and Absage or Veröffentlicht stay the
   consultant's reading (see :func:`newspulse.outreach.record_reply`): "danke,
@@ -35,7 +35,7 @@ import datetime as dt
 import logging
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import gmail_link, outreach
@@ -52,11 +52,18 @@ _log = logging.getLogger(__name__)
 #: one such letter must not stop the others from being read.
 _MAX_CONSECUTIVE_FAILURES = 3
 
-#: Gmail's label on a message this mailbox sent. The outgoing letter that started
-#: the thread carries it, and so does anything else sent from the account —
-#: neither is a reply to anything.
-_SENT_LABEL = "SENT"
-_DRAFT_LABEL = "DRAFT"
+#: How long after it went out a letter is still asked about. Without a bound the
+#: sweep asks Gmail once per letter the agency has *ever* released: at fifteen
+#: letters a week, a year in that is several hundred sequential requests added to
+#: every morning, growing forever, for conversations that ended in March.
+#:
+#: Ninety days rather than thirty: a pitch answered eight weeks later is an
+#: ordinary event in trade press, and this window is the one thing standing
+#: between such an answer and never being read at all. Past it the conversation
+#: is not asked about again — the letter stays in the ledger, its stored replies
+#: stay on the file, and only the daily question stops. What the window skipped
+#: is logged on every run, so the narrowing is never silent.
+_REPLY_WINDOW = dt.timedelta(days=90)
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +79,10 @@ class SyncReport:
     threads: int = 0
     replies: int = 0
     answered: int = 0
+    #: Released letters older than :data:`_REPLY_WINDOW`, which were not asked
+    #: about. Reported rather than merely skipped: a sync that silently narrows
+    #: what it reads is indistinguishable from a mailbox with nothing in it.
+    aged_out: int = 0
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -79,49 +90,62 @@ class SyncReport:
         return not self.errors
 
 
-def _letters_with_threads(session: Session) -> dict[str, Outreach]:
-    """The released letters that have a conversation, keyed by thread id.
+def _letters_with_threads(
+    session: Session, *, since: dt.datetime
+) -> tuple[dict[str, Outreach], int]:
+    """The recently released letters that have a conversation, keyed by thread id.
 
-    Both conditions matter and neither implies the other. ``released_at`` is what
+    All three conditions matter and none implies another. ``released_at`` is what
     makes the letter part of the ledger — a draft composed in Gmail and never sent
-    is not a pitch anyone made — and a thread id is what makes it *askable*: with
-    no outgoing message of ours in a conversation there is nothing to ask Gmail
-    for, and DEC-6 forbids the alternative of searching by sender.
+    is not a pitch anyone made — a thread id is what makes it *askable*: with no
+    outgoing message of ours in a conversation there is nothing to ask Gmail for,
+    and DEC-6 forbids the alternative of searching by sender. ``since``
+    (:data:`_REPLY_WINDOW`) is what keeps the daily cost from growing with every
+    letter the agency has ever sent, since each row here is one HTTPS request
+    every morning for as long as it qualifies.
 
     Keyed by thread rather than returned as a list, because two rows can name the
     same conversation (a letter re-pushed after its row was replaced), and the
     same thread fetched twice is a wasted call whose second copy would be dropped
     by the message id anyway. The oldest row wins, which is the letter that
     actually opened the conversation.
+
+    Returns the threads to read and how many letters the window left out, so the
+    caller can say so rather than quietly reading less than it looks like.
     """
+    asked = (
+        Outreach.released_at.is_not(None),
+        Outreach.gmail_thread_id != "",
+    )
     rows = session.scalars(
         select(Outreach)
-        .where(
-            Outreach.released_at.is_not(None),
-            Outreach.gmail_thread_id != "",
-        )
+        .where(*asked, Outreach.released_at >= since)
         .order_by(Outreach.id)
     ).all()
     by_thread: dict[str, Outreach] = {}
     for row in rows:
         by_thread.setdefault(row.gmail_thread_id, row)
-    return by_thread
+    aged_out = session.scalar(
+        select(func.count())
+        .select_from(Outreach)
+        .where(*asked, Outreach.released_at < since)
+    )
+    return by_thread, aged_out or 0
 
 
 def _is_ours(message: gmail_link.ThreadMessage, mailbox: str) -> bool:
     """Whether this mailbox itself wrote the message, by two independent tests.
 
-    Gmail's ``SENT`` label is the authority and would be enough on its own; the
-    address comparison is the belt to its braces, because the one thing that must
-    never happen here is filing this tool's own outgoing letter as the
-    journalist's answer to it. A ``DRAFT`` is ours for the same reason and has
-    not been sent to anybody at all.
+    Gmail's own labels are the authority and would be enough on their own —
+    :func:`gmail_link.is_own_message`, so the vocabulary is spelled in the one
+    module that owns it. The address comparison is the belt to those braces,
+    because the one thing that must never happen here is filing this tool's own
+    outgoing letter as the journalist's answer to it.
 
     The address is compared case-insensitively: the local part of an address is
     formally case-sensitive, and no mail provider on earth treats it that way.
     """
-    labels = set(message.label_ids)
-    if _SENT_LABEL in labels or _DRAFT_LABEL in labels:
+    if gmail_link.is_own_message(message):
         return True
     return bool(mailbox) and message.from_email.casefold() == mailbox.casefold()
 
@@ -204,6 +228,11 @@ def sync(
     installation that never linked one: the report says so and the daily run is
     unaffected.
 
+    Bounded to letters released inside :data:`_REPLY_WINDOW`, because every
+    qualifying letter is one request every morning for as long as it qualifies.
+    What the window left out is counted, logged and reported rather than silently
+    dropped.
+
     A failure to read one conversation is logged at ERROR and the next
     conversation is tried, because a thread deleted in the mailbox is a fact
     about that thread. A run of them is a fact about the connection —
@@ -221,7 +250,14 @@ def sync(
         return SyncReport()
 
     moment = now or dt.datetime.now(dt.UTC)
-    letters = _letters_with_threads(session)
+    letters, aged_out = _letters_with_threads(session, since=moment - _REPLY_WINDOW)
+    if aged_out:
+        _log.info(
+            "mail sync: %d letter(s) released more than %d days ago are past the "
+            "window and were not asked about",
+            aged_out,
+            _REPLY_WINDOW.days,
+        )
     stored = answered = 0
     errors: list[str] = []
     consecutive = 0
@@ -257,6 +293,7 @@ def sync(
         threads=len(letters),
         replies=stored,
         answered=answered,
+        aged_out=aged_out,
         errors=errors,
     )
     _log.info(

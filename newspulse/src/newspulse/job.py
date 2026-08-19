@@ -1065,7 +1065,37 @@ def _finalize_run(
     return run
 
 
-def _sync_mailbox(session: Session) -> int:
+def _record_sync_failure(
+    session: Session, run: Run, errors: list[str], reported: Sequence[str]
+) -> None:
+    """Fold the mailbox's failures into the run row that is already written.
+
+    The ``runs`` row is committed before the mailbox is touched — deliberately,
+    so a dead Google cannot cost the day's coverage — which leaves it stating
+    ``ok`` for a sweep whose last step failed. Amended here rather than by moving
+    the sync in front of the finalize: the row is the thing that must survive,
+    and a second small write is cheaper than putting it behind a network call.
+
+    Downgraded to ``partial`` and never to ``failed``: the acceptance criterion
+    is that an unreachable mailbox does not fail the daily sweep, and it does not
+    — every stored row stands, nothing is rolled back, and the sweep's own work
+    is untouched. A run that already failed keeps that status; there is nothing
+    worse to say about it.
+    """
+    if not reported:
+        return
+    errors.extend(reported)
+    if run.status is RunStatus.FAILED:
+        return
+    run.errors = [*run.errors, *reported]
+    run.status = RunStatus.PARTIAL
+    session.add(run)
+    session.commit()
+
+
+def _sync_mailbox(
+    session: Session, run: Run, errors: list[str], *, now: dt.datetime
+) -> int:
     """Read the replies to released letters; a mail failure never fails the sweep.
 
     Runs after the day's coverage is stored and the ``runs`` row is written, so
@@ -1076,10 +1106,17 @@ def _sync_mailbox(session: Session) -> int:
     same reason the notification is — the alternative is a green run's data being
     rolled back because a journalist's mail could not be read.
 
+    Not failing the sweep is not the same as saying nothing. Whatever went wrong
+    is folded into the run's own errors by :func:`_record_sync_failure`, so a
+    mailbox that has been unreadable for a week shows as a partial run instead of
+    a green one with a line in a log nobody tails. ``now`` is the sweep's clock:
+    ``fetched_at`` says when this tool took a copy of somebody else's mail, and a
+    run with a frozen clock has to be able to answer that.
+
     Returns how many replies were newly filed, for the run's own log line.
     """
     try:
-        return mailsync.sync(session).replies
+        report = mailsync.sync(session, now=now)
     except Exception as exc:  # noqa: BLE001 — the mailbox must never fail the run
         _log.error(
             "mail sync failed: %s; run data already persisted, not rolled back", exc
@@ -1087,7 +1124,10 @@ def _sync_mailbox(session: Session) -> int:
         # A raised write leaves the transaction half-open, and every later
         # statement on this session would die with it.
         session.rollback()
+        _record_sync_failure(session, run, errors, [f"mail sync: {exc}"])
         return 0
+    _record_sync_failure(session, run, errors, report.errors)
+    return report.replies
 
 
 def _notify(session: Session, run: Run) -> None:
@@ -1328,7 +1368,12 @@ def _run_real(
     # has nothing to do with whether this morning's feeds answered, and a
     # journalist's answer is the one thing in this tool nobody can re-fetch
     # later by pressing a button.
-    replies = _sync_mailbox(session)
+    replies = _sync_mailbox(session, run, errors, now=now_fn())
+    # The run row may have been downgraded to partial by an unreadable mailbox;
+    # the report has to say the same thing the stored row does. Never to failed,
+    # so the post-run work below still runs — a dead Google says nothing about
+    # whether this morning's feeds answered.
+    status = run.status
     # Drafting happens after the run is recorded and only if the sweep itself came
     # through: pitching a positioning message off a half-fetched radar would put a
     # confident text in front of the reader on the strength of partial data.
