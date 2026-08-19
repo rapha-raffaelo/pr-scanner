@@ -84,7 +84,9 @@
   <div class="mailbar">
     <span class="mailbar__dot"></span>
     {{ t("Postfach verbunden") }}: <b>{{ mailbox.email }}</b>
-    <span class="dot">·</span> {{ t("lesen und") }} <b>{{ t("senden") }}</b>
+    {# One string, not two glued fragments: "lesen und" + "senden" translates
+       into a pair of English words that only happen to line up in this order. #}
+    <span class="dot">·</span> <b>{{ t("lesen und senden") }}</b>
     <span class="mailbar__r"><a href="/settings#gmail">{{ t("Einstellungen") }}</a></span>
   </div>
   {# Not decoration. DEC-4 option C is the one decision in this product that
@@ -260,7 +262,12 @@
              once for the whole card: the head names it, the confirmation repeats
              it, and the disabled action explains its absence. #}
           {% set rec = recipients.get(msg.id) %}
-          {% set can_send = mailbox and not msg.released_at and not msg.sent_through_gmail %}
+          {# Connected is not the same question as allowed to send: a mailbox
+             connected before DEC-4's send path — or one whose owner unticked the
+             permission on Google's consent screen — can read and nothing else,
+             and an enabled button on it 403s after the confirmation. #}
+          {% set may_send = mailbox and mailbox.may_send %}
+          {% set can_send = may_send and not msg.released_at and not msg.sent_through_gmail %}
           <article class="letter">
             <div class="letter__head">
               <span class="letter__to">
@@ -337,7 +344,7 @@
                a badge that swallowed the release would claim otherwise. #}
             {% set quiet_days = silent.get(msg.id) %}
             <div class="state">
-              <span class="state__badge state__badge--{{ msg.state }}{% if msg.sent_through_gmail and msg.state == 'raus' %} state__badge--gesendet{% endif %}">{{ t(state_labels[msg.state]) }}</span>
+              <span class="state__badge state__badge--{{ msg.state }}{% if msg.out_through_gmail %} state__badge--gesendet{% endif %}">{{ t(state_labels[msg.state]) }}</span>
               {% if quiet_days %}
                 <span class="state__badge state__badge--still">{{ t("Ohne Reaktion") }}</span>
               {% endif %}
@@ -346,7 +353,14 @@
                   {# Two different sentences, because two different things
                      happened. "Von RauteOS gesendet" is a claim about this tool
                      having put the message in the inbox; "freigegeben" alone
-                     says a person did it themselves and recorded it here. #}
+                     says a person did it themselves and recorded it here.
+                     Not "Liegt in Gmail", which the story text asks for: that
+                     sentence belongs to DEC-4 option B, where the letter waits
+                     in the mailbox as a draft for a human to send. DEC-4 locked
+                     C, the letter is gone by the time this renders, and the
+                     locked mock (features/mocks/gmail-send.html) says exactly
+                     what stands here. The card follows the mock, which the
+                     story's own last criterion requires. #}
                   {% if msg.sent_through_gmail %}
                     {{ t("Von RauteOS gesendet am") }} {{ msg.released_at | de_datetime }},
                     {% if msg.released_by == "mensch" %}
@@ -370,7 +384,11 @@
               {# The send comes before the thread link, not after it: a draft that
                  Gmail accepted but never sent already has a thread, and ordering
                  these the other way would leave that letter showing a link to an
-                 unsent conversation with no way to try again. #}
+                 unsent conversation with no way to try again. The link itself
+                 hangs on the message id (``sent_through_gmail``) rather than on
+                 the thread, for the same reason — a composed draft is not a sent
+                 letter, and one whose mailbox was disconnected afterwards has to
+                 fall through to the release form rather than to a dead end. #}
               {% if can_send and rec and rec.is_reachable %}
                 {# The locked mock's two clicks, as a details/summary rather than
                    a script: the second click is an irreversible send, and it must
@@ -386,11 +404,15 @@
                       <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/gmail-draft">
                         <button type="submit" class="btn btn--send">{{ t("Ja, senden") }}</button>
                       </form>
-                      <span class="state__why">{{ t("Zum Abbrechen zuklappen.") }}</span>
+                      {# The mock's second choice, and it is a real control. The
+                         send must work without JavaScript and does — the summary
+                         closes the panel on its own — so this is the one thing
+                         here that may lean on a script. #}
+                      <button type="button" class="linkbtn" data-close-confirm>{{ t("Abbrechen") }}</button>
                     </div>
                   </div>
                 </details>
-              {% elif msg.gmail_thread_id %}
+              {% elif msg.sent_through_gmail %}
                 <span class="state__acts">
                   <a class="linkbtn" href="{{ gmail_threads[msg.id] }}" target="_blank" rel="noopener noreferrer">{{ t("Verlauf in Gmail öffnen") }}</a>
                 </span>
@@ -399,12 +421,19 @@
                   {% if mailbox %}
                     {# Disabled, and never silently: an address is the one thing
                        this tool will not derive, so the card says which of the
-                       three reasons it is and where it gets fixed. #}
+                       reasons it is and where each one gets fixed. The mailbox's
+                       own missing permission comes first — it is not a fact about
+                       this recipient, and no contact entry would cure it. #}
                     <button type="button" class="btn btn--send" disabled>{{ t("Freigeben und senden") }}</button>
                     <span class="state__why">
-                      {{ t(rec.reason) if rec else "" }}
-                      {% if msg.journalist %}
-                        <a href="{% if rec and rec.contact_id %}/contacts?id={{ rec.contact_id }}{% else %}/contacts?name={{ msg.journalist | urlencode }}&outlet={{ msg.outlet | urlencode }}{% endif %}">{{ t("Kontakt hinterlegen") }} →</a>
+                      {% if not may_send %}
+                        {{ t(gmail_scope_reason) }}
+                        <a href="/settings#gmail">{{ t("Postfach neu verbinden") }} →</a>
+                      {% else %}
+                        {{ t(rec.reason) if rec else "" }}
+                        {% if msg.journalist %}
+                          <a href="{% if rec and rec.contact_id %}/contacts?id={{ rec.contact_id }}{% else %}/contacts?name={{ msg.journalist | urlencode }}&outlet={{ msg.outlet | urlencode }}{% endif %}">{{ t("Kontakt hinterlegen") }} →</a>
+                        {% endif %}
                       {% endif %}
                     </span>
                   {% endif %}
@@ -688,6 +717,19 @@
       area.select();
       try { document.execCommand("copy"); done(); } catch (e) {}
       document.body.removeChild(area);
+    });
+  });
+})();
+
+// Abbrechen on the send confirmation. Deliberately the only part of that panel
+// that needs a script: the send itself is a plain form, and the summary closes
+// the panel unaided, so a page whose JavaScript never loaded still shows both a
+// working send and a working way out of it.
+(function () {
+  document.querySelectorAll("[data-close-confirm]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var panel = button.closest("details");
+      if (panel) panel.open = false;
     });
   });
 })();

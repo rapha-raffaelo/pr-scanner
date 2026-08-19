@@ -95,6 +95,11 @@ NO_NAME = "Kein Name zu diesem Anschreiben — nur die Redaktion."
 NOT_IN_BOOK = "Nicht im Kontaktbuch. RauteOS leitet keine Adresse aus Name oder Medium ab."
 #: In the book, but the address field was left empty.
 NO_ADDRESS = "Im Kontaktbuch, aber ohne E-Mail-Adresse."
+#: Not about the recipient at all: the mailbox is connected without the
+#: permission that lets RauteOS compose and send. Every connection made before
+#: DEC-4's send path is in this state, because Google fixes the granted scopes at
+#: consent time and no request widens them afterwards.
+NO_SEND_PERMISSION = "Dieses Postfach ist nur zum Lesen verbunden."
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,12 +153,20 @@ def _recipients(
     }
 
 
-def _thread_links(messages: dict[int, list[Outreach]]) -> dict[int, str]:
+def _thread_links(
+    messages: dict[int, list[Outreach]], link: gmail_link.Link | None
+) -> dict[int, str]:
     """Where to open each letter's conversation in Gmail, for the ones that have
     one. Absent rather than empty for the rest, so the template asks one question
-    instead of testing a string."""
+    instead of testing a string.
+
+    The connected address goes into the link so it opens in *this* mailbox: a
+    browser signed into a personal account as well has RauteOS's at ``/u/1/``,
+    and an account-indexed link lands on "conversation not found".
+    """
+    account = link.email if link is not None else ""
     return {
-        row.id: gmail_link.thread_url(row.gmail_thread_id)
+        row.id: gmail_link.thread_url(row.gmail_thread_id, account=account)
         for rows in messages.values()
         for row in rows
         if row.gmail_thread_id
@@ -165,6 +178,7 @@ def _advice_context(session: Session, client: Client) -> dict:
     drafts = angles.for_client(session, client.id)
     targets = {a.id: pitch.targets_for(session, client, a) for a in drafts}
     messages = outreach.by_angle(session, [a.id for a in drafts])
+    mailbox = gmail_link.connected()
     return {
         "client": client,
         "drafting": _drafting.locked(),
@@ -213,10 +227,14 @@ def _advice_context(session: Session, client: Client) -> dict:
         # The mailbox, and what it makes possible on each card. ``gmail`` is
         # None or an unconnected Link when no mailbox is attached, and the card
         # then offers no send action at all — the Kopieren path is the whole
-        # answer, exactly as it was before this feature existed.
-        "gmail": gmail_link.connected(),
+        # answer, exactly as it was before this feature existed. A connected
+        # mailbox that was never granted the send permission (``may_send``)
+        # renders the action disabled with ``gmail_scope_reason`` beside it,
+        # because a button that 403s after the confirmation is worse than none.
+        "gmail": mailbox,
+        "gmail_scope_reason": NO_SEND_PERMISSION,
         "recipients": _recipients(session, messages),
-        "gmail_threads": _thread_links(messages),
+        "gmail_threads": _thread_links(messages, mailbox),
         "gmail_error": _last_gmail_error.get(client.id, ""),
         # Whether a radar is possible at all, which is a question about the
         # client's themes — not about whether it has found anything yet. Read
@@ -571,6 +589,55 @@ def release_letter(
 _last_gmail_error: dict[int, str] = {}
 
 
+def _refuse_unsendable(session: Session, row: Outreach) -> Recipient:
+    """Every reason this letter must not go out through Gmail, in one place.
+
+    All four are 400 and all four are checked before anything is composed. The
+    card renders none of them as an available action, so a request that hits one
+    did not come from the card — it came from a tab that was opened before the
+    letter's state changed, which is exactly the case the route has to catch
+    rather than trust.
+
+    The release check is the one that matters most. OUT-01's button says
+    "Freigegeben und verschickt": a hand release *is* a send, performed by the
+    consultant in their own client. Pushing that letter to Gmail as well would
+    put a second copy of the same pitch in the journalist's inbox — the one
+    irreversible harm the two-click confirmation exists to prevent.
+    """
+    link = gmail_link.connected()
+    if link is None or not link.is_connected:
+        raise HTTPException(status_code=400, detail="Kein Postfach verbunden.")
+    if not link.may_send:
+        raise HTTPException(status_code=400, detail=NO_SEND_PERMISSION)
+    if row.sent_through_gmail:
+        raise HTTPException(
+            status_code=400, detail="Dieses Anschreiben ist bereits verschickt."
+        )
+    if row.released_at is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Dieses Anschreiben wurde bereits freigegeben und verschickt.",
+        )
+    recipient = _recipient(session, row)
+    if not recipient.is_reachable:
+        raise HTTPException(status_code=400, detail=recipient.reason)
+    return recipient
+
+
+def _already_gone(row: Outreach) -> gmail_link.Sent | None:
+    """The send this row never got to record, if Gmail says it happened anyway.
+
+    Only ever asked on a retry — a first push has no thread yet — and it closes
+    the two-step's one hole: a ``drafts.send`` whose answer was lost sent the
+    letter *and* consumed the draft, so composing again would write a second
+    letter and updating the old draft id would 404 forever. Reading the thread
+    turns that unanswerable state back into a fact.
+    """
+    if not row.gmail_thread_id:
+        return None
+    return gmail_link.sent_in_thread(row.gmail_thread_id)
+
+
 @router.post("/client/{client_id}/outreach/{outreach_id}/gmail-draft")
 def send_through_gmail(
     request: Request,
@@ -593,25 +660,25 @@ def send_through_gmail(
     see and this route can re-send, instead of an unanswerable question about
     whether a journalist has the letter.
 
-    Three refusals, all 400 and all before anything is sent: no mailbox, no
-    address, or a letter that already went out. The card renders none of those as
-    an available action, so a request that hits one did not come from it.
+    What must not happen twice is guarded twice: :func:`_refuse_unsendable`
+    before anything is composed, and :func:`_already_gone` for the send whose
+    answer never came back.
     """
     _refuse_foreign_origin(request)
     row = _letter(session, client_id, outreach_id)
     _last_gmail_error.pop(client_id, None)
-    link = gmail_link.connected()
-    if link is None or not link.is_connected:
-        raise HTTPException(status_code=400, detail="Kein Postfach verbunden.")
-    if row.sent_through_gmail:
-        raise HTTPException(
-            status_code=400, detail="Dieses Anschreiben ist bereits verschickt."
-        )
-    recipient = _recipient(session, row)
-    if not recipient.is_reachable:
-        raise HTTPException(status_code=400, detail=recipient.reason)
+    recipient = _refuse_unsendable(session, row)
 
     try:
+        gone = _already_gone(row)
+        if gone is not None:
+            # It left after all. Recorded, not re-sent.
+            outreach.record_sent(session, row, gone, released_by=released_by)
+            _log.info("outreach %d was already sent (thread %s)", row.id, gone.thread_id)
+            return RedirectResponse(
+                f"/client/{client_id}/advice#impulse-{row.angle_id}",
+                status_code=_SEE_OTHER,
+            )
         draft = gmail_link.create_draft(
             recipient.email,
             row.subject,

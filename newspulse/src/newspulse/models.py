@@ -895,6 +895,19 @@ class Outreach(Base):
         """
         return bool(self.gmail_message_id)
 
+    @property
+    def out_through_gmail(self) -> bool:
+        """Sent by RauteOS itself, and nothing back yet — the mock's red badge.
+
+        The state is part of the question, so the red "gesendet" colouring can
+        never overpaint the green an answer or a publication earns. Computed
+        here rather than in the template because that is where
+        :class:`OutreachState` is in scope: a card comparing against the bare
+        string ``"raus"`` would quietly stop colouring anything the day the enum
+        value is renamed.
+        """
+        return self.sent_through_gmail and self.state == OutreachState.RAUS
+
 
 __all__ = [
     "Base",
