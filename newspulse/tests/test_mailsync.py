@@ -99,8 +99,20 @@ def _payload(
     labels: tuple[str, ...] = (),
     subject: str = "Re: Netzentgelte",
     thread_id: str = _THREAD_ID,
+    to: str = "",
 ) -> dict[str, Any]:
-    """One message in the shape ``threads.get?format=full`` actually returns."""
+    """One message in the shape ``threads.get?format=full`` actually returns.
+
+    ``to`` is carried because Gmail carries it, and because on this tool's *own*
+    message it is the record of where the letter actually went — which is what
+    tells the journalist's answer apart from a bounce in the same conversation.
+    """
+    headers = [
+        {"name": "From", "value": sender},
+        {"name": "Subject", "value": subject},
+    ]
+    if to:
+        headers.append({"name": "To", "value": to})
     return {
         "id": message_id,
         "threadId": thread_id,
@@ -108,10 +120,7 @@ def _payload(
         "internalDate": str(int(at.timestamp() * 1000)),
         "payload": {
             "mimeType": "text/plain",
-            "headers": [
-                {"name": "From", "value": sender},
-                {"name": "Subject", "value": subject},
-            ],
+            "headers": headers,
             "body": {"data": base64.urlsafe_b64encode(body.encode()).decode()},
         },
     }
@@ -134,6 +143,7 @@ def _our_letter() -> dict[str, Any]:
         at=_RELEASED_AT,
         labels=("SENT",),
         subject="Anschlussdauer statt Netzentgelt",
+        to=f"{_JOURNALIST} <{_ADDRESS}>",
     )
 
 
@@ -659,6 +669,109 @@ def test_a_later_reply_does_not_move_the_first_ones_timestamp(session, mailbox, 
     assert len(_replies(session)) == 2
 
 
+# --- What is an answer, and what merely shares the conversation ------------------
+
+
+def test_a_delivery_failure_is_stored_but_is_not_the_journalists_answer(
+    session, mailbox, gmail
+):
+    """Gmail threads a bounce into the conversation it failed to deliver. Read as
+    a reply, a letter that never arrived lands in the ledger as answered — signed
+    by the machine, at the bounce's own time, and indistinguishable from the real
+    thing in the one record DEC-1 exists to make auditable."""
+    row = _letter(session)
+    gmail.threads[_THREAD_ID].append(
+        _payload(
+            "18f-unzustellbar",
+            sender="Mail Delivery Subsystem <mailer-daemon@googlemail.com>",
+            body=f"Address not found. Your message wasn't delivered to {_ADDRESS}.",
+            at=_REPLY_AT,
+            subject="Delivery Status Notification (Failure)",
+        )
+    )
+
+    report = mailsync.sync(session, fetch=gmail, now=_NOW)
+
+    session.refresh(row)
+    assert row.state == OutreachState.RAUS
+    assert row.outcome_at is None
+    assert report.answered == 0
+    # Stored all the same: "this never arrived" is worth having on the file.
+    (stored,) = _replies(session)
+    assert stored.from_email == "mailer-daemon@googlemail.com"
+
+
+def test_a_message_older_than_the_release_is_not_an_answer_to_it(
+    session, mailbox, gmail
+):
+    """A conversation can carry a message from before the pitch inside it, and
+    ``outcome_at`` is what the contact's file sorts on: taken from such a message
+    the answer renders below the release it answers."""
+    row = _letter(session)
+    before = _RELEASED_AT - dt.timedelta(days=3)
+    gmail.threads[_THREAD_ID].append(
+        _journalist_reply("18f-vorher", body="Haben Sie dazu Zahlen?", at=before)
+    )
+
+    mailsync.sync(session, fetch=gmail, now=_NOW)
+
+    session.refresh(row)
+    assert row.state == OutreachState.RAUS
+    assert row.outcome_at is None
+    # Stored with Gmail's own moment: it is a real message in the conversation.
+    (reply,) = _replies(session)
+    assert reply.received_at == before
+    # And the belt to that brace, where the ledger is actually written: an
+    # outcome is never stamped before the release it belongs to.
+    assert outreach.record_reply(session, row, at=before)
+    assert row.outcome_at == _RELEASED_AT
+
+
+def test_an_over_long_from_header_is_cut_to_the_columns_own_width(
+    session, mailbox, gmail
+):
+    """A ``From`` header is a stranger's text and nothing upstream bounds it.
+    SQLite grows the row without complaint — the exact thing the column width
+    exists to prevent — and every other backend raises on the commit."""
+    _letter(session)
+    gmail.threads[_THREAD_ID].append(
+        _payload(
+            "18f-lang",
+            sender='"' + "A" * 900 + '" <' + "b" * 400 + '@example.com>',
+            body="Danke.",
+            at=_REPLY_AT,
+        )
+    )
+
+    mailsync.sync(session, fetch=gmail, now=_NOW)
+
+    (reply,) = _replies(session)
+    assert 0 < len(reply.from_name) <= mailsync._FROM_NAME_MAX
+    assert 0 < len(reply.from_email) <= mailsync._FROM_EMAIL_MAX
+
+
+def test_both_letters_in_one_conversation_reach_antwort(session, mailbox, gmail):
+    """A letter re-pushed after its row was replaced leaves two rows naming one
+    thread. The newer one used to be dropped from the day's work entirely: never
+    answered, never counted, and nothing anywhere saying so."""
+    first = _letter(session)
+    second = _letter(session, mandate="Vermont Robotics")
+    gmail.threads[_THREAD_ID].append(_journalist_reply())
+
+    report = mailsync.sync(session, fetch=gmail, now=_NOW)
+
+    session.refresh(first)
+    session.refresh(second)
+    assert (first.state, second.state) == (OutreachState.ANTWORT,) * 2
+    assert report.answered == 2
+    assert report.shared_threads == 1
+    # One conversation, one request. The message itself is filed against the
+    # letter that opened it, because Google's message id is UNIQUE per row.
+    assert gmail.threads_asked_for() == [_THREAD_ID]
+    (reply,) = _replies(session)
+    assert reply.outreach_id == first.id
+
+
 # --- When Gmail cannot be read ---------------------------------------------------
 
 
@@ -714,6 +827,27 @@ def test_one_unreadable_thread_does_not_stop_the_next_one(session, mailbox, gmai
     assert reply.outreach_id == good.id
 
 
+def test_deleted_threads_do_not_starve_the_letters_behind_them(
+    session, mailbox, gmail
+):
+    """A thread deleted in the mailbox answers 404 forever. Counted towards the
+    give-up, three of them mean every letter behind them is never asked about —
+    not once, but every morning, for the whole ninety-day window."""
+    starved = _letter(session)
+    gmail.threads[_THREAD_ID].append(_journalist_reply())
+    for index in range(mailsync._MAX_CONSECUTIVE_FAILURES):
+        _letter(session, thread_id=f"18f-geloescht-{index}", mandate=f"Mandant {index}")
+        gmail.missing.add(f"18f-geloescht-{index}")
+
+    report = mailsync.sync(session, fetch=gmail, now=_NOW)
+
+    (reply,) = _replies(session)
+    assert reply.outreach_id == starved.id
+    assert report.left_unread == 0
+    # Reported, never swallowed: the conversations are still gone.
+    assert len(report.errors) == mailsync._MAX_CONSECUTIVE_FAILURES
+
+
 def test_the_sync_gives_up_after_a_run_of_failures(session, mailbox, gmail):
     """Unreachable and revoked answer the same way for every thread, and each
     attempt costs a request timeout. Walking two hundred letters to hear it two
@@ -726,6 +860,10 @@ def test_the_sync_gives_up_after_a_run_of_failures(session, mailbox, gmail):
 
     assert len(gmail.threads_asked_for()) == mailsync._MAX_CONSECUTIVE_FAILURES
     assert len(report.errors) == mailsync._MAX_CONSECUTIVE_FAILURES
+    # And the report says what was read rather than what was selected: it read
+    # three of six, and a caller asserting on it was told it had read all six.
+    assert report.threads == mailsync._MAX_CONSECUTIVE_FAILURES
+    assert report.left_unread == 6 - mailsync._MAX_CONSECUTIVE_FAILURES
 
 
 # --- With no mailbox connected ---------------------------------------------------

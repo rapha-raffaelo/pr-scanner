@@ -108,8 +108,12 @@ def no_real_mailbox(tmp_path, monkeypatch):
     the database at a tmp directory means the sync finds no connection and does
     nothing, which is also the state it has to work in.
 
-    The tests that *are* about the mailbox set the same attribute themselves
-    (their own fixture runs after this one and wins).
+    The tests that *are* about the mailbox set the same attribute themselves and
+    win, because pytest sets up autouse fixtures of a scope before the ones the
+    test asked for by name, and the later ``monkeypatch.setattr`` is the one that
+    stands. Both point inside the same per-test ``tmp_path``, so the token file
+    is the same file either way — the ordering decides which database name sits
+    beside it, not whether the two fixtures agree.
     """
     from newspulse import config
 

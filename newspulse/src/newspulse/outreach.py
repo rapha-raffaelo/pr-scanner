@@ -614,6 +614,13 @@ def record_reply(session: Session, row: Outreach, *, at: dt.datetime) -> bool:
     rather than a clock call: a reply that arrived on Saturday and was read on
     Monday belongs to Saturday, and ``outcome_at`` is meant to say when the thing
     happened as far as anyone can know it.
+
+    It is never taken as earlier than the release, though. ``at`` comes from
+    Gmail, which threads messages by more than the letter this tool sent, so a
+    conversation can carry a message older than the pitch inside it. As an
+    ``outcome_at`` that would read as a letter answered years before it went out,
+    and the contact's file sorts on exactly that field — the answer would render
+    below the release it answers.
     """
     if row.state in OUTCOMES or row.released_at is None:
         # Either a person has already recorded what came back, or this letter
@@ -622,7 +629,7 @@ def record_reply(session: Session, row: Outreach, *, at: dt.datetime) -> bool:
         session.commit()
         return False
     row.state = OutreachState.ANTWORT
-    row.outcome_at = at
+    row.outcome_at = max(at, row.released_at)
     # And signed as the machine's, so neither page ever draws this line as
     # something a consultant typed. Stored rather than inferred at render time
     # from state, note and timestamp: that inference reads the reply row, and a
