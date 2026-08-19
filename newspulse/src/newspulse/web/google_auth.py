@@ -84,17 +84,23 @@ class Identity:
 
 
 def client_id() -> str:
-    """The OAuth client, falling back to the mailbox one.
+    """The sign-in OAuth client. Its own variable, deliberately.
 
-    One Google Cloud project, one OAuth client, two uses: signing in and (once
-    OUT-04 lands) sending the letter. Reading the mailbox variables as a
-    fallback means the credential is configured once rather than twice, and
-    whichever pair is already set keeps working."""
-    return (config.google_client_id() or config.gmail_client_id()).strip()
+    An earlier version read the mailbox credential as a fallback, on the theory
+    that one Google client can serve both and configuring it twice is silly.
+    It can, and it is — but the coupling is wrong in the direction that matters:
+    connecting a mailbox for *sending* would have silently changed how everyone
+    *signs in*. Two unrelated decisions, one switch, and the surprise lands on
+    whoever is locked out.
+
+    So sign-in is on only when it has been asked for by name. Sharing the
+    credential is still fine and costs one variable reference in the deployment.
+    """
+    return config.google_client_id()
 
 
 def client_secret() -> str:
-    return (config.google_client_secret() or config.gmail_client_secret()).strip()
+    return config.google_client_secret()
 
 
 def is_configured() -> bool:
