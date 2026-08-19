@@ -716,6 +716,25 @@ def test_a_row_argues_against_the_value_the_profile_holds_now(web_factory, web):
     assert "bisher nicht gefüllt" in review
 
 
+def test_a_proposal_the_profile_caught_up_with_is_not_drawn(web_factory, web):
+    """The consultant reads what the web says and types it in himself. The row
+    is then a contradiction between Paris and Paris, and the Verwerfen button
+    under it would record a "no" against the value he has just entered."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profiles.save(session, client, "sitz", "Berlin", filled_by="gemini-2.5-flash")
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(sitz="Paris")
+        )
+        profiles.save(session, client, "sitz", "Paris")
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Das Netz sagt" not in body, "the web agrees; this is no contradiction"
+    assert _pids(body) == [], "and there is nothing left to decide"
+
+
 def test_an_empty_field_is_not_struck_through(web_factory, web):
     """Line-through on "bisher nicht gefüllt" reads as a claim being withdrawn.
     Nothing is being replaced here — the field is empty."""
@@ -776,6 +795,25 @@ def test_a_value_the_model_cannot_back_up_is_never_stored(session):
 
     assert profile_refresh.refresh(session, client, now=_NOW, generate=_ungrounded) == 0
     assert profile_refresh.outstanding(session, client.id) == []
+
+
+def test_a_read_that_cites_nothing_says_so_and_stays_due(session):
+    """Dropping every unsourced value is right; dropping the whole read in
+    silence is not. Without a note the mandate reads as "Heute geprüft" with an
+    empty pile, and the age floor keeps it out of the sweep for sixty days on the
+    strength of a read that filed nothing."""
+    client = _client(session, checked=None)
+
+    def _ungrounded(prompt):
+        return json.dumps({"felder": {"sitz": "Paris", "ceo": "A. Prot"}}), []
+
+    assert profile_refresh.refresh(session, client, now=_NOW, generate=_ungrounded) == 0
+
+    assert profiles.stored(session, client.id) == {}, "still writes nothing"
+    assert client.profile_note, "the read produced nothing usable and says so"
+    assert profile_refresh.due(
+        session, [client], now=_NOW + dt.timedelta(days=1)
+    ) == [client], "and the question is still open"
 
 
 def test_accepting_writes_the_value_under_the_humans_name(web_factory, web):
@@ -1001,6 +1039,51 @@ def test_a_refusal_outlives_a_different_finding_for_the_same_field(session):
     assert profile_refresh.outstanding(session, client.id) == [], (
         "the first no still stands"
     )
+
+
+def test_refusing_a_row_the_profile_agrees_with_records_no_refusal(session):
+    """A "no" against a value the profile itself holds would suppress that
+    field's next real correction for good. Verwerfen on such a row still clears
+    it; it simply leaves nothing behind to poison the field with."""
+    client = _client(session)
+    profiles.save(session, client, "sitz", "Berlin", filled_by="gemini-2.5-flash")
+    profile_refresh.refresh(session, client, now=_NOW, generate=_answer(sitz="Paris"))
+    row = profile_refresh.outstanding(session, client.id)[0]
+    profiles.save(session, client, "sitz", "Paris")  # he types it in himself
+
+    assert profile_refresh.discard(session, client.id, [row.id], now=_NOW) == 1
+    assert session.scalar(select(func.count()).select_from(ProfileProposal)) == 0
+
+    # He corrects himself, and the web repeats what it always said.
+    profiles.save(session, client, "sitz", "Berlin")
+    profile_refresh.refresh(
+        session, client, now=_NOW + dt.timedelta(days=61), generate=_answer(sitz="Paris")
+    )
+
+    assert [p.value for p in profile_refresh.outstanding(session, client.id)] == [
+        "Paris"
+    ]
+
+
+def test_clearing_the_fact_a_refusal_argued_against_reopens_the_question(session):
+    """A refusal is always said against something: not Bob, the CEO is Anna. The
+    moment Anna turns out to be wrong and is cleared, the "no" has nothing left
+    to stand on, and a refusal that never expires would lock the field out of the
+    web for the life of the mandate."""
+    client = _client(session)
+    profiles.save(session, client, "ceo", "Anna")
+    profile_refresh.refresh(session, client, now=_NOW, generate=_answer(ceo="Bob"))
+    profile_refresh.discard(
+        session, client.id,
+        [p.id for p in profile_refresh.outstanding(session, client.id)], now=_NOW,
+    )
+
+    profiles.save(session, client, "ceo", "")  # he was wrong about Anna
+    profile_refresh.refresh(
+        session, client, now=_NOW + dt.timedelta(days=61), generate=_answer(ceo="Bob")
+    )
+
+    assert [p.value for p in profile_refresh.outstanding(session, client.id)] == ["Bob"]
 
 
 def test_a_proposal_nothing_changed_about_keeps_its_id(session):
