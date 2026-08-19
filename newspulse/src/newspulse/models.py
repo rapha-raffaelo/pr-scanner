@@ -114,6 +114,36 @@ class RunStatus(StrEnum):
     FAILED = "failed"
 
 
+class OutreachState(StrEnum):
+    """Where one letter stands between being written and having produced something.
+
+    The list is short on purpose, and one obvious member is missing: there is no
+    "ohne Reaktion". Silence is not something anybody enters — it is ``RAUS`` plus
+    time, derived at read (:func:`newspulse.outreach.is_silent`), so the ledger
+    never claims a fact nobody recorded. Storing it would mean a nightly job that
+    rewrites rows to assert an absence, and a row that says "no answer" on a day
+    the answer arrived.
+
+    ``ENTWURF`` is the only state a machine may set; the other four are a person's
+    reading of what came back. That is why ``ABSAGE`` and ``VEROEFFENTLICHT`` are
+    separate from ``ANTWORT``: "danke, nichts für uns" and "schicken Sie mehr" are
+    the same event to a matcher and opposite events to a consultant.
+    """
+
+    ENTWURF = "entwurf"
+    RAUS = "raus"
+    ANTWORT = "antwort"
+    ABSAGE = "absage"
+    VEROEFFENTLICHT = "veroeffentlicht"
+
+
+#: How long a released letter may go unanswered before the card calls it still.
+#: Two weeks: a journalist who has not replied inside one is busy, and one who has
+#: not replied inside three was never going to. It is a display threshold, not a
+#: stored state — see :class:`OutreachState`.
+SILENT_AFTER_DAYS = 14
+
+
 def _utcnow() -> dt.datetime:
     """Timezone-aware UTC now, used as a Python-side column default."""
     return dt.datetime.now(dt.UTC)
@@ -740,6 +770,17 @@ class ClientFact(Base):
     )
 
 
+#: What :attr:`Outreach.outcome_by` holds when the mailbox sync recorded the
+#: outcome rather than a person. A token and not a name, the way
+#: ``ClientFact.filled_by`` and ``Outreach.released_by`` store "mensch": the only
+#: distinction the ledger has to keep is whether a human or the machine said it.
+#: Stored rather than inferred from state, note and timestamp — an inference is
+#: re-derived on every render and breaks the day a retention rule deletes the
+#: reply row it was reading, which would silently redraw a machine's line as a
+#: sentence a consultant typed.
+OUTCOME_BY_MAILBOX = "postfach"
+
+
 class Outreach(Base):
     """One personalised message: an impulse, written at a named recipient.
 
@@ -756,6 +797,12 @@ class Outreach(Base):
 
     ``journalist`` may be empty: a feed carries a byline about one time in ten,
     and an outlet with no name attached is still a valid address for a pitch.
+
+    From the release ledger on, a row is also a record of a human act. The text of
+    a released letter is frozen — a redraft for the same recipient becomes a new
+    row rather than overwriting the one that went out — because the point of the
+    ledger is to say what was actually sent, and an upsert would destroy exactly
+    that.
     """
 
     __tablename__ = "outreach"
@@ -789,6 +836,180 @@ class Outreach(Base):
     #: The checker's own send/hold flag. True unless it objected.
     review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # --- The ledger: the human act, and what came back --------------------------
+    #: The contact book entry this went to, resolved once at release rather than
+    #: matched again on every read. Nullable and ``SET NULL`` on delete: the
+    #: recipient is also written into ``journalist``/``outlet`` on this row, so a
+    #: deleted contact costs the link but never the record of who was written to.
+    contact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    state: Mapped[OutreachState] = mapped_column(
+        SAEnum(
+            OutreachState,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+        ),
+        nullable=False,
+        default=OutreachState.ENTWURF,
+        server_default=OutreachState.ENTWURF.value,
+    )
+    #: When a person released it. Null while it is a draft, and the one field that
+    #: answers "did this leave the house": the state can be moved on by an
+    #: outcome, this cannot go backwards.
+    released_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, index=True
+    )
+    #: Who released it. No user accounts exist in this tool, so it defaults to
+    #: "mensch" the way :attr:`ClientFact.filled_by` does — the point of the field
+    #: is that a human, rather than the machine, is the accountable party.
+    released_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    #: When the outcome was recorded, which is not when it happened: a reply read
+    #: on Monday may have arrived on Saturday, and the ledger says what it knows.
+    outcome_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: What came back, in the consultant's own words. Stored as typed: this is the
+    #: one text on the row a human wrote, so the house rules that police generated
+    #: prose have no business touching it.
+    outcome_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: Who recorded the outcome — "mensch" for a line somebody typed,
+    #: :data:`OUTCOME_BY_MAILBOX` for the one the daily sync wrote off a reply.
+    #: Empty exactly while there is no outcome. The counterpart to
+    #: :attr:`released_by`, and for the same reason: "wer hat das gesagt" is the
+    #: first question anybody asks of a ledger line, and both pages that draw an
+    #: outcome have to answer it without guessing.
+    outcome_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+
+    # --- The thread in Gmail --------------------------------------------------
+    #
+    # DEC-4 locked option C: RauteOS puts the letter into Gmail and sends it. The
+    # saved copy-paste is not the point — the *thread* is. Because this tool put
+    # the outgoing message into it, a reply arriving days later belongs to this
+    # letter as a fact rather than as a guess from a subject line, which is what
+    # OUT-05's matching stands on and what lets DEC-6 option A ask Gmail for
+    # nothing but the threads RauteOS started.
+    #
+    # All three ids are Google's, echoed back from the API response and never
+    # constructed here: a locally built id would point at a thread that does not
+    # exist and would be indistinguishable from one that does.
+    #: The draft Gmail created before it was sent. Kept after the send, because it
+    #: is the idempotency key on the way there: a second push updates *this* draft
+    #: rather than composing a second one at the same journalist.
+    gmail_draft_id: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    #: The conversation the letter opened. The one column OUT-05 reads.
+    gmail_thread_id: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    #: The sent message itself. Set only once the message actually left, so it —
+    #: not the draft id — is what "this letter went out through Gmail" means.
+    gmail_message_id: Mapped[str] = mapped_column(
+        String(120), nullable=False, default=""
+    )
+
+    @property
+    def sent_through_gmail(self) -> bool:
+        """Whether RauteOS itself put this letter into the recipient's inbox.
+
+        Keyed on the message id rather than on the thread id: a draft that was
+        composed but never sent already has a thread, and a card that read that
+        as "sent" would claim an act nobody performed.
+        """
+        return bool(self.gmail_message_id)
+
+    @property
+    def out_through_gmail(self) -> bool:
+        """Sent by RauteOS itself, and nothing back yet — the mock's red badge.
+
+        The state is part of the question, so the red "gesendet" colouring can
+        never overpaint the green an answer or a publication earns. Computed
+        here rather than in the template because that is where
+        :class:`OutreachState` is in scope: a card comparing against the bare
+        string ``"raus"`` would quietly stop colouring anything the day the enum
+        value is renamed.
+        """
+        return self.sent_through_gmail and self.state == OutreachState.RAUS
+
+    @property
+    def outcome_from_mailbox(self) -> bool:
+        """Whether the outcome standing on this row was written by the sync.
+
+        Both pages that draw an outcome ask this, because both used to draw
+        every outcome as something a person recorded — and for the one line the
+        mailbox writes itself that is a sentence nobody said. Read off the stored
+        author rather than compared against a token in a template, so a renamed
+        value cannot quietly turn every machine line back into a human's.
+        """
+        return self.outcome_by == OUTCOME_BY_MAILBOX
+
+    #: What the journalist wrote back, oldest first — the order a conversation
+    #: is read in. ``delete-orphan`` beside the database's own ``ON DELETE
+    #: CASCADE``: a deleted letter takes its replies with it either way, so no
+    #: journalist's words outlive the letter they answered, whether the row goes
+    #: through the ORM or through a raw ``DELETE``.
+    replies: Mapped[list["OutreachReply"]] = relationship(
+        back_populates="letter",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="OutreachReply.received_at",
+    )
+
+
+class OutreachReply(Base):
+    """One message a journalist sent back, filed against the letter it answers.
+
+    Its own table rather than a column on :class:`Outreach`, because one letter
+    can collect several: an answer, a follow-up question, the note two weeks
+    later that the piece is running. A column would hold the last one and lose
+    the rest, and the rest is the conversation.
+
+    Everything here is stored as it arrived and **nothing is interpreted**. There
+    is no "kind" or "sentiment" column: "danke, nichts für uns" and "schicken Sie
+    mehr" are the same event to a matcher and opposite events to a PR consultant,
+    so the only state a reply may set is ``ANTWORT`` — a human answered — and
+    Absage or Veröffentlicht stay the consultant's reading (see
+    :func:`newspulse.outreach.record_reply`).
+
+    ``gmail_message_id`` is UNIQUE across the table rather than per letter: it is
+    Google's id for one message in one mailbox, so a second row carrying it would
+    be the same mail filed twice. That constraint is what makes the daily sync
+    idempotent — a sweep that runs twice over the same mailbox stores nothing new
+    and moves no timestamp.
+
+    This is somebody else's data: a journalist's own words about a person who
+    never agreed to be in RauteOS. Hence ``fetched_at`` beside ``received_at`` —
+    when the mail was written and when this tool took a copy are two different
+    facts, and a retention rule later needs the second one.
+    """
+
+    __tablename__ = "outreach_replies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    outreach_id: Mapped[int] = mapped_column(
+        ForeignKey("outreach.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Google's id for this message. The idempotency key of the whole sync.
+    gmail_message_id: Mapped[str] = mapped_column(
+        String(120), nullable=False, unique=True
+    )
+    #: The display name off the ``From`` header; empty when the sender used none.
+    from_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    from_email: Mapped[str] = mapped_column(String(320), nullable=False, default="")
+    #: Gmail's own moment for the message, not this machine's clock: the reply
+    #: that arrived on Saturday is dated Saturday even when it was read on Monday.
+    received_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    #: The plain-text body, as sent. No HTML is ever stored — see
+    #: ``gmail_link._plain_text``.
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    fetched_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    letter: Mapped["Outreach"] = relationship(back_populates="replies")
+
+    @property
+    def sender(self) -> str:
+        """Who wrote it, in one line: the name when the header carried one, the
+        address otherwise. Never both invented — an empty ``From`` reads as an
+        empty line rather than as a guessed name."""
+        return self.from_name or self.from_email
+
 
 __all__ = [
     "Base",
@@ -803,7 +1024,12 @@ __all__ = [
     "Advisory",
     "Angle",
     "ClientFact",
+    "Contact",
+    "OUTCOME_BY_MAILBOX",
     "Outreach",
+    "OutreachReply",
+    "OutreachState",
+    "SILENT_AFTER_DAYS",
     "TopicHit",
     "GuideSource",
     "Run",
