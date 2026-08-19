@@ -345,7 +345,9 @@ def test_a_token_refused_before_its_expiry_is_renewed_rather_than_reported(volum
     google.token_replies = [{"access_token": "ya29.renewed", "expires_in": 3599}]
     refusals = {"left": 1}
 
-    def refuse_once(url: str, *, form: Any = None, token: str = "") -> dict[str, Any]:
+    def refuse_once(
+        url: str, *, form: dict[str, str] | None = None, token: str = ""
+    ) -> dict[str, Any]:
         """Gmail refuses the stored token once, the way a password change does."""
         if "profile" in url and refusals["left"]:
             refusals["left"] -= 1
@@ -644,12 +646,13 @@ def test_a_refresh_does_not_resurrect_a_disconnected_credential(volume, web, goo
     """
     _connect(web)
     google.token_replies = [{"access_token": "ya29.renewed", "expires_in": 3599}]
-    reached_google = google.__call__
 
-    def racy(url: str, *, form: Any = None, token: str = "") -> dict[str, Any]:
+    def racy(
+        url: str, *, form: dict[str, str] | None = None, token: str = ""
+    ) -> dict[str, Any]:
         """Somebody presses "Postfach trennen" while the refresh is in flight."""
         gmail_link.disconnect(fetch=lambda *a, **k: {})
-        return reached_google(url, form=form, token=token)
+        return google(url, form=form, token=token)
 
     gmail_link.token(fetch=racy, now=_now_after(seconds=7200))
 
