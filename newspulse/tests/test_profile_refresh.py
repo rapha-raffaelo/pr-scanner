@@ -24,12 +24,16 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 
 import pytest
-from sqlalchemy import func, select
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from newspulse import config
+from newspulse import i18n
 from newspulse import profile as profiles
 from newspulse import profile_refresh
 from newspulse.db import make_engine
@@ -42,6 +46,7 @@ from newspulse.models import (
     ClientFact,
     ProfileProposal,
 )
+from newspulse.web.app import create_app, get_db
 
 # A fixed instant, deliberately years off any wall clock a test run could have, so
 # a rule that secretly read ``datetime.now`` would answer differently here.
@@ -60,6 +65,37 @@ def factory():
 def session(factory):
     with factory() as sess:
         yield sess
+
+
+@pytest.fixture
+def web_factory():
+    """One in-memory database the app and the test both see.
+
+    ``StaticPool`` rather than the engine helper above: the app opens its session
+    on the request thread, and SQLite's default pooling would hand it a second,
+    empty ``:memory:`` database — the page would then render an empty profile and
+    every assertion here would pass for the wrong reason.
+    """
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+@pytest.fixture
+def web(web_factory):
+    app = create_app()
+
+    def _override():
+        session = web_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = _override
+    return TestClient(app)
 
 
 def _client(session, name="Qonto", *, checked=None, **over) -> Client:
@@ -594,3 +630,353 @@ def test_a_broken_refresh_never_fails_the_sweep(
     # And the session is usable afterwards, so the notification and everything
     # else the sweep does after this point still works.
     assert session.scalar(select(func.count()).select_from(Client)) == 1
+
+
+# --- The review surface: what changed, and who decides it ----------------------
+#
+# Driven through the real page and the real routes with a FastAPI ``TestClient``,
+# because every rule below is about what a *reader* can see and press. The
+# research is still injected, so nothing here reaches a model or the network.
+
+
+def _pids(body: str) -> list[int]:
+    """The proposal ids the page drew its buttons with.
+
+    Read out of the markup on purpose: the promise this feature makes is that a
+    button acts on the rows that were on the screen, so a test that knows the ids
+    some other way is not testing the promise.
+    """
+    return [int(found) for found in re.findall(r'name="pid" value="(\d+)"', body)]
+
+
+def _file_proposal(session, client_id: int, key: str, value: str) -> ProfileProposal:
+    """One finding, filed the way the 06:10 sweep files it."""
+    row = ProfileProposal(
+        client_id=client_id,
+        key=key,
+        value=value,
+        source_url="https://qonto.com/presse",
+        source_title="Qonto Presse",
+        previous_value="",
+        proposed_at=_NOW,
+        proposed_by="gemini-2.5-flash",
+    )
+    session.add(row)
+    session.commit()
+    return row
+
+
+def test_a_proposal_shows_the_old_value_the_new_one_and_its_source(web_factory, web):
+    """"Sitz: Paris" is not a decision anyone can make. "Berlin, and this page
+    says Paris" is."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profiles.save(session, client, "sitz", "Berlin", filled_by="gemini-2.5-flash")
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(sitz="Paris")
+        )
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Berlin" in body, "the value it argues against"
+    assert "Paris" in body, "the value it proposes"
+    assert "https://qonto.com/ueber-uns" in body, "and the page it was read on"
+
+
+def test_a_proposal_without_a_source_is_not_shown(web_factory, web):
+    """A machine asserting something it cannot back up is not a decision anyone
+    should be asked to make."""
+    with web_factory() as session:
+        client_id = _client(session).id
+        unsourced = _file_proposal(session, client_id, "ceo", "Jemand Unbelegtes")
+        unsourced.source_url = ""
+        unsourced.source_title = ""
+        session.commit()
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Jemand Unbelegtes" not in body
+
+
+def test_a_value_the_model_cannot_back_up_is_never_stored(session):
+    """The same rule one layer down, so an unsourced finding cannot pile up
+    invisibly in a table nothing renders."""
+    client = _client(session)
+
+    def _ungrounded(prompt):
+        """A search that answered without citing anything."""
+        return json.dumps({"felder": {"sitz": "Paris"}}), []
+
+    assert profile_refresh.refresh(session, client, now=_NOW, generate=_ungrounded) == 0
+    assert profile_refresh.outstanding(session, client.id) == []
+
+
+def test_accepting_writes_the_value_under_the_humans_name(web_factory, web):
+    """The model proposed; the person decided. It is the decision that is worth
+    recording, and it is what stops the next refresh proposing over it."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(ceo="Alexandre Prot")
+        )
+
+    body = web.get(f"/client/{client_id}/profil").text
+    web.post(f"/client/{client_id}/profil/accept", data={"pid": _pids(body)},
+             follow_redirects=False)
+
+    with web_factory() as session:
+        fact = profiles.stored(session, client_id)["ceo"]
+    assert fact.value == "Alexandre Prot"
+    assert fact.filled_by == profiles.BY_HAND
+    assert fact.source_url == "https://qonto.com/ueber-uns", "the source travels"
+
+
+def test_an_accepted_value_is_not_proposed_over_by_the_next_refresh(web_factory, web):
+    """The DEC-2 consequence of stamping the human: a value he has vouched for is
+    contradicted rather than replaced, exactly like one he typed himself."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(ceo="Alexandre Prot")
+        )
+
+    body = web.get(f"/client/{client_id}/profil").text
+    web.post(f"/client/{client_id}/profil/accept", data={"pid": _pids(body)},
+             follow_redirects=False)
+
+    with web_factory() as session:
+        client = session.get(Client, client_id)
+        profile_refresh.refresh(
+            session, client, now=_NOW + dt.timedelta(days=61),
+            generate=_answer(ceo="Jemand ganz anderes"),
+        )
+        facts = profiles.stored(session, client_id)
+    assert facts["ceo"].value == "Alexandre Prot", "his answer stands"
+    assert not profile_refresh.may_replace(facts, "ceo")
+    # And the disagreement is on the page as a contradiction, under the rule.
+    body = web.get(f"/client/{client_id}/profil").text
+    assert "Jemand ganz anderes" in body
+    assert "wird nie überschrieben" in body
+
+
+def test_the_page_states_the_rule_that_protects_a_hand_filled_field(web_factory, web):
+    """A reader who sees no accept button should not have to guess whether that is
+    a policy or an oversight."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profiles.save(session, client, "ceo", "Weiß ich vom Kick-off")
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(ceo="Jemand anderes")
+        )
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Weiß ich vom Kick-off" in body, "his answer is the one that stands"
+    assert "Jemand anderes" in body, "and the contradiction is visible, not silent"
+    assert "Regel: Eine Angabe von Hand wird nie überschrieben." in body
+
+
+def test_accept_all_takes_only_the_rows_that_were_on_the_page(web_factory, web):
+    """The sweep runs at 06:10 and the tab has been open since yesterday. A
+    finding that arrived after the page was drawn was never read by anyone, and
+    accept-all must not write it."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(ceo="Alexandre Prot")
+        )
+
+    drawn = _pids(web.get(f"/client/{client_id}/profil").text)
+    with web_factory() as session:
+        _file_proposal(session, client_id, "umsatz", "84 Mio. (2031)")
+
+    web.post(f"/client/{client_id}/profil/accept", data={"pid": drawn},
+             follow_redirects=False)
+
+    with web_factory() as session:
+        facts = profiles.stored(session, client_id)
+        left = profile_refresh.outstanding(session, client_id)
+    assert set(facts) == {"ceo"}, "only what was on the page was written"
+    assert [p.key for p in left] == ["umsatz"], "the newcomer is still waiting"
+
+
+def test_discard_all_leaves_a_proposal_that_arrived_after_the_page(web_factory, web):
+    """The same promise in the other direction: a silent sweep is how a finding
+    nobody ever saw gets thrown away."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(ceo="Alexandre Prot")
+        )
+
+    drawn = _pids(web.get(f"/client/{client_id}/profil").text)
+    with web_factory() as session:
+        _file_proposal(session, client_id, "umsatz", "84 Mio. (2031)")
+
+    web.post(f"/client/{client_id}/profil/discard", data={"pid": drawn},
+             follow_redirects=False)
+
+    with web_factory() as session:
+        left = profile_refresh.outstanding(session, client_id)
+    assert [p.key for p in left] == ["umsatz"]
+
+
+def test_a_form_that_names_nothing_discards_nothing(web_factory, web):
+    """The old discard cleared the client's whole pile when no field was named,
+    which is the sweep this rule exists to prevent."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(ceo="Alexandre Prot")
+        )
+
+    web.post(f"/client/{client_id}/profil/discard", follow_redirects=False)
+
+    with web_factory() as session:
+        assert [p.key for p in profile_refresh.outstanding(session, client_id)] == ["ceo"]
+
+
+# --- A discard is an answer, and the refresh has to remember it ----------------
+
+
+def test_a_discarded_value_is_not_proposed_again_by_the_next_refresh(session):
+    """The web does not change its mind between Tuesday and Wednesday. Without a
+    memory of the "no", the same rejected sentence is back every morning."""
+    client = _client(session)
+    profile_refresh.refresh(session, client, now=_NOW, generate=_answer(ceo="Der Falsche"))
+    refused = profile_refresh.outstanding(session, client.id)
+    profile_refresh.discard(session, client.id, [p.id for p in refused], now=_NOW)
+
+    profile_refresh.refresh(
+        session, client, now=_NOW + dt.timedelta(days=61),
+        generate=_answer(ceo="Der Falsche"),
+    )
+
+    assert profile_refresh.outstanding(session, client.id) == []
+
+
+def test_a_different_value_for_a_discarded_field_is_proposed_again(session):
+    """The refusal was of a sentence, not of the field. A CEO who really does
+    change next month must still reach the page."""
+    client = _client(session)
+    profile_refresh.refresh(session, client, now=_NOW, generate=_answer(ceo="Der Falsche"))
+    refused = profile_refresh.outstanding(session, client.id)
+    profile_refresh.discard(session, client.id, [p.id for p in refused], now=_NOW)
+
+    profile_refresh.refresh(
+        session, client, now=_NOW + dt.timedelta(days=61),
+        generate=_answer(ceo="Die Neue"),
+    )
+
+    assert [
+        (p.key, p.value) for p in profile_refresh.outstanding(session, client.id)
+    ] == [("ceo", "Die Neue")]
+
+
+def test_discarding_names_the_rows_and_not_the_field(session):
+    """A field name means "whatever is proposed for the CEO right now". Between
+    the page being drawn and the button being pressed that can be a different
+    finding, and sweeping it up under the old one's name discards something
+    nobody has read."""
+    client = _client(session)
+    profile_refresh.refresh(session, client, now=_NOW, generate=_answer(ceo="Der Falsche"))
+    stale = profile_refresh.outstanding(session, client.id)[0].id
+    profile_refresh.refresh(
+        session, client, now=_NOW + dt.timedelta(days=61), generate=_answer(ceo="Die Neue")
+    )
+
+    assert profile_refresh.discard(session, client.id, [stale], now=_NOW) == 0
+    assert [p.value for p in profile_refresh.outstanding(session, client.id)] == [
+        "Die Neue"
+    ]
+
+
+def test_an_accepted_row_leaves_no_refusal_behind(session):
+    """A "no" recorded against a value the profile now holds would suppress a
+    real correction to it later, so an accepted row is deleted and not stamped."""
+    client = _client(session)
+    profile_refresh.refresh(session, client, now=_NOW, generate=_answer(sitz="Paris"))
+    taken = profile_refresh.outstanding(session, client.id)
+
+    profile_refresh.clear(session, client.id, [p.id for p in taken])
+
+    assert session.scalar(select(func.count()).select_from(ProfileProposal)) == 0
+
+
+# --- How old is this profile ---------------------------------------------------
+
+
+def test_checked_tells_never_from_today_from_old():
+    """Three states, one clock, no wall-clock read anywhere in the answer."""
+    never = profiles.checked(None, now=_NOW)
+    today = profiles.checked(_NOW - dt.timedelta(hours=3), now=_NOW)
+    old = profiles.checked(_NOW - dt.timedelta(days=84), now=_NOW)
+
+    assert never.never and never.days is None
+    assert not today.never and today.days == 0 and not today.as_age
+    assert old.days == 84 and old.as_age
+
+
+def test_a_stamp_from_the_future_is_not_a_negative_age():
+    """A restored backup or a skewed clock must not print "vor -3 Tagen"."""
+    assert profiles.checked(_NOW + dt.timedelta(days=3), now=_NOW).days == 0
+
+
+def test_the_profile_page_says_a_profile_was_never_checked(web_factory, web):
+    """A blank reads as "fine", and a profile nobody has ever re-read is the
+    opposite of fine."""
+    with web_factory() as session:
+        client_id = _client(session, checked=None).id
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Noch nie geprüft" in body
+
+
+def test_the_profile_page_prints_an_old_check_as_an_age(web_factory, web):
+    """"12.05.2026" is a number nobody subtracts today's date from."""
+    with web_factory() as session:
+        client_id = _client(
+            session, checked=dt.datetime.now(dt.UTC) - dt.timedelta(days=84)
+        ).id
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Zuletzt geprüft vor 84 Tagen" in body
+
+
+def test_the_client_list_carries_the_check_age_too(web_factory, web):
+    """The consultant picks the mandate to work on from this screen, so this is
+    where a stale profile has to be visible."""
+    with web_factory() as session:
+        _client(session, name="Alt", checked=dt.datetime.now(dt.UTC) - dt.timedelta(days=84))
+        _client(session, name="Nie", checked=None)
+
+    body = web.get("/clients").text
+
+    assert "Zuletzt geprüft vor 84 Tagen" in body
+    assert "Noch nie geprüft" in body
+
+
+def test_every_german_string_on_the_review_pages_is_translated():
+    """A half-switched interface reads as broken. The pages this story touches
+    are checked by rule, so the next string added to one of them cannot ship
+    German-only."""
+    from pathlib import Path
+
+    templates = Path(profiles.__file__).parent / "web" / "templates"
+    missing = [
+        text
+        for name in ("client_profile.html", "clients.html", "partials/profile_checked.html")
+        for text in re.findall(r't\("([^"]+)"\)', (templates / name).read_text())
+        if text not in i18n._EN
+    ]
+
+    assert missing == []

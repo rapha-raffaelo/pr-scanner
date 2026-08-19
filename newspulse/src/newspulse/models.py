@@ -830,6 +830,14 @@ class ProfileProposal(Base):
     __tablename__ = "profile_proposals"
     __table_args__ = (
         UniqueConstraint("client_id", "key", name="uq_profile_proposals_key"),
+        # AUTOINCREMENT, so an id is never handed out twice. The review page's
+        # buttons carry row ids — "the rows I was looking at" — and a refresh
+        # replaces a client's proposals by deleting and re-inserting them. A
+        # plain SQLite rowid is reused after the delete, so yesterday's id could
+        # come back attached to this morning's finding and a stale tab's
+        # "übernehmen" would write a value nobody had read. Measured, not
+        # theorised: the test for that promise failed on reused ids.
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

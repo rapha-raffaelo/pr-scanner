@@ -771,8 +771,10 @@ _EN: dict[str, str] = {
     "bisher nicht gefüllt": "previously empty",
     "Ihre Angabe": "Your entry",
     "Das Netz sagt": "The web says",
-    "Übernehmen": "Accept",
-    "Alle übernehmen": "Accept all",
+    # "Übernehmen" itself is further down, where the guide page's adopt button
+    # put it. One German string, one English word: two entries for it would
+    # silently make the later one win on both pages.
+    "Alle übernehmen": "Apply all",
     "Alle verwerfen": "Discard all",
     "Verwerfen": "Discard",
     # The check stamp, shared by the profile page and the portfolio. "Never
