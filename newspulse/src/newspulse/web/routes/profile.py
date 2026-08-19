@@ -153,7 +153,9 @@ async def save_profile(
                 session, client, field.key, value,
                 source_url=stored.source_url if unchanged and stored else "",
                 source_title=stored.source_title if unchanged and stored else "",
-                filled_by=(stored.filled_by if unchanged and stored else "mensch"),
+                filled_by=(
+                    stored.filled_by if unchanged and stored else profiles.BY_HAND
+                ),
             )
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
 
@@ -185,9 +187,19 @@ def _chosen(
 
     Scoped to ``client_id`` as well as to the ids, so a posted id belonging to
     another mandate selects nothing rather than reaching across.
+
+    Sourceless rows are filtered here and not only at render, for the same reason
+    the hand-filled rule is enforced twice: the form body is not the page. The
+    refresh stores no such row any more and migration 0023 deleted the ones PRF-01
+    left behind, so this is the boundary rather than the cleanup — a value nobody
+    can check is not something a posted id gets to turn into a fact.
     """
     wanted = set(pid)
-    return [p for p in profile_refresh.outstanding(session, client_id) if p.id in wanted]
+    return [
+        p
+        for p in profile_refresh.outstanding(session, client_id)
+        if p.id in wanted and p.source_url
+    ]
 
 
 @router.post("/client/{client_id}/profil/accept")

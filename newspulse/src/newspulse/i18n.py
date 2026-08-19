@@ -768,6 +768,9 @@ _EN: dict[str, str] = {
     "Regel: Eine Angabe von Hand wird nie überschrieben. Das Netz widerspricht hier nur — ändern können Sie den Wert selbst, unten im Feld.":
         "Rule: an entry you made by hand is never overwritten. The web only "
         "contradicts it here; only you can change the value, in the field below.",
+    "Verwerfen heißt: Dieser Widerspruch wird beim nächsten Abgleich nicht erneut gemeldet.":
+        "Discarding means this contradiction is not reported again at the next "
+        "check.",
     "bisher nicht gefüllt": "previously empty",
     "Ihre Angabe": "Your entry",
     "Das Netz sagt": "The web says",

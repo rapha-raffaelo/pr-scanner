@@ -649,6 +649,18 @@ def _pids(body: str) -> list[int]:
     return [int(found) for found in re.findall(r'name="pid" value="(\d+)"', body)]
 
 
+def _review(body: str, client_id: int) -> str:
+    """Just the review pile, cut out of the page before anything is asserted.
+
+    The whole body is the wrong haystack: every proposed field is also an
+    editable input further down, carrying its current value and its source, so
+    ``"Berlin" in body`` passes on a page whose review block prints nothing at
+    all. The block ends where the profile form begins.
+    """
+    after = body.split('<div class="props">', 1)[1]
+    return after.split(f'<form method="post" action="/client/{client_id}/profil">', 1)[0]
+
+
 def _file_proposal(session, client_id: int, key: str, value: str) -> ProfileProposal:
     """One finding, filed the way the 06:10 sweep files it."""
     row = ProfileProposal(
@@ -677,11 +689,47 @@ def test_a_proposal_shows_the_old_value_the_new_one_and_its_source(web_factory, 
             session, client, now=_NOW, generate=_answer(sitz="Paris")
         )
 
-    body = web.get(f"/client/{client_id}/profil").text
+    review = _review(web.get(f"/client/{client_id}/profil").text, client_id)
 
-    assert "Berlin" in body, "the value it argues against"
-    assert "Paris" in body, "the value it proposes"
-    assert "https://qonto.com/ueber-uns" in body, "and the page it was read on"
+    assert "Berlin" in review, "the value it argues against"
+    assert "Paris" in review, "the value it proposes"
+    assert "https://qonto.com/ueber-uns" in review, "and the page it was read on"
+
+
+def test_a_row_argues_against_the_value_the_profile_holds_now(web_factory, web):
+    """The row remembers what it was filed against; the page has to show what is
+    on file when it is read. A field cleared in between must not leave the review
+    block claiming a current value the profile no longer has."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profiles.save(session, client, "sitz", "Berlin", filled_by="gemini-2.5-flash")
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(sitz="Paris")
+        )
+
+    # The consultant clears the field through the form, then reviews the pile.
+    web.post(f"/client/{client_id}/profil", data={"sitz": ""}, follow_redirects=False)
+    review = _review(web.get(f"/client/{client_id}/profil").text, client_id)
+
+    assert "Berlin" not in review, "there is nothing on file to argue against"
+    assert "bisher nicht gefüllt" in review
+
+
+def test_an_empty_field_is_not_struck_through(web_factory, web):
+    """Line-through on "bisher nicht gefüllt" reads as a claim being withdrawn.
+    Nothing is being replaced here — the field is empty."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(sitz="Paris")
+        )
+
+    review = _review(web.get(f"/client/{client_id}/profil").text, client_id)
+
+    assert 'class="props__empty"' in review
+    assert "props__was" not in review
 
 
 def test_a_proposal_without_a_source_is_not_shown(web_factory, web):
@@ -697,6 +745,24 @@ def test_a_proposal_without_a_source_is_not_shown(web_factory, web):
     body = web.get(f"/client/{client_id}/profil").text
 
     assert "Jemand Unbelegtes" not in body
+
+
+def test_a_sourceless_row_cannot_be_accepted_by_a_posted_id(web_factory, web):
+    """The page draws no button for one, but the form body is not the page. A
+    value nobody can check must not become a fact because an id said so."""
+    with web_factory() as session:
+        client_id = _client(session).id
+        unsourced = _file_proposal(session, client_id, "ceo", "Jemand Unbelegtes")
+        unsourced.source_url = ""
+        unsourced.source_title = ""
+        session.commit()
+        pid = unsourced.id
+
+    web.post(f"/client/{client_id}/profil/accept", data={"pid": [pid]},
+             follow_redirects=False)
+
+    with web_factory() as session:
+        assert profiles.stored(session, client_id) == {}
 
 
 def test_a_value_the_model_cannot_back_up_is_never_stored(session):
@@ -778,6 +844,34 @@ def test_the_page_states_the_rule_that_protects_a_hand_filled_field(web_factory,
     assert "Weiß ich vom Kick-off" in body, "his answer is the one that stands"
     assert "Jemand anderes" in body, "and the contradiction is visible, not silent"
     assert "Regel: Eine Angabe von Hand wird nie überschrieben." in body
+
+
+def test_the_contradiction_block_says_what_discarding_it_costs(web_factory, web):
+    """Its only button is permanent: the discarded claim is never reported again.
+    A consultant tidying the block away is opting out of a warning about a field
+    he may have got wrong, and the page has to say so before he clicks."""
+    with web_factory() as session:
+        client = _client(session)
+        client_id = client.id
+        profiles.save(session, client, "ceo", "Weiß ich vom Kick-off")
+        profile_refresh.refresh(
+            session, client, now=_NOW, generate=_answer(ceo="Jemand anderes")
+        )
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "nicht erneut gemeldet" in body
+
+    # And it really is permanent: the same claim, read again, stays off the page.
+    web.post(f"/client/{client_id}/profil/discard", data={"pid": _pids(body)},
+             follow_redirects=False)
+    with web_factory() as session:
+        client = session.get(Client, client_id)
+        profile_refresh.refresh(
+            session, client, now=_NOW + dt.timedelta(days=61),
+            generate=_answer(ceo="Jemand anderes"),
+        )
+        assert profile_refresh.outstanding(session, client_id) == []
 
 
 def test_accept_all_takes_only_the_rows_that_were_on_the_page(web_factory, web):

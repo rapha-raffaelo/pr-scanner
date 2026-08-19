@@ -45,8 +45,12 @@
                 letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
   .props__val { flex: 1; font-size: var(--t-small); }
   /* Old above, new below, and the old one quiet: the decision is about what
-     changed, so the value being argued against is context and not the headline. */
+     changed, so the value being argued against is context and not the headline.
+     Struck through only when there is something to strike: the same rule on the
+     "bisher nicht gefüllt" line would print a sentence that says the field is
+     empty and cross it out, which reads as a claim being withdrawn. */
   .props__was { color: var(--faint); text-decoration: line-through; }
+  .props__empty { color: var(--faint); font-style: italic; }
   .props__new { color: var(--ink); }
   /* What the web says against a hand-filled field. Quiet, but not struck
      through: nothing is replacing it, and the consultant may well want to read
@@ -119,12 +123,22 @@
       {{ t("Was Sie übernehmen, wird als Ihre Angabe gespeichert — mit Quelle, aber unter Ihrem Namen, weil Sie es entschieden haben. Was Sie verwerfen, wird beim nächsten Abgleich nicht erneut vorgeschlagen.") }}
     </p>
     {% for p in proposals %}
+      {# The value on file *now*, read the same way the contradictions below read
+         it. ``p.previous_value`` is what the profile said when the row was
+         filed, which is the right thing for the row to remember and the wrong
+         thing to print: a field cleared through the form since then would leave
+         the row claiming a current value the profile no longer holds. #}
+      {% set fact = facts.get(p.key) %}
       <div class="props__row">
         <div class="props__key">
           {{ t(fields | selectattr("key", "equalto", p.key) | map(attribute="label") | first) }}
         </div>
         <div class="props__val">
-          <div class="props__was">{{ p.previous_value or t("bisher nicht gefüllt") }}</div>
+          {% if fact %}
+            <div class="props__was">{{ fact.value }}</div>
+          {% else %}
+            <div class="props__empty">{{ t("bisher nicht gefüllt") }}</div>
+          {% endif %}
           <div class="props__new">{{ p.value }}</div>
           <div class="prof__src">
             {{ t("Quelle") }}:
@@ -176,8 +190,14 @@
     {# The rule in force, printed rather than left to be inferred from the missing
        button: a reader who sees no "Übernehmen" here should not have to guess
        whether that is a policy or an oversight. #}
+    {# And what the one button here does, because it is not obvious and it is not
+       small: verwerfen means this exact claim is never reported again, so a
+       consultant tidying the block away is opting out of a warning about a field
+       he may have got wrong. The offers block says the same thing about its own
+       discard; leaving it unsaid here is how a page teaches the wrong lesson. #}
     <p class="panel-hint props__rule">
       {{ t("Regel: Eine Angabe von Hand wird nie überschrieben. Das Netz widerspricht hier nur — ändern können Sie den Wert selbst, unten im Feld.") }}
+      {{ t("Verwerfen heißt: Dieser Widerspruch wird beim nächsten Abgleich nicht erneut gemeldet.") }}
     </p>
     {% for p in contradictions %}
       {% set fact = facts.get(p.key) %}
