@@ -335,10 +335,48 @@ def test_profile_refuses_when_nothing_is_connected(volume):
         gmail_link.profile(fetch=_google())
 
 
+def test_a_token_refused_before_its_expiry_is_renewed_rather_than_reported(volume):
+    """Google invalidates access tokens early — a password change or a revoked
+    session does it — so the stored expiry is not the last word on whether one
+    still works. A 401 inside the stored hour is a refresh, not a failure.
+    """
+    google = _google()
+    gmail_link.exchange("auth-code", fetch=google)
+    google.token_replies = [{"access_token": "ya29.renewed", "expires_in": 3599}]
+    refusals = {"left": 1}
+
+    def refuse_once(url: str, *, form: Any = None, token: str = "") -> dict[str, Any]:
+        """Gmail refuses the stored token once, the way a password change does."""
+        if "profile" in url and refusals["left"]:
+            refusals["left"] -= 1
+            return {"error": {"code": 401, "message": "Invalid Credentials"}}
+        return google(url, form=form, token=token)
+
+    found = gmail_link.profile(fetch=refuse_once)
+
+    assert found.email == _MAILBOX
+    # It did not wait for the stored expiry: a refresh went out, and the profile
+    # was read with the token it returned.
+    assert [c for c in google.calls if c.form and "refresh_token" in c.form]
+    assert google.calls[-1].token == "ya29.renewed"
+
+
 def test_a_corrupt_token_file_reads_as_not_connected(volume):
     """A bad byte on the volume must not take the Settings page with it."""
     gmail_link.token_path().write_text("{not json")
     assert gmail_link.connected() is None
+
+
+def test_a_token_file_that_is_not_text_reads_as_not_connected(volume, web):
+    """A torn write or a truncated volume restore leaves bytes that are not UTF-8
+    at all — and ``read_text`` answers that with a UnicodeDecodeError, which is a
+    ValueError, not an OSError. Unnamed, it travelled out of ``connected()`` and
+    took the whole Settings render with it.
+    """
+    gmail_link.token_path().write_bytes(b"\xff\xfe\x00nicht lesbar")
+
+    assert gmail_link.connected() is None
+    assert web.get("/settings").status_code == 200
 
 
 # --- Disconnecting --------------------------------------------------------------
@@ -348,7 +386,7 @@ def test_disconnect_revokes_at_google_and_deletes_the_file(volume):
     google = _google()
     gmail_link.exchange("auth-code", fetch=google)
 
-    assert gmail_link.disconnect(fetch=google) is True
+    assert gmail_link.disconnect(fetch=google) is gmail_link.Revocation.REVOKED
 
     revocations = [c for c in google.calls if c.url.endswith("/revoke")]
     assert revocations and revocations[0].form == {"token": _REFRESH}
@@ -363,7 +401,7 @@ def test_disconnect_deletes_the_file_even_when_google_cannot_be_reached(volume):
     gmail_link.exchange("auth-code", fetch=google)
     google.unreachable = True
 
-    assert gmail_link.disconnect(fetch=google) is False
+    assert gmail_link.disconnect(fetch=google) is gmail_link.Revocation.REFUSED
     assert not gmail_link.token_path().exists()
 
 
@@ -579,6 +617,62 @@ def test_disconnect_revokes_and_leaves_every_stored_letter_untouched(
         assert letter.state == OutreachState.RAUS
         assert letter.message == "Sehr geehrte Frau Kühn, …"
         assert session.scalar(select(Contact).limit(1)) is not None
+
+
+def test_a_live_connection_stays_visible_without_a_client_id(
+    volume, web, google, monkeypatch
+):
+    """Clearing or rotating NEWSPULSE_GMAIL_CLIENT_ID revokes nothing: the refresh
+    token is still on the volume, and it still reads and sends. A panel that
+    answered "nicht eingerichtet" to that hid the connected address and the only
+    button that can hand the access back, leaving revocation to an SSH session.
+    """
+    _connect(web)
+    monkeypatch.delenv("NEWSPULSE_GMAIL_CLIENT_ID", raising=False)
+    monkeypatch.setattr(config, "GMAIL_CLIENT_ID", "")
+
+    body = web.get("/settings").text
+    assert _MAILBOX in body
+    assert "/settings/gmail/disconnect" in body
+
+
+def test_a_refresh_does_not_resurrect_a_disconnected_credential(volume, web, google):
+    """A refresh is a network call, and a disconnect can land inside it. Writing
+    the whole record back afterwards put the revoked refresh token on disk again —
+    so "trennen" no longer deleted the file, and the panel named a mailbox whose
+    access had already ended.
+    """
+    _connect(web)
+    google.token_replies = [{"access_token": "ya29.renewed", "expires_in": 3599}]
+    reached_google = google.__call__
+
+    def racy(url: str, *, form: Any = None, token: str = "") -> dict[str, Any]:
+        """Somebody presses "Postfach trennen" while the refresh is in flight."""
+        gmail_link.disconnect(fetch=lambda *a, **k: {})
+        return reached_google(url, form=form, token=token)
+
+    gmail_link.token(fetch=racy, now=_now_after(seconds=7200))
+
+    assert not gmail_link.token_path().exists()
+    assert gmail_link.connected() is None
+
+
+def test_a_cross_site_disconnect_is_refused(volume, web, google):
+    """The app authenticates with HTTP Basic, so a browser attaches the operator's
+    credentials to a form POST from any site — and this POST revokes access at a
+    third party. A post whose Origin names another host changes nothing.
+    """
+    _connect(web)
+
+    response = web.post(
+        "/settings/gmail/disconnect",
+        headers={"Origin": "https://evil.example"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 403
+    assert gmail_link.token_path().exists()
+    assert not any(call.url.endswith("/revoke") for call in google.calls)
 
 
 def test_the_panel_explains_a_connection_google_ended(volume, web, google):

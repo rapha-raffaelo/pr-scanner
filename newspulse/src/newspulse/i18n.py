@@ -810,6 +810,11 @@ _EN: dict[str, str] = {
     "Kein Postfach verbunden.": "No mailbox connected.",
     "Nachrichten lesen": "Read messages",
     "Nachrichten senden": "Send messages",
+    # Never asked for, but Google adds them to a grant on its own when the consent
+    # screen is an OpenID one — and the panel renders what was granted.
+    "Anmeldung bei Google": "Sign-in with Google",
+    "E-Mail-Adresse des Kontos": "The account's email address",
+    "Name des Kontos": "The account's name",
     "Google fragt genau diese beiden Rechte ab, mehr wird nicht angefordert:":
         "Google asks for exactly these two permissions and nothing more:",
     "Die Adresse stammt aus dem Gmail-Profil dieses Kontos, nicht aus einer Eingabe.":
@@ -832,6 +837,15 @@ _EN: dict[str, str] = {
     "bestätigen. Bitte im Google-Konto unter „Drittanbieter-Apps“ nachsehen.":
         "The credential was deleted here, but the revocation at Google could not be "
         "confirmed. Please check the Google account under \"Third-party apps\".",
+    "Es war kein Postfach verbunden, also gab es auch nichts zu widerrufen.":
+        "No mailbox was connected, so there was nothing to revoke.",
+    "Dieses Postfach ist noch verbunden, aber der OAuth-Client fehlt in der "
+    "Konfiguration: neu verbinden geht erst wieder mit NEWSPULSE_GMAIL_CLIENT_ID "
+    "und NEWSPULSE_GMAIL_CLIENT_SECRET. Trennen und widerrufen geht jederzeit.":
+        "This mailbox is still connected, but the OAuth client is missing from the "
+        "configuration: reconnecting needs NEWSPULSE_GMAIL_CLIENT_ID and "
+        "NEWSPULSE_GMAIL_CLIENT_SECRET again. Disconnecting and revoking works at "
+        "any time.",
     "Die Freigabe wurde bei Google abgebrochen. Es wurde nichts gespeichert.":
         "Consent was cancelled at Google. Nothing was stored.",
     "Die Rückmeldung von Google gehörte nicht zu dieser Anfrage. Es wurde nichts verbunden.":

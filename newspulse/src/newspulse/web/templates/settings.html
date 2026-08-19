@@ -676,6 +676,11 @@
         <div class="notice notice--ok">{{ t("Postfach getrennt und der Zugriff bei Google widerrufen.") }}</div>
       {% elif gmail_notice == 'widerruf-offen' %}
         <div class="notice notice--error">{{ t("Der Zugang wurde hier gelöscht, der Widerruf bei Google ließ sich aber nicht bestätigen. Bitte im Google-Konto unter „Drittanbieter-Apps“ nachsehen.") }}</div>
+      {% elif gmail_notice == 'nichts-verbunden' %}
+        {# A double-submitted form or a stale tab. Nothing was connected, so
+           nothing needed revoking — and saying that plainly beats sending
+           somebody to look for a permission that was already gone. #}
+        <div class="notice">{{ t("Es war kein Postfach verbunden, also gab es auch nichts zu widerrufen.") }}</div>
       {% elif gmail_notice == 'abgelehnt' %}
         <div class="notice">{{ t("Die Freigabe wurde bei Google abgebrochen. Es wurde nichts gespeichert.") }}</div>
       {% elif gmail_notice == 'state' %}
@@ -684,13 +689,13 @@
         <div class="notice notice--error">{{ t("Die Verbindung mit Google ist fehlgeschlagen. Es wurde nichts gespeichert.") }}</div>
       {% endif %}
 
-      {% if not gmail_configured %}
-        <p class="panel-hint">
-          {{ t("Nicht eingerichtet") }} —
-          {{ t("ohne OAuth-Client bei Google lässt sich kein Postfach verbinden. NEWSPULSE_GMAIL_CLIENT_ID und NEWSPULSE_GMAIL_CLIENT_SECRET setzen.") }}
-          <a href="{{ gmail_doc_url }}" target="_blank" rel="noopener">{{ t("Einrichtung in der Deployment-Notiz") }}</a>
-        </p>
-      {% elif gmail and gmail.is_connected %}
+      {# A live connection is shown first, whatever the configuration says. A
+         cleared or rotated NEWSPULSE_GMAIL_CLIENT_ID is a routine ops action, and
+         it does not revoke anything: the refresh token is still on the volume and
+         still reads and sends. A panel that answered "nicht eingerichtet" to that
+         hid both the connected address and the only button that can give the
+         access back — leaving revocation to an SSH session or the Google account. #}
+      {% if gmail and gmail.is_connected %}
         <div class="mailbox__row">
           <span class="mailbox__dot mailbox__dot--on"></span>
           <span>{{ t("Verbunden als") }} <span class="mailbox__who">{{ gmail.email }}</span></span>
@@ -702,9 +707,26 @@
         <p class="panel-hint">
           {{ t("Die Adresse stammt aus dem Gmail-Profil dieses Kontos, nicht aus einer Eingabe.") }}
         </p>
+        {% if not gmail_configured %}
+          <div class="notice notice--error">
+            {{ t("Dieses Postfach ist noch verbunden, aber der OAuth-Client fehlt in der Konfiguration: neu verbinden geht erst wieder mit NEWSPULSE_GMAIL_CLIENT_ID und NEWSPULSE_GMAIL_CLIENT_SECRET. Trennen und widerrufen geht jederzeit.") }}
+            <a href="{{ gmail_doc_url }}" target="_blank" rel="noopener">{{ t("Einrichtung in der Deployment-Notiz") }}</a>
+            <span class="mailbox__why">({{ gmail_doc_path }})</span>
+          </div>
+        {% endif %}
         <form method="post" action="/settings/gmail/disconnect">
           <button type="submit" class="linkbtn linkbtn--danger">{{ t("Postfach trennen") }}</button>
         </form>
+      {% elif not gmail_configured %}
+        <p class="panel-hint">
+          {{ t("Nicht eingerichtet") }} —
+          {{ t("ohne OAuth-Client bei Google lässt sich kein Postfach verbinden. NEWSPULSE_GMAIL_CLIENT_ID und NEWSPULSE_GMAIL_CLIENT_SECRET setzen.") }}
+          <a href="{{ gmail_doc_url }}" target="_blank" rel="noopener">{{ t("Einrichtung in der Deployment-Notiz") }}</a>
+          {# The file name beside the link, because the link's owner and host are
+             this repository's today: a fork or a rename makes it a 404, and the
+             path is then the only thing that still leads to the note. #}
+          <span class="mailbox__why">({{ gmail_doc_path }})</span>
+        </p>
       {% else %}
         <div class="mailbox__row">
           <span class="mailbox__dot"></span>

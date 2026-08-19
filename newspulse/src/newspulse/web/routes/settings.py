@@ -35,9 +35,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
@@ -125,6 +126,20 @@ class GmailNotice(StrEnum):
     # notice, because "getrennt" would otherwise claim something that may not be
     # true of the token still sitting in the Google account.
     NOT_REVOKED = "widerruf-offen"
+    # Nothing was connected, so there was nothing to revoke — a double-submitted
+    # form or a stale tab. Its own notice too, and a calm one: reporting it as an
+    # unconfirmed revocation sent the operator to search their Google account for
+    # a permission that was already gone.
+    NOTHING = "nichts-verbunden"
+
+
+# What each revocation outcome says on the panel. A mapping rather than a chain
+# of ifs, so a fourth outcome cannot silently fall through to "everything fine".
+_REVOCATION_NOTICE: dict[gmail_link.Revocation, GmailNotice] = {
+    gmail_link.Revocation.REVOKED: GmailNotice.DISCONNECTED,
+    gmail_link.Revocation.REFUSED: GmailNotice.NOT_REVOKED,
+    gmail_link.Revocation.NOTHING: GmailNotice.NOTHING,
+}
 
 
 # The one-attempt ``state``, held in a cookie for the length of the consent
@@ -142,12 +157,23 @@ _GMAIL_COOKIE_SAMESITE = "lax"
 # Google's own word for "the person pressed Abbrechen".
 _GMAIL_DECLINED = "access_denied"
 
+# A cross-site POST is refused with this rather than redirected: a redirect would
+# tell the attacking page that the request was even routed, and the operator is
+# not the one reading this response.
+_FORBIDDEN = 403
+
 # Where the panel points when the integration is not configured. The deployment
 # note is a repository file rather than a page this app serves, so the link goes
 # to the repository copy; there is nothing to read at runtime and pretending
 # otherwise would be a dead link inside the product.
+#
+# The path is named separately and rendered *beside* the link, because the host
+# and owner in this URL are the ones this repository happens to live under today:
+# a fork or a rename turns the link into a 404, and then the file name is the only
+# thing left that still leads anywhere.
+DEPLOYMENT_DOC_PATH = "newspulse/docs/deployment.md"
 DEPLOYMENT_DOC_URL = (
-    "https://github.com/rapha-raffaelo/pr-scanner/blob/main/newspulse/docs/deployment.md"
+    f"https://github.com/rapha-raffaelo/pr-scanner/blob/main/{DEPLOYMENT_DOC_PATH}"
     "#the-mailbox-gmail"
 )
 
@@ -738,6 +764,7 @@ def _page_context(session: Session) -> dict[str, object]:
         "gmail_scopes": gmail_link.scope_words(),
         "gmail_notice": None,
         "gmail_doc_url": DEPLOYMENT_DOC_URL,
+        "gmail_doc_path": DEPLOYMENT_DOC_PATH,
         "score_range": list(range(SCORE_MIN, SCORE_MAX + 1)),
         "default_country": DEFAULT_COUNTRY,
         # Per-client setup status, so a mandate created a minute ago says so on
@@ -1359,8 +1386,41 @@ def _back_to_panel(notice: GmailNotice) -> RedirectResponse:
     )
 
 
+def _over_tls(request: Request) -> bool:
+    """Whether the browser reached this app over https.
+
+    Read off the request rather than from ``BASE_URL``: the deployed app is behind
+    a TLS-terminating proxy and is started with ``forwarded_allow_ips`` set for
+    exactly that reason (see web.app.forwarded_allow_ips), so the scheme here is
+    the browser's. A plain-http local run must still be able to complete the flow,
+    and a ``Secure`` cookie would simply never come back.
+    """
+    return request.url.scheme == "https"
+
+
+def _same_origin(request: Request) -> bool:
+    """Whether this POST was submitted from a page of this app.
+
+    The app authenticates with HTTP Basic, so a browser attaches the operator's
+    credentials to a form POST from *any* site — and the state the disconnect
+    route changes is a revocation at a third party. There is no CSRF token
+    anywhere in this app to reuse, so this is the tokenless check: a POST whose
+    ``Origin`` (or, failing that, ``Referer``) names another host is refused.
+
+    A request carrying neither header is allowed through. It cannot be judged, and
+    a browser sends ``Origin`` on exactly the cross-site POST this is guarding
+    against; refusing the headerless case instead would only break curl and the
+    test client while stopping nothing.
+    """
+    claimed = request.headers.get("origin") or request.headers.get("referer") or ""
+    if not claimed:
+        return True
+    host = request.headers.get("host") or request.url.netloc
+    return urlparse(claimed).netloc == host
+
+
 @router.get("/settings/gmail/start")
-def gmail_start_route() -> Response:
+def gmail_start_route(request: Request) -> Response:
     """Send the operator to Google's consent screen for exactly the DEC-4 scopes."""
     if not config.gmail_configured():
         # The panel never renders the button in this state; a hand-typed URL
@@ -1375,6 +1435,9 @@ def gmail_start_route() -> Response:
         state,
         max_age=_GMAIL_STATE_MAX_AGE,
         httponly=True,
+        # The one value that gates the callback: on the deployment, where the whole
+        # flow is https anyway, keeping it off the plaintext path costs nothing.
+        secure=_over_tls(request),
         samesite=_GMAIL_COOKIE_SAMESITE,
         path="/settings",
     )
@@ -1429,22 +1492,25 @@ def gmail_callback_route(
 
 
 @router.post("/settings/gmail/disconnect")
-def gmail_disconnect_route() -> Response:
+def gmail_disconnect_route(request: Request) -> Response:
     """Revoke the access at Google and delete the local token file.
 
     Letters, replies and contacts are untouched — this route holds no session and
     reaches no table. Disconnecting a mailbox is not a reason to lose the record
     of what was sent from it.
     """
-    revoked = gmail_link.disconnect()
-    if not revoked:
+    if not _same_origin(request):
+        _log.warning("Gmail disconnect refused: the form came from another site")
+        return PlainTextResponse(
+            "Diese Anfrage kam nicht von dieser Anwendung.", status_code=_FORBIDDEN
+        )
+    outcome = gmail_link.disconnect()
+    if outcome is gmail_link.Revocation.REFUSED:
         # The local credential is gone either way; say so in the log *and* on the
         # panel, since the token may still be live at Google and only the person
         # holding that account can finish the job.
         _log.warning("Gmail token deleted locally but not confirmed revoked")
-    return _back_to_panel(
-        GmailNotice.DISCONNECTED if revoked else GmailNotice.NOT_REVOKED
-    )
+    return _back_to_panel(_REVOCATION_NOTICE[outcome])
 
 
 __all__ = [

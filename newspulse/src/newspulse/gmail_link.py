@@ -36,6 +36,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -63,9 +64,17 @@ SCOPES: tuple[str, ...] = (
 
 # The same permissions in words, because "gmail.readonly" is not a sentence a
 # person can consent to twice. Shown in Settings beside the connected address.
+#
+# The last three are never asked for here. Google adds them to a grant on its own
+# when the consent screen is an OpenID one, and they arrive in the token
+# response's `scope` — which is what the panel renders. Without a word for them
+# the panel would print a URL where it promised words.
 _SCOPE_WORDS: dict[str, str] = {
     "https://www.googleapis.com/auth/gmail.readonly": "Nachrichten lesen",
     "https://www.googleapis.com/auth/gmail.send": "Nachrichten senden",
+    "openid": "Anmeldung bei Google",
+    "https://www.googleapis.com/auth/userinfo.email": "E-Mail-Adresse des Kontos",
+    "https://www.googleapis.com/auth/userinfo.profile": "Name des Kontos",
 }
 
 # --- The token file ------------------------------------------------------------
@@ -78,6 +87,17 @@ _TOKEN_FILENAME = "gmail_token.json"
 # is that it stays on the machine it was granted to; a world-readable file would
 # give that back on a shared host.
 _TOKEN_MODE = 0o600
+
+# The file is written to a sibling and renamed over the real name, so a reader
+# only ever sees a whole record. A truncate-in-place leaves a window in which the
+# file is half a JSON document, and a crash inside that window leaves it there.
+_TOKEN_TEMP_SUFFIX = ".new"
+
+# The file's own word for "this is the note a connection left behind, not a
+# connection". Written by _forget, and it wins over every other key: a file that
+# still carries an address from a hand-edit cannot read as connected while it is
+# set.
+_LOST_STATE = "verloren"
 
 # Refresh this many seconds before Google's stated expiry. A token that expires
 # mid-request is indistinguishable from a revoked one at the call site, and the
@@ -102,6 +122,13 @@ _REVOKED_ERROR = "invalid_grant"
 # errors are a few hundred bytes of JSON; this bounds a proxy's HTML error page.
 _MAX_ERROR_BYTES = 4096
 
+# Gmail's answer when it does not accept the access token itself. Google
+# invalidates access tokens *before* their stated expiry when the account's
+# password changes or a session is revoked, so this is not the same statement as
+# the stored `expires_at`, and a caller that has been told it knows more than the
+# file does.
+_UNAUTHORIZED = 401
+
 
 class GmailError(RuntimeError):
     """A Gmail call failed in a way the caller has to hear about.
@@ -112,11 +139,48 @@ class GmailError(RuntimeError):
     """
 
 
+class GmailUnauthorized(GmailError):
+    """Gmail refused the access token, whatever the stored expiry claimed.
+
+    Its own type so one call site can retry with a renewed token instead of every
+    caller pattern-matching on Google's message. Still a :class:`GmailError`, so
+    a caller that does not care about the difference is unaffected.
+    """
+
+
+class Revocation(StrEnum):
+    """What :func:`disconnect` managed to do about the token at Google.
+
+    Three outcomes, not two. "There was nothing to revoke" is the ordinary result
+    of a double-submitted form or a stale tab, and reporting that as a refused
+    revocation sends the operator to hunt through their Google account for a
+    permission that was already gone.
+    """
+
+    REVOKED = "revoked"
+    NOTHING = "nothing"
+    REFUSED = "refused"
+
+
 #: What one network call looks like from in here: a URL, an optional form body
 #: (its presence makes it a POST), an optional bearer token. Returns Google's
 #: parsed JSON — including an error payload, which callers read rather than
 #: catch, so a stub in a test is a dict in and a dict out.
 Fetch = Callable[..., dict[str, Any]]
+
+
+def _words(scope: str) -> str:
+    """One scope as something a person can read.
+
+    An unknown scope falls back to its last path segment rather than to the whole
+    URL: the panel promises the granted permissions "in Worten", and a
+    https://www.googleapis.com/auth/… string on that line is the panel breaking
+    its own promise the first time Google widens a grant.
+    """
+    known = _SCOPE_WORDS.get(scope)
+    if known:
+        return known
+    return scope.rstrip("/").rsplit("/", 1)[-1] or scope
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,7 +204,7 @@ class Link:
     @property
     def scope_words(self) -> list[str]:
         """The granted permissions in German, in the order Google granted them."""
-        return [_SCOPE_WORDS.get(scope, scope) for scope in self.scopes]
+        return [_words(scope) for scope in self.scopes]
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,12 +232,19 @@ def token_path() -> Path:
 def _read() -> dict[str, Any]:
     """The stored connection, or ``{}`` when there is none.
 
-    A corrupt file reads as "not connected" and says so in the log. Raising would
-    make an unparsable byte on the volume take the whole Settings page with it.
+    An unreadable file reads as "not connected" and says so in the log. Raising
+    would make one bad byte on the volume take the whole Settings page with it —
+    and "unreadable" includes bytes that are not UTF-8 at all, which is what a
+    truncated volume restore or a torn write leaves behind. ``read_text`` answers
+    that with ``UnicodeDecodeError``, which is a ``ValueError`` and not an
+    ``OSError``, so it needs naming here.
     """
     try:
         raw = token_path().read_text("utf-8")
     except OSError:
+        return {}
+    except UnicodeDecodeError:
+        _log.warning("Gmail token file at %s is not readable text", token_path())
         return {}
     try:
         stored = json.loads(raw)
@@ -184,28 +255,41 @@ def _read() -> dict[str, Any]:
 
 
 def _write(data: dict[str, Any]) -> None:
-    """Write the connection file, owner-only, creating it that way.
+    """Write the connection file, owner-only and in one step.
 
     ``os.open`` with the mode rather than write-then-chmod: the second shape
     leaves the token world-readable for the moment in between, which is the only
-    moment that matters. The explicit chmod covers a file that already existed,
-    since O_CREAT does not touch the mode of one it did not create.
+    moment that matters. The explicit chmod covers a temp file that already
+    existed, since O_CREAT does not touch the mode of one it did not create.
+
+    Written to a sibling and renamed over the real name: ``os.replace`` within one
+    directory is atomic, so a reader sees either the old record or the new one and
+    never half of either. Truncating in place instead means a crash mid-write
+    leaves a file that is neither.
     """
     path = token_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    handle = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _TOKEN_MODE)
-    with os.fdopen(handle, "w", encoding="utf-8") as stream:
-        json.dump(data, stream)
-    path.chmod(_TOKEN_MODE)
+    staged = path.with_name(path.name + _TOKEN_TEMP_SUFFIX)
+    handle = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _TOKEN_MODE)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            json.dump(data, stream)
+        staged.chmod(_TOKEN_MODE)
+        os.replace(staged, path)
+    finally:
+        # A no-op after a successful rename; the cleanup that matters is the
+        # failed one, which must not leave a readable fragment behind.
+        staged.unlink(missing_ok=True)
 
 
 def _forget(reason: str) -> None:
     """Drop the credential but keep the reason, so the panel can explain itself.
 
-    Used when Google refuses the refresh token. The file stays, holding no secret
-    — only the sentence Settings shows next to the connect button.
+    Used when Google refuses the refresh token. What stays holds no secret and is
+    marked as what it is — the note a connection left behind, not a connection —
+    so no later reader can mistake it for one.
     """
-    _write({"lost": reason})
+    _write({"state": _LOST_STATE, "lost": reason})
     _log.warning("Gmail connection ended at Google: %s", reason)
 
 
@@ -403,7 +487,51 @@ def exchange(code: str, *, fetch: Fetch | None = None) -> Link:
     return Link(email=found.email, scopes=scopes, connected_at=now)
 
 
-def token(*, fetch: Fetch | None = None, now: dt.datetime | None = None) -> str | None:
+def _unexpired(stored: dict[str, Any], moment: dt.datetime) -> str:
+    """The stored access token while it is still good by its own expiry, else ``""``.
+
+    A record with no readable expiry counts as expired: one extra refresh is the
+    right price for not knowing.
+    """
+    access = str(stored.get("access_token") or "")
+    expires_at = _parse_time(stored.get("expires_at"))
+    if not access or expires_at is None:
+        return ""
+    usable_until = expires_at - dt.timedelta(seconds=_EXPIRY_SKEW_SECONDS)
+    return access if moment < usable_until else ""
+
+
+def _keep_renewed(
+    refresh: str, access: str, expires_at: dt.datetime, payload: dict[str, Any]
+) -> None:
+    """Store a renewed access token — unless the credential it belongs to is gone.
+
+    The refresh is a network call that may take up to :data:`_TIMEOUT`, and a
+    disconnect landing inside that window has already revoked *this* refresh token
+    at Google and deleted the file. Writing the record back wholesale would put
+    the revoked credential on disk again, and the panel would then name a mailbox
+    whose access ended. So the file is re-read, and only a record that is still
+    the same one is updated; otherwise the renewed access token is dropped, which
+    costs the next caller one refresh and nothing else.
+    """
+    stored = _read()
+    if str(stored.get("refresh_token") or "") != refresh:
+        _log.info("Gmail credential changed during a refresh; renewed access dropped")
+        return
+    stored["access_token"] = access
+    stored["expires_at"] = expires_at.isoformat()
+    # A refresh response may re-state the scopes; keep the file's answer current.
+    if payload.get("scope"):
+        stored["scopes"] = list(_granted_scopes(payload))
+    _write(stored)
+
+
+def token(
+    *,
+    fetch: Fetch | None = None,
+    now: dt.datetime | None = None,
+    renew: bool = False,
+) -> str | None:
     """A usable access token, refreshed if the stored one has expired.
 
     ``None`` means no mailbox is connected — including the case where Google has
@@ -414,6 +542,12 @@ def token(*, fetch: Fetch | None = None, now: dt.datetime | None = None) -> str 
 
     Any *other* token error does raise. "Google had a bad minute" must not delete
     a working credential.
+
+    ``renew=True`` ignores the stored access token and asks Google for a new one.
+    The stored expiry is only Google's *statement* about a lifetime; it also
+    invalidates access tokens early, on a password change or a revoked session. A
+    caller that has just been handed :data:`_UNAUTHORIZED` therefore knows
+    something the file does not (see :func:`profile`).
     """
     call = _caller(fetch)
     stored = _read()
@@ -421,15 +555,10 @@ def token(*, fetch: Fetch | None = None, now: dt.datetime | None = None) -> str 
     if not refresh:
         return None
     moment = _now(now)
-    access = str(stored.get("access_token") or "")
-    expires_at = _parse_time(stored.get("expires_at"))
-    usable_until = (
-        expires_at - dt.timedelta(seconds=_EXPIRY_SKEW_SECONDS)
-        if expires_at is not None
-        else None
-    )
-    if access and usable_until is not None and moment < usable_until:
-        return access
+    if not renew:
+        access = _unexpired(stored, moment)
+        if access:
+            return access
 
     payload = call(
         _TOKEN_ENDPOINT,
@@ -449,21 +578,22 @@ def token(*, fetch: Fetch | None = None, now: dt.datetime | None = None) -> str 
     fresh = str(payload.get("access_token") or "")
     if not fresh:
         raise GmailError("Google erneuerte den Zugriff ohne Token")
-    stored["access_token"] = fresh
-    stored["expires_at"] = _expiry(payload, moment).isoformat()
-    # A refresh response may re-state the scopes; keep the file's answer current.
-    if payload.get("scope"):
-        stored["scopes"] = list(_granted_scopes(payload))
-    _write(stored)
+    _keep_renewed(refresh, fresh, _expiry(payload, moment), payload)
     return fresh
 
 
 def _profile(access: str, *, fetch: Fetch | None = None) -> Profile:
-    """The Gmail profile behind one access token."""
+    """The Gmail profile behind one access token.
+
+    A 401 is told apart from the rest, because it is the one error the caller can
+    do something about: the token was refused, so a renewed one may work.
+    """
     payload = _caller(fetch)(_PROFILE_ENDPOINT, token=access)
     if payload.get("error"):
         detail = payload.get("error")
         message = detail.get("message") if isinstance(detail, dict) else _error_text(payload)
+        if isinstance(detail, dict) and detail.get("code") == _UNAUTHORIZED:
+            raise GmailUnauthorized(f"Gmail lehnte den Zugriff ab ({message})")
         raise GmailError(f"Gmail-Profil nicht lesbar ({message})")
     email = str(payload.get("emailAddress") or "")
     if not email:
@@ -482,12 +612,29 @@ def profile(*, fetch: Fetch | None = None) -> Profile:
 
     Raises when nothing is connected: a caller asking for the profile of no
     mailbox has a bug, unlike a caller asking for a token.
+
+    A refused token is retried once with a renewed one, rather than reported. The
+    stored expiry is Google's statement about a lifetime, and Google breaks it in
+    the direction that matters — a password change invalidates every access token
+    it has issued, minutes into an hour the file still considers valid. If the
+    renewal shows the whole grant is gone, that has already disconnected and
+    recorded why (see :func:`token`), so the panel explains itself on the next
+    render and this raises rather than inventing a mailbox.
     """
     call = _caller(fetch)
     access = token(fetch=call)
     if access is None:
         raise GmailError("Kein Postfach verbunden")
-    return _profile(access, fetch=call)
+    try:
+        return _profile(access, fetch=call)
+    except GmailUnauthorized as refused:
+        _log.info("Gmail refused a stored access token before its expiry; renewing")
+        renewed = token(fetch=call, renew=True)
+        if renewed is None:
+            raise GmailError(
+                "Kein Postfach verbunden — der Zugriff wurde bei Google entzogen"
+            ) from refused
+        return _profile(renewed, fetch=call)
 
 
 def connected() -> Link | None:
@@ -501,6 +648,11 @@ def connected() -> Link | None:
     stored = _read()
     if not stored:
         return None
+    if stored.get("state") == _LOST_STATE:
+        # The note a lost connection left behind. Read as *only* that, so an
+        # address that somehow ends up beside it cannot make the panel claim a
+        # mailbox whose access Google has already withdrawn.
+        return Link(lost=str(stored.get("lost") or ""))
     return Link(
         email=str(stored.get("email") or ""),
         scopes=tuple(str(s) for s in stored.get("scopes") or ()),
@@ -509,40 +661,45 @@ def connected() -> Link | None:
     )
 
 
-def disconnect(*, fetch: Fetch | None = None) -> bool:
+def disconnect(*, fetch: Fetch | None = None) -> Revocation:
     """Revoke the token at Google and delete the local file.
 
-    Returns whether Google confirmed the revocation. The file goes either way:
+    Returns what became of the token at Google — revoked, refused, or nothing to
+    revoke in the first place. The local file goes in every one of those cases: a
     "disconnect" that leaves a working credential on the volume because a request
     failed is the failure mode this function exists to avoid. Touches no letter,
     no reply and no other row — this module holds no database session at all.
     """
     stored = _read()
     refresh = str(stored.get("refresh_token") or "")
-    revoked = False
+    outcome = Revocation.NOTHING
     if refresh:
+        outcome = Revocation.REFUSED
         try:
             payload = _caller(fetch)(_REVOKE_ENDPOINT, form={"token": refresh})
-            revoked = not payload.get("error")
-            if not revoked:
+            if payload.get("error"):
                 _log.warning("Google refused the revocation: %s", _error_text(payload))
+            else:
+                outcome = Revocation.REVOKED
         except GmailError as exc:
             _log.warning("Gmail revocation could not be delivered: %s", exc)
     token_path().unlink(missing_ok=True)
-    _log.info("Gmail disconnected (revoked at Google: %s)", revoked)
-    return revoked
+    _log.info("Gmail disconnected (token at Google: %s)", outcome.value)
+    return outcome
 
 
 def scope_words(scopes: tuple[str, ...] = SCOPES) -> list[str]:
     """The permissions in German — what the consent screen is about to say."""
-    return [_SCOPE_WORDS.get(scope, scope) for scope in scopes]
+    return [_words(scope) for scope in scopes]
 
 
 __all__ = [
     "SCOPES",
     "GmailError",
+    "GmailUnauthorized",
     "Link",
     "Profile",
+    "Revocation",
     "authorize_url",
     "connected",
     "disconnect",
