@@ -707,6 +707,16 @@
         <p class="panel-hint">
           {{ t("Die Adresse stammt aus dem Gmail-Profil dieses Kontos, nicht aus einer Eingabe.") }}
         </p>
+        {# Granted scopes are fixed at consent time, so a mailbox connected
+           before DEC-4's send path can read and nothing else — and the advice
+           card's send button is disabled until this is dealt with here. Said in
+           the panel that owns the connection, not only on the card that suffers
+           from it. #}
+        {% if not gmail.may_send %}
+          <div class="notice notice--error">
+            {{ t("Dieses Postfach ist nur zum Lesen verbunden. Zum Verschicken von Anschreiben einmal trennen und neu verbinden — Google vergibt die Rechte beim Zustimmen und erweitert sie später nicht.") }}
+          </div>
+        {% endif %}
         {% if not gmail_configured %}
           <div class="notice notice--error">
             {{ t("Dieses Postfach ist noch verbunden, aber der OAuth-Client fehlt in der Konfiguration: neu verbinden geht erst wieder mit NEWSPULSE_GMAIL_CLIENT_ID und NEWSPULSE_GMAIL_CLIENT_SECRET. Trennen und widerrufen geht jederzeit.") }}

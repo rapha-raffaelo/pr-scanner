@@ -403,6 +403,62 @@ _EN: dict[str, str] = {
     "Nichts geht von hier aus raus. Der Knopf hält fest, dass Sie das Anschreiben gelesen, freigegeben und selbst verschickt haben.":
         "Nothing leaves from here. The button records that you read the letter, "
         "released it and sent it yourself.",
+    # --- The letter goes out through Gmail (DEC-4 option C) -------------------
+    # The strip above the impulses, and the warning that belongs with it. The
+    # warning is not boilerplate: with the send scope granted, the product's own
+    # founding sentence no longer holds, and the screen where that is exercised
+    # is where it has to be readable.
+    "Postfach verbunden": "Mailbox connected",
+    # One string, not fragments — same reason as the release trail below: "lesen
+    # und" plus "senden" is two English words that only happen to fall in this
+    # order, and "senden" alone is generic enough to be reused later for a
+    # different verb and pick up the wrong translation.
+    "lesen und senden": "read and send",
+    #: What the same strip says on a connection that was never granted the send
+    #: permission — every mailbox connected before DEC-4's send path.
+    "nur lesen": "read only",
+    "Diese Variante ändert die Grundannahme.":
+        "This variant changes the founding assumption.",
+    "Bisher gilt: keine Engine verschickt etwas an einen Journalisten. Mit Sendrecht verlässt ein Text das Haus, weil in RauteOS ein Knopf gedrückt wurde, nicht weil jemand in seinem eigenen Postfach auf Senden geht. Der Unterschied ist klein am Bildschirm und groß, wenn eine Nachricht falsch war.":
+        "Until now the rule was: no engine sends anything to a journalist. With "
+        "the send permission, a text leaves the building because a button was "
+        "pressed in RauteOS, not because somebody hit send in their own mailbox. "
+        "The difference is small on screen and large when a message was wrong.",
+    "Freigeben und senden": "Release and send",
+    "Ja, senden": "Yes, send",
+    # ("Abbrechen", the confirmation's second control, is already translated
+    # further down with the form that first needed it.)
+    "Diese Nachricht geht jetzt an": "This message now goes to",
+    "Sie ist danach nicht mehr zurückzuholen. Gegengelesen wurde sie von einem zweiten Modell, nicht von einem Menschen.":
+        "It cannot be recalled afterwards. It was checked by a second model, not "
+        "by a human.",
+    "Zwei Klicks statt einem, weil der erste in einer vollen Woche schnell passiert.":
+        "Two clicks instead of one, because in a busy week the first one happens "
+        "quickly.",
+    "Von RauteOS gesendet am": "Sent by RauteOS on",
+    "Verlauf in Gmail öffnen": "Open the thread in Gmail",
+    "Nicht verschickt.": "Not sent.",
+    "Freigegeben und von RauteOS über Gmail verschickt":
+        "Released, and sent by RauteOS through Gmail",
+    # One string, not fragments — same reason as the release trail above.
+    "von %(who)s freigegeben, von RauteOS über Gmail verschickt":
+        "released by %(who)s, sent by RauteOS through Gmail",
+    # Why the send is not on offer. Three reasons, because they need three
+    # different answers, and none of them is ever "we guessed an address".
+    "Kein Name zu diesem Anschreiben — nur die Redaktion.":
+        "No name on this letter, only the desk.",
+    "Nicht im Kontaktbuch. RauteOS leitet keine Adresse aus Name oder Medium ab.":
+        "Not in the contact book. RauteOS derives no address from a name or an "
+        "outlet.",
+    "Im Kontaktbuch, aber ohne E-Mail-Adresse.":
+        "In the contact book, but with no email address.",
+    # The fourth reason, and the only one that is not about the recipient: the
+    # mailbox itself was connected without the permission to compose and send.
+    "Dieses Postfach ist nur zum Lesen verbunden.":
+        "This mailbox is connected for reading only.",
+    "Postfach neu verbinden": "Reconnect the mailbox",
+    # ("Kontakt hinterlegen" is already translated further down, with the pitch
+    # list that first needed it.)
     # --- The relationship file: one journalist, across all mandates -----------
     # The contact book's right-hand pane (DEC-2). "Anschreiben" is the tally of
     # letters, not the verb, so it counts things: "Letters".
@@ -809,14 +865,26 @@ _EN: dict[str, str] = {
     "seit": "since",
     "Kein Postfach verbunden.": "No mailbox connected.",
     "Nachrichten lesen": "Read messages",
+    # What DEC-4's send path actually needs: gmail.compose, because every
+    # drafts.* call refuses gmail.send. The next three are grants this tool never
+    # asks for — the send scope a connection made before that change still
+    # carries, and two wider ones a Workspace account may already have — and the
+    # panel renders what was granted rather than what was requested.
+    "Nachrichten verfassen und senden": "Compose and send messages",
     "Nachrichten senden": "Send messages",
-    # Never asked for, but Google adds them to a grant on its own when the consent
-    # screen is an OpenID one — and the panel renders what was granted.
+    "Nachrichten verwalten": "Manage messages",
+    "Vollzugriff auf das Postfach": "Full access to the mailbox",
+    # Never asked for either, but Google adds them to a grant on its own when the
+    # consent screen is an OpenID one.
     "Anmeldung bei Google": "Sign-in with Google",
     "E-Mail-Adresse des Kontos": "The account's email address",
     "Name des Kontos": "The account's name",
     "Google fragt genau diese beiden Rechte ab, mehr wird nicht angefordert:":
         "Google asks for exactly these two permissions and nothing more:",
+    "Dieses Postfach ist nur zum Lesen verbunden. Zum Verschicken von Anschreiben einmal trennen und neu verbinden — Google vergibt die Rechte beim Zustimmen und erweitert sie später nicht.":
+        "This mailbox is connected for reading only. To send letters, disconnect "
+        "and connect it once more — Google grants the permissions at consent time "
+        "and never widens them afterwards.",
     "Die Adresse stammt aus dem Gmail-Profil dieses Kontos, nicht aus einer Eingabe.":
         "The address comes from this account's Gmail profile, not from anything typed in.",
     "ohne OAuth-Client bei Google lässt sich kein Postfach verbinden. "

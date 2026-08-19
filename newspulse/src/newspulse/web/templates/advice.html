@@ -28,6 +28,44 @@
   .handover__why { font-size: var(--t-small); color: var(--muted); margin-bottom: var(--s3); max-width: 68ch; }
   .handover__act { font-size: var(--t-small); color: var(--muted); }
   .handover__act a { color: var(--accent); font-weight: 600; }
+
+  /* --- The mailbox, and the one place a text leaves the house (DEC-4 C) ---
+     Page-local: this is the only screen that can send, so the strip, the
+     warning and the confirmation live with the card they belong to rather than
+     in the shared sheet. */
+  .mailbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+             background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+             padding: 10px var(--s4); margin-bottom: var(--s5); font-size: var(--t-footnote); color: var(--muted); }
+  .mailbar__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--alert); flex: none; }
+  .mailbar b { color: var(--ink-2); font-weight: 600; }
+  .mailbar__r { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  /* Red, and as loud as the button it explains. The Grundannahme says no engine
+     sends anything to a journalist; with the send scope granted, that sentence
+     no longer holds, and the screen has to say so rather than let the change
+     arrive silently as a new button. */
+  .warnband { background: rgba(215, 0, 21, .07); border: 1px solid rgba(215, 0, 21, .30);
+              border-radius: var(--radius); padding: 12px var(--s4); margin-bottom: var(--s5);
+              font-size: var(--t-footnote); color: #8a0010; max-width: 82ch; }
+  .warnband strong { color: #6b000c; }
+  .btn--send { background: var(--alert); color: #fff; }
+  .btn--send:hover:not(:disabled) { background: #b91c1c; }
+  /* "This letter left because a button here was pressed." Distinct from the blue
+     "verschickt" badge, which means a person sent it from their own client. */
+  .state__badge--gesendet { color: #8a0010; background: rgba(215, 0, 21, .08); border-color: rgba(215, 0, 21, .28); }
+  /* Two clicks, and no script behind them: the second click is the send, and an
+     action that cannot be undone must not depend on JavaScript having loaded. */
+  .gsend { margin-left: auto; }
+  .gsend[open] { flex: 1 1 100%; }
+  .gsend > summary { display: inline-block; list-style: none; cursor: pointer; }
+  .gsend > summary::-webkit-details-marker { display: none; }
+  .confirm { margin-top: 10px; padding: 12px; border: 1px solid rgba(215, 0, 21, .3);
+             background: rgba(215, 0, 21, .05); border-radius: var(--radius); }
+  .confirm p { font-size: var(--t-footnote); color: #8a0010; margin-bottom: 10px; max-width: 64ch; }
+  .confirm__row { display: flex; gap: 10px; align-items: center; }
+  /* Why the send is not on offer, beside the disabled button rather than instead
+     of it: the reader has to see that the action exists and what is missing. */
+  .state__why { font-size: var(--t-caption); color: var(--muted); }
+  .state__why a { color: var(--accent); font-weight: 600; }
 </style>
 
 <div class="client-profile">
@@ -37,6 +75,37 @@
     <strong>{{ t("Entwurf, keine Entscheidung") }}</strong> — {{ t("jede Aussage nennt die Meldungen, auf die sie sich stützt, damit die Begründung nachprüfbar bleibt.") }}
   </p>
 </div>
+
+{# The mailbox, and what it changes. Rendered only when one is actually
+   connected: with no mailbox this page is exactly what it was before — a letter,
+   a Kopieren button and a release the consultant records himself. #}
+{% set mailbox = gmail if gmail and gmail.is_connected else None %}
+{% if mailbox %}
+  <div class="mailbar">
+    <span class="mailbar__dot"></span>
+    {{ t("Postfach verbunden") }}: <b>{{ mailbox.email }}</b>
+    {# What this connection may actually do, read off the granted scopes rather
+       than off the fact that there is one. One string and not two glued
+       fragments: "lesen und" + "senden" translates into a pair of English words
+       that only happen to line up in this order. #}
+    <span class="dot">·</span> <b>{% if mailbox.may_send %}{{ t("lesen und senden") }}{% else %}{{ t("nur lesen") }}{% endif %}</b>
+    <span class="mailbar__r"><a href="/settings#gmail">{{ t("Einstellungen") }}</a></span>
+  </div>
+  {# Not decoration. DEC-4 option C is the one decision in this product that
+     contradicts its own founding sentence, and the screen where it is exercised
+     is where that has to be readable — but only where it is *exercised*: on a
+     mailbox that was never granted the send permission, nothing leaves the
+     house and the warning would be describing a power this build does not have. #}
+  {% if mailbox.may_send %}
+    <div class="warnband">
+      <strong>{{ t("Diese Variante ändert die Grundannahme.") }}</strong>
+      {{ t("Bisher gilt: keine Engine verschickt etwas an einen Journalisten. Mit Sendrecht verlässt ein Text das Haus, weil in RauteOS ein Knopf gedrückt wurde, nicht weil jemand in seinem eigenen Postfach auf Senden geht. Der Unterschied ist klein am Bildschirm und groß, wenn eine Nachricht falsch war.") }}
+    </div>
+  {% endif %}
+{% endif %}
+{% if gmail_error %}
+  <p class="sect__empty sect__refusal"><strong>{{ t("Nicht verschickt.") }}</strong> {{ gmail_error }}</p>
+{% endif %}
 
 {# --- Positioning: from the market ---------------------------------------- #}
 {# The id is the swap target for the poll below: while a draft is running this
@@ -195,6 +264,16 @@
         {% endif %}
 
         {% for msg in written %}
+          {# The address this letter would go to, or why there is none. Resolved
+             once for the whole card: the head names it, the confirmation repeats
+             it, and the disabled action explains its absence. #}
+          {% set rec = recipients.get(msg.id) %}
+          {# Connected is not the same question as allowed to send: a mailbox
+             connected before DEC-4's send path — or one whose owner unticked the
+             permission on Google's consent screen — can read and nothing else,
+             and an enabled button on it 403s after the confirmation. #}
+          {% set may_send = mailbox and mailbox.may_send %}
+          {% set can_send = may_send and not msg.released_at and not msg.sent_through_gmail %}
           <article class="letter">
             <div class="letter__head">
               <span class="letter__to">
@@ -208,8 +287,18 @@
                   <span class="dot">·</span>
                 {% endif %}
                 {{ msg.outlet or t("Fachredaktion") }}
+                {# The address, where there is one, so the reader sees what the
+                   send button would actually do before pressing it. #}
+                {% if rec and rec.email %}
+                  <span class="dot">·</span> {{ rec.email }}
+                {% endif %}
               </span>
-              <button type="button" class="impulse__copy" data-copy-from="letter-text-{{ msg.id }}">{{ t("Kopieren") }}</button>
+              {# Gone once RauteOS itself put the letter in the recipient's
+                 inbox: there is nothing left to paste anywhere, and a Kopieren
+                 button on a sent message invites a second, hand-sent copy. #}
+              {% if not msg.sent_through_gmail %}
+                <button type="button" class="impulse__copy" data-copy-from="letter-text-{{ msg.id }}">{{ t("Kopieren") }}</button>
+              {% endif %}
             </div>
             {# Subject and body inside the copy target, the reasoning outside it:
                the hook is for the consultant and must never reach an inbox. #}
@@ -261,13 +350,33 @@
                a badge that swallowed the release would claim otherwise. #}
             {% set quiet_days = silent.get(msg.id) %}
             <div class="state">
-              <span class="state__badge state__badge--{{ msg.state }}">{{ t(state_labels[msg.state]) }}</span>
+              <span class="state__badge state__badge--{{ msg.state }}{% if msg.out_through_gmail %} state__badge--gesendet{% endif %}">{{ t(state_labels[msg.state]) }}</span>
               {% if quiet_days %}
                 <span class="state__badge state__badge--still">{{ t("Ohne Reaktion") }}</span>
               {% endif %}
               <span class="state__when">
                 {% if msg.released_at %}
-                  {{ t("Freigegeben am") }} {{ msg.released_at | de_short_date }}
+                  {# Two different sentences, because two different things
+                     happened. "Von RauteOS gesendet" is a claim about this tool
+                     having put the message in the inbox; "freigegeben" alone
+                     says a person did it themselves and recorded it here.
+                     Not "Liegt in Gmail", which the story text asks for: that
+                     sentence belongs to DEC-4 option B, where the letter waits
+                     in the mailbox as a draft for a human to send. DEC-4 locked
+                     C, the letter is gone by the time this renders, and the
+                     locked mock (features/mocks/gmail-send.html) says exactly
+                     what stands here. The card follows the mock, which the
+                     story's own last criterion requires. #}
+                  {% if msg.sent_through_gmail %}
+                    {{ t("Von RauteOS gesendet am") }} {{ msg.released_at | de_datetime }},
+                    {% if msg.released_by == "mensch" %}
+                      {{ t("freigegeben von Mensch") }}
+                    {% else %}
+                      {{ t("freigegeben von %(who)s") | format(who=msg.released_by) }}
+                    {% endif %}
+                  {% else %}
+                    {{ t("Freigegeben am") }} {{ msg.released_at | de_short_date }}
+                  {% endif %}
                   {% if msg.outcome_at %}
                     <span class="dot">·</span> {{ t("Ergebnis am") }} {{ msg.outcome_at | de_short_date }}
                   {% elif quiet_days %}
@@ -278,8 +387,62 @@
                   <span class="dot">·</span> {{ t("noch nicht freigegeben") }}
                 {% endif %}
               </span>
-              {% if not msg.released_at %}
+              {# The send comes before the thread link, not after it: a draft that
+                 Gmail accepted but never sent already has a thread, and ordering
+                 these the other way would leave that letter showing a link to an
+                 unsent conversation with no way to try again. The link itself
+                 hangs on the message id (``sent_through_gmail``) rather than on
+                 the thread, for the same reason — a composed draft is not a sent
+                 letter, and one whose mailbox was disconnected afterwards has to
+                 fall through to the release form rather than to a dead end. #}
+              {% if can_send and rec and rec.is_reachable %}
+                {# The locked mock's two clicks, as a details/summary rather than
+                   a script: the second click is an irreversible send, and it must
+                   not depend on JavaScript having loaded. #}
+                <details class="gsend">
+                  <summary class="btn btn--send">{{ t("Freigeben und senden") }}</summary>
+                  <div class="confirm">
+                    <p>
+                      {{ t("Diese Nachricht geht jetzt an") }} <strong>{{ rec.email }}</strong>.
+                      {{ t("Sie ist danach nicht mehr zurückzuholen. Gegengelesen wurde sie von einem zweiten Modell, nicht von einem Menschen.") }}
+                    </p>
+                    <div class="confirm__row">
+                      <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/gmail-draft">
+                        <button type="submit" class="btn btn--send">{{ t("Ja, senden") }}</button>
+                      </form>
+                      {# The mock's second choice, and it is a real control. The
+                         send must work without JavaScript and does — the summary
+                         closes the panel on its own — so this is the one thing
+                         here that may lean on a script. #}
+                      <button type="button" class="linkbtn" data-close-confirm>{{ t("Abbrechen") }}</button>
+                    </div>
+                  </div>
+                </details>
+              {% elif msg.sent_through_gmail %}
                 <span class="state__acts">
+                  <a class="linkbtn" href="{{ gmail_threads[msg.id] }}" target="_blank" rel="noopener noreferrer">{{ t("Verlauf in Gmail öffnen") }}</a>
+                </span>
+              {% elif not msg.released_at %}
+                <span class="state__acts">
+                  {% if mailbox %}
+                    {# Disabled, and never silently: an address is the one thing
+                       this tool will not derive, so the card says which of the
+                       reasons it is and where each one gets fixed. The mailbox's
+                       own missing permission comes first — it is not a fact about
+                       this recipient, and no contact entry would cure it. #}
+                    <button type="button" class="btn btn--send" disabled>{{ t("Freigeben und senden") }}</button>
+                    <span class="state__why">
+                      {% if not may_send %}
+                        {{ t(gmail_scope_reason) }}
+                        <a href="/settings#gmail">{{ t("Postfach neu verbinden") }} →</a>
+                      {% else %}
+                        {{ t(rec.reason) if rec else "" }}
+                        {% if msg.journalist %}
+                          <a href="{% if rec and rec.contact_id %}/contacts?id={{ rec.contact_id }}{% else %}/contacts?name={{ msg.journalist | urlencode }}&outlet={{ msg.outlet | urlencode }}{% endif %}">{{ t("Kontakt hinterlegen") }} →</a>
+                        {% endif %}
+                      {% endif %}
+                    </span>
+                  {% endif %}
                   <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/release">
                     <button type="submit" class="btn">{{ t("Freigegeben und verschickt") }}</button>
                   </form>
@@ -300,7 +463,13 @@
                        never shown. A named releaser renders through one
                        interpolated string rather than glued fragments, so the
                        English keeps its own word order instead of German's. #}
-                    {% if msg.released_by == "mensch" %}
+                    {% if msg.sent_through_gmail %}
+                      {% if msg.released_by == "mensch" %}
+                        {{ t("Freigegeben und von RauteOS über Gmail verschickt") }}
+                      {% else %}
+                        {{ t("von %(who)s freigegeben, von RauteOS über Gmail verschickt") | format(who=msg.released_by) }}
+                      {% endif %}
+                    {% elif msg.released_by == "mensch" %}
                       {{ t("Freigegeben und verschickt") }}
                     {% else %}
                       {{ t("von %(who)s freigegeben und verschickt") | format(who=msg.released_by) }}
@@ -339,6 +508,13 @@
                   <button type="submit" class="btn btn--ghost">{{ t("Eintragen") }}</button>
                 </div>
               </form>
+            {% elif can_send and rec and rec.is_reachable %}
+              {# The honest note under an unreleased letter, and it says the
+                 opposite of what it used to. With the send scope granted this
+                 button really does put the text in a journalist's inbox. #}
+              <p class="state__note">
+                {{ t("Zwei Klicks statt einem, weil der erste in einer vollen Woche schnell passiert.") }}
+              </p>
             {% else %}
               <p class="state__note">
                 {{ t("Nichts geht von hier aus raus. Der Knopf hält fest, dass Sie das Anschreiben gelesen, freigegeben und selbst verschickt haben.") }}
@@ -547,6 +723,19 @@
       area.select();
       try { document.execCommand("copy"); done(); } catch (e) {}
       document.body.removeChild(area);
+    });
+  });
+})();
+
+// Abbrechen on the send confirmation. Deliberately the only part of that panel
+// that needs a script: the send itself is a plain form, and the summary closes
+// the panel unaided, so a page whose JavaScript never loaded still shows both a
+// working send and a working way out of it.
+(function () {
+  document.querySelectorAll("[data-close-confirm]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var panel = button.closest("details");
+      if (panel) panel.open = false;
     });
   });
 })();

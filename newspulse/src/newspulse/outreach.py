@@ -52,6 +52,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from importlib import resources
 from string import Template
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
@@ -70,6 +71,13 @@ from .models import (
 )
 from .pitch import PitchTarget
 from .schemas import MessageReview, PersonalMessage
+
+if TYPE_CHECKING:
+    # Only for the two signatures below. The ledger records *that* a letter went
+    # out and when; how it was reached is the transport's business, and importing
+    # the Gmail client at runtime to write a type would make this module depend
+    # on it for nothing.
+    from . import gmail_link
 
 _log = logging.getLogger(__name__)
 
@@ -442,7 +450,7 @@ OUTCOMES: tuple[OutreachState, ...] = (
 
 
 def release(
-    session: Session, row: Outreach, released_by: str = ""
+    session: Session, row: Outreach, released_by: str = "", *, at: dt.datetime | None = None
 ) -> Outreach:
     """Record that a person read this letter, released it and sent it.
 
@@ -459,6 +467,12 @@ def release(
     own session. So the guard is not the read below but the UPDATE's own WHERE,
     which the database re-checks at write time: exactly one request stamps the
     row, and the other reads the winner's record back.
+
+    ``at`` is for the one caller that knows better than this machine's clock when
+    the letter actually left: Gmail states its own send date on the message, and
+    that — not the moment this row was written — is when the journalist received
+    it. It is ignored on a letter someone already released by hand, for the same
+    reason a second click is: the first release stands.
     """
     if row.released_at is not None:
         return row
@@ -474,7 +488,7 @@ def release(
         update(Outreach)
         .where(Outreach.id == row.id, Outreach.released_at.is_(None))
         .values(
-            released_at=dt.datetime.now(dt.UTC),
+            released_at=at or dt.datetime.now(dt.UTC),
             released_by=signer,
             state=OutreachState.RAUS,
             contact_id=match.id if match is not None else None,
@@ -485,6 +499,51 @@ def release(
     # Whether this request won or lost the write, the row now shows the release
     # that actually stands.
     session.refresh(row)
+    return row
+
+
+def record_sent(
+    session: Session,
+    row: Outreach,
+    sent: gmail_link.Sent,
+    *,
+    draft_id: str = "",
+    released_by: str = "",
+) -> Outreach:
+    """Record that this letter left the house through Gmail.
+
+    Two things happen and only one of them is new. The thread ids are Google's
+    answer, stored verbatim — this is what turns OUT-05's reply matching from a
+    guess into a fact. The release is the ordinary one: :func:`release` stamps it
+    at *Gmail's* send date rather than at this machine's clock, and does nothing
+    at all if a person already released the letter by hand, so a letter released
+    on Monday and pushed to Gmail on Tuesday keeps Monday as the moment a human
+    took responsibility for it.
+    """
+    row.gmail_draft_id = draft_id or row.gmail_draft_id
+    row.gmail_thread_id = sent.thread_id
+    row.gmail_message_id = sent.message_id
+    session.add(row)
+    session.commit()
+    return release(session, row, released_by=released_by, at=sent.sent_at)
+
+
+def record_draft(session: Session, row: Outreach, draft: gmail_link.Draft) -> Outreach:
+    """Remember the draft Gmail composed, before anything has been sent.
+
+    Written in its own commit rather than together with the send, because the
+    send is the call that can fail after Gmail has already accepted the draft.
+    Losing the id there would leave an orphan draft in the mailbox and make the
+    next push compose a second one at the same journalist — which is exactly the
+    duplicate the two-step exists to prevent.
+    """
+    row.gmail_draft_id = draft.draft_id
+    # The draft already has a conversation; the message id stays empty until
+    # something is actually sent, because that is what ``sent_through_gmail``
+    # keys on and a composed draft is not a sent letter.
+    row.gmail_thread_id = draft.thread_id
+    session.add(row)
+    session.commit()
     return row
 
 
@@ -784,7 +843,9 @@ __all__ = [
     "for_angle",
     "history_for_contact",
     "is_silent",
+    "record_draft",
     "record_outcome",
+    "record_sent",
     "release",
     "released_count_by_contact",
     "store",

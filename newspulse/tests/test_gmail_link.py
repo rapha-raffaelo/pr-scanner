@@ -67,7 +67,17 @@ class FakeGoogle:
     calls: list[Call] = field(default_factory=list)
 
     def __call__(
-        self, url: str, *, form: dict[str, str] | None = None, token: str = ""
+        self,
+        url: str,
+        *,
+        form: dict[str, str] | None = None,
+        # The whole ``Fetch`` shape, not only the half the OAuth endpoints use:
+        # every Gmail call goes through the same boundary, and a stub that
+        # accepts less than the real one turns a widened caller into a TypeError
+        # rather than into the answer it was written to give.
+        json_body: dict[str, Any] | None = None,
+        method: str = "",
+        token: str = "",
     ) -> dict[str, Any]:
         self.calls.append(Call(url, form, token))
         if self.unreachable:
@@ -161,12 +171,46 @@ def test_the_token_file_sits_beside_the_database(volume):
 
 
 def test_consent_asks_for_exactly_the_two_scopes_dec_4_licenses(volume):
-    """DEC-4 locked "lesen und senden". Not modify, not mail.google.com."""
+    """DEC-4 locked "lesen und senden". Not modify, not mail.google.com.
+
+    ``gmail.compose`` and not ``gmail.send``: Google documents the latter as
+    "send messages only, no read or modify privileges" and it covers exactly
+    ``messages.send``. Every ``users.drafts.*`` call — which is how a letter is
+    composed once and sent once here — answers it with a 403.
+    """
     query = parse_qs(urlparse(gmail_link.authorize_url("s")).query)
     assert query["scope"][0].split() == [
         "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/gmail.compose",
     ]
+
+
+def test_a_connection_without_the_compose_scope_may_not_send(volume):
+    """"Connected" and "may send" are two questions. A person can untick the
+    permission on Google's consent screen, and every connection made before the
+    send path existed carries the old scopes — Google never widens a grant
+    afterwards, so this is what the card asks before offering the button."""
+    granted = gmail_link.Link(email="lucas@raute.example", scopes=gmail_link.SCOPES)
+    readonly = gmail_link.Link(
+        email="lucas@raute.example",
+        scopes=("https://www.googleapis.com/auth/gmail.readonly",),
+    )
+    older = gmail_link.Link(
+        email="lucas@raute.example",
+        scopes=(
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.send",
+        ),
+    )
+    wider = gmail_link.Link(
+        email="lucas@raute.example", scopes=("https://mail.google.com/",)
+    )
+
+    assert granted.may_send is True
+    assert readonly.may_send is False
+    assert older.may_send is False
+    assert wider.may_send is True
+    assert gmail_link.Link().may_send is False
 
 
 def test_the_authorisation_url_carries_the_state_and_asks_for_a_refresh_token(volume):
@@ -346,13 +390,18 @@ def test_a_token_refused_before_its_expiry_is_renewed_rather_than_reported(volum
     refusals = {"left": 1}
 
     def refuse_once(
-        url: str, *, form: dict[str, str] | None = None, token: str = ""
+        url: str,
+        *,
+        form: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
+        method: str = "",
+        token: str = "",
     ) -> dict[str, Any]:
         """Gmail refuses the stored token once, the way a password change does."""
         if "profile" in url and refusals["left"]:
             refusals["left"] -= 1
             return {"error": {"code": 401, "message": "Invalid Credentials"}}
-        return google(url, form=form, token=token)
+        return google(url, form=form, json_body=json_body, method=method, token=token)
 
     found = gmail_link.profile(fetch=refuse_once)
 
@@ -550,7 +599,7 @@ def test_a_completed_callback_shows_the_address_and_the_granted_scopes(
     assert _MAILBOX in body
     # The permissions in words, not as scope URLs.
     assert "Nachrichten lesen" in body
-    assert "Nachrichten senden" in body
+    assert "Nachrichten verfassen und senden" in body
     assert "gmail.readonly" not in body
     assert "Postfach trennen" in body
 

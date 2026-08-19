@@ -861,6 +861,53 @@ class Outreach(Base):
     #: prose have no business touching it.
     outcome_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
+    # --- The thread in Gmail --------------------------------------------------
+    #
+    # DEC-4 locked option C: RauteOS puts the letter into Gmail and sends it. The
+    # saved copy-paste is not the point — the *thread* is. Because this tool put
+    # the outgoing message into it, a reply arriving days later belongs to this
+    # letter as a fact rather than as a guess from a subject line, which is what
+    # OUT-05's matching stands on and what lets DEC-6 option A ask Gmail for
+    # nothing but the threads RauteOS started.
+    #
+    # All three ids are Google's, echoed back from the API response and never
+    # constructed here: a locally built id would point at a thread that does not
+    # exist and would be indistinguishable from one that does.
+    #: The draft Gmail created before it was sent. Kept after the send, because it
+    #: is the idempotency key on the way there: a second push updates *this* draft
+    #: rather than composing a second one at the same journalist.
+    gmail_draft_id: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    #: The conversation the letter opened. The one column OUT-05 reads.
+    gmail_thread_id: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    #: The sent message itself. Set only once the message actually left, so it —
+    #: not the draft id — is what "this letter went out through Gmail" means.
+    gmail_message_id: Mapped[str] = mapped_column(
+        String(120), nullable=False, default=""
+    )
+
+    @property
+    def sent_through_gmail(self) -> bool:
+        """Whether RauteOS itself put this letter into the recipient's inbox.
+
+        Keyed on the message id rather than on the thread id: a draft that was
+        composed but never sent already has a thread, and a card that read that
+        as "sent" would claim an act nobody performed.
+        """
+        return bool(self.gmail_message_id)
+
+    @property
+    def out_through_gmail(self) -> bool:
+        """Sent by RauteOS itself, and nothing back yet — the mock's red badge.
+
+        The state is part of the question, so the red "gesendet" colouring can
+        never overpaint the green an answer or a publication earns. Computed
+        here rather than in the template because that is where
+        :class:`OutreachState` is in scope: a card comparing against the bare
+        string ``"raus"`` would quietly stop colouring anything the day the enum
+        value is renamed.
+        """
+        return self.sent_through_gmail and self.state == OutreachState.RAUS
+
 
 __all__ = [
     "Base",
