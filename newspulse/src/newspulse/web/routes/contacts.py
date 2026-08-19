@@ -163,6 +163,9 @@ def contact_book(
     # but never over an open file — a reader who asked for a journalist by id
     # asked for the relationship file.
     editing = _one_contact(session, edit) or (existing if selected is None else None)
+    # A byline the book does not have, and no file open in front of it: the only
+    # case where "Noch kein Eintrag für …" is true and the prefill is wanted.
+    unrecorded = bool(name) and editing is None and selected is None
 
     return templates.TemplateResponse(
         request,
@@ -173,9 +176,9 @@ def contact_book(
             editing=editing,
             selected=selected,
             # What the pitch list knew, for a contact that does not exist yet.
-            prefill_name=name if editing is None else "",
-            prefill_outlet=outlet if editing is None else "",
-            came_from_pitch=bool(name),
+            prefill_name=name if unrecorded else "",
+            prefill_outlet=outlet if unrecorded else "",
+            came_from_pitch=unrecorded,
         ),
     )
 
