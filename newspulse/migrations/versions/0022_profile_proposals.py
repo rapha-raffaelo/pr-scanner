@@ -6,8 +6,10 @@ decides on them at nine. That used to be a dict in the web process — fine whil
 only a button wrote to it, and not fine now: a deploy or a restart dropped
 everything the sweep had found, silently.
 
-Also adds ``clients.profile_checked_at``, following ``impulse_checked_at``: a
-profile checked this morning and one that has aged for a year must not look alike.
+Also adds ``clients.profile_checked_at`` and ``clients.profile_note``, following
+``impulse_checked_at``/``impulse_note``: a profile checked this morning and one
+that has aged for a year must not look alike, and neither must a check that found
+nothing and a check that broke.
 
 Revision ID: 0022_profile_proposals
 Revises: 0021_outcome_by
@@ -52,10 +54,16 @@ def upgrade() -> None:
         batch.add_column(
             sa.Column("profile_checked_at", sa.DateTime(timezone=True), nullable=True)
         )
+        batch.add_column(
+            sa.Column(
+                "profile_note", sa.Text(), nullable=False, server_default=""
+            )
+        )
 
 
 def downgrade() -> None:
     with op.batch_alter_table("clients") as batch:
+        batch.drop_column("profile_note")
         batch.drop_column("profile_checked_at")
     op.drop_index("ix_profile_proposals_client_id", table_name="profile_proposals")
     op.drop_table("profile_proposals")

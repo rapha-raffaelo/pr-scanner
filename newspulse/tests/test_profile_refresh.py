@@ -354,6 +354,32 @@ def test_a_failed_research_still_records_the_attempt(session):
     assert session.get(Client, client.id).profile_checked_at == _NOW
 
 
+def test_a_failed_research_records_why_beside_the_check_date(session):
+    """A stamp on its own makes a mandate whose research died read as "checked
+    today" and quiets its age trigger for sixty days with nothing to show for it
+    — the hole ``impulse_note`` exists to close."""
+    client = _client(session, checked=None)
+
+    with pytest.raises(RuntimeError):
+        profile_refresh.refresh(session, client, now=_NOW, generate=_boom)
+
+    assert "die Suche ist nicht erreichbar" in session.get(Client, client.id).profile_note
+
+
+def test_a_good_check_clears_the_note_the_broken_one_left(session):
+    """A reason that outlives the failure it describes is worse than none: the
+    page would keep explaining a problem that is over."""
+    client = _client(session, checked=None)
+    with pytest.raises(RuntimeError):
+        profile_refresh.refresh(session, client, now=_NOW, generate=_boom)
+
+    profile_refresh.refresh(
+        session, client, now=_NOW + dt.timedelta(days=1), generate=_answer(sitz="Paris")
+    )
+
+    assert session.get(Client, client.id).profile_note == ""
+
+
 def test_a_failed_research_leaves_the_existing_proposals_alone(session):
     """A broken search must not be read as "nothing to propose any more" — that
     would throw away findings nobody has seen yet."""

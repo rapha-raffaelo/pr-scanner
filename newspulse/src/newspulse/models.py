@@ -300,6 +300,15 @@ class Client(Base):
     profile_checked_at: Mapped[dt.datetime | None] = mapped_column(
         UTCDateTime(), nullable=True
     )
+    #: Why the last profile check produced nothing, empty when it produced
+    #: something or found nothing to change. The stamp above is set on every
+    #: attempt including a failed one, which is right — an attempt happened — and
+    #: on its own it makes a mandate whose research broke read as "geprüft: heute"
+    #: while quieting its age trigger for sixty days. Exactly the hole
+    #: ``impulse_note`` was added to close, so it is closed the same way.
+    profile_note: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1")
     )

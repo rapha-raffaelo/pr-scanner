@@ -69,6 +69,11 @@ _MOVED_CATEGORIES = (Category.PERSONALIE, Category.FINANZEN)
 #: a sixty-mandate portfolio inside a fortnight without a burst anybody notices.
 REFRESH_PER_RUN = 5
 
+#: What :attr:`~newspulse.models.Client.profile_note` says after a check that
+#: broke. German, because it is rendered: the note is for the consultant reading
+#: the profile page at nine, not for the log the sweep already wrote at 06:10.
+_FAILED_NOTE = "Die Recherche ist abgebrochen: {reason}"
+
 #: The sort position of a mandate that has never been checked. It is the oldest
 #: thing there is — a profile filled at kick-off and never looked at since is
 #: exactly what this feature exists for — so it sorts ahead of every dated one.
@@ -246,15 +251,24 @@ def _replace(
     session.add_all(rows)
 
 
-def _mark_checked(session: Session, client: Client, now: dt.datetime) -> None:
+def _mark_checked(
+    session: Session, client: Client, now: dt.datetime, note: str = ""
+) -> None:
     """Record that the profile was looked at, whatever the look produced.
 
     Every attempt, including one that found nothing and one that broke — the same
     posture ``impulse_checked_at`` takes. "Checked, nothing changed" and "never
     checked" are different states, and a page that cannot tell them apart is a
     page that reports a stale profile as fresh.
+
+    ``note`` is why, and it is what keeps the stamp honest. Stamping a failed
+    attempt is right — it happened — but a stamp on its own makes a mandate whose
+    research died read as "checked today" and quiets its age trigger for sixty
+    days with nothing to show for it. Cleared on a good check, so a stale note
+    cannot outlive the failure it describes.
     """
     client.profile_checked_at = now
+    client.profile_note = note
     session.commit()
 
 
@@ -282,10 +296,12 @@ def refresh(
     author = proposed_by or config.review_model()
     try:
         found = profile.research(client, generate=generate)
-    except Exception:
+    except Exception as exc:
         # The attempt happened and belongs on the record even though it failed;
         # the proposals and facts below are untouched, which is what matters.
-        _mark_checked(session, client, now)
+        # The reason goes on the record with it, so the page can say why rather
+        # than showing a check date for a read that never happened.
+        _mark_checked(session, client, now, _FAILED_NOTE.format(reason=exc))
         raise
     rows = _as_rows(session, client, found, now=now, proposed_by=author)
     _replace(session, client.id, rows)
