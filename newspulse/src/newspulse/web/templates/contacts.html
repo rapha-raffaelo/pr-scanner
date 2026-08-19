@@ -248,10 +248,13 @@
                    something the system asserted. #}
                 <li>
                   <span class="tl__pin {% if letter.state == 'veroeffentlicht' %}tl__pin--good{% elif letter.state == 'absage' %}tl__pin--warn{% else %}tl__pin--out{% endif %}"></span>
-                  <div class="tl__when">{{ event.at | de_datetime }}
+                  <div class="tl__when">{{ event.at | de_date }}
                     <span class="tl__src tl__src--hand">{{ t("von Hand eingetragen") }}</span></div>
                   <div class="tl__what"><b>{{ t(state_labels[letter.state]) }}</b>
-                    <span class="tl__cl"><span style="background: {{ event.mandate | brand_colour }}"></span>{{ event.mandate }}</span>
+                    {# The dot repeats the mandate's colour and the name beside it
+                       carries the same fact in words, so the chip never depends on
+                       the colour being seen. The title says which is which. #}
+                    <span class="tl__cl" title="{{ t('Mandant') }}: {{ event.mandate }}"><span style="background: {{ event.mandate | brand_colour }}"></span>{{ event.mandate }}</span>
                     <span class="badge b-{{ letter.state }}">{{ t(state_labels[letter.state]) }}</span></div>
                   {% if letter.outcome_note %}<div class="tl__sub">{{ letter.outcome_note }}</div>{% endif %}
                 </li>
@@ -262,17 +265,25 @@
                 <li>
                   <span class="tl__pin tl__pin--out"></span>
                   <div class="tl__when">
-                    {{ event.at | de_datetime }} ·
+                    {{ event.at | de_date }} ·
                     {% if letter.released_by == "mensch" %}{{ t("freigegeben von Mensch") }}{% else %}{{ t("freigegeben von %(who)s") | format(who=letter.released_by) }}{% endif %}
                     <span class="tl__src">{{ t("bei der Freigabe festgehalten") }}</span>
                   </div>
                   <div class="tl__what"><b>{{ t("Anschreiben verschickt") }}</b>
-                    <span class="tl__cl"><span style="background: {{ event.mandate | brand_colour }}"></span>{{ event.mandate }}</span></div>
+                    <span class="tl__cl" title="{{ t('Mandant') }}: {{ event.mandate }}"><span style="background: {{ event.mandate | brand_colour }}"></span>{{ event.mandate }}</span></div>
                   {% if letter.subject %}<div class="tl__quote">„{{ letter.subject }}“</div>{% endif %}
                 </li>
               {% endif %}
             {% endfor %}
           </ul>
+          {% if history_capped %}
+            {# The tallies are counted off the rows above, so a shortened list has
+               to say it is one — otherwise four numbers get quoted as the whole
+               relationship. #}
+            <p class="tl__empty">
+              {{ t("Es werden die letzten %(n)s Anschreiben gezeigt; ältere stehen nicht auf dieser Seite.") | format(n=history_limit) }}
+            </p>
+          {% endif %}
         {% else %}
           {# Never a blank pane: an empty file says so. #}
           <p class="tl__empty">

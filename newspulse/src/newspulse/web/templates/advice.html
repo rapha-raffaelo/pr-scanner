@@ -377,7 +377,7 @@
                      about this very thing. Dated rather than hidden: the reader
                      decides, and a second approach may well be the right call —
                      it just must not happen by accident. #}
-                  {% if target.already_pitched_at %}<span class="pitchlist__seen" title="{{ t('Zu diesem Impuls ging an diese Adresse bereits ein freigegebenes Anschreiben raus. Ein zweites zum selben Thema ist das, was eine Beziehung kostet.') }}">{{ t("schon angeschrieben am") }} {{ target.already_pitched_at | de_datetime }}</span>{% endif %}
+                  {% if target.already_pitched_at %}<span class="pitchlist__seen" title="{{ t('Zu diesem Impuls ging an diese Adresse bereits ein freigegebenes Anschreiben raus. Ein zweites zum selben Thema ist das, was eine Beziehung kostet.') }}">{{ t("schon angeschrieben am") }} {{ target.already_pitched_at | de_date }}</span>{% endif %}
                   {# One recipient, one message: the same position reads
                      differently to the reporter who covered the story it answers
                      than to a trade title that never has. #}

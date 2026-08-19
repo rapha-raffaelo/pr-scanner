@@ -104,6 +104,11 @@ def _page_context(
         "timeline": outreach.timeline(history),
         "tallies": outreach.tally(history),
         "letter_counts": outreach.released_count_by_contact(session),
+        # A file long enough to hit the cap is shortened, and the page has to say
+        # so: four tallies over a silently truncated list would be quoted as the
+        # whole relationship.
+        "history_capped": len(history) >= outreach.MAX_HISTORY,
+        "history_limit": outreach.MAX_HISTORY,
         "last_written_days": _days_since_last(history),
         "state_labels": outreach.STATE_LABELS,
         "prefill_name": prefill_name,

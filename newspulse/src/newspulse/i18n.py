@@ -422,6 +422,10 @@ _EN: dict[str, str] = {
     # one is a sentence somebody typed, the other a timestamp the machine took.
     "von Hand eingetragen": "typed by hand",
     "bei der Freigabe festgehalten": "recorded at release",
+    # A file long enough to be shortened says so, because the four tallies above
+    # it are counted off the rows that are actually shown.
+    "Es werden die letzten %(n)s Anschreiben gezeigt; ältere stehen nicht auf dieser Seite.":
+        "Showing the most recent %(n)s letters; older ones are not on this page.",
     "Noch kein Anschreiben freigegeben. Sobald eines an diesen Kontakt rausgeht, steht es hier.":
         "No letter released yet. The moment one goes out to this contact, it "
         "shows up here.",

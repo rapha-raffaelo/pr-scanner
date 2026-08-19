@@ -557,6 +557,21 @@ def days_out(row: Outreach, *, now: dt.datetime | None = None) -> int:
 
 # --- The relationship file --------------------------------------------------------
 
+#: The states that mean the journalist came back. ``VEROEFFENTLICHT`` belongs in
+#: here as well as in its own tally: the state machine keeps only the furthest
+#: point a letter reached, so a reply followed by a piece leaves no ``antwort``
+#: row behind, and counting the narrow way told the reader she never answered.
+_ANSWERED: tuple[OutreachState, ...] = (
+    OutreachState.ANTWORT,
+    OutreachState.VEROEFFENTLICHT,
+)
+
+#: How many released letters one file renders. A ten-year relationship is a page
+#: nobody scrolls, and the tallies are only trustworthy while the rows they were
+#: counted from are on screen — so the cap is set well above an ordinary file and
+#: the page says so when it is reached.
+MAX_HISTORY = 200
+
 
 @dataclass(frozen=True, slots=True)
 class HistoryEntry:
@@ -652,14 +667,20 @@ def timeline(history: list[HistoryEntry]) -> list[TimelineEvent]:
     return events
 
 
-def history_for_contact(session: Session, contact_id: int) -> list[HistoryEntry]:
-    """Every released letter to one contact, newest first, across all mandates.
+def history_for_contact(
+    session: Session, contact_id: int, *, limit: int = MAX_HISTORY
+) -> list[HistoryEntry]:
+    """The newest released letters to one contact, across all mandates.
 
     Across mandates on purpose (DEC-2): a journalist is a relationship the agency
     holds, and "have we already gone to her with something this month" cannot be
     answered from inside one client's workspace — so the mandate is named on
     every entry instead of scoping the query. Drafts never appear: the file is a
     record of what left the house, and a draft has not.
+
+    Capped at ``limit`` (:data:`MAX_HISTORY`) newest first, so one long
+    relationship cannot turn the page into a thousand-row render. The view says
+    when the cap was reached; it never silently shows a shortened file.
     """
     rows = session.execute(
         select(Outreach, Client.name)
@@ -669,6 +690,7 @@ def history_for_contact(session: Session, contact_id: int) -> list[HistoryEntry]
             Outreach.released_at.is_not(None),
         )
         .order_by(Outreach.released_at.desc(), Outreach.id.desc())
+        .limit(limit)
     ).all()
     return [HistoryEntry(letter=letter, mandate=mandate) for letter, mandate in rows]
 
@@ -676,6 +698,13 @@ def history_for_contact(session: Session, contact_id: int) -> list[HistoryEntry]
 def tally(history: list[HistoryEntry], *, now: dt.datetime | None = None) -> Tally:
     """The tallies over a file, counted off the very rows the timeline shows, so
     the numbers and the entries beneath them can never disagree.
+
+    The four numbers are **nested, not disjoint**: "Veröffentlicht" is a subset of
+    "Antworten", because a piece that used the letter's thesis is an answer that
+    went further, and the state machine only holds the furthest one a letter
+    reached. Counted the narrow way, a journalist who replied and then published
+    read "Antworten 0" — never answered — which is the opposite of what happened,
+    and the locked mock's 4 / 3 / 2 / 1 could not occur at all.
 
     "Ohne Reaktion" is derived (:func:`is_silent`) rather than counted from a
     state, for the same reason it is not stored: silence is an absence. An
@@ -686,7 +715,7 @@ def tally(history: list[HistoryEntry], *, now: dt.datetime | None = None) -> Tal
     letters = [entry.letter for entry in history]
     return Tally(
         anschreiben=len(letters),
-        antworten=sum(row.state == OutreachState.ANTWORT for row in letters),
+        antworten=sum(row.state in _ANSWERED for row in letters),
         veroeffentlicht=sum(
             row.state == OutreachState.VEROEFFENTLICHT for row in letters
         ),
@@ -741,6 +770,7 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
 
 __all__ = [
     "DEFAULT_RELEASED_BY",
+    "MAX_HISTORY",
     "OUTCOMES",
     "STATE_LABELS",
     "HistoryEntry",

@@ -360,7 +360,11 @@ def test_the_tallies_count_the_rows_the_timeline_shows(session):
     tallies = outreach.tally(history, now=_NOW)
 
     assert tallies.anschreiben == len(history) == 4
-    assert tallies.antworten == 1
+    # Nested, not disjoint: the published letter is an answer that went further,
+    # and the state machine keeps only the furthest point one reached — so
+    # counting "antwort" alone told the reader a journalist who replied and then
+    # published had never answered.
+    assert tallies.antworten == 2
     assert tallies.veroeffentlicht == 1
     # Derived, not stored: "raus" plus more than fourteen days with nothing
     # recorded. The three that carry an outcome are not silent whatever their age.
