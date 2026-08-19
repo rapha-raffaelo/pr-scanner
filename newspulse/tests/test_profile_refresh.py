@@ -29,6 +29,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
+from newspulse import config
 from newspulse import profile as profiles
 from newspulse import profile_refresh
 from newspulse.db import make_engine
@@ -399,18 +400,17 @@ def test_a_failed_research_leaves_the_existing_proposals_alone(session):
 # --- A pass over the portfolio -------------------------------------------------
 
 
-def test_a_run_refreshes_at_most_the_cap(session):
+def test_a_run_refreshes_at_most_the_configured_cap(session):
     """One refresh is a live search plus a model call. Sixty of them in one
     morning is both a bill and a good way to be rate-limited."""
-    for index in range(profile_refresh.REFRESH_PER_RUN + 3):
+    cap = config.PROFILE_REFRESH_PER_RUN
+    for index in range(cap + 3):
         _client(session, name=f"Mandat {index:02d}", checked=None)
 
     refreshed = profile_refresh.run(session, now=_NOW, generate=_answer(sitz="Paris"))
 
-    assert refreshed == profile_refresh.REFRESH_PER_RUN
-    assert session.scalar(
-        select(func.count()).select_from(ProfileProposal)
-    ) == profile_refresh.REFRESH_PER_RUN
+    assert refreshed == cap
+    assert session.scalar(select(func.count()).select_from(ProfileProposal)) == cap
 
 
 def test_a_run_takes_the_oldest_due_first(session):

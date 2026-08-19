@@ -155,7 +155,8 @@ def no_sweep_profile_refresh(monkeypatch):
     ``no_live_profile_research`` above closes the network boundary, which is the
     part that must never depend on whose laptop the suite runs on. It leaves the
     pass *running*, though, and that is its own problem: every test that drives
-    ``job.run`` walks up to ``REFRESH_PER_RUN`` never-checked mandates, has each
+    ``job.run`` walks up to ``config.PROFILE_REFRESH_PER_RUN`` never-checked
+    mandates, has each
     one refuse, and logs an ERROR with a traceback per mandate. Dozens of tests
     with nothing to do with profiles then print a wall of stack traces, which is
     how a real failure stops being visible in the output.

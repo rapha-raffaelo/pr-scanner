@@ -17,8 +17,8 @@ with the second would destroy the more valuable of the two.
 **It is bounded on purpose.** One refresh is a live web search plus a model call.
 An unbounded pass over sixty mandates would be both expensive and a good way to
 be rate-limited on the day it matters, so a run takes at most
-:data:`REFRESH_PER_RUN` mandates, oldest-due first — a large portfolio drains over
-days rather than in one burst.
+:data:`newspulse.config.PROFILE_REFRESH_PER_RUN` mandates, oldest-due first — a
+large portfolio drains over days rather than in one burst.
 
 The due check (DEC-1, option C) is event-driven with an age floor: a mandate whose
 own coverage says something moved is looked at now, a quiet one is looked at
@@ -31,9 +31,10 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from collections.abc import Callable, Mapping, Sequence
+import threading
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from . import config, profile
@@ -64,10 +65,14 @@ DUE_AFTER = dt.timedelta(days=60)
 #: daily budget on nothing.
 _MOVED_CATEGORIES = (Category.PERSONALIE, Category.FINANZEN)
 
-#: How many mandates one run may refresh. Each costs a live web search and a model
-#: call, so this is a spend ceiling before it is anything else. Five a day clears
-#: a sixty-mandate portfolio inside a fortnight without a burst anybody notices.
-REFRESH_PER_RUN = 5
+#: One live research at a time in this process, whoever asked for it. The manual
+#: button and the 06:10 sweep both land in :func:`refresh`, each with its own
+#: session, and each does a DELETE-then-INSERT over one client's proposals.
+#: Interleaved, that either loses one side's findings or trips
+#: UNIQUE (client_id, key). The web route's own lock only ever kept a second
+#: *click* out — the sweep never asked it anything — so the promise has to be
+#: made here, where both callers actually meet.
+_researching = threading.Lock()
 
 #: What :attr:`~newspulse.models.Client.profile_note` says after a check that
 #: broke. German, because it is rendered: the note is for the consultant reading
@@ -89,37 +94,59 @@ Generate = Callable[[str], tuple[str, list[tuple[str, str]]]]
 # --- Which profiles have earned a look -----------------------------------------
 
 
-def _moved_since(session: Session, client_id: int, since: dt.datetime) -> bool:
-    """Whether this mandate's own coverage says something changed since ``since``.
+def _moved_at(session: Session, client_ids: Iterable[int]) -> dict[int, dt.datetime]:
+    """When each mandate's own coverage last said something changed.
 
     Reads the archive the tool already has rather than asking anything: the
     executive change that would date the profile was reported, analysed and filed
     days ago, and the analysis carries both its category and its alert flag.
+
+    One grouped query for the whole portfolio rather than one per mandate. The
+    check runs over every client each morning, and sixty mandates asking the same
+    question sixty times is sixty round trips for an answer a GROUP BY gives once.
     """
-    hit = session.scalar(
-        select(Analysis.id)
+    ids = list(client_ids)
+    if not ids:
+        return {}
+    rows = session.execute(
+        select(Analysis.client_id, func.max(Analysis.analyzed_at))
         .where(
-            Analysis.client_id == client_id,
-            Analysis.analyzed_at > since,
+            Analysis.client_id.in_(ids),
             visible_coverage(),
             or_(
                 Analysis.category.in_(_MOVED_CATEGORIES),
                 Analysis.is_alert.is_(True),
             ),
         )
-        .limit(1)
-    )
-    return hit is not None
+        .group_by(Analysis.client_id)
+    ).all()
+    return {client_id: latest for client_id, latest in rows if latest is not None}
 
 
-def _is_due(session: Session, client: Client, *, now: dt.datetime) -> bool:
-    """The DEC-1 rule for one mandate: never checked, aged out, or something moved."""
+def _is_due(
+    client: Client, *, now: dt.datetime, moved_at: Mapping[int, dt.datetime]
+) -> bool:
+    """The DEC-1 rule for one mandate: never checked, aged out, or something moved.
+
+    ``moved_at`` is the whole portfolio's answer to "when did this mandate's
+    coverage last move", computed once by :func:`_moved_at`. Everything else here
+    is stored state on the client and the clock it was handed.
+    """
     checked = client.profile_checked_at
     if checked is None:
         return True
+    if client.profile_note:
+        # The last check broke, so it read nothing. Its stamp records that an
+        # attempt happened — which is right, it did — but it must never be read
+        # as an answer: used as the watermark below it would bury the personnel
+        # item that made this mandate due behind a read that never took place,
+        # and one rate-limited morning would quiet a CEO change for sixty days.
+        # A mandate whose last read failed stays due until one succeeds.
+        return True
     if now - checked >= DUE_AFTER:
         return True
-    return _moved_since(session, client.id, checked)
+    latest = moved_at.get(client.id or 0)
+    return latest is not None and latest > checked
 
 
 def _oldest_first(client: Client) -> tuple[dt.datetime, int]:
@@ -142,10 +169,10 @@ def due(
     conversation; nobody writes it a pitch, so nothing downstream reads its
     profile and researching one would spend the daily budget on a yardstick.
     """
+    watched = [client for client in clients if not client.is_competitor]
+    moved_at = _moved_at(session, (client.id for client in watched if client.id))
     candidates = [
-        client
-        for client in clients
-        if not client.is_competitor and _is_due(session, client, now=now)
+        client for client in watched if _is_due(client, now=now, moved_at=moved_at)
     ]
     return sorted(candidates, key=_oldest_first)
 
@@ -237,17 +264,34 @@ def _as_rows(
 
 
 def _replace(
-    session: Session, client_id: int, rows: Sequence[ProfileProposal]
+    session: Session,
+    client_id: int,
+    rows: Sequence[ProfileProposal],
+    *,
+    covered: Iterable[str],
 ) -> None:
-    """Swap this client's outstanding proposals for the new set, in one transaction.
+    """Swap this client's proposals for the fields this read actually covered.
 
     Replacing rather than adding: a second refresh finding the same three changes
     must leave three proposals, not six. The UNIQUE (client_id, key) is the
     schema-level backstop for the same promise.
+
+    Scoped to ``covered`` — the keys the answer came back with — rather than the
+    client's whole outstanding set, because a grounded search that returns a thin
+    ``felder`` object is a *success* that read nothing about the missing fields,
+    not a finding that they are settled. Deleting on it would silently erase an
+    undecided "CEO changed" nobody had got to yet, which is the one thing a
+    proposal store must not do. A field the new read did cover is replaced, even
+    when it now agrees with the profile: that proposal has been answered.
     """
-    session.execute(
-        delete(ProfileProposal).where(ProfileProposal.client_id == client_id)
-    )
+    keys = sorted(set(covered))
+    if keys:
+        session.execute(
+            delete(ProfileProposal).where(
+                ProfileProposal.client_id == client_id,
+                ProfileProposal.key.in_(keys),
+            )
+        )
     session.add_all(rows)
 
 
@@ -264,8 +308,11 @@ def _mark_checked(
     ``note`` is why, and it is what keeps the stamp honest. Stamping a failed
     attempt is right — it happened — but a stamp on its own makes a mandate whose
     research died read as "checked today" and quiets its age trigger for sixty
-    days with nothing to show for it. Cleared on a good check, so a stale note
-    cannot outlive the failure it describes.
+    days with nothing to show for it. So the note is load-bearing in two places
+    rather than decorative in one: :func:`_is_due` keeps a mandate due for as long
+    as it is set, and the profile page prints it where the check date is read.
+    Cleared on a good check, so a stale note cannot outlive the failure it
+    describes and cannot keep a healthy mandate permanently due.
     """
     client.profile_checked_at = now
     client.profile_note = note
@@ -289,30 +336,41 @@ def refresh(
     automatic pass that overwrote a fact the consultant entered by hand would
     destroy the most valuable data in the tool, and it would do it quietly.
 
-    Returns how many proposals are now outstanding for this client. Raises
-    whatever the research raised — the caller decides whether one failure is worth
-    stopping for (:func:`run` decides it is not).
+    Serialised process-wide on :data:`_researching`: the sweep runs in the same
+    process as the dashboard, and two refreshes of the same client racing on its
+    proposal rows would lose one side's findings. The wait is bounded by one
+    research call and only ever falls on a background worker.
+
+    Returns how many proposals are now outstanding for this client — what the
+    review page will show, not what this one read added. Raises whatever the
+    research raised: the caller decides whether one failure is worth stopping for
+    (:func:`run` decides it is not).
     """
     author = proposed_by or config.review_model()
-    try:
-        found = profile.research(client, generate=generate)
-    except Exception as exc:
-        # The attempt happened and belongs on the record even though it failed;
-        # the proposals and facts below are untouched, which is what matters.
-        # The reason goes on the record with it, so the page can say why rather
-        # than showing a check date for a read that never happened.
-        _mark_checked(session, client, now, _FAILED_NOTE.format(reason=exc))
-        raise
-    rows = _as_rows(session, client, found, now=now, proposed_by=author)
-    _replace(session, client.id, rows)
-    _mark_checked(session, client, now)
+    with _researching:
+        try:
+            found = profile.research(client, generate=generate)
+        except Exception as exc:
+            # The attempt happened and belongs on the record even though it
+            # failed; the proposals and facts below are untouched, which is what
+            # matters. The reason goes on the record with it — the page prints it
+            # where the check date is read, and the due check keeps the mandate
+            # due until a read actually succeeds.
+            _mark_checked(session, client, now, _FAILED_NOTE.format(reason=exc))
+            raise
+        rows = _as_rows(session, client, found, now=now, proposed_by=author)
+        _replace(session, client.id, rows, covered={item.key for item in found})
+        _mark_checked(session, client, now)
+        total = len(outstanding(session, client.id))
     _log.info(
-        "profile refresh for %r: %d field(s) read, %d proposal(s)",
+        "profile refresh for %r: %d field(s) read, %d new proposal(s), "
+        "%d outstanding",
         client.name,
         len(found),
         len(rows),
+        total,
     )
-    return len(rows)
+    return total
 
 
 # --- The pass over the portfolio ------------------------------------------------
@@ -322,22 +380,27 @@ def run(
     session: Session,
     *,
     now: dt.datetime,
-    limit: int = REFRESH_PER_RUN,
+    limit: int | None = None,
     generate: Generate | None = None,
 ) -> int:
     """Refresh the profiles that have earned a look. At most ``limit`` of them.
 
+    ``limit`` defaults to the configured
+    :data:`~newspulse.config.PROFILE_REFRESH_PER_RUN`, read here rather than
+    frozen into the signature so the operator's ceiling is the one that applies.
+
     Returns how many mandates were refreshed without error. With nothing due this
-    is a no-op that costs one query and writes nothing.
+    is a no-op that costs one query and writes nothing — and still says so on the
+    run line, because "nothing was due" and "the pass never ran" producing the
+    same empty output is the confusion the count exists to prevent.
 
     Fault-isolated per mandate, like every other per-client stage in the sweep: a
     research call that fails is logged at ERROR and the next mandate is tried,
     because a portfolio where one dead website stops the other four from being
     looked at is worse than the one broken profile.
     """
-    candidates = due(session, list_clients(session), now=now)[:limit]
-    if not candidates:
-        return 0
+    cap = config.PROFILE_REFRESH_PER_RUN if limit is None else limit
+    candidates = due(session, list_clients(session), now=now)[:cap]
     refreshed = 0
     for client in candidates:
         try:
@@ -364,10 +427,10 @@ def run(
 
 __all__ = [
     "DUE_AFTER",
-    "REFRESH_PER_RUN",
     "Generate",
     "discard",
     "due",
+    "may_replace",
     "outstanding",
     "refresh",
     "run",

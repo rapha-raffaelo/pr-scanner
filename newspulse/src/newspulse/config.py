@@ -47,6 +47,13 @@ _DEFAULT_ANALYZER_TIMEOUT = 180
 # metered API backend is opt-in (see PRD: subscription-first).
 _DEFAULT_ANALYZER_BACKEND = "claude_code"
 
+# How many mandate profiles one background refresh pass may re-read. Each costs a
+# live web search plus a model call, so this is a spend ceiling before it is
+# anything else: five a day drains a sixty-mandate portfolio inside a fortnight
+# without a burst anybody notices. Raise it on a large portfolio that has to
+# catch up, lower it when the grounded provider is rationing.
+_DEFAULT_PROFILE_REFRESH_PER_RUN = 5
+
 # Dashboard bind address. Loopback by default because this is a single-user local
 # tool (DEC-3), not a shared service — nothing should be exposed on the network
 # unless the operator opts in via NEWSPULSE_WEB_HOST.
@@ -59,6 +66,7 @@ _ENV_ALERT_THRESHOLD = "NEWSPULSE_ALERT_THRESHOLD"
 _ENV_BATCH_SIZE = "NEWSPULSE_BATCH_SIZE"
 _ENV_ANALYZER_TIMEOUT = "NEWSPULSE_ANALYZER_TIMEOUT"
 _ENV_ANALYZER_BACKEND = "NEWSPULSE_ANALYZER_BACKEND"
+_ENV_PROFILE_REFRESH_PER_RUN = "NEWSPULSE_PROFILE_REFRESH_PER_RUN"
 _ENV_GOOGLE_NEWS = "NEWSPULSE_GOOGLE_NEWS"
 _ENV_CLAUDE_CONFIG_DIR = "NEWSPULSE_CLAUDE_CONFIG_DIR"
 _ENV_AUTH_USER = "NEWSPULSE_AUTH_USER"
@@ -275,6 +283,9 @@ ALERT_THRESHOLD: int = _env_int(_ENV_ALERT_THRESHOLD, _DEFAULT_ALERT_THRESHOLD)
 BATCH_SIZE: int = _env_int(_ENV_BATCH_SIZE, _DEFAULT_BATCH_SIZE)
 ANALYZER_TIMEOUT: int = _env_int(_ENV_ANALYZER_TIMEOUT, _DEFAULT_ANALYZER_TIMEOUT)
 ANALYZER_BACKEND: str = os.environ.get(_ENV_ANALYZER_BACKEND, _DEFAULT_ANALYZER_BACKEND)
+PROFILE_REFRESH_PER_RUN: int = _env_int(
+    _ENV_PROFILE_REFRESH_PER_RUN, _DEFAULT_PROFILE_REFRESH_PER_RUN
+)
 WEB_HOST: str = os.environ.get(_ENV_WEB_HOST, _DEFAULT_WEB_HOST)
 # NEWSPULSE_WEB_PORT wins, then PORT, then the default. PORT is what a PaaS
 # injects (Railway, Render, Heroku) and the app must bind exactly it or the

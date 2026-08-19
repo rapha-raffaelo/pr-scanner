@@ -833,20 +833,34 @@ class ProfileProposal(Base):
     #: A key from :data:`newspulse.profile.FIELDS`, exactly as ``client_facts``
     #: holds it — a proposal is a candidate value for one of those rows.
     key: Mapped[str] = mapped_column(String(64), nullable=False)
-    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Every text column below carries ``server_default`` as well as ``default``:
+    # migration 0022 emits one, so a schema built by ``Base.metadata.create_all``
+    # (what the tests use) without it is a *different* schema, and an INSERT that
+    # omits a column would then pass in production and fail in a test.
+    value: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
     #: Where it was read. A proposal without one is a machine asserting something
     #: it cannot back up, and the review page does not show it at all.
-    source_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    source_title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source_url: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    source_title: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
     #: What the profile said when this was proposed. Empty when the field was
     #: blank, which is the "found something new" case rather than a contradiction.
-    previous_value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    previous_value: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
     proposed_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
     )
     #: The model that read the web for it. Never "mensch": a human does not
     #: propose to himself, he types the value in.
-    proposed_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    proposed_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default="", server_default=""
+    )
 
 
 class Outreach(Base):
