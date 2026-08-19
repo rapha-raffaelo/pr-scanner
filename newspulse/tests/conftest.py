@@ -98,6 +98,25 @@ def background_locks_are_free():
 
 
 @pytest.fixture(autouse=True)
+def no_real_mailbox(tmp_path, monkeypatch):
+    """Keep the daily sweep away from a mailbox somebody actually connected.
+
+    ``job.run`` reads the replies to released letters, and whether a mailbox is
+    connected is answered by a token file beside ``config.DATABASE_PATH`` — which
+    defaults to the working directory. On a machine where the app has been run
+    for real, every test that drives a sweep would then reach Google. Pointing
+    the database at a tmp directory means the sync finds no connection and does
+    nothing, which is also the state it has to work in.
+
+    The tests that *are* about the mailbox set the same attribute themselves
+    (their own fixture runs after this one and wins).
+    """
+    from newspulse import config
+
+    monkeypatch.setattr(config, "DATABASE_PATH", tmp_path / "newspulse.db")
+
+
+@pytest.fixture(autouse=True)
 def no_theme_settling(monkeypatch):
     """Stop the sweep from proposing themes in a test run.
 

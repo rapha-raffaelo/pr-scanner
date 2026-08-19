@@ -737,6 +737,25 @@ class TimelineEvent:
     reply: OutreachReply | None = None
 
 
+def _outcome_is_the_reply(letter: Outreach) -> bool:
+    """Whether the outcome on this letter is the one the sync recorded itself.
+
+    The ledger stores no author for an outcome, so this is inferred — and
+    inferred precisely, from what :func:`record_reply` is allowed to do and
+    nothing else: it sets ``ANTWORT``, it stamps ``outcome_at`` with a reply's
+    own received time, and it never writes a note, because only a person can.
+    A line matching all three came out of the mailbox.
+
+    It matters because the file draws every outcome as "von Hand eingetragen",
+    which for this one would be a sentence nobody said. The reply itself is
+    already on the timeline, at the same moment, with its text and its own
+    marker — so the outcome line is dropped rather than mislabelled.
+    """
+    if letter.state != OutreachState.ANTWORT or letter.outcome_note:
+        return False
+    return any(reply.received_at == letter.outcome_at for reply in letter.replies)
+
+
 def timeline(history: list[HistoryEntry]) -> list[TimelineEvent]:
     """Every line the file renders, strictly newest first.
 
@@ -774,7 +793,7 @@ def timeline(history: list[HistoryEntry]) -> list[TimelineEvent]:
             )
             for reply in letter.replies
         )
-        if letter.outcome_at is not None:
+        if letter.outcome_at is not None and not _outcome_is_the_reply(letter):
             events.append(
                 TimelineEvent(
                     at=letter.outcome_at,

@@ -225,7 +225,7 @@ def sync(
     stored = answered = 0
     errors: list[str] = []
     consecutive = 0
-    for thread_id, letter in letters.items():
+    for attempted, (thread_id, letter) in enumerate(letters.items(), start=1):
         try:
             filed, moved = _read_thread(
                 session, letter, link.email, fetch=fetch, now=moment
@@ -241,9 +241,9 @@ def sync(
             if consecutive >= _MAX_CONSECUTIVE_FAILURES:
                 _log.error(
                     "mail sync stopped after %d unreadable thread(s) in a row; "
-                    "%d of %d conversation(s) were read",
+                    "%d of %d conversation(s) were left unread",
                     consecutive,
-                    len(errors),
+                    len(letters) - attempted,
                     len(letters),
                 )
                 break
