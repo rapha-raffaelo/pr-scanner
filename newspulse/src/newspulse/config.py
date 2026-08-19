@@ -63,6 +63,14 @@ _ENV_GOOGLE_NEWS = "NEWSPULSE_GOOGLE_NEWS"
 _ENV_CLAUDE_CONFIG_DIR = "NEWSPULSE_CLAUDE_CONFIG_DIR"
 _ENV_AUTH_USER = "NEWSPULSE_AUTH_USER"
 _ENV_AUTH_PASSWORD = "NEWSPULSE_AUTH_PASSWORD"
+_ENV_GOOGLE_CLIENT_ID = "NEWSPULSE_GOOGLE_CLIENT_ID"
+_ENV_GOOGLE_CLIENT_SECRET = "NEWSPULSE_GOOGLE_CLIENT_SECRET"
+_ENV_GMAIL_CLIENT_ID = "NEWSPULSE_GMAIL_CLIENT_ID"
+_ENV_GMAIL_CLIENT_SECRET = "NEWSPULSE_GMAIL_CLIENT_SECRET"
+_ENV_GMAIL_CLIENT_ID_BARE = "GMAIL_CLIENT_ID"
+_ENV_GMAIL_CLIENT_SECRET_BARE = "GMAIL_CLIENT_SECRET"
+_ENV_ALLOWED_EMAILS = "NEWSPULSE_ALLOWED_EMAILS"
+_ENV_SESSION_SECRET = "NEWSPULSE_SESSION_SECRET"
 _ENV_BASE_URL = "NEWSPULSE_BASE_URL"
 _ENV_GEMINI_API_KEY = "NEWSPULSE_GEMINI_API_KEY"
 _ENV_GEMINI_MODEL = "NEWSPULSE_GEMINI_MODEL"
@@ -260,6 +268,27 @@ CLAUDE_CONFIG_DIR: str = os.environ.get(
 )
 AUTH_USER: str = os.environ.get(_ENV_AUTH_USER, _DEFAULT_AUTH_USER)
 AUTH_PASSWORD: str = os.environ.get(_ENV_AUTH_PASSWORD, _DEFAULT_AUTH_PASSWORD)
+
+# Sign in with Google. Empty means the dashboard falls back to basic auth, which
+# is what keeps a deployment that has not been given an OAuth client yet from
+# locking everybody out (see web.auth).
+GOOGLE_CLIENT_ID: str = os.environ.get(_ENV_GOOGLE_CLIENT_ID, "")
+GOOGLE_CLIENT_SECRET: str = os.environ.get(_ENV_GOOGLE_CLIENT_SECRET, "")
+# The same credential can serve sign-in and the mailbox, so one Google Cloud
+# client is enough; whichever pair is set is the one that is used.
+GMAIL_CLIENT_ID: str = os.environ.get(
+    _ENV_GMAIL_CLIENT_ID, os.environ.get(_ENV_GMAIL_CLIENT_ID_BARE, "")
+)
+GMAIL_CLIENT_SECRET: str = os.environ.get(
+    _ENV_GMAIL_CLIENT_SECRET, os.environ.get(_ENV_GMAIL_CLIENT_SECRET_BARE, "")
+)
+# Who may sign in. A list rather than a table: two addresses do not need a user
+# model, and the third one is an env var away.
+_DEFAULT_ALLOWED_EMAILS = "raphaelmankopf@gmail.com,lucas.neurauter@gmail.com"
+ALLOWED_EMAILS: str = os.environ.get(_ENV_ALLOWED_EMAILS, _DEFAULT_ALLOWED_EMAILS)
+# Optional. Left empty, web.google_auth generates one and keeps it beside the
+# database, so sessions survive a restart without anyone inventing a secret.
+SESSION_SECRET: str = os.environ.get(_ENV_SESSION_SECRET, "")
 BASE_URL: str = os.environ.get(_ENV_BASE_URL, _DEFAULT_BASE_URL).rstrip("/")
 GEMINI_API_KEY: str = os.environ.get(_ENV_GEMINI_API_KEY, _DEFAULT_GEMINI_API_KEY).strip()
 GEMINI_MODEL: str = os.environ.get(_ENV_GEMINI_MODEL, _DEFAULT_GEMINI_MODEL).strip()
@@ -413,11 +442,60 @@ def review_configured() -> bool:
 def base_url() -> str:
     """The address links in outgoing mail should point at.
 
-    Falls back to the configured bind, which is right locally and wrong the
-    moment the tool is deployed — hence NEWSPULSE_BASE_URL, and the deployment
-    guide telling you to set it.
+    Three sources, in order. An explicit NEWSPULSE_BASE_URL wins. Failing that,
+    the platform's own public hostname, because the bind address is useless
+    here: a container listens on 0.0.0.0, and "http://0.0.0.0:8080" is not an
+    address anything can come back to. That mattered little while this only
+    signed the links in outgoing mail; it decides whether sign-in works at all,
+    because Google compares the redirect URI it is given against the one
+    registered on the OAuth client and refuses the whole request on a mismatch.
     """
-    return BASE_URL or f"http://{WEB_HOST}:{WEB_PORT}"
+    if BASE_URL:
+        return BASE_URL
+    public = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+    if public:
+        return f"https://{public.rstrip('/')}"
+    return f"http://{WEB_HOST}:{WEB_PORT}"
+
+
+def google_client_id() -> str:
+    return os.environ.get(_ENV_GOOGLE_CLIENT_ID, GOOGLE_CLIENT_ID).strip()
+
+
+def google_client_secret() -> str:
+    return os.environ.get(_ENV_GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET).strip()
+
+
+def gmail_client_id() -> str:
+    """The OAuth client id, prefixed name first.
+
+    The unprefixed ``GMAIL_CLIENT_ID`` is read as a fallback because that is
+    what a Google credential is called everywhere else, and it is what somebody
+    pasting one into a deployment reaches for. Every other setting here carries
+    the NEWSPULSE_ prefix and this one does too when it is set; the fallback
+    exists so a correct-looking variable is not silently ignored.
+    """
+    return (
+        os.environ.get(_ENV_GMAIL_CLIENT_ID)
+        or os.environ.get(_ENV_GMAIL_CLIENT_ID_BARE)
+        or GMAIL_CLIENT_ID
+    ).strip()
+
+
+def gmail_client_secret() -> str:
+    return (
+        os.environ.get(_ENV_GMAIL_CLIENT_SECRET)
+        or os.environ.get(_ENV_GMAIL_CLIENT_SECRET_BARE)
+        or GMAIL_CLIENT_SECRET
+    ).strip()
+
+
+def allowed_emails() -> str:
+    return os.environ.get(_ENV_ALLOWED_EMAILS, ALLOWED_EMAILS).strip()
+
+
+def session_secret() -> str:
+    return os.environ.get(_ENV_SESSION_SECRET, SESSION_SECRET).strip()
 
 
 def database_url() -> str:

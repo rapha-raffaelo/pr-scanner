@@ -217,6 +217,63 @@ NEWSPULSE_SMTP_HOST=…
 NEWSPULSE_SMTP_RECIPIENT=…
 ```
 
+## Sign in with Google
+
+The dashboard prefers Google sign-in over the shared password. Configure it and
+basic auth stops being accepted at all — there is no state where both work,
+because a shared password that still opens the door makes the allow-list
+decorative.
+
+Four steps, and the third is the one everybody forgets.
+
+1. **Create an OAuth client.** Google Cloud Console → APIs & Services →
+   Credentials → Create credentials → OAuth client ID → **Web application**.
+   The type matters: a "Desktop app" client cannot carry the redirect URI below.
+
+2. **Set the consent screen.** Scopes `openid` and `email`, nothing else. Both
+   are non-sensitive, so Google does not require app verification. While the app
+   is in *Testing*, every address that should be able to sign in must also be
+   listed under **Test users** — otherwise Google refuses them before RauteOS is
+   ever asked.
+
+3. **Register the redirect URI, exactly.** Under *Authorised redirect URIs*:
+
+   ```
+   https://<your-domain>/auth/google/callback
+   ```
+
+   Down to the scheme, the host and the path. Google compares it verbatim and
+   rejects the whole request on any difference, before showing a consent screen —
+   which is why the error surfaces as `redirect_uri_mismatch` and not as
+   anything the app can explain.
+
+4. **Set the variables.**
+
+   ```
+   NEWSPULSE_GOOGLE_CLIENT_ID=<client id>
+   NEWSPULSE_GOOGLE_CLIENT_SECRET=<client secret>
+   NEWSPULSE_ALLOWED_EMAILS=raphaelmankopf@gmail.com,lucas.neurauter@gmail.com
+   ```
+
+   `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` are read as a fallback, so one
+   Google client can serve both sign-in and the mailbox.
+
+`NEWSPULSE_BASE_URL` decides the redirect URI the app sends. On Railway it is
+derived from `RAILWAY_PUBLIC_DOMAIN` when unset, so it usually needs no
+configuring; anywhere else, set it, or the app will hand Google its bind address
+and every sign-in will fail.
+
+Sessions are cookies signed with a key kept beside the database
+(`.session-secret`, mode 600), generated on first use. On Railway that is the
+mounted volume, so it survives a redeploy and nobody is signed out by one. It is
+next to the database rather than inside it so a database copy pulled down for
+local work cannot mint production sessions.
+
+**If sign-in breaks, you are not locked out.** Clear
+`NEWSPULSE_GOOGLE_CLIENT_ID` and `GMAIL_CLIENT_ID`; the app falls straight back
+to `NEWSPULSE_AUTH_USER` / `NEWSPULSE_AUTH_PASSWORD` on the next boot. Keep
+those two set for exactly that reason.
+
 ## Before you hand out the URL
 
 - `curl -I https://…/` returns **401**, not 200.
