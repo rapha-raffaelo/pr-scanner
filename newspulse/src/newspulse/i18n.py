@@ -396,6 +396,10 @@ _EN: dict[str, str] = {
     # would produce English words in German word order ("by X released and sent").
     "von %(who)s freigegeben und verschickt": "released and sent by %(who)s",
     "Ergebnis eingetragen": "Outcome recorded",
+    # The other half of the same line, and the reason there are two: since the
+    # mailbox is read, an outcome can be the sync's own entry, and "Ergebnis
+    # eingetragen" would then name an act nobody performed.
+    "Antwort im Postfach gelesen": "Reply read from the mailbox",
     "Was kam zurück": "What came back",
     "Bitte wählen": "Please choose",
     "In einem Satz: was kam zurück.": "In one sentence: what came back.",
@@ -437,6 +441,11 @@ _EN: dict[str, str] = {
         "quickly.",
     "Von RauteOS gesendet am": "Sent by RauteOS on",
     "Verlauf in Gmail öffnen": "Open the thread in Gmail",
+    # The chip on the answer box, and it says the mock's sentence rather than the
+    # timeline's: on the card the point is *which* conversation this came out of
+    # — the one this letter opened — because that is what makes it this letter's
+    # answer rather than a mail that mentions the same subject.
+    "Antwort im selben Verlauf": "Reply in the same thread",
     "Nicht verschickt.": "Not sent.",
     "Freigegeben und von RauteOS über Gmail verschickt":
         "Released, and sent by RauteOS through Gmail",

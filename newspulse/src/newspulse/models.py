@@ -770,6 +770,17 @@ class ClientFact(Base):
     )
 
 
+#: What :attr:`Outreach.outcome_by` holds when the mailbox sync recorded the
+#: outcome rather than a person. A token and not a name, the way
+#: ``ClientFact.filled_by`` and ``Outreach.released_by`` store "mensch": the only
+#: distinction the ledger has to keep is whether a human or the machine said it.
+#: Stored rather than inferred from state, note and timestamp — an inference is
+#: re-derived on every render and breaks the day a retention rule deletes the
+#: reply row it was reading, which would silently redraw a machine's line as a
+#: sentence a consultant typed.
+OUTCOME_BY_MAILBOX = "postfach"
+
+
 class Outreach(Base):
     """One personalised message: an impulse, written at a named recipient.
 
@@ -860,6 +871,13 @@ class Outreach(Base):
     #: one text on the row a human wrote, so the house rules that police generated
     #: prose have no business touching it.
     outcome_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: Who recorded the outcome — "mensch" for a line somebody typed,
+    #: :data:`OUTCOME_BY_MAILBOX` for the one the daily sync wrote off a reply.
+    #: Empty exactly while there is no outcome. The counterpart to
+    #: :attr:`released_by`, and for the same reason: "wer hat das gesagt" is the
+    #: first question anybody asks of a ledger line, and both pages that draw an
+    #: outcome have to answer it without guessing.
+    outcome_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
 
     # --- The thread in Gmail --------------------------------------------------
     #
@@ -907,6 +925,18 @@ class Outreach(Base):
         value is renamed.
         """
         return self.sent_through_gmail and self.state == OutreachState.RAUS
+
+    @property
+    def outcome_from_mailbox(self) -> bool:
+        """Whether the outcome standing on this row was written by the sync.
+
+        Both pages that draw an outcome ask this, because both used to draw
+        every outcome as something a person recorded — and for the one line the
+        mailbox writes itself that is a sentence nobody said. Read off the stored
+        author rather than compared against a token in a template, so a renamed
+        value cannot quietly turn every machine line back into a human's.
+        """
+        return self.outcome_by == OUTCOME_BY_MAILBOX
 
     #: What the journalist wrote back, oldest first — the order a conversation
     #: is read in. ``delete-orphan`` beside the database's own ``ON DELETE
@@ -995,6 +1025,7 @@ __all__ = [
     "Angle",
     "ClientFact",
     "Contact",
+    "OUTCOME_BY_MAILBOX",
     "Outreach",
     "OutreachReply",
     "OutreachState",

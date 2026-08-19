@@ -65,6 +65,7 @@ from sqlalchemy.orm import Session, selectinload
 from . import config, contacts, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import (
+    OUTCOME_BY_MAILBOX,
     SILENT_AFTER_DAYS,
     Analysis,
     Angle,
@@ -586,6 +587,9 @@ def record_outcome(
     row.state = wanted
     row.outcome_note = (note or "").strip()
     row.outcome_at = dt.datetime.now(dt.UTC)
+    # Signed, because the other writer of this field is a machine. There are no
+    # user accounts here, so the signature is the same token a release carries.
+    row.outcome_by = DEFAULT_RELEASED_BY
     session.add(row)
     session.commit()
     return row
@@ -619,6 +623,11 @@ def record_reply(session: Session, row: Outreach, *, at: dt.datetime) -> bool:
         return False
     row.state = OutreachState.ANTWORT
     row.outcome_at = at
+    # And signed as the machine's, so neither page ever draws this line as
+    # something a consultant typed. Stored rather than inferred at render time
+    # from state, note and timestamp: that inference reads the reply row, and a
+    # retention rule deleting one would turn this line back into a human's.
+    row.outcome_by = OUTCOME_BY_MAILBOX
     session.add(row)
     session.commit()
     return True
@@ -740,20 +749,19 @@ class TimelineEvent:
 def _outcome_is_the_reply(letter: Outreach) -> bool:
     """Whether the outcome on this letter is the one the sync recorded itself.
 
-    The ledger stores no author for an outcome, so this is inferred — and
-    inferred precisely, from what :func:`record_reply` is allowed to do and
-    nothing else: it sets ``ANTWORT``, it stamps ``outcome_at`` with a reply's
-    own received time, and it never writes a note, because only a person can.
-    A line matching all three came out of the mailbox.
+    Read off ``outcome_by``, which :func:`record_reply` and
+    :func:`record_outcome` each stamp with their own author. It was once
+    inferred from state, note and a matching reply timestamp; that inference was
+    re-run on every render and would have flipped the moment a retention rule
+    deleted the reply row it read — redrawing a machine's line as a consultant's
+    sentence in the one place in this tool that exists to be audited.
 
     It matters because the file draws every outcome as "von Hand eingetragen",
     which for this one would be a sentence nobody said. The reply itself is
     already on the timeline, at the same moment, with its text and its own
     marker — so the outcome line is dropped rather than mislabelled.
     """
-    if letter.state != OutreachState.ANTWORT or letter.outcome_note:
-        return False
-    return any(reply.received_at == letter.outcome_at for reply in letter.replies)
+    return letter.outcome_from_mailbox
 
 
 def timeline(history: list[HistoryEntry]) -> list[TimelineEvent]:
@@ -911,6 +919,10 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
 
     One query for the page rather than one per card: the client view renders up to
     five impulses and the Today column renders one per mandate.
+
+    The replies come along in one further query for the same reason: every
+    released card draws the answers filed against it, and a lazy load would be
+    one round trip per letter on a page that renders a dozen.
     """
     if not angle_ids:
         return {}
@@ -918,6 +930,7 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
     for row in session.scalars(
         select(Outreach)
         .where(Outreach.angle_id.in_(angle_ids))
+        .options(selectinload(Outreach.replies))
         .order_by(Outreach.generated_at.desc(), Outreach.id.desc())
     ).all():
         grouped.setdefault(row.angle_id, []).append(row)
