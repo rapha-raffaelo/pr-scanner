@@ -49,6 +49,7 @@ import datetime as dt
 import json
 import logging
 from dataclasses import dataclass
+from enum import StrEnum
 from importlib import resources
 from string import Template
 
@@ -581,6 +582,76 @@ class Tally:
     still: int
 
 
+class TimelineKind(StrEnum):
+    """The two kinds of line a file holds, which are also the two sources.
+
+    ``RELEASE`` is stamped by the machine the moment a person pressed the button;
+    ``OUTCOME`` is a sentence somebody typed afterwards. The page has to tell them
+    apart, so the distinction is a value rather than a template condition.
+    """
+
+    RELEASE = "release"
+    OUTCOME = "outcome"
+
+
+@dataclass(frozen=True, slots=True)
+class TimelineEvent:
+    """One line on a contact's timeline, with the moment it belongs to."""
+
+    at: dt.datetime
+    kind: TimelineKind
+    letter: Outreach
+    mandate: str
+
+
+def timeline(history: list[HistoryEntry]) -> list[TimelineEvent]:
+    """Every line the file renders, strictly newest first.
+
+    A letter contributes up to two lines and they carry *different* timestamps:
+    the release, and the outcome recorded later. So the outcome cannot simply be
+    drawn above the letter it belongs to — a reply typed yesterday to a pitch from
+    July belongs at the top of the page, above a letter released last week, and
+    nesting the two would put July's reply below it. That interleaving is the
+    common case, not an exotic one: a journalist answering an older pitch after a
+    newer one has gone out is an ordinary week.
+
+    Flattened here rather than in the template because "newest first" is a sort,
+    and Jinja cannot do one over two timestamps on the same row.
+    """
+    events: list[TimelineEvent] = []
+    for entry in history:
+        letter = entry.letter
+        events.append(
+            TimelineEvent(
+                # Never None: ``history_for_contact`` selects released rows only.
+                at=letter.released_at,
+                kind=TimelineKind.RELEASE,
+                letter=letter,
+                mandate=entry.mandate,
+            )
+        )
+        if letter.outcome_at is not None:
+            events.append(
+                TimelineEvent(
+                    at=letter.outcome_at,
+                    kind=TimelineKind.OUTCOME,
+                    letter=letter,
+                    mandate=entry.mandate,
+                )
+            )
+    # Ties are broken the way the query already breaks them (newest id first), and
+    # an outcome sharing its letter's second sits above the release it answers.
+    events.sort(
+        key=lambda event: (
+            event.at,
+            event.letter.id,
+            event.kind is TimelineKind.OUTCOME,
+        ),
+        reverse=True,
+    )
+    return events
+
+
 def history_for_contact(session: Session, contact_id: int) -> list[HistoryEntry]:
     """Every released letter to one contact, newest first, across all mandates.
 
@@ -674,6 +745,8 @@ __all__ = [
     "STATE_LABELS",
     "HistoryEntry",
     "Tally",
+    "TimelineEvent",
+    "TimelineKind",
     "by_angle",
     "crosscheck",
     "days_out",
@@ -686,4 +759,5 @@ __all__ = [
     "released_count_by_contact",
     "store",
     "tally",
+    "timeline",
 ]

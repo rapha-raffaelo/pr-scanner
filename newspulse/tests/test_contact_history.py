@@ -196,6 +196,60 @@ def test_a_draft_never_appears_in_the_file(session):
     assert [entry.letter.id for entry in history] == [released.id]
 
 
+def _interleaved(session) -> tuple[int, Outreach, Outreach]:
+    """The ordinary week the nested layout got wrong: a reply to a pitch from
+    July, typed *after* a second pitch had already gone out last week."""
+    kuehn = contacts.save(session, name="Marlene Kühn", outlet="Handelsblatt")
+    client, angle = _mandate(session, "Nordlicht Energie")
+    older = _letter(
+        session, client, angle, contact_id=kuehn.id,
+        subject="Der teure Weg ans Netz",
+        released_at=_NOW - dt.timedelta(days=40),
+        state=OutreachState.ANTWORT,
+        outcome_at=_NOW - dt.timedelta(days=1),
+        outcome_note="Will die Auswertung sehen, Rückruf Donnerstag.",
+    )
+    newer = _letter(
+        session, client, angle, contact_id=kuehn.id,
+        subject="Anschlussdauer statt Netzentgelt",
+        released_at=_NOW - dt.timedelta(days=5), state=OutreachState.RAUS,
+    )
+    return kuehn.id, older, newer
+
+
+def test_a_late_outcome_sorts_above_a_newer_letters_release(session):
+    """Newest first means *every* line, not every letter.
+
+    The two kinds of line carry different timestamps, so drawing an outcome under
+    the letter it answers files yesterday's reply below last week's release — the
+    page would read 14.08. → 18.08. → 10.07. and the AC asks for one descending
+    order.
+    """
+    contact_id, older, newer = _interleaved(session)
+
+    events = outreach.timeline(outreach.history_for_contact(session, contact_id))
+
+    assert [(event.kind, event.letter.id) for event in events] == [
+        (outreach.TimelineKind.OUTCOME, older.id),
+        (outreach.TimelineKind.RELEASE, newer.id),
+        (outreach.TimelineKind.RELEASE, older.id),
+    ]
+    assert [event.at for event in events] == sorted(
+        (event.at for event in events), reverse=True
+    )
+
+
+def test_the_rendered_timeline_runs_newest_first(web, factory):
+    with factory() as session:
+        contact_id, _, _ = _interleaved(session)
+
+    body = web.get("/contacts", params={"id": contact_id}).text
+
+    # The reply typed yesterday, then last week's letter, then July's.
+    assert body.index("18.08.2026") < body.index("14.08.2026")
+    assert body.index("14.08.2026") < body.index("10.07.2026")
+
+
 def test_another_journalists_letters_stay_out_of_this_file(session):
     kuehn = contacts.save(session, name="Marlene Kühn", outlet="Handelsblatt")
     reh = contacts.save(session, name="Tobias Reh", outlet="Süddeutsche Zeitung")

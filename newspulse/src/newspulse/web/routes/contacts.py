@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
@@ -32,20 +32,26 @@ _SEE_OTHER = 303
 
 
 def _days_since_last(history: list[outreach.HistoryEntry]) -> int | None:
-    """Whole days since the newest released letter, or ``None`` with no history.
+    """Calendar days since the newest released letter, or ``None`` with none.
+
+    Counted between *local calendar dates* rather than as elapsed hours, because
+    the template turns 0 and 1 into the words "heute" and "gestern" and every date
+    beside them is rendered in the reader's zone. Elapsed time would say "zuletzt
+    angeschrieben heute" over a timeline entry dated yesterday for any letter
+    released late in the evening. ``days_out`` on the letter card keeps the
+    elapsed arithmetic: it says "seit 14 Tagen", never a calendar word.
 
     Computed here rather than in the template because it is arithmetic on a
-    timestamp, and Jinja is the wrong place for that — same posture as the
-    silence marker on the letter card.
+    timestamp, and Jinja is the wrong place for that.
     """
     if not history:
         return None
-    latest = history[0].letter.released_at
-    return max((dt.datetime.now(dt.UTC) - latest).days, 0)
+    zone = config.local_zone()
+    latest = history[0].letter.released_at.astimezone(zone).date()
+    return max((dt.datetime.now(zone).date() - latest).days, 0)
 
 
 def _page_context(
-    request: Request,
     session: Session,
     *,
     q: str = "",
@@ -68,6 +74,7 @@ def _page_context(
         "editing": editing,
         "selected": selected,
         "history": history,
+        "timeline": outreach.timeline(history),
         "tallies": outreach.tally(history),
         "letter_counts": outreach.released_count_by_contact(session),
         "last_written_days": _days_since_last(history),
@@ -91,7 +98,9 @@ def contact_book(
     name: str = "",
     outlet: str = "",
     edit: int | None = None,
-    id: int | None = None,
+    # The URL keeps ``?id=`` — the alias — while the local name does not shadow
+    # the builtin ``id`` for the rest of the function.
+    contact: int | None = Query(None, alias="id"),
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """The book, the form for one entry, and the file of one journalist.
@@ -114,13 +123,12 @@ def contact_book(
     term = q or search
     existing = contacts.find(session, name, outlet) if name else None
     editing = session.get(contacts.Contact, edit) if edit else existing
-    selected = session.get(contacts.Contact, id) if id else None
+    selected = session.get(contacts.Contact, contact) if contact else None
 
     return templates.TemplateResponse(
         request,
         "contacts.html",
         _page_context(
-            request,
             session,
             q=term,
             editing=editing,
@@ -168,7 +176,6 @@ def save_contact(
             request,
             "contacts.html",
             _page_context(
-                request,
                 session,
                 prefill_name=name,
                 prefill_outlet=outlet,
