@@ -280,19 +280,22 @@ def clear(session: Session, client_id: int, ids: Sequence[int]) -> int:
     return removed
 
 
-def _refused(session: Session, client_id: int) -> dict[str, ProfileProposal]:
-    """What this client has already said no to, keyed by field.
+def _refused(session: Session, client_id: int) -> set[tuple[str, str]]:
+    """Every (field, value) this client has already said no to.
 
-    One row per field at most — the UNIQUE (client_id, key) sees to that — so a
-    dict is the whole answer rather than a convenience.
+    Pairs rather than one row per field: the refusal is of a sentence, and a
+    field collects as many of them as the web has offered wrong answers for it.
+    "Not this CEO" said in March must still be a "no" after a different name was
+    refused in April, which is why the schema's uniqueness covers the open rows
+    only (see :class:`~newspulse.models.ProfileProposal`).
     """
-    rows = session.scalars(
-        select(ProfileProposal).where(
+    rows = session.execute(
+        select(ProfileProposal.key, ProfileProposal.value).where(
             ProfileProposal.client_id == client_id,
             ProfileProposal.discarded_at.is_not(None),
         )
     ).all()
-    return {row.key: row for row in rows}
+    return {(key, value) for key, value in rows}
 
 
 def _unrefused(
@@ -313,8 +316,8 @@ def _unrefused(
       would only put a row on file that nothing can display and nobody can clear.
 
     Dropped here rather than in :func:`_as_rows` so the key never enters the
-    ``covered`` set either: a field the read did cover is *replaced*, and that
-    would delete the very refusal this function just read.
+    ``covered`` set either: a field the read did cover is *replaced*, and a
+    repeated-and-refused value would otherwise take its own refusal with it.
     """
     refused = _refused(session, client_id)
     keep: list[profile.Proposal] = []
@@ -322,8 +325,7 @@ def _unrefused(
         if not item.source_url:
             _log.debug("profile refresh: %r came back without a source", item.key)
             continue
-        already = refused.get(item.key)
-        if already is not None and already.value == item.value:
+        if (item.key, item.value) in refused:
             continue
         keep.append(item)
     return keep
@@ -369,18 +371,34 @@ def _as_rows(
     return rows
 
 
+def _unchanged(standing: ProfileProposal, found: ProfileProposal) -> bool:
+    """Whether a stored proposal and a fresh one are the same offer, id apart.
+
+    ``previous_value`` counts as part of the offer: a row still proposing Paris
+    against a profile that no longer says Berlin is arguing against something
+    else now, and it is a different thing to decide.
+    """
+    return (
+        standing.value == found.value
+        and standing.source_url == found.source_url
+        and standing.source_title == found.source_title
+        and standing.previous_value == found.previous_value
+    )
+
+
 def _replace(
     session: Session,
     client_id: int,
     rows: Sequence[ProfileProposal],
     *,
     covered: Iterable[str],
-) -> None:
-    """Swap this client's proposals for the fields this read actually covered.
+) -> int:
+    """Swap this client's open proposals for the fields this read actually
+    covered, and say how many rows are genuinely new.
 
     Replacing rather than adding: a second refresh finding the same three changes
-    must leave three proposals, not six. The UNIQUE (client_id, key) is the
-    schema-level backstop for the same promise.
+    must leave three proposals, not six. The partial UNIQUE (client_id, key) over
+    the open rows is the schema-level backstop for the same promise.
 
     Scoped to ``covered`` — the keys the answer came back with — rather than the
     client's whole outstanding set, because a grounded search that returns a thin
@@ -389,16 +407,48 @@ def _replace(
     undecided "CEO changed" nobody had got to yet, which is the one thing a
     proposal store must not do. A field the new read did cover is replaced, even
     when it now agrees with the profile: that proposal has been answered.
+
+    Two rows survive a replace, and each for its own reason.
+
+    * **A refusal.** Only the open rows are swept; a stamped one is this
+      mandate's record of a decision and is not the read's to overwrite (see
+      :func:`discard`). Sweeping it would put the refused value back on the page
+      the next time a website repeated it.
+    * **An offer that has not changed.** Same value, same source, same value
+      argued against — deleting and re-inserting it would hand it a new id for no
+      reason, and the review page's buttons carry ids. The consultant's open tab
+      would then click on rows that no longer exist and quietly do nothing.
     """
     keys = sorted(set(covered))
-    if keys:
-        session.execute(
-            delete(ProfileProposal).where(
+    if not keys:
+        return 0
+    standing = {
+        row.key: row
+        for row in session.scalars(
+            select(ProfileProposal).where(
                 ProfileProposal.client_id == client_id,
                 ProfileProposal.key.in_(keys),
+                ProfileProposal.discarded_at.is_(None),
             )
-        )
-    session.add_all(rows)
+        ).all()
+    }
+    fresh: list[ProfileProposal] = []
+    stale: list[int] = []
+    for row in rows:
+        previous = standing.pop(row.key, None)
+        if previous is not None and _unchanged(previous, row):
+            continue
+        if previous is not None:
+            stale.append(previous.id)
+        fresh.append(row)
+    # Whatever is left in ``standing`` was covered by this read and is not among
+    # its findings any more: the field now agrees with the profile, so the
+    # question it asked has been answered.
+    stale.extend(row.id for row in standing.values())
+    if stale:
+        session.execute(delete(ProfileProposal).where(ProfileProposal.id.in_(stale)))
+    session.add_all(fresh)
+    return len(fresh)
 
 
 def _mark_checked(
@@ -473,7 +523,7 @@ def refresh(
             raise
         fresh = _unrefused(session, client.id, found)
         rows = _as_rows(session, client, fresh, now=now, proposed_by=author)
-        _replace(session, client.id, rows, covered={item.key for item in fresh})
+        stored = _replace(session, client.id, rows, covered={item.key for item in fresh})
         _mark_checked(session, client, now)
         total = len(outstanding(session, client.id))
     _log.info(
@@ -482,7 +532,10 @@ def refresh(
         client.name,
         len(found),
         len(found) - len(fresh),
-        len(rows),
+        # What was actually filed. A finding identical to the row already on the
+        # page keeps that row and its id, and counting it as new would report
+        # movement on a morning when nothing moved.
+        stored,
         total,
     )
     return total

@@ -880,6 +880,50 @@ def test_a_different_value_for_a_discarded_field_is_proposed_again(session):
     ] == [("ceo", "Die Neue")]
 
 
+def test_a_refusal_outlives_a_different_finding_for_the_same_field(session):
+    """The refusals are a list and not a slot. A second wrong CEO must not erase
+    the memory of the first one, or the first is back on the page the next time
+    a website repeats it."""
+    client = _client(session)
+    profile_refresh.refresh(session, client, now=_NOW, generate=_answer(ceo="Der Falsche"))
+    profile_refresh.discard(
+        session, client.id,
+        [p.id for p in profile_refresh.outstanding(session, client.id)], now=_NOW,
+    )
+    # A different name arrives, is filed beside the refusal, and is refused too.
+    profile_refresh.refresh(
+        session, client, now=_NOW + dt.timedelta(days=61), generate=_answer(ceo="Die Neue")
+    )
+    profile_refresh.discard(
+        session, client.id,
+        [p.id for p in profile_refresh.outstanding(session, client.id)], now=_NOW,
+    )
+
+    profile_refresh.refresh(
+        session, client, now=_NOW + dt.timedelta(days=122),
+        generate=_answer(ceo="Der Falsche"),
+    )
+
+    assert profile_refresh.outstanding(session, client.id) == [], (
+        "the first no still stands"
+    )
+
+
+def test_a_proposal_nothing_changed_about_keeps_its_id(session):
+    """The review page's buttons carry row ids. A refresh that re-reads the same
+    sentence and re-files it under a new id turns every open tab into a page
+    whose buttons silently do nothing."""
+    client = _client(session)
+    profile_refresh.refresh(session, client, now=_NOW, generate=_answer(sitz="Paris"))
+    drawn = profile_refresh.outstanding(session, client.id)[0].id
+
+    profile_refresh.refresh(
+        session, client, now=_NOW + dt.timedelta(days=61), generate=_answer(sitz="Paris")
+    )
+
+    assert [p.id for p in profile_refresh.outstanding(session, client.id)] == [drawn]
+
+
 def test_discarding_names_the_rows_and_not_the_field(session):
     """A field name means "whatever is proposed for the CEO right now". Between
     the page being drawn and the button being pressed that can be a different
