@@ -104,6 +104,9 @@
           </div>
         </div>
       {% endfor %}
+      {# Both buttons act on the ticked rows: übernehmen takes them, Verwerfen
+         throws them away. With nothing ticked the discard clears the client's
+         whole pile, which is what it always did. #}
       <div class="props__act">
         <button type="submit" class="btn">{{ t("Ausgewählte übernehmen") }}</button>
         <button type="submit" class="btn btn--ghost" formaction="/client/{{ client.id }}/profil/discard">
