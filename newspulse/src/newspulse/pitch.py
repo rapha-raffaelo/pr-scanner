@@ -205,40 +205,84 @@ def _field_outlets(
     )
 
 
+def _fold(value: str | None) -> str:
+    """One spelling of "the same name, however it was typed", used on both sides
+    of every comparison in this module — the way the contact book folds it."""
+    return (value or "").strip().casefold()
+
+
+@dataclass(frozen=True, slots=True)
+class _Pitched:
+    """Released letters for one angle, indexed the two ways a recipient can be
+    recognised — and both indexes are needed.
+
+    The ledger links a letter to a contact row when the book knew the byline at
+    release (``Outreach.contact_id``), and that link is the *stronger* fact: it
+    survives the two feed spellings of one masthead — "Handelsblatt" and
+    "Handelsblatt Online" — that make the byline key miss. So the contact is
+    asked first and the byline second, which is what keeps an unlinked letter,
+    written before the contact existed, still marking its recipient.
+    """
+
+    by_contact: dict[int, dt.datetime]
+    by_byline: dict[tuple[str, str], dt.datetime]
+
+    def when(
+        self, contact_id: int | None, journalist: str | None, outlet: str
+    ) -> dt.datetime | None:
+        """When a released letter for this angle last reached this recipient."""
+        if contact_id is not None and contact_id in self.by_contact:
+            return self.by_contact[contact_id]
+        return self.by_byline.get((_fold(journalist), _fold(outlet)))
+
+
 def _already_pitched(
     session: Session, angle: Angle | None, reference: dt.datetime
-) -> dict[tuple[str, str], dt.datetime]:
-    """(journalist, outlet) → when a released letter for this angle last went to
-    them, within :data:`ALREADY_PITCHED_DAYS`.
+) -> _Pitched:
+    """When a released letter for this angle last went to each recipient, within
+    :data:`ALREADY_PITCHED_DAYS`.
 
     Only released letters count: a draft reached nobody, and marking one would
     claim a contact that never happened. Keyed case-insensitively the way the
     contact book matches, because the feed writes "Maria Berg" and the letter may
-    carry "maria berg".
+    carry "maria berg" — and keyed by the linked contact as well, because two
+    spellings of one masthead are the ordinary case and must not hide the letter
+    that already went out.
     """
     if angle is None:
-        return {}
+        return _Pitched(by_contact={}, by_byline={})
     since = reference - dt.timedelta(days=ALREADY_PITCHED_DAYS)
     rows = session.execute(
-        select(Outreach.journalist, Outreach.outlet, Outreach.released_at)
-        .where(
+        select(
+            Outreach.contact_id,
+            Outreach.journalist,
+            Outreach.outlet,
+            Outreach.released_at,
+        ).where(
             Outreach.angle_id == angle.id,
             Outreach.released_at.is_not(None),
             Outreach.released_at >= since,
         )
     ).all()
-    latest: dict[tuple[str, str], dt.datetime] = {}
-    for journalist, outlet, released in rows:
-        key = ((journalist or "").casefold(), (outlet or "").casefold())
-        if key not in latest or released > latest[key]:
-            latest[key] = released
-    return latest
+    by_contact: dict[int, dt.datetime] = {}
+    by_byline: dict[tuple[str, str], dt.datetime] = {}
+
+    def _keep_latest(index: dict, key: object, released: dt.datetime) -> None:
+        """The mark carries a date, so the newest letter is the one that counts."""
+        if key not in index or released > index[key]:
+            index[key] = released
+
+    for contact_id, journalist, outlet, released in rows:
+        _keep_latest(by_byline, (_fold(journalist), _fold(outlet)), released)
+        if contact_id is not None:
+            _keep_latest(by_contact, contact_id, released)
+    return _Pitched(by_contact=by_contact, by_byline=by_byline)
 
 
 def _enrich(
     session: Session,
     target: PitchTarget,
-    pitched: dict[tuple[str, str], dt.datetime],
+    pitched: _Pitched,
 ) -> PitchTarget:
     """What the book and the ledger already know about this byline.
 
@@ -246,6 +290,9 @@ def _enrich(
     consultant typed into the contact book — the only source of contact details in
     the tool — and whether this angle already went to this person, released and
     dated, so the list warns before proposing the same subject to them twice.
+
+    Order matters: the book is consulted first so the ledger can be asked about
+    the *contact* it resolved, not only about the two strings on the row.
     """
     known = (
         contactbook.find(session, target.journalist, target.outlet)
@@ -254,9 +301,7 @@ def _enrich(
     )
     if known is not None:
         target = replace(target, contact_id=known.id, contact_email=known.email)
-    written = pitched.get(
-        ((target.journalist or "").casefold(), target.outlet.casefold())
-    )
+    written = pitched.when(target.contact_id, target.journalist, target.outlet)
     if written is not None:
         target = replace(target, already_pitched_at=written)
     return target
@@ -284,7 +329,7 @@ def targets_for(
     seen: set[tuple[str, str | None]] = set()
 
     def _add(target: PitchTarget) -> None:
-        key = (target.outlet.casefold(), (target.journalist or "").casefold() or None)
+        key = (_fold(target.outlet), _fold(target.journalist) or None)
         if key in seen or len(targets) >= MAX_TARGETS:
             return
         seen.add(key)

@@ -665,6 +665,30 @@ def test_the_recipient_is_matched_however_the_name_was_cased(session):
     assert target.already_pitched_at == sent
 
 
+def test_the_same_person_at_another_masthead_spelling_still_marks_the_target(session):
+    """The link the ledger wrote beats the two strings on the row.
+
+    One masthead arrives from two feeds as "Handelsblatt" and "Handelsblatt
+    Online", so a mark that keys only on (journalist, outlet) misses the letter
+    that demonstrably went to this contact — and the second identical approach,
+    the one this mark exists to prevent, goes out unwarned.
+    """
+    client, angle = _pitchable(session)
+    kuehn = contacts.save(session, name="Marlene Kühn", outlet="Handelsblatt")
+    sent = _NOW - dt.timedelta(days=4)
+    row = _letter(
+        session, client, angle, journalist="Marlene Kühn",
+        outlet="Handelsblatt Online", contact_id=kuehn.id,
+        released_at=sent, state=OutreachState.RAUS,
+    )
+
+    target = _kuehn(pitch.targets_for(session, client, angle, now=_NOW))
+
+    assert row.contact_id == kuehn.id
+    assert target.contact_id == kuehn.id
+    assert target.already_pitched_at == sent
+
+
 def test_the_pitch_list_shows_the_date_it_already_went_out(web, factory):
     with factory() as session:
         client, angle = _pitchable(session)
