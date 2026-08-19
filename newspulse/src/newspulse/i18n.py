@@ -799,6 +799,47 @@ _EN: dict[str, str] = {
     "Kein Feed in diesem Zeitraum hat einen Autor mitgeliefert.":
         "No feed supplied an author in this period.",
     "Tage": "days",
+    # --- The mailbox connection (OUT-03) -------------------------------------
+    # "Postfach" rather than "Gmail": the panel is about the mailbox the letters
+    # go out through, and the provider is an implementation detail of it.
+    "Postfach": "Mailbox",
+    "Postfach verbinden": "Connect mailbox",
+    "Postfach trennen": "Disconnect mailbox",
+    "Verbunden als": "Connected as",
+    "seit": "since",
+    "Kein Postfach verbunden.": "No mailbox connected.",
+    "Nachrichten lesen": "Read messages",
+    "Nachrichten senden": "Send messages",
+    "Google fragt genau diese beiden Rechte ab, mehr wird nicht angefordert:":
+        "Google asks for exactly these two permissions and nothing more:",
+    "Die Adresse stammt aus dem Gmail-Profil dieses Kontos, nicht aus einer Eingabe.":
+        "The address comes from this account's Gmail profile, not from anything typed in.",
+    "ohne OAuth-Client bei Google lässt sich kein Postfach verbinden. "
+    "NEWSPULSE_GMAIL_CLIENT_ID und NEWSPULSE_GMAIL_CLIENT_SECRET setzen.":
+        "without an OAuth client at Google no mailbox can be connected. Set "
+        "NEWSPULSE_GMAIL_CLIENT_ID and NEWSPULSE_GMAIL_CLIENT_SECRET.",
+    "Einrichtung in der Deployment-Notiz": "Setup in the deployment note",
+    "Der Zugang liegt als Datei neben der Datenbank, nur für den Eigentümer lesbar, "
+    "und nie in einer Tabelle — damit ihn weder eine Datenbankkopie noch der "
+    "Excel-Export aus der Maschine trägt.":
+        "The credential lives in a file beside the database, readable by its owner "
+        "only, and never in a table — so that neither a database copy nor the Excel "
+        "export can carry it off the machine.",
+    "Postfach verbunden.": "Mailbox connected.",
+    "Postfach getrennt und der Zugriff bei Google widerrufen.":
+        "Mailbox disconnected and the access revoked at Google.",
+    "Der Zugang wurde hier gelöscht, der Widerruf bei Google ließ sich aber nicht "
+    "bestätigen. Bitte im Google-Konto unter „Drittanbieter-Apps“ nachsehen.":
+        "The credential was deleted here, but the revocation at Google could not be "
+        "confirmed. Please check the Google account under \"Third-party apps\".",
+    "Die Freigabe wurde bei Google abgebrochen. Es wurde nichts gespeichert.":
+        "Consent was cancelled at Google. Nothing was stored.",
+    "Die Rückmeldung von Google gehörte nicht zu dieser Anfrage. Es wurde nichts verbunden.":
+        "Google's answer did not belong to this request. Nothing was connected.",
+    "Die Verbindung mit Google ist fehlgeschlagen. Es wurde nichts gespeichert.":
+        "The connection to Google failed. Nothing was stored.",
+    "Der Zugriff wurde bei Google entzogen, die Verbindung wurde deshalb beendet.":
+        "Access was withdrawn at Google, so the connection was ended.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

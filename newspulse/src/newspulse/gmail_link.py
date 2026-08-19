@@ -268,6 +268,18 @@ def _fetch(
         raise GmailError(f"Google antwortete nicht innerhalb von {_TIMEOUT}s") from exc
 
 
+def _caller(fetch: Fetch | None) -> Fetch:
+    """The injected call, or the real one.
+
+    Resolved per call rather than as a default argument. ``fetch: Fetch = _fetch``
+    binds the function object at import, which would leave this module's single
+    network boundary as the one thing a caller could not replace without
+    threading it through every call site — including the web routes, where the
+    point is that a request handler knows nothing about how Google is reached.
+    """
+    return fetch or _fetch
+
+
 def _error_text(payload: dict[str, Any]) -> str:
     """Google's error as one line: the code, plus its description when there is one.
 
@@ -343,7 +355,7 @@ def _parse_time(raw: object) -> dt.datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.UTC)
 
 
-def exchange(code: str, *, fetch: Fetch = _fetch) -> Link:
+def exchange(code: str, *, fetch: Fetch | None = None) -> Link:
     """Turn the callback's one-time code into a stored connection.
 
     The profile is fetched *before* anything is written, so a mailbox that
@@ -351,7 +363,8 @@ def exchange(code: str, *, fetch: Fetch = _fetch) -> Link:
     address that lands in the file is Google's answer, which is the whole reason
     Settings can show one at all.
     """
-    payload = fetch(
+    call = _caller(fetch)
+    payload = call(
         _TOKEN_ENDPOINT,
         form={
             "code": code,
@@ -372,7 +385,7 @@ def exchange(code: str, *, fetch: Fetch = _fetch) -> Link:
         raise GmailError("Google lieferte keinen Refresh-Token zurück")
 
     now = _now()
-    found = _profile(access, fetch=fetch)
+    found = _profile(access, fetch=call)
     scopes = _granted_scopes(payload)
     _write(
         {
@@ -390,7 +403,7 @@ def exchange(code: str, *, fetch: Fetch = _fetch) -> Link:
     return Link(email=found.email, scopes=scopes, connected_at=now)
 
 
-def token(*, fetch: Fetch = _fetch, now: dt.datetime | None = None) -> str | None:
+def token(*, fetch: Fetch | None = None, now: dt.datetime | None = None) -> str | None:
     """A usable access token, refreshed if the stored one has expired.
 
     ``None`` means no mailbox is connected — including the case where Google has
@@ -402,6 +415,7 @@ def token(*, fetch: Fetch = _fetch, now: dt.datetime | None = None) -> str | Non
     Any *other* token error does raise. "Google had a bad minute" must not delete
     a working credential.
     """
+    call = _caller(fetch)
     stored = _read()
     refresh = str(stored.get("refresh_token") or "")
     if not refresh:
@@ -413,7 +427,7 @@ def token(*, fetch: Fetch = _fetch, now: dt.datetime | None = None) -> str | Non
         if moment < expires_at - dt.timedelta(seconds=_EXPIRY_SKEW_SECONDS):
             return access
 
-    payload = fetch(
+    payload = call(
         _TOKEN_ENDPOINT,
         form={
             "client_id": config.gmail_client_id(),
@@ -440,9 +454,9 @@ def token(*, fetch: Fetch = _fetch, now: dt.datetime | None = None) -> str | Non
     return fresh
 
 
-def _profile(access: str, *, fetch: Fetch = _fetch) -> Profile:
+def _profile(access: str, *, fetch: Fetch | None = None) -> Profile:
     """The Gmail profile behind one access token."""
-    payload = fetch(_PROFILE_ENDPOINT, token=access)
+    payload = _caller(fetch)(_PROFILE_ENDPOINT, token=access)
     if payload.get("error"):
         detail = payload.get("error")
         message = detail.get("message") if isinstance(detail, dict) else _error_text(payload)
@@ -459,16 +473,17 @@ def _profile(access: str, *, fetch: Fetch = _fetch) -> Profile:
     )
 
 
-def profile(*, fetch: Fetch = _fetch) -> Profile:
+def profile(*, fetch: Fetch | None = None) -> Profile:
     """Ask Gmail who this is — the proof behind "verbunden als …".
 
     Raises when nothing is connected: a caller asking for the profile of no
     mailbox has a bug, unlike a caller asking for a token.
     """
-    access = token(fetch=fetch)
+    call = _caller(fetch)
+    access = token(fetch=call)
     if access is None:
         raise GmailError("Kein Postfach verbunden")
-    return _profile(access, fetch=fetch)
+    return _profile(access, fetch=call)
 
 
 def connected() -> Link | None:
@@ -490,7 +505,7 @@ def connected() -> Link | None:
     )
 
 
-def disconnect(*, fetch: Fetch = _fetch) -> bool:
+def disconnect(*, fetch: Fetch | None = None) -> bool:
     """Revoke the token at Google and delete the local file.
 
     Returns whether Google confirmed the revocation. The file goes either way:
@@ -503,7 +518,7 @@ def disconnect(*, fetch: Fetch = _fetch) -> bool:
     revoked = False
     if refresh:
         try:
-            payload = fetch(_REVOKE_ENDPOINT, form={"token": refresh})
+            payload = _caller(fetch)(_REVOKE_ENDPOINT, form={"token": refresh})
             revoked = not payload.get("error")
             if not revoked:
                 _log.warning("Google refused the revocation: %s", _error_text(payload))

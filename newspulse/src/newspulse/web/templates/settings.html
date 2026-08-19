@@ -333,6 +333,27 @@
     background: var(--surface); color: var(--accent); cursor: pointer; margin-left: auto;
   }
   .panel .feedgroup__all:hover { border-color: var(--accent); }
+  /* --- The mailbox connection -------------------------------------------
+     The status line reads like the mailbar in the locked mock: a dot, then the
+     account in the operator's own words. Green only when a mailbox actually
+     answered a profile call — an "almost connected" green is the one thing this
+     panel must never show. */
+  .mailbox__row { display: flex; align-items: baseline; gap: 0.45rem; flex-wrap: wrap; }
+  .mailbox__dot {
+    width: 8px; height: 8px; border-radius: 50%; flex: none;
+    background: var(--muted); align-self: center;
+  }
+  .mailbox__dot--on { background: #047857; }
+  .mailbox__who { font-weight: 600; color: var(--text); }
+  .mailbox__scopes {
+    display: flex; gap: 0.35rem; flex-wrap: wrap; list-style: none;
+    margin: 0.5rem 0 0.7rem; padding: 0;
+  }
+  .mailbox__scope {
+    font-size: var(--t-caption); color: var(--muted); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px;
+  }
+  .mailbox__why { color: var(--muted); font-size: var(--t-caption); }
   .run-errors { margin: 0.25rem 0 0; padding-left: 1rem; color: var(--alert); }
   .run-form .filter-field { min-width: 260px; }
   .run-form select { margin-bottom: 0; }
@@ -637,6 +658,73 @@
       {% endif %}
       <p class="panel-hint">
         {{ t("Der Schlüssel wird als Umgebungsvariable gesetzt, nicht hier — damit er nicht in der Datenbank landet, die im Klartext gesichert wird.") }}
+      </p>
+    </section>
+
+    {# ── The mailbox (OUT-03) ──
+       Three honest states and no fourth. Without an OAuth client there is no
+       connect button at all: a button that leads to invalid_client at Google is
+       worse than an absent one, because the operator only finds out after
+       handing over their mailbox. The connected address is read back from the
+       Gmail profile — this panel never shows a name somebody typed. #}
+    <section class="panel" id="gmail" aria-label="{{ t('Postfach') }}">
+      <h2>{{ t("Postfach") }}</h2>
+
+      {% if gmail_notice == 'verbunden' %}
+        <div class="notice notice--ok">{{ t("Postfach verbunden.") }}</div>
+      {% elif gmail_notice == 'getrennt' %}
+        <div class="notice notice--ok">{{ t("Postfach getrennt und der Zugriff bei Google widerrufen.") }}</div>
+      {% elif gmail_notice == 'widerruf-offen' %}
+        <div class="notice notice--error">{{ t("Der Zugang wurde hier gelöscht, der Widerruf bei Google ließ sich aber nicht bestätigen. Bitte im Google-Konto unter „Drittanbieter-Apps“ nachsehen.") }}</div>
+      {% elif gmail_notice == 'abgelehnt' %}
+        <div class="notice">{{ t("Die Freigabe wurde bei Google abgebrochen. Es wurde nichts gespeichert.") }}</div>
+      {% elif gmail_notice == 'state' %}
+        <div class="notice notice--error">{{ t("Die Rückmeldung von Google gehörte nicht zu dieser Anfrage. Es wurde nichts verbunden.") }}</div>
+      {% elif gmail_notice == 'fehler' %}
+        <div class="notice notice--error">{{ t("Die Verbindung mit Google ist fehlgeschlagen. Es wurde nichts gespeichert.") }}</div>
+      {% endif %}
+
+      {% if not gmail_configured %}
+        <p class="panel-hint">
+          {{ t("Nicht eingerichtet") }} —
+          {{ t("ohne OAuth-Client bei Google lässt sich kein Postfach verbinden. NEWSPULSE_GMAIL_CLIENT_ID und NEWSPULSE_GMAIL_CLIENT_SECRET setzen.") }}
+          <a href="{{ gmail_doc_url }}" target="_blank" rel="noopener">{{ t("Einrichtung in der Deployment-Notiz") }}</a>
+        </p>
+      {% elif gmail and gmail.is_connected %}
+        <div class="mailbox__row">
+          <span class="mailbox__dot mailbox__dot--on"></span>
+          <span>{{ t("Verbunden als") }} <span class="mailbox__who">{{ gmail.email }}</span></span>
+          {% if gmail.connected_at %}<span class="setup">{{ t("seit") }} {{ gmail.connected_at | de_datetime }}</span>{% endif %}
+        </div>
+        <ul class="mailbox__scopes">
+          {% for word in gmail.scope_words %}<li class="mailbox__scope">{{ t(word) }}</li>{% endfor %}
+        </ul>
+        <p class="panel-hint">
+          {{ t("Die Adresse stammt aus dem Gmail-Profil dieses Kontos, nicht aus einer Eingabe.") }}
+        </p>
+        <form method="post" action="/settings/gmail/disconnect">
+          <button type="submit" class="linkbtn linkbtn--danger">{{ t("Postfach trennen") }}</button>
+        </form>
+      {% else %}
+        <div class="mailbox__row">
+          <span class="mailbox__dot"></span>
+          <span>{{ t("Kein Postfach verbunden.") }}</span>
+        </div>
+        {% if gmail and gmail.lost %}
+          <div class="notice notice--error">
+            {{ t("Der Zugriff wurde bei Google entzogen, die Verbindung wurde deshalb beendet.") }}
+            <span class="mailbox__why">({{ gmail.lost }})</span>
+          </div>
+        {% endif %}
+        <p class="panel-hint">{{ t("Google fragt genau diese beiden Rechte ab, mehr wird nicht angefordert:") }}</p>
+        <ul class="mailbox__scopes">
+          {% for word in gmail_scopes %}<li class="mailbox__scope">{{ t(word) }}</li>{% endfor %}
+        </ul>
+        <a class="btn btn--ghost" href="/settings/gmail/start">{{ t("Postfach verbinden") }}</a>
+      {% endif %}
+
+      <p class="panel-hint">
+        {{ t("Der Zugang liegt als Datei neben der Datenbank, nur für den Eigentümer lesbar, und nie in einer Tabelle — damit ihn weder eine Datenbankkopie noch der Excel-Export aus der Maschine trägt.") }}
       </p>
     </section>
 
