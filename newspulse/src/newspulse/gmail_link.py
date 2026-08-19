@@ -514,13 +514,21 @@ def new_state() -> str:
     return secrets.token_urlsafe(32)
 
 
-def authorize_url(state: str) -> str:
+def authorize_url(state: str, *, login_hint: str = "") -> str:
     """Where to send the operator for consent.
 
     ``access_type=offline`` is what makes Google issue a refresh token at all,
     and ``prompt=consent`` is what makes it issue one *again* after a disconnect
     — without it the second connection comes back with an access token alone and
     dies an hour later.
+
+    ``login_hint`` is the address the person is signed in to RauteOS with, so
+    Google opens on that account instead of whichever one the browser happens to
+    be holding. It is a hint and nothing more: the account chooser still appears
+    and can still be overridden, which is deliberate — an agency mailbox is
+    rarely the same address as the person opening the tool. What it prevents is
+    the common case of consenting with the wrong personal account and wondering
+    later whose outbox the letters left from.
     """
     if not config.gmail_configured():
         raise GmailError("Gmail ist nicht eingerichtet (NEWSPULSE_GMAIL_CLIENT_ID)")
@@ -533,6 +541,8 @@ def authorize_url(state: str) -> str:
         "prompt": "consent",
         "state": state,
     }
+    if login_hint:
+        params["login_hint"] = login_hint
     return f"{_AUTH_ENDPOINT}?{urllib.parse.urlencode(params)}"
 
 
