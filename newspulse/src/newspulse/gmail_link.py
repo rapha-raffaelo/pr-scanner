@@ -423,9 +423,13 @@ def token(*, fetch: Fetch | None = None, now: dt.datetime | None = None) -> str 
     moment = _now(now)
     access = str(stored.get("access_token") or "")
     expires_at = _parse_time(stored.get("expires_at"))
-    if access and expires_at is not None:
-        if moment < expires_at - dt.timedelta(seconds=_EXPIRY_SKEW_SECONDS):
-            return access
+    usable_until = (
+        expires_at - dt.timedelta(seconds=_EXPIRY_SKEW_SECONDS)
+        if expires_at is not None
+        else None
+    )
+    if access and usable_until is not None and moment < usable_until:
+        return access
 
     payload = call(
         _TOKEN_ENDPOINT,
@@ -535,10 +539,10 @@ def scope_words(scopes: tuple[str, ...] = SCOPES) -> list[str]:
 
 
 __all__ = [
+    "SCOPES",
     "GmailError",
     "Link",
     "Profile",
-    "SCOPES",
     "authorize_url",
     "connected",
     "disconnect",

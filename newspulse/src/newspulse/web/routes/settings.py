@@ -148,7 +148,7 @@ _GMAIL_DECLINED = "access_denied"
 # otherwise would be a dead link inside the product.
 DEPLOYMENT_DOC_URL = (
     "https://github.com/rapha-raffaelo/pr-scanner/blob/main/newspulse/docs/deployment.md"
-    "#das-postfach-gmail"
+    "#the-mailbox-gmail"
 )
 
 _log = logging.getLogger(__name__)
