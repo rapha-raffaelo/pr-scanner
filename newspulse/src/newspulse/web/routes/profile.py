@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ... import profile as profiles
 from ... import profile_refresh
 from ...db import get_session
-from ...models import Client
+from ...models import Client, ProfileProposal
 from ..app import get_db, templates
 from ..runlock import guard as _run_guard
 from .today import _fetch_last_run, _local_tz
@@ -21,6 +21,22 @@ from .today import _fetch_last_run, _local_tz
 router = APIRouter()
 _log = logging.getLogger(__name__)
 _SEE_OTHER = 303
+
+# Said back to a click that landed on nothing. The review buttons carry row ids,
+# and the 06:10 sweep replaces rows: a tab left open overnight posts ids that no
+# longer exist, which is right — nothing it never showed gets swept up — but
+# redirecting in silence leaves the reader watching a button do nothing and
+# clicking it again. A flag in the query string rather than a session: it
+# describes the redirect it rode in on and must not survive the next reload.
+_STALE_FLAG = "veraltet"
+
+
+def _back(client_id: int, *, acted: bool) -> RedirectResponse:
+    """Back to the profile page, saying so when the click reached no rows."""
+    query = "" if acted else f"?{_STALE_FLAG}=1"
+    return RedirectResponse(
+        f"/client/{client_id}/profil{query}", status_code=_SEE_OTHER
+    )
 
 # One research run at a time, process-wide: it is a model call with a web search
 # behind it, and a second click while one is running would spend another.
@@ -75,9 +91,26 @@ def profile_view(
     facts = profiles.stored(session, client_id)
     # Only the fields the research may actually write: a proposal identical to
     # what is on file never becomes a row at all, and a proposal against a field a
-    # person filled in by hand is a contradiction rather than an offer — PRF-02
-    # renders those under whatever DEC-2 locks as.
-    proposed = profile_refresh.outstanding(session, client_id)
+    # person filled in by hand is a contradiction rather than an offer, which is
+    # what DEC-2 locks as: never replace, only contradict.
+    #
+    # A proposal with no source is not drawn in either pile. It is a machine
+    # asserting something it cannot back up, and a value the reader cannot check
+    # is not a decision anyone should be asked to make. The refresh no longer
+    # stores one (``profile_refresh._sourced``); this is the render side of the
+    # same rule, for rows written before it existed.
+    #
+    # Nor is a row the profile has caught up with. The refresh files no proposal
+    # that agrees with the profile, but the profile moves under a row that is
+    # already on the pile: the consultant reads what the web says and types it in
+    # himself, and the row would then be drawn as a contradiction between Paris
+    # and Paris, with a button that records a refusal against the value he just
+    # entered (see ``profile_refresh.contradicts``).
+    proposed = [
+        p
+        for p in profile_refresh.outstanding(session, client_id)
+        if p.source_url and profile_refresh.contradicts(facts, p)
+    ]
     pending = [p for p in proposed if profile_refresh.may_replace(facts, p.key)]
     return templates.TemplateResponse(
         request,
@@ -105,7 +138,20 @@ def profile_view(
             # a profile that was "checked" with no reason and no way to find one.
             # Exactly what ``advisory.py`` does with ``impulse_note``.
             "research_error": _errors.get(client_id) or client.profile_note,
-            "checked_at": client.profile_checked_at,
+            # The same value object the portfolio prints, so "never checked" and
+            # "checked 84 days ago" read identically on both pages.
+            "checked": profiles.checked(
+                client.profile_checked_at, now=dt.datetime.now(dt.UTC)
+            ),
+            # The last click found none of the rows it named. The sweep had
+            # replaced them, which is the rule working — nothing the reader never
+            # saw was touched — but a button that appears to do nothing teaches
+            # the reader that the page is broken.
+            "stale_click": bool(request.query_params.get(_STALE_FLAG)),
+            # Compared against, never printed: the page says "Ihre Angabe" where
+            # the column says "mensch". Passed rather than written into the
+            # template so the authority level has one definition.
+            "by_hand": profiles.BY_HAND,
             "last_run": _fetch_last_run(session),
             "header_date": dt.datetime.now(_local_tz()).date(),
         },
@@ -139,7 +185,9 @@ async def save_profile(
                 session, client, field.key, value,
                 source_url=stored.source_url if unchanged and stored else "",
                 source_title=stored.source_title if unchanged and stored else "",
-                filled_by=(stored.filled_by if unchanged and stored else "mensch"),
+                filled_by=(
+                    stored.filled_by if unchanged and stored else profiles.BY_HAND
+                ),
             )
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
 
@@ -157,57 +205,99 @@ def fill_profile(client_id: int, session: Session = Depends(get_db)) -> Response
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
 
 
+def _chosen(
+    session: Session, client_id: int, pid: list[int]
+) -> list[ProfileProposal]:
+    """The client's outstanding proposals the form actually named.
+
+    Rows are named by id and never by field. A field name means "whatever is
+    proposed for the CEO right now", which is not what the reader decided on: the
+    06:10 sweep can replace that row between the page being drawn and the button
+    being pressed, and accept-all would then take a value nobody has read. An id
+    is the row that was on the screen, and a row that arrived after it was drawn
+    is simply not in the list.
+
+    Scoped to ``client_id`` as well as to the ids, so a posted id belonging to
+    another mandate selects nothing rather than reaching across.
+
+    Sourceless rows are filtered here and not only at render, for the same reason
+    the hand-filled rule is enforced twice: the form body is not the page. The
+    refresh stores no such row any more and migration 0023 deleted the ones PRF-01
+    left behind, so this is the boundary rather than the cleanup — a value nobody
+    can check is not something a posted id gets to turn into a fact.
+    """
+    wanted = set(pid)
+    return [
+        p
+        for p in profile_refresh.outstanding(session, client_id)
+        if p.id in wanted and p.source_url
+    ]
+
+
 @router.post("/client/{client_id}/profil/accept")
 def accept_proposals(
     client_id: int,
-    key: list[str] = Form(default_factory=list),
+    pid: list[int] = Form(default_factory=list),
     session: Session = Depends(get_db),
 ) -> Response:
-    """Take the proposed values for the named fields, sources and all.
+    """Take the named proposals, sources and all, as the consultant's own answer.
 
-    Only the ticked ones go: the rest stay on offer rather than vanishing with the
+    The accepted value is stamped :data:`newspulse.profile.BY_HAND` rather than
+    with the model that read it. The model proposed; the person decided, and it is
+    the decision that is worth recording — a fact he has vouched for must not be
+    proposed over by the next refresh, which is exactly what the human stamp
+    buys. The source travels with it, so the page can still show where the value
+    came from even though a person put it there.
+
+    Only the named rows go: the rest stay on offer rather than vanishing with the
     click, because a decision not made is not a decision to discard.
 
-    A key naming a hand-filled fact is refused here and not only hidden upstream.
-    The page does not draw a checkbox for one, but the form body is not the page:
-    a tab left open while the field was typed into elsewhere posts a key the
-    consultant never ticked, and honouring it would replace what he wrote with
-    what a model read and stamp the model's name on it.
+    A row against a hand-filled fact is refused here and not only hidden upstream.
+    The page draws no accept button for one, but the form body is not the page: a
+    tab left open while the field was typed into elsewhere posts a row the
+    consultant never chose, and honouring it would replace what he wrote with what
+    a model read. That is the DEC-2 rule, enforced at the write boundary.
     """
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-    wanted = set(key)
     facts = profiles.stored(session, client_id)
     taken = [
-        p for p in profile_refresh.outstanding(session, client_id)
-        if p.key in wanted and profile_refresh.may_replace(facts, p.key)
+        p for p in _chosen(session, client_id, pid)
+        if profile_refresh.may_replace(facts, p.key)
     ]
     for proposal in taken:
         profiles.save(
             session, client, proposal.key, proposal.value,
             source_url=proposal.source_url,
             source_title=proposal.source_title,
-            filled_by=proposal.proposed_by or profiles.config.review_model(),
+            filled_by=profiles.BY_HAND,
         )
-    if taken:
-        profile_refresh.discard(session, client_id, [p.key for p in taken])
-    return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
+    profile_refresh.clear(session, client_id, [p.id for p in taken])
+    return _back(client_id, acted=bool(taken) or not pid)
 
 
 @router.post("/client/{client_id}/profil/discard")
 def discard_proposals(
     client_id: int,
-    key: list[str] = Form(default_factory=list),
+    pid: list[int] = Form(default_factory=list),
     session: Session = Depends(get_db),
 ) -> Response:
-    """Throw away proposals: the named fields, or all of them when none is named.
+    """Refuse the named proposals, one row or the whole visible pile.
 
-    Named, because the page draws two piles now — the offers with a checkbox and
-    the contradictions against hand-filled fields, which have none — and each
-    carries its own discard. A single button that always cleared everything meant
-    clearing the contradictions also threw away the offers beside them, which the
-    consultant had not decided on yet.
+    Every button on the page — the per-row Verwerfen, "Alle verwerfen", and the
+    one under the contradictions — posts the ids it was drawn with, so each acts
+    on precisely what its reader saw. There is deliberately no "no ids means
+    everything" fallback: that used to be the discard-all, and it swept up
+    whatever the sweep had added since the page was rendered.
+
+    The rows are stamped rather than deleted, so the next refresh knows not to
+    offer the same value again.
     """
-    profile_refresh.discard(session, client_id, key or None)
-    return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
+    if session.get(Client, client_id) is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    refused = profile_refresh.discard(
+        session, client_id, pid, now=dt.datetime.now(dt.UTC)
+    )
+    _log.info("profile proposals for client %s: %d discarded", client_id, refused)
+    return _back(client_id, acted=bool(refused) or not pid)

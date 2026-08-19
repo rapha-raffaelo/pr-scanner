@@ -816,14 +816,45 @@ class ProfileProposal(Base):
     also keeps the row honest if the fact changes underneath — the proposal still
     says which value it was arguing against.
 
-    Keyed on (client, key): a mandate has one CEO field, and a second refresh
-    replaces that client's outstanding proposals rather than stacking a fresh
-    guess beside last week's.
+    Keyed on (client, key) while it is outstanding: a mandate has one CEO field,
+    and a second refresh replaces that client's open proposals rather than
+    stacking a fresh guess beside last week's.
+
+    A discarded row stays, stamped rather than deleted. It is the only record that
+    the consultant already said no to this exact value, and without it the next
+    refresh would read the same about page, find the same sentence and put the
+    same rejected proposal back on the page — which is how a review pile becomes
+    something nobody opens. The one exception is a row the profile has caught up
+    with: the field already holds the value being proposed, so there is no claim
+    left to refuse and stamping one would suppress that field's next real
+    correction (see :func:`newspulse.profile_refresh.discard`).
+
+    Which is why the uniqueness is *partial*, over the open rows only. A refusal
+    is of a sentence and not of a field — "not this CEO" must not mean "never ask
+    about the CEO again" — so a field accumulates one row per value that was
+    refused, plus at most one still waiting for an answer. A whole-table UNIQUE
+    would force the refresh to delete last month's "no" in order to file this
+    month's different finding, and the value it said no to would be back on the
+    page the next time a website repeated it.
     """
 
     __tablename__ = "profile_proposals"
     __table_args__ = (
-        UniqueConstraint("client_id", "key", name="uq_profile_proposals_key"),
+        Index(
+            "uq_profile_proposals_key",
+            "client_id",
+            "key",
+            unique=True,
+            sqlite_where=text("discarded_at IS NULL"),
+        ),
+        # AUTOINCREMENT, so an id is never handed out twice. The review page's
+        # buttons carry row ids — "the rows I was looking at" — and a refresh
+        # replaces a client's proposals by deleting and re-inserting them. A
+        # plain SQLite rowid is reused after the delete, so yesterday's id could
+        # come back attached to this morning's finding and a stale tab's
+        # "übernehmen" would write a value nobody had read. Measured, not
+        # theorised: the test for that promise failed on reused ids.
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -850,6 +881,10 @@ class ProfileProposal(Base):
     )
     #: What the profile said when this was proposed. Empty when the field was
     #: blank, which is the "found something new" case rather than a contradiction.
+    #: Re-read from the profile when the row is refused, because a refusal is
+    #: always said *against* something: "not Bob, the CEO is Anna". That is what
+    #: lets the refusal expire when Anna turns out to be wrong and is cleared —
+    #: see :func:`newspulse.profile_refresh._refused`.
     previous_value: Mapped[str] = mapped_column(
         Text, nullable=False, default="", server_default=""
     )
@@ -860,6 +895,15 @@ class ProfileProposal(Base):
     #: propose to himself, he types the value in.
     proposed_by: Mapped[str] = mapped_column(
         String(80), nullable=False, default="", server_default=""
+    )
+    #: When the consultant said no, and the whole reason a discarded row is kept
+    #: instead of deleted: the refresh reads it before proposing, so a value that
+    #: was refused once is not offered again the next morning. An accepted row is
+    #: deleted rather than stamped — the fact it became is its own memory, and a
+    #: "no" recorded against a value the profile now holds would suppress a real
+    #: correction later.
+    discarded_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, default=None
     )
 
 

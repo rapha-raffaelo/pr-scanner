@@ -222,9 +222,18 @@ def test_an_untouched_machine_line_keeps_its_source_through_a_save(factory, web)
         assert fact.source_url == "https://x.de"
 
 
-def _propose(session, client_id, **values) -> None:
-    """Put proposals on file for a client, the way a refresh would."""
-    session.add_all(
+def _propose(session, client_id, **values) -> dict[str, int]:
+    """Put proposals on file for a client, the way a refresh would.
+
+    Returns the row id per field: every button on the review page names the rows
+    it was drawn with rather than the fields, so a test that posts a field name
+    is testing something the page cannot do.
+
+    Each row gets a source unless the test says otherwise, because a proposal
+    with none is not shown at all — a machine asserting something it cannot back
+    up is not a decision anyone should be asked to make.
+    """
+    rows = [
         ProfileProposal(
             client_id=client_id,
             key=key,
@@ -235,29 +244,33 @@ def _propose(session, client_id, **values) -> None:
             proposed_by="gemini-2.5-flash",
         )
         for key, (value, url, title) in values.items()
-    )
+    ]
+    session.add_all(rows)
     session.commit()
+    return {row.key: row.id for row in rows}
 
 
-def test_accepting_a_proposal_records_the_model_as_its_author(factory, web):
-    """The page must be able to say which half a machine wrote."""
+def test_accepting_a_proposal_stamps_the_fact_as_the_humans(factory, web):
+    """The model proposed it; the person decided it, and the decision is what is
+    worth recording. A fact he vouched for must also stop being proposed over."""
     with factory() as session:
         client = _client(session)
         client_id = client.id
-        _propose(
+        ids = _propose(
             session, client_id,
             ceo=("Alexandre Prot", "https://qonto.com", "Qonto"),
-            sitz=("Paris", "", ""),
+            sitz=("Paris", "https://qonto.com", "Qonto"),
         )
 
-    web.post(f"/client/{client_id}/profil/accept", data={"key": "ceo"},
+    web.post(f"/client/{client_id}/profil/accept", data={"pid": ids["ceo"]},
              follow_redirects=False)
 
     with factory() as session:
         facts = profiles.stored(session, client_id)
         left = profile_refresh.outstanding(session, client_id)
-    assert set(facts) == {"ceo"}, "only the ticked field is taken"
-    assert facts["ceo"].filled_by != "mensch"
+    assert set(facts) == {"ceo"}, "only the chosen field is taken"
+    assert facts["ceo"].filled_by == profiles.BY_HAND
+    # The source still travels with it: he decided, the web is where it was read.
     assert facts["ceo"].source_url == "https://qonto.com"
     # The one left behind stays on offer rather than vanishing with the click.
     assert [p.key for p in left] == ["sitz"]
@@ -265,46 +278,57 @@ def test_accepting_a_proposal_records_the_model_as_its_author(factory, web):
 
 def test_a_field_the_consultant_filled_is_not_proposed_over(factory, web):
     """The machine may fill a blank and may correct itself. It may not overrule
-    the person it works for."""
+    the person it works for.
+
+    The web's version is on the page — that is the DEC-2 rule, contradiction
+    rather than silence — but it is drawn under the "never overwritten" heading
+    and carries no accept button, where an ordinary offer carries one.
+    """
     with factory() as session:
         client = _client(session)
         profiles.save(session, client, "ceo", "Weiß ich besser")
         client_id = client.id
-        _propose(
+        ids = _propose(
             session, client_id,
-            ceo=("Jemand anderes", "", ""),
-            sitz=("Paris", "", ""),
+            ceo=("Jemand anderes", "https://irgendwo.de", "Irgendwo"),
+            sitz=("Paris", "https://qonto.com", "Qonto"),
         )
 
     body = web.get(f"/client/{client_id}/profil").text
 
-    assert "Jemand anderes" not in body
-    assert "Paris" in body
+    assert "Paris" in body, "the ordinary offer is drawn"
+    assert "Weiß ich besser" in body, "and his own value still stands beside it"
+    accept_forms = body.split('/profil/accept"')[1:]
+    offered = {form.split("</form>")[0] for form in accept_forms}
+    assert not any(f'value="{ids["ceo"]}"' in form for form in offered), (
+        "no button on the page offers to write the machine over him"
+    )
+    assert any(f'value="{ids["sitz"]}"' in form for form in offered)
 
 
 def test_posting_a_hand_filled_key_to_accept_does_not_overwrite_it(factory, web):
-    """The page draws no checkbox for a hand-filled field, but the form body is
-    not the page: a tab left open while the value was typed in elsewhere posts a
-    key nobody ticked. The write boundary refuses it rather than trusting the
+    """The page draws no accept button for a hand-filled field, but the form body
+    is not the page: a tab left open while the value was typed in elsewhere posts
+    a row nobody chose. The write boundary refuses it rather than trusting the
     render filter, which is one stale POST away from being walked past."""
     with factory() as session:
         client = _client(session)
         profiles.save(session, client, "ceo", "Weiß ich besser")
         client_id = client.id
-        _propose(
+        ids = _propose(
             session, client_id,
             ceo=("Jemand anderes", "https://irgendwo.de", "Irgendwo"),
-            sitz=("Paris", "", ""),
+            sitz=("Paris", "https://qonto.com", "Qonto"),
         )
 
-    web.post(f"/client/{client_id}/profil/accept", data={"key": ["ceo", "sitz"]},
-             follow_redirects=False)
+    web.post(f"/client/{client_id}/profil/accept",
+             data={"pid": [ids["ceo"], ids["sitz"]]}, follow_redirects=False)
 
     with factory() as session:
         facts = profiles.stored(session, client_id)
         left = {p.key for p in profile_refresh.outstanding(session, client_id)}
     assert facts["ceo"].value == "Weiß ich besser", "the human's value stands"
-    assert facts["ceo"].filled_by == "mensch", "and it is still stamped as his"
+    assert facts["ceo"].filled_by == profiles.BY_HAND, "and it is still his"
     assert facts["sitz"].value == "Paris", "the field nobody typed into is taken"
     # The refused one is still on file: it is a contradiction PRF-02 renders, not
     # something to silently drop because the accept did not honour it.
@@ -312,20 +336,24 @@ def test_posting_a_hand_filled_key_to_accept_does_not_overwrite_it(factory, web)
 
 
 def test_only_contradictions_left_still_offers_a_way_to_clear_them(factory, web):
-    """A proposal against a hand-filled field gets no checkbox, so a client whose
-    profile was typed in entirely by hand used to accumulate rows that were
+    """A proposal against a hand-filled field gets no accept button, so a client
+    whose profile was typed in entirely by hand used to accumulate rows that were
     invisible *and* unclearable — the discard button lived inside the block that
     the filter had just emptied."""
     with factory() as session:
         client = _client(session)
         profiles.save(session, client, "ceo", "Weiß ich besser")
         client_id = client.id
-        _propose(session, client_id, ceo=("Jemand anderes", "", ""))
+        ids = _propose(
+            session, client_id, ceo=("Jemand anderes", "https://irgendwo.de", "Irgendwo")
+        )
 
     body = web.get(f"/client/{client_id}/profil").text
     assert "Verwerfen" in body, "the rows are reachable"
+    assert f'name="pid" value="{ids["ceo"]}"' in body, "and the button names them"
 
-    web.post(f"/client/{client_id}/profil/discard", follow_redirects=False)
+    web.post(f"/client/{client_id}/profil/discard", data={"pid": ids["ceo"]},
+             follow_redirects=False)
 
     with factory() as session:
         assert profile_refresh.outstanding(session, client_id) == []
@@ -342,8 +370,8 @@ def test_a_contradiction_is_visible_beside_an_ordinary_proposal(factory, web):
         client_id = client.id
         _propose(
             session, client_id,
-            ceo=("Jemand anderes", "", ""),
-            sitz=("Paris", "", ""),
+            ceo=("Jemand anderes", "https://irgendwo.de", "Irgendwo"),
+            sitz=("Paris", "https://qonto.com", "Qonto"),
         )
 
     body = web.get(f"/client/{client_id}/profil").text
@@ -378,17 +406,23 @@ def test_the_reason_a_check_broke_reaches_the_page(factory, web):
     assert "nicht erreichbar" in body, "the sweep's failure is invisible on the page"
 
 
-def test_discarding_clears_the_proposals_from_the_database(factory, web):
+def test_discarding_clears_the_proposals_from_the_page(factory, web):
     """The dict this replaced lost them on a restart; the button has to be the
-    only thing that does."""
+    only thing that does.
+
+    The row itself stays on file, stamped: it is the record that this value was
+    already refused, which is what stops the next refresh offering it again.
+    """
     with factory() as session:
         client_id = _client(session).id
-        _propose(session, client_id, sitz=("Paris", "", ""))
+        ids = _propose(session, client_id, sitz=("Paris", "https://qonto.com", "Qonto"))
 
-    web.post(f"/client/{client_id}/profil/discard", follow_redirects=False)
+    web.post(f"/client/{client_id}/profil/discard", data={"pid": ids["sitz"]},
+             follow_redirects=False)
 
     with factory() as session:
         assert profile_refresh.outstanding(session, client_id) == []
+        assert session.get(ProfileProposal, ids["sitz"]).discarded_at is not None
 
 
 def test_the_competition_tab_puts_the_four_questions_in_one_place(factory, web):
