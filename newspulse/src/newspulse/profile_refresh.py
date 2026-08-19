@@ -328,7 +328,11 @@ def run(
             refresh(session, client, now=now, generate=generate)
         except Exception as exc:  # noqa: BLE001 — per-client fault-isolation boundary
             session.rollback()
-            _log.error(
+            # ``exception`` rather than ``error``: this boundary is wide enough to
+            # catch the expected timeout *and* an ordinary bug, and a one-line
+            # message with no stack is nothing to debug from. Still ERROR level,
+            # which is what the acceptance criterion asks for.
+            _log.exception(
                 "profile refresh for %r failed: %s; its proposals are unchanged, "
                 "the run continues",
                 client.name,

@@ -1329,6 +1329,7 @@ def _run_real(
     new_articles = 0
     analyses_written = 0
     angles_written = 0
+    profiles_refreshed = 0
     feeds_ok = items_count = candidates_count = 0
     # Bound before the try so the post-run drafting step has a defined value even
     # when the sweep aborts on its first line.
@@ -1446,14 +1447,18 @@ def _run_real(
         # column for a fortnight — for exactly the mandate whose consultant most
         # needs something to say.
         angles_written += _refresh_impulses(session, clients, errors, now=now_fn())
-        _refresh_profiles(session, now_fn())
+        profiles_refreshed = _refresh_profiles(session, now_fn())
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
-        "%d repl(y/ies), %d error(s)",
+        "%d profile(s), %d repl(y/ies), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
         angles_written,
+        # On the run's own line because a refresh that quietly returns zero for
+        # weeks looks exactly like a portfolio where nothing was due, and the
+        # difference is only visible here.
+        profiles_refreshed,
         replies,
         len(errors),
     )
