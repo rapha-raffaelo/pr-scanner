@@ -263,6 +263,77 @@ def test_another_journalists_letters_stay_out_of_this_file(session):
     assert outreach.history_for_contact(session, kuehn.id) == []
 
 
+def test_a_letter_released_before_the_contact_existed_lands_in_the_file(session):
+    """The order the pitch list actually invites.
+
+    "Kontakt hinterlegen" sits under a byline the book does *not* have, so the
+    letter goes out first and the contact is recorded afterwards. The link on the
+    row is written at release and nothing else ever writes it, so without the
+    repair in ``contacts.save`` the file would show an empty timeline for a
+    journalist the agency demonstrably wrote to.
+    """
+    client, angle = _mandate(session, "Nordlicht Energie")
+    letter = _letter(
+        session, client, angle,
+        released_at=_NOW - dt.timedelta(days=3), state=OutreachState.RAUS,
+    )
+    assert letter.contact_id is None
+
+    kuehn = contacts.save(session, name="Marlene Kühn", outlet="Handelsblatt")
+
+    history = outreach.history_for_contact(session, kuehn.id)
+    assert [entry.letter.id for entry in history] == [letter.id]
+    assert outreach.released_count_by_contact(session)[kuehn.id] == 1
+
+
+def test_the_repair_leaves_a_draft_and_a_foreign_masthead_alone(session):
+    """Matched no wider than :func:`contacts.find` matches.
+
+    A draft reached nobody and gets its link when it is released. A letter to the
+    same name at a different named masthead is somebody else until the consultant
+    says otherwise — a wrong link here files another journalist's letters in this
+    file, which is worse than a missing one.
+    """
+    client, angle = _mandate(session, "Nordlicht Energie")
+    draft = _letter(session, client, angle)
+    elsewhere = _letter(
+        session, client, angle, outlet="Süddeutsche Zeitung",
+        released_at=_NOW - dt.timedelta(days=2), state=OutreachState.RAUS,
+    )
+    no_masthead = _letter(
+        session, client, angle, outlet="",
+        released_at=_NOW - dt.timedelta(days=4), state=OutreachState.RAUS,
+    )
+
+    kuehn = contacts.save(session, name="marlene kühn", outlet="handelsblatt")
+
+    linked = {entry.letter.id for entry in outreach.history_for_contact(session, kuehn.id)}
+    # Cased differently on both sides and still the same person; the letter with
+    # no masthead of its own is hers too, the way ``find`` falls back to the name.
+    assert linked == {no_masthead.id}
+    session.refresh(draft)
+    session.refresh(elsewhere)
+    assert draft.contact_id is None
+    assert elsewhere.contact_id is None
+
+
+def test_the_repair_never_steals_a_letter_from_another_contact(session):
+    """Only rows with no link at all are claimed: a release that already resolved
+    to somebody stays where the ledger put it."""
+    reh = contacts.save(session, name="Tobias Reh", outlet="Süddeutsche Zeitung")
+    client, angle = _mandate(session, "Nordlicht Energie")
+    theirs = _letter(
+        session, client, angle, contact_id=reh.id,
+        journalist="Tobias Reh", outlet="Süddeutsche Zeitung",
+        released_at=_NOW - dt.timedelta(days=1), state=OutreachState.RAUS,
+    )
+
+    contacts.save(session, name="Tobias Reh", outlet="Süddeutsche Zeitung", email="t@sz.example")
+
+    session.refresh(theirs)
+    assert theirs.contact_id == reh.id
+
+
 # --- The four tallies -----------------------------------------------------------
 
 
