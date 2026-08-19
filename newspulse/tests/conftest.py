@@ -121,6 +121,34 @@ def no_real_mailbox(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_live_profile_research(monkeypatch):
+    """Stop the sweep's profile refresh from reaching the web in a test run.
+
+    ``job.run`` now re-researches the mandates whose profile has aged, which is a
+    live search plus a model call per mandate. Whether that happens in a test
+    would otherwise depend on whether the developer running it happens to have a
+    ``GEMINI_API_KEY`` in the shell — the suite would be silent and free on CI and
+    would quietly spend money on someone's laptop.
+
+    So the boundary is closed rather than the feature switched off: with an
+    injected ``generate`` this is the real function, parsing a canned answer with
+    no network anywhere near it, and without one it refuses instead of picking up
+    an ambient key.
+    """
+    from newspulse import profile
+
+    original = profile.research
+
+    def _research(client, *, generate=None):
+        if generate is None:
+            raise RuntimeError("no research provider configured in the test suite")
+        return original(client, generate=generate)
+
+    monkeypatch.setattr(profile, "research", _research)
+    return original
+
+
+@pytest.fixture(autouse=True)
 def no_theme_settling(monkeypatch):
     """Stop the sweep from proposing themes in a test run.
 

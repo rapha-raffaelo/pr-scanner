@@ -291,6 +291,15 @@ class Client(Base):
     impulse_checked_at: Mapped[dt.datetime | None] = mapped_column(
         UTCDateTime(), nullable=True
     )
+    # When the deep-dive profile was last re-read from the web, whatever that read
+    # produced. Same reasoning as ``impulse_checked_at`` above: the answer is
+    # produced by an unattended sweep and read by a person hours later, so it has
+    # to be on the client rather than in the process that produced it. NULL means
+    # never checked, which the page says out loud — a profile that has aged for a
+    # year and one that was checked this morning must not look alike.
+    profile_checked_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1")
     )
@@ -781,6 +790,56 @@ class ClientFact(Base):
 OUTCOME_BY_MAILBOX = "postfach"
 
 
+class ProfileProposal(Base):
+    """One "this looks different now", waiting for a yes.
+
+    The background refresh proposes and never writes (see
+    :mod:`newspulse.profile_refresh`), so its output has to live somewhere between
+    the sweep that produced it and the person who decides on it. That used to be a
+    dict in the web process, which was defensible while only a button wrote to it
+    and is not now: the 06:10 sweep would produce a pile of findings and a restart
+    — a deploy, a crash, a machine going to sleep — would silently drop them, and
+    nobody would ever know what the tool had found.
+
+    ``previous_value`` is copied at proposal time rather than read back at render
+    time. It is what the proposal is *about*: "Umsatz: 84 Mio. (2025)" is not a
+    decision anyone can make without the number it replaces beside it. Copying it
+    also keeps the row honest if the fact changes underneath — the proposal still
+    says which value it was arguing against.
+
+    Keyed on (client, key): a mandate has one CEO field, and a second refresh
+    replaces that client's outstanding proposals rather than stacking a fresh
+    guess beside last week's.
+    """
+
+    __tablename__ = "profile_proposals"
+    __table_args__ = (
+        UniqueConstraint("client_id", "key", name="uq_profile_proposals_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: A key from :data:`newspulse.profile.FIELDS`, exactly as ``client_facts``
+    #: holds it — a proposal is a candidate value for one of those rows.
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: Where it was read. A proposal without one is a machine asserting something
+    #: it cannot back up, and the review page does not show it at all.
+    source_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source_title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: What the profile said when this was proposed. Empty when the field was
+    #: blank, which is the "found something new" case rather than a contradiction.
+    previous_value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    proposed_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The model that read the web for it. Never "mensch": a human does not
+    #: propose to himself, he types the value in.
+    proposed_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+
+
 class Outreach(Base):
     """One personalised message: an impulse, written at a named recipient.
 
@@ -1026,6 +1085,7 @@ __all__ = [
     "ClientFact",
     "Contact",
     "OUTCOME_BY_MAILBOX",
+    "ProfileProposal",
     "Outreach",
     "OutreachReply",
     "OutreachState",

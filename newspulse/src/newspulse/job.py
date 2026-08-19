@@ -50,7 +50,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import angles, config, gnews, mailsync, notify, themes
+from . import angles, config, gnews, mailsync, notify, profile_refresh, themes
 from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
 from .feeds import Feed, load_feeds
@@ -946,6 +946,34 @@ def _refresh_impulses(
     return written
 
 
+def _refresh_profiles(session: Session, now: dt.datetime) -> int:
+    """Re-read the profiles that have earned a look. Never fails the sweep.
+
+    The mandate profile decays quietly: a CEO leaves, and every generated text
+    keeps naming them until a journalist mentions it. Nothing re-reads it today,
+    so the rhythm has to come from here — the one thing that runs every morning
+    without anybody remembering to.
+
+    Bounded inside :func:`newspulse.profile_refresh.run` (a handful per run,
+    oldest-due first) and guarded out here, in the same posture as the drafting
+    steps above it: a stale profile is a problem for one mandate, a failed sweep
+    is a problem for the whole portfolio, and the second must never be caused by
+    the first. Nothing is appended to the run's errors for the same reason
+    :func:`_generate_angles` appends nothing — marking the run ``partial`` would
+    re-open the coverage watermark over something that has nothing to do with
+    coverage.
+    """
+    try:
+        return profile_refresh.run(session, now=now)
+    except Exception:  # noqa: BLE001 — a profile refresh is not worth a failed sweep
+        _log.exception("profile refresh failed; the sweep's own work stands")
+        # A caught exception is not a clean session: an unflushed write would
+        # leave the transaction in PendingRollbackError and take the notification
+        # below down with it, after the run was already recorded ok.
+        session.rollback()
+        return 0
+
+
 def _analysis_targets(
     session: Session,
     candidates: Sequence[Candidate],
@@ -1418,6 +1446,7 @@ def _run_real(
         # column for a fortnight — for exactly the mandate whose consultant most
         # needs something to say.
         angles_written += _refresh_impulses(session, clients, errors, now=now_fn())
+        _refresh_profiles(session, now_fn())
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
         "%d repl(y/ies), %d error(s)",
