@@ -908,6 +908,78 @@ class Outreach(Base):
         """
         return self.sent_through_gmail and self.state == OutreachState.RAUS
 
+    #: What the journalist wrote back, oldest first — the order a conversation
+    #: is read in. ``delete-orphan`` beside the database's own ``ON DELETE
+    #: CASCADE``: a deleted letter takes its replies with it either way, so no
+    #: journalist's words outlive the letter they answered, whether the row goes
+    #: through the ORM or through a raw ``DELETE``.
+    replies: Mapped[list["OutreachReply"]] = relationship(
+        back_populates="letter",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="OutreachReply.received_at",
+    )
+
+
+class OutreachReply(Base):
+    """One message a journalist sent back, filed against the letter it answers.
+
+    Its own table rather than a column on :class:`Outreach`, because one letter
+    can collect several: an answer, a follow-up question, the note two weeks
+    later that the piece is running. A column would hold the last one and lose
+    the rest, and the rest is the conversation.
+
+    Everything here is stored as it arrived and **nothing is interpreted**. There
+    is no "kind" or "sentiment" column: "danke, nichts für uns" and "schicken Sie
+    mehr" are the same event to a matcher and opposite events to a PR consultant,
+    so the only state a reply may set is ``ANTWORT`` — a human answered — and
+    Absage or Veröffentlicht stay the consultant's reading (see
+    :func:`newspulse.outreach.record_reply`).
+
+    ``gmail_message_id`` is UNIQUE across the table rather than per letter: it is
+    Google's id for one message in one mailbox, so a second row carrying it would
+    be the same mail filed twice. That constraint is what makes the daily sync
+    idempotent — a sweep that runs twice over the same mailbox stores nothing new
+    and moves no timestamp.
+
+    This is somebody else's data: a journalist's own words about a person who
+    never agreed to be in RauteOS. Hence ``fetched_at`` beside ``received_at`` —
+    when the mail was written and when this tool took a copy are two different
+    facts, and a retention rule later needs the second one.
+    """
+
+    __tablename__ = "outreach_replies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    outreach_id: Mapped[int] = mapped_column(
+        ForeignKey("outreach.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Google's id for this message. The idempotency key of the whole sync.
+    gmail_message_id: Mapped[str] = mapped_column(
+        String(120), nullable=False, unique=True
+    )
+    #: The display name off the ``From`` header; empty when the sender used none.
+    from_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    from_email: Mapped[str] = mapped_column(String(320), nullable=False, default="")
+    #: Gmail's own moment for the message, not this machine's clock: the reply
+    #: that arrived on Saturday is dated Saturday even when it was read on Monday.
+    received_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    #: The plain-text body, as sent. No HTML is ever stored — see
+    #: ``gmail_link._plain_text``.
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    fetched_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    letter: Mapped["Outreach"] = relationship(back_populates="replies")
+
+    @property
+    def sender(self) -> str:
+        """Who wrote it, in one line: the name when the header carried one, the
+        address otherwise. Never both invented — an empty ``From`` reads as an
+        empty line rather than as a guessed name."""
+        return self.from_name or self.from_email
+
 
 __all__ = [
     "Base",
@@ -924,6 +996,7 @@ __all__ = [
     "ClientFact",
     "Contact",
     "Outreach",
+    "OutreachReply",
     "OutreachState",
     "SILENT_AFTER_DAYS",
     "TopicHit",

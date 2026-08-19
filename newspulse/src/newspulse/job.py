@@ -50,7 +50,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import angles, config, gnews, notify, themes
+from . import angles, config, gnews, mailsync, notify, themes
 from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
 from .feeds import Feed, load_feeds
@@ -1065,6 +1065,31 @@ def _finalize_run(
     return run
 
 
+def _sync_mailbox(session: Session) -> int:
+    """Read the replies to released letters; a mail failure never fails the sweep.
+
+    Runs after the day's coverage is stored and the ``runs`` row is written, so
+    by the time Google is asked anything the part of the sweep that does not
+    depend on somebody else's service is already safe. A mailbox that is
+    unreachable or an access that was revoked is reported at ERROR by the sync
+    itself and returned in its report; anything unexpected is caught here for the
+    same reason the notification is — the alternative is a green run's data being
+    rolled back because a journalist's mail could not be read.
+
+    Returns how many replies were newly filed, for the run's own log line.
+    """
+    try:
+        return mailsync.sync(session).replies
+    except Exception as exc:  # noqa: BLE001 — the mailbox must never fail the run
+        _log.error(
+            "mail sync failed: %s; run data already persisted, not rolled back", exc
+        )
+        # A raised write leaves the transaction half-open, and every later
+        # statement on this session would die with it.
+        session.rollback()
+        return 0
+
+
 def _notify(session: Session, run: Run) -> None:
     """Deliver the post-run alert notification; a failure here never fails the run.
 
@@ -1298,6 +1323,12 @@ def _run_real(
         status = RunStatus.FAILED
         session.rollback()
     run = _finalize_run(session, started, now_fn(), status, new_articles, errors)
+    # The mailbox, once a day, with the sweep. Deliberately outside the
+    # status check below: reading the replies to letters that went out weeks ago
+    # has nothing to do with whether this morning's feeds answered, and a
+    # journalist's answer is the one thing in this tool nobody can re-fetch
+    # later by pressing a button.
+    replies = _sync_mailbox(session)
     # Drafting happens after the run is recorded and only if the sweep itself came
     # through: pitching a positioning message off a half-fetched radar would put a
     # confident text in front of the reader on the strength of partial data.
@@ -1343,11 +1374,13 @@ def _run_real(
         # needs something to say.
         angles_written += _refresh_impulses(session, clients, errors, now=now_fn())
     _log.info(
-        "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), %d error(s)",
+        "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
+        "%d repl(y/ies), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
         angles_written,
+        replies,
         len(errors),
     )
     # The run's data is committed; deliver any fired-alert notification now. This is

@@ -474,10 +474,16 @@ _EN: dict[str, str] = {
     "Anschreiben verschickt": "Letter sent",
     "freigegeben von Mensch": "released by a human",
     "freigegeben von %(who)s": "released by %(who)s",
-    # Where a timeline line came from. The pair matters more than either half:
-    # one is a sentence somebody typed, the other a timestamp the machine took.
+    # Where a timeline line came from. The set matters more than any one of them:
+    # a sentence somebody typed, a timestamp the machine took when a button was
+    # pressed, and a journalist's own words read out of the mailbox are three
+    # different kinds of claim, and the page has to say which it is making.
     "von Hand eingetragen": "typed by hand",
     "bei der Freigabe festgehalten": "recorded at release",
+    "aus dem Postfach gelesen": "read from the mailbox",
+    # One string rather than "Antwort von" + name: glued fragments come out in
+    # German word order once translated.
+    "Antwort von %(who)s": "Reply from %(who)s",
     # A file long enough to be shortened says so, because the four tallies above
     # it are counted off the rows that are actually shown.
     "Es werden die letzten %(n)s Anschreiben gezeigt; ältere stehen nicht auf dieser Seite.":
@@ -485,10 +491,14 @@ _EN: dict[str, str] = {
     "Noch kein Anschreiben freigegeben. Sobald eines an diesen Kontakt rausgeht, steht es hier.":
         "No letter released yet. The moment one goes out to this contact, it "
         "shows up here.",
-    "Der Verlauf entsteht nur aus dem, was hier eingetragen wurde. RauteOS verschickt keine Mails und liest kein Postfach: eine Zeile entsteht, wenn Sie ein Anschreiben freigeben, und die zweite, wenn Sie festhalten was zurückkam.":
-        "This history is made of what was entered here and nothing else. RauteOS "
-        "sends no mail and reads no mailbox: one line appears when you release a "
-        "letter, the second when you record what came back.",
+    # Since the mailbox is connected the old note ("RauteOS sends no mail and
+    # reads no mailbox") is simply false. What is still true, and worth saying on
+    # the page that holds somebody else's words, is how narrow the read is.
+    "Der Verlauf entsteht aus drei Quellen, und jede Zeile sagt, aus welcher: aus der Freigabe eines Anschreibens, aus dem, was Sie selbst festhalten, und aus den Antworten der Journalistinnen und Journalisten. Aus dem Postfach liest RauteOS dabei nur die Verläufe, die es selbst begonnen hat — alles andere wird nicht abgefragt.":
+        "This history comes from three sources, and every line says which: the "
+        "release of a letter, what you record yourself, and the journalists' own "
+        "replies. Of the mailbox, RauteOS reads only the conversations it started "
+        "itself; nothing else is ever requested.",
     # The mark on a pitch target that was already written to about this very
     # angle. Not a block — the consultant may have a reason — but the date, so
     # the second approach is a decision rather than an accident.
