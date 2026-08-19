@@ -42,7 +42,6 @@ import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from email.message import EmailMessage
-from email.parser import BytesParser
 from email.policy import SMTP
 from email.utils import parseaddr
 from enum import StrEnum
@@ -825,6 +824,10 @@ def build_message(to: str, subject: str, body: str) -> str:
     the recipient reads ``AnschlussdauerÃ¼``. ``email.policy.SMTP`` encodes the
     header the RFC 2047 way and picks a transfer encoding for the body, so what
     comes back out of :func:`thread` is what went in.
+
+    One normalisation, and it is the standard's rather than this module's: a mail
+    body is a sequence of terminated lines, so a text that did not end in a
+    newline is sent with one. Nothing inside the text is touched.
     """
     message = EmailMessage(policy=_MAIL_POLICY)
     message["To"] = to

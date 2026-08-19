@@ -256,6 +256,11 @@
         {% endif %}
 
         {% for msg in written %}
+          {# The address this letter would go to, or why there is none. Resolved
+             once for the whole card: the head names it, the confirmation repeats
+             it, and the disabled action explains its absence. #}
+          {% set rec = recipients.get(msg.id) %}
+          {% set can_send = mailbox and not msg.released_at and not msg.sent_through_gmail %}
           <article class="letter">
             <div class="letter__head">
               <span class="letter__to">
@@ -271,7 +276,6 @@
                 {{ msg.outlet or t("Fachredaktion") }}
                 {# The address, where there is one, so the reader sees what the
                    send button would actually do before pressing it. #}
-                {% set rec = recipients.get(msg.id) %}
                 {% if rec and rec.email %}
                   <span class="dot">·</span> {{ rec.email }}
                 {% endif %}
@@ -332,8 +336,6 @@
                is not a state anybody entered — it is "verschickt" plus time, and
                a badge that swallowed the release would claim otherwise. #}
             {% set quiet_days = silent.get(msg.id) %}
-            {% set rec = recipients.get(msg.id) %}
-            {% set can_send = mailbox and not msg.released_at and not msg.sent_through_gmail %}
             <div class="state">
               <span class="state__badge state__badge--{{ msg.state }}{% if msg.sent_through_gmail and msg.state == 'raus' %} state__badge--gesendet{% endif %}">{{ t(state_labels[msg.state]) }}</span>
               {% if quiet_days %}
@@ -346,7 +348,12 @@
                      having put the message in the inbox; "freigegeben" alone
                      says a person did it themselves and recorded it here. #}
                   {% if msg.sent_through_gmail %}
-                    {{ t("Von RauteOS gesendet am") }} {{ msg.released_at | de_datetime }}
+                    {{ t("Von RauteOS gesendet am") }} {{ msg.released_at | de_datetime }},
+                    {% if msg.released_by == "mensch" %}
+                      {{ t("freigegeben von Mensch") }}
+                    {% else %}
+                      {{ t("freigegeben von %(who)s") | format(who=msg.released_by) }}
+                    {% endif %}
                   {% else %}
                     {{ t("Freigegeben am") }} {{ msg.released_at | de_short_date }}
                   {% endif %}
