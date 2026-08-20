@@ -1049,6 +1049,30 @@ def test_a_release_quote_attributed_to_anyone_else_is_rejected():
     assert faults == [f"Das Zitat ist nicht {_SPEAKER} zugeschrieben."]
 
 
+def test_a_release_with_a_second_quote_from_an_invented_person_is_rejected():
+    """One correct attribution does not clear the other two. "Genau ein Zitat" is
+    the declared contract, and a release that puts words in the mouths of two
+    invented executives is what gets printed if only one of them is checked."""
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    body = "\n\n".join(
+        (
+            "Berlin, 20. August 2026. Alpha AG erweitert ihr Angebot für Banken.",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
+            f'"Verfügbarkeit ist ein eigener Risikoparameter", sagt {_SPEAKER}.',
+            '"Der Schritt zahlt sich schon im laufenden Jahr aus", sagt '
+            "Dr. Erfunden, Finanzchef.",
+            '"Wir sehen enorme Nachfrage aus dem Mittelstand", sagt '
+            "Herr Niemand, Vertriebsleiter.",
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
+        )
+    )
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert any("3 Zitate" in fault for fault in faults)
+    assert any("zugeschrieben" in fault for fault in faults)
+
+
 def test_a_surname_hiding_inside_an_ordinary_word_does_not_count_as_an_attribution():
     """Matched on a word boundary, not as a substring. Half the surnames a German
     profile holds live inside everyday words, and a substring match clears a quote

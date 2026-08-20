@@ -111,6 +111,12 @@ _MAX_STATEMENT_SENTENCES = 5
 #: where the boilerplate starts prints it as part of the news.
 _MIN_RELEASE_PARAGRAPHS = 3
 
+#: How many quotes a release carries. One, because a desk lifts the quote whole
+#: and a second voice is a second person to have cleared it. Written out in words
+#: in the structure line the prompt shows ("Genau ein Zitat"); the number lives
+#: here so the validator and that line cannot mean different things.
+_MAX_RELEASE_QUOTES = 1
+
 #: A Q&A below this is a talking point with a question mark. Three is the floor at
 #: which grouping the questions means anything at all.
 _MIN_QA_QUESTIONS = 3
@@ -474,6 +480,11 @@ def _release_contract(draft: AssetDraft, given: Given) -> list[str]:
     the boilerplate of half these releases, so "the name appears somewhere" would
     clear a quote attributed to an invented CFO two paragraphs above it. That is
     the artefact this whole feature is built to prevent.
+
+    And checked in *every* such paragraph, not in one of them. A release carrying
+    three quotes, one correctly attributed and two put in the mouths of invented
+    executives, passes an "at least one of them names the speaker" test with
+    nothing to object to, and the two inventions are what gets printed.
     """
     faults: list[str] = []
     paragraphs = _paragraphs(draft.body)
@@ -486,16 +497,45 @@ def _release_contract(draft: AssetDraft, given: Given) -> list[str]:
             f"Der Text hat {len(paragraphs)} Absätze. Lead, Fließtext und "
             f"Boilerplate sind mindestens {_MIN_RELEASE_PARAGRAPHS}."
         )
-    quoting = [block for block in paragraphs if _QUOTE.search(block)]
-    if not quoting:
-        faults.append("Es steht kein Zitat in der Meldung.")
-    elif not any(_names(block, given.speaker) for block in quoting):
-        faults.append(
-            f"Das Zitat ist nicht {given.speaker or 'der im Profil genannten Person'} "
-            "zugeschrieben."
-        )
+    faults.extend(_quote_faults(draft.body, paragraphs, given.speaker))
     if not paragraphs or not paragraphs[-1].startswith(_BOILERPLATE):
         faults.append(f'Die Boilerplate fehlt: kein Absatz beginnt mit "{_BOILERPLATE}".')
+    return faults
+
+
+def _quote_faults(body: str, paragraphs: list[str], speaker: str) -> list[str]:
+    """What is wrong with the release's quoting: how many, and whose.
+
+    ``_MAX_RELEASE_QUOTES`` is the contract the definition and the prompt both
+    state, and it is enforced here rather than taken on trust, because the number
+    is what makes the attribution check exhaustive: with one quote there is one
+    mouth to check, and the retry that carries this complaint tells the model
+    exactly which sentence to drop.
+
+    A long quoted phrase that is not somebody's quote will be counted as one and
+    cost a retry. That is the accepted direction of the error: a second attempt
+    against a stated complaint is cheap, and a fabricated quote from a named
+    person is the one artefact here that cannot be repaired after it goes out.
+    """
+    quotes = _QUOTE.findall(body)
+    if not quotes:
+        return ["Es steht kein Zitat in der Meldung."]
+    faults: list[str] = []
+    if len(quotes) > _MAX_RELEASE_QUOTES:
+        faults.append(
+            f"Die Meldung enthält {len(quotes)} Zitate. Verlangt ist genau "
+            f"{_MAX_RELEASE_QUOTES}, damit erkennbar bleibt, wer spricht."
+        )
+    unattributed = [
+        block
+        for block in paragraphs
+        if _QUOTE.search(block) and not _names(block, speaker)
+    ]
+    if unattributed:
+        faults.append(
+            f"Das Zitat ist nicht {speaker or 'der im Profil genannten Person'} "
+            "zugeschrieben."
+        )
     return faults
 
 
