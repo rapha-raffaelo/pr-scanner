@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Form, HTTPException
@@ -33,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from ... import assets, config, pitch, profile
 from ...db import get_session
-from ...models import Angle, Asset, Client, ClientFact
+from ...models import Angle, Asset, CheckState, Client, ClientFact
 from ..app import get_db
 from ..runlock import guard as _run_guard
 
@@ -76,6 +77,20 @@ _progress: dict[int, Progress] = {}
 # restart is the correct behaviour for a "what just happened" message.
 _notes: dict[tuple[int, str], str] = {}
 
+# Both dicts are written from the worker threads and read by request threads. The
+# individual operations are atomic under the GIL, but the trim below iterates, and
+# an iteration racing an insert raises "dictionary changed size during iteration"
+# on the page rather than in the worker. One lock over both, held for a dict
+# operation at a time, is cheaper than reasoning about which ones are safe.
+_state = threading.Lock()
+
+#: How many format notes are kept. Unlike the impulse's refusal, which is bounded
+#: by the number of mandates, this is keyed by impulse — and impulses are made
+#: daily, seven keys each, for the lifetime of the process. Generous enough that
+#: nothing a reader could still be looking at is dropped, finite so the dict is
+#: not a slow leak.
+_MAX_NOTES = 200
+
 #: The key under which the package as a whole speaks: a refused second click, or a
 #: worker that died before it reached any single format. Not a format key, so it
 #: can never collide with one.
@@ -86,6 +101,31 @@ _BUSY = (
     "warten Sie, bis der laufende steht, sonst wird derselbe Aufruf zweimal "
     "bezahlt."
 )
+
+
+def _remember(angle_id: int, key: str, reason: str) -> None:
+    """Record what the last attempt on one format had to say, and stay bounded."""
+    with _state:
+        # Popped before it is set, so a rewritten key moves to the end: dicts keep
+        # insertion order, and a key updated in place would otherwise keep the
+        # position of its first write and be evicted while it is the freshest
+        # thing in here.
+        _notes.pop((angle_id, key), None)
+        _notes[(angle_id, key)] = reason
+        while len(_notes) > _MAX_NOTES:
+            _notes.pop(next(iter(_notes)))
+
+
+def _forget(angle_id: int, key: str) -> None:
+    """Drop what one format had to say, because it has been answered."""
+    with _state:
+        _notes.pop((angle_id, key), None)
+
+
+def _said(angle_id: int, key: str) -> str:
+    """What one format had to say, if anything."""
+    with _state:
+        return _notes.get((angle_id, key), "")
 
 
 # --- What the page reads -------------------------------------------------------
@@ -176,6 +216,22 @@ class Slot:
     @property
     def needs_recheck(self) -> bool:
         return self.asset is not None and assets.needs_recheck(self.asset)
+
+    @property
+    def recheckable(self) -> bool:
+        """Whether "Gegengelesen lassen" may be offered at all.
+
+        Any unreleased text nothing has read, not only an edited one. The narrower
+        rule left a draft whose crosscheck went down — the exact case
+        :func:`newspulse.assets.produce`'s fault isolation exists to keep — with
+        only "Neu schreiben" as a way back to a checked state, which spends a
+        second full model call to throw away a perfectly good text.
+        """
+        return (
+            self.asset is not None
+            and not self.asset.released
+            and self.asset.check_state is CheckState.UNGEPRUEFT
+        )
 
     @property
     def releasable(self) -> bool:
@@ -285,13 +341,35 @@ def _slot(
         readiness=assets.requirements_met(
             session, fmt, client, angle, facts=facts, target=target
         ),
-        note=_notes.get((angle.id, fmt.key), ""),
+        note=_said(angle.id, fmt.key),
     )
+
+
+def page_context(
+    session: Session,
+    client: Client,
+    angles: list[Angle],
+    targets: dict[int, list[pitch.PitchTarget]],
+    letters: dict[int, list],
+) -> dict[str, object]:
+    """Everything the impulse page needs about the package, as one merge.
+
+    One call rather than four, so ``advisory`` does not have to know that a strip,
+    a progress record, a lock and a note are separate things here — and so a fifth
+    of them arrives without that route changing.
+    """
+    return {
+        "packages": package(session, client, angles, targets, letters),
+        "asset_progress": progress_for(client.id),
+        "asset_busy": busy(),
+        "asset_notes": {angle.id: package_note(angle.id) for angle in angles},
+    }
 
 
 def progress_for(client_id: int) -> Progress | None:
     """What this mandate's package is doing right now, if anything."""
-    return _progress.get(client_id)
+    with _state:
+        return _progress.get(client_id)
 
 
 def busy() -> bool:
@@ -306,10 +384,24 @@ def busy() -> bool:
 
 def package_note(angle_id: int) -> str:
     """What the package as a whole has to say, if anything."""
-    return _notes.get((angle_id, _PACKAGE), "")
+    return _said(angle_id, _PACKAGE)
 
 
 # --- The worker ----------------------------------------------------------------
+
+
+def _announce(client_id: int, progress: Progress) -> None:
+    """Say what the worker is doing now, for the notice on the page."""
+    with _state:
+        _progress[client_id] = progress
+
+
+def _done(client_id: int) -> None:
+    """The end of one run, whichever way it ended: the notice goes and the lock
+    is let go. One place, so a second worker cannot forget half of it."""
+    with _state:
+        _progress.pop(client_id, None)
+    _generating.release()
 
 
 def _run_write(client_id: int, angle_id: int, kinds: tuple[str, ...]) -> None:
@@ -326,24 +418,31 @@ def _run_write(client_id: int, angle_id: int, kinds: tuple[str, ...]) -> None:
                 angle = session.get(Angle, angle_id)
                 if client is None or angle is None or angle.client_id != client_id:
                     return
-                _notes.pop((angle_id, _PACKAGE), None)
+                _forget(angle_id, _PACKAGE)
                 for done, key in enumerate(kinds):
                     fmt = assets.definition(key)
-                    _progress[client_id] = Progress(
-                        angle_id=angle_id, label=fmt.name, done=done, total=len(kinds)
+                    _announce(
+                        client_id,
+                        Progress(
+                            angle_id=angle_id,
+                            label=fmt.name,
+                            done=done,
+                            total=len(kinds),
+                        ),
                     )
                     _write_one(session, client, angle, fmt)
     except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
         # Nothing may read as "there was nothing to write": the reader would go on
         # believing the package was complete.
-        _notes[(angle_id, _PACKAGE)] = (
+        _remember(
+            angle_id,
+            _PACKAGE,
             f"Das Paket ist mit einem Fehler abgebrochen: {exc}. "
-            "Details stehen im Log."
+            "Details stehen im Log.",
         )
         _log.exception("writing the package failed")
     finally:
-        _progress.pop(client_id, None)
-        _generating.release()
+        _done(client_id)
 
 
 def _write_one(
@@ -357,32 +456,47 @@ def _write_one(
     arrive. Six formats in sequence must not lose five because the third one had
     no spokesperson.
     """
-    key = (angle.id, fmt.key)
-    _notes.pop(key, None)
+    _forget(angle.id, fmt.key)
 
-    def _note(reason: str) -> None:
-        _notes[key] = reason
+    def _tell(reason: str) -> None:
+        _remember(angle.id, fmt.key, reason)
 
     try:
-        assets.produce(session, fmt, client, angle, note=_note)
+        assets.produce(session, fmt, client, angle, note=_tell)
     except (assets.RequirementsMissing, assets.Malformed):
-        # Both already handed their sentence to ``_note`` — in the consultant's
+        # Both already handed their sentence to ``_tell`` — in the consultant's
         # language, naming the field to fill or what the structure was missing.
+        # Neither reaches the database, so the session is still clean.
         _log.info("%s not written for %r", fmt.key, client.name)
     except Exception as exc:  # noqa: BLE001 — one format must not take the rest down
-        _notes[key] = (
-            f"{fmt.name} nicht geschrieben: {exc}. Details stehen im Log."
+        # A caught exception is not a clean session. ``produce`` ends in
+        # ``store`` -> ``commit``, and a commit that fails — the partial unique
+        # index, or SQLite's "database is locked" against the cron sweep, which
+        # runs in another process and is not covered by the run guard — leaves the
+        # transaction in PendingRollbackError. Without this every later format in
+        # this run dies on the poisoned session, which is exactly the failure this
+        # handler exists to prevent. Same fix as job.py:1329.
+        session.rollback()
+        _remember(
+            angle.id,
+            fmt.key,
+            f"{fmt.name} nicht geschrieben: {exc}. Details stehen im Log.",
         )
         _log.exception("%s failed for %r", fmt.key, client.name)
 
 
-def _run_recheck(client_id: int, asset_id: int) -> None:
+def _run_recheck(client_id: int, angle_id: int, asset_id: int) -> None:
     """Read one stored text again on a worker thread; always let go.
 
     On the same lock as writing, because it is the same kind of wait: two model
     calls a person is standing in front of.
+
+    ``angle_id`` is handed in rather than read off the row, because it is where
+    the failure below has to be written and the row is exactly what may not be
+    reachable when it fails. It used to start at a sentinel 0 and be filled in
+    after the load succeeded, so a database that was down wrote its explanation
+    under a key no page ever asks for.
     """
-    angle_id = 0
     try:
         with _run_guard:
             with get_session() as session:
@@ -390,20 +504,22 @@ def _run_recheck(client_id: int, asset_id: int) -> None:
                 client = session.get(Client, client_id)
                 if asset is None or client is None or asset.client_id != client_id:
                     return
-                angle_id = asset.angle_id
-                _notes.pop((angle_id, asset.kind), None)
+                _forget(angle_id, asset.kind)
+                # ``recheck`` records a check that could not run on the row itself
+                # and returns; what reaches here is the session breaking under it.
                 assets.recheck(session, client, asset)
     except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
         # Never silent: an edited text stays unreleasable until a check runs, so a
         # check that failed without saying so looks like a broken release button.
-        _notes[(angle_id, _PACKAGE)] = (
+        _remember(
+            angle_id,
+            _PACKAGE,
             f"Die Prüfung ist mit einem Fehler abgebrochen: {exc}. "
-            "Details stehen im Log."
+            "Details stehen im Log.",
         )
         _log.exception("re-checking an edited text failed")
     finally:
-        _progress.pop(client_id, None)
-        _generating.release()
+        _done(client_id)
 
 
 # --- The routes ----------------------------------------------------------------
@@ -438,28 +554,62 @@ def _asset_or_404(
     return asset
 
 
-def _start(client_id: int, angle_id: int, kinds: tuple[str, ...]) -> None:
-    """Hand the formats to a worker, or record that the lock was taken."""
-    if not kinds:
-        return
+def _spawn(
+    target: Callable[..., None],
+    args: tuple[object, ...],
+    *,
+    client_id: int,
+    angle_id: int,
+    kinds: tuple[str, ...],
+    name: str,
+    refuse_under: str,
+) -> None:
+    """Take the lock, say what is about to happen, and hand it to a worker.
+
+    One function for both acts, because the sequence has three steps that must
+    stay in this order and a second hand-written copy of it drifts. ``kinds`` is
+    what the run will write, in order: its first format names the notice, and its
+    length is what the "3 von 6" counts.
+    """
     if not _generating.acquire(blocking=False):
-        _notes[(angle_id, kinds[0] if len(kinds) == 1 else _PACKAGE)] = _BUSY
+        _remember(angle_id, refuse_under, _BUSY)
         return
     # Recorded here rather than left to the worker, because the redirect renders
     # immediately: a page built before the thread got as far as saying what it was
     # doing would carry no notice, and then nothing would ever ask again.
-    _progress[client_id] = Progress(
-        angle_id=angle_id,
-        label=assets.definition(kinds[0]).name,
-        done=0,
-        total=len(kinds),
+    _announce(
+        client_id,
+        Progress(
+            angle_id=angle_id,
+            label=assets.definition(kinds[0]).name,
+            done=0,
+            total=len(kinds),
+        ),
     )
-    threading.Thread(
-        target=_run_write,
-        args=(client_id, angle_id, kinds),
-        daemon=True,
+    try:
+        threading.Thread(target=target, args=args, daemon=True, name=name).start()
+    except BaseException:
+        # The worker is the only thing that releases the lock, so a thread that
+        # never started would hold it for the life of the process and refuse every
+        # write and every re-check until a restart.
+        _done(client_id)
+        raise
+
+
+def _start(client_id: int, angle_id: int, kinds: tuple[str, ...]) -> None:
+    """Hand the formats to a worker, or record that the lock was taken."""
+    if not kinds:
+        return
+    _spawn(
+        _run_write,
+        (client_id, angle_id, kinds),
+        client_id=client_id,
+        angle_id=angle_id,
+        kinds=kinds,
         name=f"newspulse-assets-{angle_id}",
-    ).start()
+        # One format speaks in its own pane; a whole package speaks for itself.
+        refuse_under=kinds[0] if len(kinds) == 1 else _PACKAGE,
+    )
 
 
 @router.post("/client/{client_id}/impulse/{angle_id}/assets")
@@ -486,7 +636,7 @@ def write_assets(
     if kind:
         existing = stored.get(kind)
         if existing is not None and existing.released:
-            _notes[(angle_id, kind)] = assets.RELEASED_IS_FINAL
+            _remember(angle_id, kind, assets.RELEASED_IS_FINAL)
             return _back(client_id, angle_id)
         kinds: tuple[str, ...] = (kind,)
     else:
@@ -527,7 +677,7 @@ def rewrite_asset(
     """
     asset = _asset_or_404(session, client_id, angle_id, asset_id)
     if asset.released:
-        _notes[(angle_id, asset.kind)] = assets.RELEASED_IS_FINAL
+        _remember(angle_id, asset.kind, assets.RELEASED_IS_FINAL)
         return _back(client_id, angle_id)
     _start(client_id, angle_id, (asset.kind,))
     return _back(client_id, angle_id)
@@ -553,17 +703,17 @@ def edit_asset(
     if not body.strip():
         # An empty body is a slip, not an edit: saving it would destroy the text
         # and clear the verdicts that were the only evidence it had been read.
-        _notes[(angle_id, asset.kind)] = (
-            "Der Text wurde nicht gespeichert: das Feld war leer."
+        _remember(
+            angle_id, asset.kind, "Der Text wurde nicht gespeichert: das Feld war leer."
         )
         return _back(client_id, angle_id)
     try:
         assets.edit(session, asset, title=title, body=body)
     except assets.Refused as exc:
-        _notes[(angle_id, asset.kind)] = str(exc)
+        _remember(angle_id, asset.kind, str(exc))
         return _back(client_id, angle_id)
     # The saved text answers whatever the last attempt complained about.
-    _notes.pop((angle_id, asset.kind), None)
+    _forget(angle_id, asset.kind)
     return _back(client_id, angle_id)
 
 
@@ -574,27 +724,20 @@ def recheck_asset(
     asset_id: int,
     session: Session = Depends(get_db),
 ) -> Response:
-    """Have the second model read the edited text, so it can be released."""
+    """Have the second model read the text again, so it can be released."""
     asset = _asset_or_404(session, client_id, angle_id, asset_id)
     if asset.released:
-        _notes[(angle_id, asset.kind)] = assets.RELEASED_IS_FINAL
+        _remember(angle_id, asset.kind, assets.RELEASED_IS_FINAL)
         return _back(client_id, angle_id)
-    if not _generating.acquire(blocking=False):
-        _notes[(angle_id, asset.kind)] = _BUSY
-        return _back(client_id, angle_id)
-    # Before the thread, for the reason ``_start`` records it before its own.
-    _progress[client_id] = Progress(
+    _spawn(
+        _run_recheck,
+        (client_id, angle_id, asset_id),
+        client_id=client_id,
         angle_id=angle_id,
-        label=assets.definition(asset.kind).name,
-        done=0,
-        total=1,
-    )
-    threading.Thread(
-        target=_run_recheck,
-        args=(client_id, asset_id),
-        daemon=True,
+        kinds=(asset.kind,),
         name=f"newspulse-recheck-{asset_id}",
-    ).start()
+        refuse_under=asset.kind,
+    )
     return _back(client_id, angle_id)
 
 
@@ -615,7 +758,7 @@ def release_asset(
     try:
         assets.release(session, asset, by=config.AUTH_USER)
     except assets.Refused as exc:
-        _notes[(angle_id, asset.kind)] = str(exc)
+        _remember(angle_id, asset.kind, str(exc))
     return _back(client_id, angle_id)
 
 
@@ -623,8 +766,10 @@ __all__ = [
     "Package",
     "Progress",
     "Slot",
+    "busy",
     "package",
     "package_note",
+    "page_context",
     "progress_for",
     "router",
 ]
