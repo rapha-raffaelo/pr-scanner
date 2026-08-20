@@ -34,7 +34,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -43,6 +43,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from ... import (
     angles,
+    brain,
     config,
     industry,
     job,
@@ -472,6 +473,125 @@ def _header_from_runs(runs: list[RunView]) -> _HeaderRun | None:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class BlockView:
+    """One brain block as the settings panel shows it.
+
+    ``text`` is what a prompt composes today, whichever source it came from, so
+    the panel cannot show one thing while the model reads another.
+    """
+
+    key: str
+    text: str
+    is_override: bool
+    #: An override whose shipped default is gone — a block renamed in the
+    #: repository while an override for the old key was still live. Shown rather
+    #: than hidden: it is the one state in which an edit nobody can find is still
+    #: in force.
+    is_orphan: bool
+    changed_at: dt.datetime | None
+    changed_by: str
+    #: Whether ``changed_by`` is the sentinel rather than a person's name, so the
+    #: template knows which of the two to put through the translation lookup.
+    #: See :func:`_author_is_sentinel`.
+    changed_by_is_sentinel: bool
+    #: The brain version this text has been in force since, or None if the block
+    #: has never been changed and is simply what the repository ships.
+    version: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class BlockChange:
+    """One entry in a block's history, with the wording it put in force."""
+
+    version: int
+    changed_at: dt.datetime
+    changed_by: str
+    changed_by_is_sentinel: bool
+    #: The wording this change put in force, or "" for a revert whose shipped
+    #: default no longer exists — the one case where there is nothing to show and
+    #: the template says so rather than rendering an empty box.
+    text: str
+    is_revert: bool
+
+
+def _author_is_sentinel(name: str) -> bool:
+    """Whether an author is the no-named-user fallback rather than a person.
+
+    The panel used to render every author through the translation lookup, which
+    works for "mensch" — that is why the entry exists — and is wrong for
+    everything else. ``NEWSPULSE_AUTH_USER`` is a value an operator chooses, and
+    one that happened to collide with a German UI key would show the author of a
+    change as an unrelated English word: a user named "Vorgabe" appearing in the
+    history as "Shipped". Only the sentinel is chrome.
+    """
+    return name == brain._ANONYMOUS_EDITOR
+
+
+def _brain_blocks(session: Session) -> list[BlockView]:
+    """Every block the tool has: what it says, where it came from, when it moved."""
+    shipped = brain.shipped()
+    overrides = brain.stored(session)
+    changes = brain.latest(session)
+    views: list[BlockView] = []
+    for key in [*sorted(shipped), *brain.orphaned(overrides)]:
+        change = changes.get(key)
+        author = change.edited_by if change is not None else ""
+        views.append(
+            BlockView(
+                key=key,
+                text=overrides[key] if key in overrides else shipped.get(key, ""),
+                is_override=key in overrides,
+                is_orphan=key not in shipped,
+                changed_at=change.edited_at if change is not None else None,
+                changed_by=author,
+                changed_by_is_sentinel=_author_is_sentinel(author),
+                version=change.version if change is not None else None,
+            )
+        )
+    return views
+
+
+def _brain_history(session: Session, key: str) -> list[BlockChange]:
+    """One block's recorded changes, newest first, each with its own wording.
+
+    A revert carries no text of its own — it is the absence of an override — so
+    it renders the shipped wording it restored. A date alone would say a change
+    happened and nothing about what the house believed afterwards, which is the
+    only question anyone opens a history to answer.
+
+    Two honest limits. The shipped text is today's, not the one that shipped on
+    the day of the revert: the file's wording at that moment is not stored
+    anywhere this can read, and git holds the lineage. And for an orphan there is
+    no shipped text at all, which used to render as an empty ``<pre>`` — a
+    version, a date and an author with nothing readable beside them. That case is
+    now empty on purpose and the template names it.
+    """
+    shipped_text = brain.shipped().get(key, "")
+    return [
+        BlockChange(
+            version=row.version,
+            changed_at=row.edited_at,
+            changed_by=row.edited_by,
+            changed_by_is_sentinel=_author_is_sentinel(row.edited_by),
+            text=row.text if row.text is not None else shipped_text,
+            is_revert=row.text is None,
+        )
+        for row in brain.history(session, key)
+    ]
+
+
+def _require_block(session: Session, key: str) -> None:
+    """404 for a key that neither ships nor has an override.
+
+    A block is addressed by name in the URL, so without this a typo renders the
+    whole settings page with an editor for a block that does not exist and a save
+    button that would refuse it.
+    """
+    if key not in brain.shipped() and key not in brain.stored(session):
+        raise HTTPException(status_code=404, detail="Brain block not found")
+
+
 def _fetch_feed_views(session: Session) -> list[FeedView]:
     """The registered feeds with their active flag resolved from settings."""
     feeds = load_feeds()
@@ -694,6 +814,18 @@ def _page_context(session: Session) -> dict[str, object]:
         "industry_work": dict(themework.industry_job.state),
         # Offered as mutable categories in the edit form.
         "categories": _CATEGORY_VALUES,
+        # What the house believes, block by block, and how often it has moved.
+        # Read on every settings render rather than cached: this is the page the
+        # edit lands on, and a panel that shows the previous wording after a save
+        # is worse than one that shows nothing.
+        "brain_blocks": _brain_blocks(session),
+        "brain_version": brain.version(session),
+        # Which block is open for editing, its history, and any refused edit.
+        # None means "the panel is a list", which is every render but the one
+        # reached through /settings/brain/<key>.
+        "brain_open": None,
+        "brain_history": [],
+        "brain_error": None,
         "map_fields": _MAP_FIELDS,
         "map_values": {},
         "client_error": None,
@@ -765,6 +897,82 @@ def settings_view(
     if radar:
         extra["radar_stale"] = radar_cleanup.survey(session)
     return _render_settings(request, session, **extra)
+
+
+# --- The brain: what the house believes, and who last changed it ---------------
+#
+# The standards live in the repository and are overridden here, which is the
+# whole of DEC-1 option C: a fresh install thinks correctly on day one, git keeps
+# the lineage, and a consultant does not need a deployment to change a sentence
+# about tone. Every block is its own form on purpose. A change to tonality is a
+# different act from a change to what counts as evidence, and one textarea
+# holding everything would make them the same act.
+
+
+@router.get("/settings/brain/{key}", response_class=HTMLResponse)
+def brain_block_view(
+    key: str, request: Request, session: Session = Depends(get_db)
+) -> HTMLResponse:
+    """The settings page with one block open for editing, and its history.
+
+    A URL of its own rather than a panel that only opens on click, because a
+    version has to be citable: BRN-03 stamps every generated text with the brain
+    version it was written under, and that stamp is only worth something if it
+    links to the wording it names.
+    """
+    _require_block(session, key)
+    return _render_settings(
+        request, session, brain_open=key, brain_history=_brain_history(session, key)
+    )
+
+
+@router.post("/settings/brain/{key}")
+def edit_brain_block_route(
+    key: str,
+    request: Request,
+    text: str = Form(...),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Store an override for one block; it governs the next generated text.
+
+    A refused edit re-renders with the block still open and the error above it,
+    rather than redirecting to a page that says nothing about what happened. The
+    box comes back holding the wording still in force, because the only edit this
+    refuses is an empty one and there is nothing in it worth echoing.
+
+    Guarded by ``_require_block`` like the other two verbs, rather than leaning on
+    ``brain.edit`` to raise: one function deciding what exists is what keeps a GET
+    and a POST for the same URL from giving different answers.
+    """
+    _require_block(session, key)
+    try:
+        brain.edit(session, key, text)
+    except brain.UnknownBlock:
+        raise HTTPException(status_code=404, detail="Brain block not found") from None
+    except ValueError as exc:
+        return _render_settings(
+            request,
+            session,
+            brain_open=key,
+            brain_history=_brain_history(session, key),
+            brain_error=str(exc),
+        )
+    return RedirectResponse(f"/settings/brain/{key}", status_code=_SEE_OTHER)
+
+
+@router.post("/settings/brain/{key}/revert")
+def revert_brain_block_route(
+    key: str, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Put the shipped wording back, as its own recorded change.
+
+    Lands back on the block unless the revert was the last thing keeping an
+    orphan alive, in which case there is no block left to land on.
+    """
+    _require_block(session, key)
+    brain.revert(session, key)
+    back = f"/settings/brain/{key}" if key in brain.shipped() else "/settings#brain"
+    return RedirectResponse(back, status_code=_SEE_OTHER)
 
 
 @router.post("/settings/run")

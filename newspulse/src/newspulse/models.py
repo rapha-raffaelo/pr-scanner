@@ -518,6 +518,59 @@ class Setting(Base):
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class BrainOverride(Base):
+    """One recorded change to what the house believes, block by block.
+
+    The repository ships the blocks (``newspulse/blocks/*.txt``) and they stay
+    the default underneath, so a fresh install thinks correctly on day one and
+    git keeps the lineage. This table is what the agency writes on top of them,
+    because what good PR looks like is the agency's judgement and not the
+    developer's, and a consultant should not need a deployment to change a
+    sentence about tone.
+
+    Append-only: a row is an *event*, not the current state. The override in
+    force for a block is its newest row, and a revert is a row of its own rather
+    than the deletion of one — "we went back to the shipped wording in September"
+    is a decision somebody made, and a letter written the week before was written
+    under a different standard. Deleting the row would make the revert look like
+    it never happened, which is exactly the history this table exists to keep.
+
+    ``text`` is NULL on precisely those revert rows. NULL and ``""`` are
+    different answers: the empty string is refused at write time (see
+    :func:`newspulse.brain.edit`), because a prompt composing an empty standard
+    drops it in silence rather than complaining.
+    """
+
+    __tablename__ = "brain_overrides"
+    __table_args__ = (
+        # One version per recorded change, enforced rather than assumed: BRN-03
+        # stamps generated texts with a version and reads the standards back out
+        # of this table, so two rows sharing a number would make that lookup
+        # ambiguous in the one conversation where it matters.
+        UniqueConstraint("version", name="uq_brain_overrides_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    #: The block's stable key — the same one a prompt's ``{{brain:…}}`` names.
+    #: Deliberately not a foreign key to anything: the blocks are files, and an
+    #: override whose file was renamed away has to stay findable (the settings
+    #: panel shows it as orphaned) rather than vanish with it.
+    key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    #: The overriding text, or NULL for "back to the shipped default".
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edited_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: Who changed it. One shared Basic-auth credential is the only identity this
+    #: tool has, so this is that user name or ``"mensch"`` — never a name nobody
+    #: supplied.
+    edited_by: Mapped[str] = mapped_column(String(80), nullable=False, default="mensch")
+    #: The portfolio-wide brain version this change produced, counting every
+    #: recorded change across every block. One number for the whole house, so a
+    #: text can say which standards it was written under with a single integer.
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class Advisory(Base):
     """One generated set of suggested PR actions for a client.
 
@@ -802,6 +855,7 @@ __all__ = [
     "Analysis",
     "Advisory",
     "Angle",
+    "BrainOverride",
     "ClientFact",
     "Outreach",
     "TopicHit",

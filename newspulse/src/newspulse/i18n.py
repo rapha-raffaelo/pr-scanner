@@ -749,6 +749,51 @@ _EN: dict[str, str] = {
     "Kein Feed in diesem Zeitraum hat einen Autor mitgeliefert.":
         "No feed supplied an author in this period.",
     "Tage": "days",
+    # --- The brain: the standards every prompt composes from -------------------
+    # "Maßstäbe" and not "Gehirn": the panel holds what a text is measured
+    # against, and the architecture's name for the layer is not what the person
+    # editing a sentence about tone is looking for.
+    "Maßstäbe": "Standards",
+    "Was das Haus für gut hält. Jeder Text, den das Werkzeug schreibt, setzt sich "
+    "hieraus zusammen: Ändert sich ein Block, ändert sich jeder Prompt, der ihn einbindet.":
+        "What the house holds to be good. Every text the tool writes is composed "
+        "from these: change a block and every prompt that includes it changes with it.",
+    "Fassung": "Version",
+    # The three states a block can be in, and they must read as three different
+    # things: the shipped wording, a wording the agency wrote over it, and a
+    # wording that overrides a block the repository no longer has.
+    "Vorgabe": "Shipped",
+    "Überschrieben": "Overridden",
+    "Verwaist": "Orphaned",
+    "Überschrieben, aber nicht mehr ausgeliefert: Der Block wurde umbenannt oder "
+    "entfernt. Die Überschreibung gilt weiter, wo ein Prompt sie einbindet — "
+    "Zurücksetzen entfernt sie.":
+        "Overridden but no longer shipped: the block was renamed or removed. The "
+        "override still applies wherever a prompt includes it; reverting removes it.",
+    "Zuletzt geändert": "Last changed",
+    "Noch nie geändert": "Never changed",
+    "Wortlaut": "Wording",
+    "Auf Vorgabe zurücksetzen": "Restore the shipped wording",
+    "Auf die Vorgabe zurückgesetzt": "Restored the shipped wording",
+    "Verlauf": "History",
+    "Noch keine Änderung aufgezeichnet. Der Block ist der ausgelieferte Wortlaut.":
+        "No change recorded yet. The block is the shipped wording.",
+    # Why an empty edit is refused. It reaches the page as a value rather than as
+    # chrome — the route hands `brain.EMPTY_BLOCK_MESSAGE` to the template — and
+    # is translated anyway, because a German sentence in a red box on an
+    # otherwise English panel is the mixed-language failure the suite forbids.
+    "Ein Block darf nicht leer sein: ein Prompt, der einen leeren Maßstab "
+    "einsetzt, lässt ihn stillschweigend weg.":
+        "A block must not be empty: a prompt that inserts an empty standard "
+        "silently drops it.",
+    # A revert to a block the repository no longer ships: the row says a wording
+    # was restored, and there is no longer a wording to show for it.
+    "Auf die Vorgabe zurückgesetzt — der ausgelieferte Wortlaut existiert nicht mehr.":
+        "Restored the shipped wording — the shipped wording no longer exists.",
+    # Who a change is recorded as when the installation has no named user. Same
+    # word ClientFact.filled_by uses, and translated for the same reason: it is a
+    # value the interface renders, not a stored German noun the reader must parse.
+    "mensch": "human",
 }
 
 _TABLES = {"de": {}, "en": _EN}

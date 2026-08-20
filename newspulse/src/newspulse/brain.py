@@ -29,8 +29,16 @@ caller's substitution. A brain marker has to survive being read and be gone befo
 
 Resolution takes its source explicitly. That is what lets a test compose against
 six lines of fixture text instead of the shipped files, and it is the seam
-DEC-1's override chain hangs on: BRN-02 adds a database layer in front of
-:func:`shipped` without any caller learning that it happened.
+DEC-1's override chain hangs on: the database layer BRN-02 put in front of
+:func:`shipped` arrived without any caller learning that it happened.
+
+That chain is the second half of this module. The repository ships the blocks so
+a fresh install thinks correctly on day one and git keeps the lineage; any block
+can be overridden in the tool, because what good PR looks like is the agency's
+judgement and not the developer's. :func:`current` is the resolved set — shipped,
+with the stored overrides on top — and it is what a prompt composes against when
+no source is named, so an edit takes effect on the next generated text rather
+than on the next deployment.
 
 One rule deliberately stayed out of here. ``prose.plain()`` strips dashes from
 generated text in code, and it stays in code. The block :file:`blocks/house_style.txt`
@@ -42,12 +50,23 @@ two different mechanisms and this layer is only the first.
 
 from __future__ import annotations
 
-import hashlib
+import datetime as dt
+import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from functools import lru_cache
 from importlib import resources
 from types import MappingProxyType
+
+from sqlalchemy import func, inspect, select
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from . import config
+from .db import get_engine, get_session
+from .models import BrainOverride, Setting
+
+_log = logging.getLogger(__name__)
 
 #: Where the shipped blocks live, as package data beside ``prompts/``. Named
 #: ``blocks`` and not ``brain`` on purpose: a data directory next to
@@ -85,9 +104,35 @@ _DECLARATION = re.compile(r"(?m)^[ \t]*#blocks:[ \t]*(?P<keys>[^\n]*)\n?")
 #: other, which without a cap expands until the process dies.
 _MAX_INCLUDE_DEPTH = 5
 
-#: Enough hex to make a collision between two block sets a non-worry, short
-#: enough to read in a log line or a test failure.
-_VERSION_DIGITS = 12
+#: The settings-table key holding the portfolio-wide brain version: how many
+#: recorded changes the standards have been through, across every block. One
+#: number for the whole house rather than one per block, so a generated text can
+#: name the standards it was written under with a single integer.
+_VERSION_KEY = "brain_version"
+
+#: What a change is recorded as when the installation has no named user. The
+#: dashboard has one shared Basic-auth credential and no user table, so the
+#: honest answer is that a person here made the change — the same word
+#: ``ClientFact.filled_by`` uses for a fact a consultant typed himself. Inventing
+#: a name nobody supplied would be worse than admitting there is none.
+#:
+#: The same literal is written out in two other places, and changing it here
+#: alone would leave the three disagreeing: ``BrainOverride.edited_by``'s ORM
+#: default in ``models.py`` (which cannot import this constant — ``brain``
+#: imports ``models``), and the ``server_default`` in
+#: ``migrations/versions/0018_brain_overrides.py``, which is frozen history and
+#: must keep saying "mensch" whatever this becomes.
+_ANONYMOUS_EDITOR = "mensch"
+
+#: Why an empty block is refused, in the words the panel shows. A module
+#: constant rather than a literal inside :func:`edit` because it is interface
+#: text: the route hands it to the template, so it goes through the same
+#: translation lookup as the chrome around it and has an ``i18n._EN`` entry like
+#: any other German string the tool renders.
+EMPTY_BLOCK_MESSAGE = (
+    "Ein Block darf nicht leer sein: ein Prompt, der einen leeren "
+    "Maßstab einsetzt, lässt ihn stillschweigend weg."
+)
 
 
 class UnknownBlock(LookupError):
@@ -136,14 +181,14 @@ def shipped() -> Mapping[str, str]:
     """The blocks as the repository ships them, keyed by filename stem.
 
     Cached because ten prompts read the same six files and the content only
-    changes with a deployment. BRN-02 puts the database overrides in front of
-    this; the shipped text stays the default underneath, so a fresh install
-    thinks correctly on day one.
+    changes with a deployment. The database overrides sit in front of this (see
+    :func:`current`); the shipped text stays the default underneath, so a fresh
+    install thinks correctly on day one.
 
     Read-only, because the cache hands out the same object every time. The
-    caller BRN-02 is about to write is ``merged = shipped(); merged.update(rows)``
-    and one client's overrides would become every client's standards for the life
-    of the process. Copy it first: ``dict(shipped())``, or use :func:`blocks`.
+    tempting caller is ``merged = shipped(); merged.update(rows)``, and one
+    edit would become every reader's standards for the life of the process. Copy
+    it first: ``dict(shipped())``, or use :func:`resolved`.
     """
     root = resources.files("newspulse").joinpath(_BLOCK_DIR)
     found = {
@@ -155,13 +200,13 @@ def shipped() -> Mapping[str, str]:
 
 
 def blocks(source: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Every block and its text. ``source`` defaults to what the repo ships."""
-    return dict(shipped() if source is None else source)
+    """Every block and its text. ``source`` defaults to :func:`current`."""
+    return dict(current() if source is None else source)
 
 
 def block(key: str, source: Mapping[str, str] | None = None) -> str:
     """One block's text, or :class:`UnknownBlock` if there is no such block."""
-    available = shipped() if source is None else source
+    available = current() if source is None else source
     try:
         return available[key]
     except KeyError:
@@ -216,19 +261,19 @@ def compose(text: str, source: Mapping[str, str] | None = None) -> str:
     without the standard, which is the one outcome this layer exists to prevent.
 
     Expansion repeats to a fixed point and the header is stripped afterwards, so
-    block text obeys the same two rules as prompt text. A block is a file today
-    and an editable field from BRN-02 on, and a single pass would let whatever a
-    consultant typed into one leak through unread.
+    block text obeys the same two rules as prompt text. A block is a file the
+    repository ships *and* a field a consultant edits, and a single pass would
+    let whatever was typed into one leak through unread.
 
     Block text is escaped for ``string.Template``, which runs after this. A
     ``$`` in the prompt itself is the caller's placeholder and stays untouched; a
-    ``$`` inside a block is a character a consultant typed, and once BRN-02 makes
-    block text editable someone will type a price. Unescaped it would raise a
-    ``KeyError`` from ``substitute`` in a call site that has no idea a block was
-    involved. Escaping only what each round inserts is what keeps a nested
-    expansion from doubling an earlier round's escapes.
+    ``$`` inside a block is a character a consultant typed, and sooner or later
+    somebody types a price. Unescaped it would raise a ``KeyError`` from
+    ``substitute`` in a call site that has no idea a block was involved. Escaping
+    only what each round inserts is what keeps a nested expansion from doubling
+    an earlier round's escapes.
     """
-    available = shipped() if source is None else source
+    available = current() if source is None else source
 
     def _expand(match: re.Match[str]) -> str:
         return block(match.group("key"), available).replace("$", "$$")
@@ -249,40 +294,352 @@ def compose(text: str, source: Mapping[str, str] | None = None) -> str:
     return composed.strip() + "\n"
 
 
-def version(source: Mapping[str, str] | None = None) -> str:
-    """A stamp that changes when any block's text changes.
+# ---------------------------------------------------------------------------
+# The override chain (DEC-1 option C).
+#
+# Everything above this line is pure and takes its source explicitly. Everything
+# below reads a database, because the blocks belong to the people who own the
+# judgement rather than to whoever can deploy: files are the default, the tool
+# holds the disagreement, and a revert brings the shipped text back exactly.
+# ---------------------------------------------------------------------------
 
-    A digest of the resolved block set rather than a counter, because with the
-    blocks in files there is nothing to count: the content *is* the version, and
-    two checkouts of the same commit should stamp their texts identically.
 
-    Nothing in ``src/`` calls this yet, and that is deliberate rather than
-    forgotten: BRN-03 stamps generated text with the standards it was written
-    under, and BRN-02 replaces the digest with an incrementing counter once an
-    edit in the tool is an event with an author and a time, which is a thing a
-    hash cannot represent. That is a return-type change, and it is the reason
-    this returns a string rather than an int today. If both stories are dropped,
-    delete this function and its tests with them.
+def resolved(overrides: Mapping[str, str]) -> dict[str, str]:
+    """The shipped blocks with ``overrides`` on top. Pure, and a fresh dict.
+
+    An override for a key that no longer ships stays in the result rather than
+    being dropped: it is live text that some prompt may still include, and the
+    settings panel shows it as orphaned. Silently discarding it would make a
+    renamed block file look like a block that was never overridden.
     """
-    resolved = shipped() if source is None else source
-    digest = hashlib.sha256()
-    for key in sorted(resolved):
-        digest.update(key.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(resolved[key].encode("utf-8"))
-        digest.update(b"\0")
-    return digest.hexdigest()[:_VERSION_DIGITS]
+    return dict(shipped()) | dict(overrides)
+
+
+def orphaned(overrides: Mapping[str, str]) -> tuple[str, ...]:
+    """Override keys with no shipped default behind them any more. Pure.
+
+    A block renamed in the repository leaves its override behind, still resolving
+    and no longer visible beside a default. That is the one state in which an
+    edit nobody can find stays in force, so it is named rather than hidden.
+    """
+    return tuple(sorted(set(overrides) - set(shipped())))
+
+
+def _stored_overrides() -> Mapping[str, str]:
+    """The overrides as the database has them, through a short-lived session.
+
+    Read per composition rather than cached. A prompt render happens a handful of
+    times per generated text, each of which is a multi-second model call, so the
+    cost is a few microseconds of SQLite against a table with one row per edit
+    ever made; a cache would buy nothing and would have to be invalidated from
+    the one place that must never get it wrong, which is the edit that has just
+    been saved and is expected to hold for the next text.
+
+    Fails soft to the shipped set for exactly one case: a database that has not
+    been migrated yet, where the shipped blocks are a correct answer by
+    construction and refusing to compose would take the tool down over a table
+    that is empty on every fresh install anyway.
+
+    Everything else propagates, deliberately. A locked database, a disk error or
+    a corrupt file are *not* that case, and swallowing them produces the failure
+    this layer exists to prevent: a generated text written against the
+    developer's defaults while the agency believes its own standards are in
+    force, with nothing in the output saying otherwise. It gets worse once BRN-03
+    stamps texts with a brain version that asserts the overrides applied. A loud
+    failure on the page is the better answer than a quiet lie in a letter.
+    """
+    try:
+        with get_session() as session:
+            return stored(session)
+    except OperationalError as exc:
+        if not _table_is_missing():
+            _log.error("brain overrides unreadable: %s", exc)
+            raise
+        _log.warning(
+            "brain_overrides is not migrated yet; composing the shipped text: %s", exc
+        )
+        return {}
+
+
+def _table_is_missing() -> bool:
+    """Whether ``brain_overrides`` genuinely is not there yet.
+
+    Asked of the schema rather than pattern-matched against the driver's error
+    text, so which failures fail soft does not depend on how SQLite happens to
+    word "no such table" this release, and so Postgres behaves the same.
+    """
+    try:
+        return not inspect(get_engine()).has_table(BrainOverride.__tablename__)
+    except SQLAlchemyError:
+        # The database is unreachable altogether. That is not the documented
+        # case and must not be reported as one, or the narrowing above buys
+        # nothing: the caller re-raises and the operator sees the real error.
+        return False
+
+
+#: Where :func:`current` reads the overrides. A seam rather than a direct call so
+#: a test can compose against a known set without a database, and so the suite
+#: cannot silently start writing a SQLite file into whatever directory it ran in
+#: (see ``tests/conftest.py``).
+_override_source: Callable[[], Mapping[str, str]] = _stored_overrides
+
+
+def use_overrides(source: Callable[[], Mapping[str, str]] | None) -> None:
+    """Install where :func:`current` reads overrides; ``None`` restores the database."""
+    global _override_source
+    _override_source = _stored_overrides if source is None else source
+
+
+def current() -> dict[str, str]:
+    """Every block as it stands right now: shipped, with the overrides on top.
+
+    What a prompt composes against when no source is named, which is what makes
+    an edit take effect on the next generated text instead of on the next
+    deployment.
+    """
+    return resolved(_override_source())
+
+
+def latest(session: Session) -> dict[str, BrainOverride]:
+    """The newest recorded change per block, whether it set an override or undid one.
+
+    Reverts included, because "this block is the shipped default, and it is that
+    because somebody put it back on 3 September" is what the panel has to be able
+    to say. :func:`stored` is the same rows with the reverts filtered out.
+    """
+    newest = (
+        select(
+            BrainOverride.key.label("key"),
+            func.max(BrainOverride.version).label("version"),
+        )
+        .group_by(BrainOverride.key)
+        .subquery()
+    )
+    rows = session.scalars(
+        select(BrainOverride).join(
+            newest,
+            (BrainOverride.key == newest.c.key)
+            & (BrainOverride.version == newest.c.version),
+        )
+    ).all()
+    return {row.key: row for row in rows}
+
+
+def stored(session: Session) -> dict[str, str]:
+    """The override text per block, for the blocks that currently have one."""
+    return {
+        key: row.text for key, row in latest(session).items() if row.text is not None
+    }
+
+
+def history(session: Session, key: str) -> list[BrainOverride]:
+    """Every recorded change to one block, newest first, with its text.
+
+    The texts and not only the dates: "version 6, 3 September, Lucas" says a
+    change happened and nothing about what the house believed between then and
+    version 7, which is the only question anyone opens a history to answer.
+    """
+    return list(
+        session.scalars(
+            select(BrainOverride)
+            .where(BrainOverride.key == key)
+            .order_by(BrainOverride.version.desc())
+        ).all()
+    )
+
+
+def version(session: Session) -> int:
+    """The portfolio-wide brain version: how many changes the standards have had.
+
+    Zero on a fresh install, which is a true statement — nothing has been changed
+    — and distinguishable from "unknown", which is what BRN-03 renders for a text
+    stored before there was anything to stamp.
+
+    Read as the larger of the counter and the highest recorded row. The counter
+    is authoritative and both are written in one commit, so they can only differ
+    if the table was restored from a dump without the settings row; taking the
+    maximum means the next change gets a fresh number instead of colliding with a
+    version that already has a text attached to it.
+    """
+    return max(_counter(session), _highest_version(session))
+
+
+def editor() -> str:
+    """Who a change made through the dashboard is recorded as."""
+    return (config.AUTH_USER or "").strip() or _ANONYMOUS_EDITOR
+
+
+def edit(
+    session: Session,
+    key: str,
+    text: str,
+    *,
+    edited_by: str = "",
+    now: dt.datetime | None = None,
+) -> BrainOverride | None:
+    """Store an override for one block and bump the brain version once.
+
+    Returns the recorded change, or ``None`` when the text is already what the
+    block says — that is not a change, and a version number nobody can point at a
+    difference for is worse than no version number.
+
+    Raises ``ValueError`` for an empty or whitespace-only text. A prompt
+    composing an empty standard drops it in silence and goes on producing text
+    that looks fine, which is the failure this whole layer exists to prevent, so
+    the refusal is at the point of the edit rather than at the point of the
+    render. Raises :class:`UnknownBlock` for a key that neither ships nor has an
+    override *in force*, so a mistyped URL cannot conjure a block no prompt reads.
+
+    "In force" and not "has ever had a row", which is the same question
+    :func:`stored` answers and the same one the settings routes' 404 asks. An
+    orphan that was reverted still has rows — a revert is recorded, not deleted —
+    and admitting it here would let a POST from a tab held open across that revert
+    resurrect an override for a block the repository no longer ships, while the
+    GET for the same URL answers 404.
+    """
+    cleaned = _normalise(text)
+    if not cleaned:
+        raise ValueError(EMPTY_BLOCK_MESSAGE)
+    row = latest(session).get(key)
+    override = row.text if row is not None else None
+    if key not in shipped() and override is None:
+        raise UnknownBlock(key, sorted(shipped()))
+    if cleaned == (override if override is not None else shipped().get(key)):
+        return None
+    return _record(session, key, cleaned, edited_by=edited_by, now=now)
+
+
+def revert(
+    session: Session,
+    key: str,
+    *,
+    edited_by: str = "",
+    now: dt.datetime | None = None,
+) -> BrainOverride | None:
+    """Drop a block's override and bump the version again.
+
+    The shipped text comes back exactly, because it was never edited — the file
+    is still the file, and the override simply stops being read.
+
+    Recorded as a row of its own rather than by deleting the override, so a
+    revert is a change with a date and an author like any other. Returns ``None``
+    when there is nothing to revert: a second click on a page held open in
+    another tab must not spend a version on a no-op.
+    """
+    if key not in stored(session):
+        return None
+    return _record(session, key, None, edited_by=edited_by, now=now)
+
+
+def _record(
+    session: Session,
+    key: str,
+    text: str | None,
+    *,
+    edited_by: str,
+    now: dt.datetime | None,
+) -> BrainOverride:
+    """Write one change and its version number in a single commit.
+
+    One commit for both, so the counter and the row it belongs to cannot disagree
+    — a bumped counter with no row would leave a version nobody can read the
+    standards for.
+
+    The version is read and then written, which is a race: two saves landing
+    together — two tabs, or a double-submit — both read the same number, and the
+    unique constraint on ``version`` rejects the second. That constraint is doing
+    its job, so the answer is to take the next free number rather than to hand the
+    operator a 500 on the panel that owns the tool's standards. Both edits are
+    then recorded with versions of their own, which is what an append-only log
+    should say happened.
+    """
+    try:
+        return _write_change(session, key, text, edited_by=edited_by, now=now)
+    except IntegrityError:
+        session.rollback()
+        _log.warning("brain version %d was taken; retrying", version(session))
+        return _write_change(session, key, text, edited_by=edited_by, now=now)
+
+
+def _write_change(
+    session: Session,
+    key: str,
+    text: str | None,
+    *,
+    edited_by: str,
+    now: dt.datetime | None,
+) -> BrainOverride:
+    """One attempt at the write above, at whatever version is free right now."""
+    change = BrainOverride(
+        key=key,
+        text=text,
+        edited_at=now or dt.datetime.now(dt.UTC),
+        edited_by=(edited_by or "").strip() or editor(),
+        version=version(session) + 1,
+    )
+    session.add(change)
+    _store_counter(session, change.version)
+    session.commit()
+    return change
+
+
+def _normalise(text: str) -> str:
+    """A textarea's submission as a block file would hold it.
+
+    Browsers submit ``\\r\\n`` from a textarea and the shipped blocks use ``\\n``.
+    Without this every edited block would carry Windows line endings into the
+    prompts, where they are invisible in the interface and show up as a diff in
+    every golden file the block touches.
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def _counter(session: Session) -> int:
+    """The stored brain version, or 0 if it was never written or is unreadable."""
+    setting = session.get(Setting, _VERSION_KEY)
+    if setting is None or setting.value is None:
+        return 0
+    try:
+        return int(setting.value)
+    except ValueError:
+        _log.warning("brain version %r is not a number; treating it as 0", setting.value)
+        return 0
+
+
+def _highest_version(session: Session) -> int:
+    """The highest version any recorded change carries, or 0 if there are none."""
+    return session.scalar(select(func.max(BrainOverride.version))) or 0
+
+
+def _store_counter(session: Session, value: int) -> None:
+    """Write the brain version without committing; the caller owns the commit."""
+    setting = session.get(Setting, _VERSION_KEY)
+    if setting is None:
+        session.add(Setting(key=_VERSION_KEY, value=str(value)))
+    else:
+        setting.value = str(value)
 
 
 __all__ = [
+    "EMPTY_BLOCK_MESSAGE",
     "BlockCycle",
     "UnknownBlock",
     "block",
     "blocks",
     "compose",
+    "current",
     "declared",
+    "edit",
+    "editor",
     "has_declaration",
+    "history",
     "included",
+    "latest",
+    "orphaned",
+    "resolved",
+    "revert",
     "shipped",
+    "stored",
+    "use_overrides",
     "version",
 ]

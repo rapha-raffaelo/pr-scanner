@@ -15,18 +15,34 @@ diff across exactly the prompts that include it. Regenerate them deliberately::
 
 The *unit* tests answer "does resolution behave?" and take their block set as an
 argument, so none of them touch the filesystem or a database.
+
+The *store* tests at the bottom are the ones that do use a database, because the
+thing they are about is an event: who changed a standard, when, and which version
+that produced. They drive ``brain.edit``/``brain.revert`` directly and the three
+settings routes through ``TestClient``, against an in-memory SQLite database.
+Nothing here reaches a model.
 """
 
 from __future__ import annotations
 
+import datetime as dt
+import importlib
 import os
 import re
+from contextlib import contextmanager
 from pathlib import Path
 from string import Template
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from newspulse import brain, prose
+from newspulse import brain, i18n, prose
+from newspulse.models import Base, BrainOverride
+from newspulse.web.app import create_app, get_db
 
 PROMPTS = Path(brain.__file__).parent / "prompts"
 GOLDEN = Path(__file__).parent / "fixtures" / "prompts"
@@ -204,28 +220,43 @@ def test_has_declaration_separates_an_empty_list_from_a_missing_header():
 
 
 # --------------------------------------------------------------------------
-# Version: changes when a standard changes, and not otherwise.
+# The override chain: shipped is the default, the tool holds the disagreement.
 # --------------------------------------------------------------------------
 
 
-def test_version_is_stable_for_an_unchanged_block_set():
-    assert brain.version(FIXTURE_BLOCKS) == brain.version(dict(FIXTURE_BLOCKS))
+def test_an_override_wins_over_the_shipped_text_for_the_same_key():
+    resolved = brain.resolved({"refusal": "EIN ANDERER MASSSTAB"})
+    assert resolved["refusal"] == "EIN ANDERER MASSSTAB"
+    # And nothing else moved with it.
+    assert resolved["house_style"] == brain.shipped()["house_style"]
 
 
-def test_version_changes_when_a_block_text_changes():
-    edited = {**FIXTURE_BLOCKS, "alpha": "ERSTER BLOCK\n\nEin anderer Maßstab."}
-    assert brain.version(edited) != brain.version(FIXTURE_BLOCKS)
+def test_a_block_with_no_override_is_still_the_shipped_text():
+    assert brain.resolved({}) == dict(brain.shipped())
 
 
-def test_version_changes_when_a_block_is_added():
-    added = {**FIXTURE_BLOCKS, "gamma": "DRITTER BLOCK"}
-    assert brain.version(added) != brain.version(FIXTURE_BLOCKS)
+def test_resolving_does_not_mutate_the_shipped_set():
+    """`shipped()` is cached and hands out one object for the process, so a
+    resolution that updated it in place would make one edit everyone's
+    standards until restart."""
+    brain.resolved({"refusal": "ÜBERSCHRIEBEN"})
+    assert brain.shipped()["refusal"] != "ÜBERSCHRIEBEN"
 
 
-def test_version_does_not_collide_when_text_moves_between_blocks():
-    """Concatenating key and text without separators would make {"a": "xy"} and
-    {"ax": "y"} hash alike, which is exactly the edit a consultant makes."""
-    assert brain.version({"a": "xy"}) != brain.version({"ax": "y"})
+def test_an_override_for_a_block_that_no_longer_ships_is_orphaned_not_dropped():
+    """A block renamed in the repository leaves its override behind. Dropping it
+    would make a live edit look like one that was never made."""
+    overrides = {"refusal": "x", "alter_name": "y"}
+    assert brain.orphaned(overrides) == ("alter_name",)
+    assert brain.resolved(overrides)["alter_name"] == "y"
+
+
+def test_composition_reads_the_installed_override_source(monkeypatch):
+    """The seam the whole story hangs on: a prompt that names no source composes
+    against what the tool holds today, not against the files on disk."""
+    monkeypatch.setattr(brain, "_override_source", lambda: {"refusal": "SCHWEIGEN."})
+    assert brain.block("refusal") == "SCHWEIGEN."
+    assert "SCHWEIGEN." in brain.compose("{{brain:refusal}}")
 
 
 # --------------------------------------------------------------------------
@@ -560,3 +591,705 @@ def test_editing_a_block_moves_exactly_the_prompts_that_include_it():
     assert moved == includes_refusal
     assert still == {p.name for p in _prompt_files()} - includes_refusal
     assert moved, "no prompt includes 'refusal', so this test proves nothing"
+
+
+# --------------------------------------------------------------------------
+# The store: a change to a standard is an event with a time, an author and a
+# number, and the shipped text is what a revert brings back.
+# --------------------------------------------------------------------------
+
+#: A fixed clock, so a version's timestamp is asserted rather than approximated.
+FIXED_CLOCK = dt.datetime(2026, 9, 3, 9, 30, tzinfo=dt.UTC)
+
+#: A block that ships, used wherever a test needs a real key. Read off the
+#: shipped set rather than typed, so renaming a block file fails these loudly
+#: instead of leaving them testing a key nobody has.
+A_BLOCK = "refusal"
+
+
+def _memory_engine():
+    """A private in-memory database, schema not built.
+
+    StaticPool keeps every session on one connection, so a POST's write is
+    visible to the GET that follows it — and so a table left uncreated stays
+    uncreated for every session in the test.
+    """
+    return create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+
+
+@pytest.fixture
+def engine():
+    """The fixture database, migrated."""
+    built = _memory_engine()
+    Base.metadata.create_all(built)
+    return built
+
+
+@pytest.fixture
+def factory(engine):
+    """A sessionmaker on the fixture database."""
+    return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+@pytest.fixture
+def session(factory):
+    with factory() as open_session:
+        yield open_session
+
+
+@pytest.fixture
+def live_override_source(monkeypatch, engine):
+    """Put the *production* override source back, pointed at the fixture database.
+
+    ``conftest`` pins ``brain._override_source`` to ``dict`` for the whole suite,
+    which is right — without it every generator test would open a SQLite file in
+    whatever directory pytest was started from. The cost is that
+    ``_stored_overrides``, the only source that ever runs in production, is the
+    one thing the suite never exercises. This opts out of the guard narrowly, for
+    the handful of tests that are about that function.
+    """
+    _install_database(monkeypatch, engine)
+    monkeypatch.setattr(brain, "_override_source", brain._stored_overrides)
+
+
+def _install_database(monkeypatch, target) -> None:
+    """Point ``brain``'s own database handles at ``target``.
+
+    ``brain`` does ``from .db import get_engine, get_session``, so the names to
+    replace are the ones bound in that module rather than the ones in ``db``.
+    """
+    sessions = sessionmaker(bind=target, expire_on_commit=False)
+
+    @contextmanager
+    def _session():
+        open_session = sessions()
+        try:
+            yield open_session
+        finally:
+            open_session.close()
+
+    monkeypatch.setattr(brain, "get_session", _session)
+    monkeypatch.setattr(brain, "get_engine", lambda: target)
+
+
+@pytest.fixture
+def client(factory):
+    """A TestClient whose routes read and write the fixture database."""
+    app = create_app()
+
+    def _override_get_db():
+        open_session = factory()
+        try:
+            yield open_session
+        finally:
+            open_session.close()
+
+    app.dependency_overrides[get_db] = _override_get_db
+    return TestClient(app)
+
+
+def test_a_fresh_install_has_no_overrides_and_version_zero(session):
+    """Nothing has been changed, which is a true statement about the standards
+    and a different one from "we do not know", which is what BRN-03 renders for
+    a text stored before there was anything to stamp."""
+    assert brain.stored(session) == {}
+    assert brain.version(session) == 0
+
+
+def test_editing_a_block_stores_an_override_and_bumps_the_version_once(session):
+    change = brain.edit(session, A_BLOCK, "Schweigen ist meistens richtig.")
+
+    assert change is not None
+    assert brain.stored(session) == {A_BLOCK: "Schweigen ist meistens richtig."}
+    assert brain.version(session) == 1
+    assert change.version == 1
+
+
+def test_an_edit_takes_effect_on_the_next_composition_without_a_restart(
+    session, monkeypatch
+):
+    """The claim the panel makes when it says an edit is live. Nothing is
+    reloaded, no process is restarted: the next prompt that composes the block
+    reads what was just typed."""
+    monkeypatch.setattr(brain, "_override_source", lambda: brain.stored(session))
+    before = brain.compose("{{brain:%s}}" % A_BLOCK)
+
+    brain.edit(session, A_BLOCK, "NEUER MASSSTAB\n\nEin Satz.")
+
+    after = brain.compose("{{brain:%s}}" % A_BLOCK)
+    assert "NEUER MASSSTAB" in after
+    assert after != before
+
+
+#: Every module that turns a shipped prompt file into a template, paired with a
+#: block that prompt includes. The point of the list is that it is exhaustive: an
+#: edit is only "live" if it reaches the prompt a generator actually sends, and a
+#: loader that memoises its template is invisible to any test that asserts
+#: against ``brain.compose`` directly.
+PROMPT_LOADERS = [
+    ("advisor", "no_invention"),
+    ("analyzer", "no_invention"),
+    ("angles", "position"),
+    ("coach", "refusal"),
+    ("guide", "no_invention"),
+    ("industry", "press_relevance"),
+    ("outreach", "journalistic_value"),
+    ("rivals", "refusal"),
+    ("themes", "press_relevance"),
+]
+
+
+@pytest.mark.parametrize(("module_name", "key"), PROMPT_LOADERS)
+def test_an_edit_reaches_every_prompt_a_generator_sends(
+    session, monkeypatch, module_name: str, key: str
+):
+    """AC 2 held where it is written about, not one layer below it.
+
+    ``analyzer._prompt_template`` was ``@lru_cache(maxsize=1)``, which was correct
+    while the blocks only changed with a deployment. Runs happen in threads inside
+    the long-lived web process, so once a block became editable that cache meant
+    an edited standard governed nine prompts immediately and article analysis —
+    the highest-volume path there is — only after a container restart. Asserting
+    against ``brain.compose`` cannot see that; this composes through the loader.
+    """
+    module = importlib.import_module(f"newspulse.{module_name}")
+    monkeypatch.setattr(brain, "_override_source", lambda: brain.stored(session))
+    before = module._prompt_template().template
+
+    brain.edit(session, key, f"NEUER MASSSTAB FUER {key.upper()}\n\nEin Satz.")
+
+    after = module._prompt_template().template
+    assert f"NEUER MASSSTAB FUER {key.upper()}" in after
+    assert after != before
+
+
+def test_each_change_gets_its_own_version_across_blocks(session):
+    """The counter is portfolio-wide, not per block: one integer has to name what
+    the whole house believed at a moment."""
+    first = brain.edit(session, "refusal", "Erst.")
+    second = brain.edit(session, "house_style", "Zweitens.")
+
+    assert (first.version, second.version) == (1, 2)
+    assert brain.version(session) == 2
+
+
+def test_an_edit_records_when_it_happened_and_who_made_it(session):
+    change = brain.edit(
+        session, A_BLOCK, "Ein Satz.", edited_by="lucas", now=FIXED_CLOCK
+    )
+
+    assert change.edited_at == FIXED_CLOCK
+    assert change.edited_by == "lucas"
+
+
+def test_an_unattributed_edit_says_a_person_made_it_rather_than_naming_nobody(session):
+    """The dashboard has one shared credential and no user table. "mensch" is
+    what that honestly is; a blank author would read as a change the machine
+    made to its own standards."""
+    change = brain.edit(session, A_BLOCK, "Ein Satz.")
+    assert change.edited_by == brain.editor()
+    assert change.edited_by.strip()
+
+
+def test_re_saving_the_same_text_is_not_a_new_version(session):
+    """A version nobody can point at a difference for is worse than no version:
+    BRN-03 stamps texts with these numbers, and a stamp has to mean something
+    changed."""
+    brain.edit(session, A_BLOCK, "Ein Satz.")
+    again = brain.edit(session, A_BLOCK, "Ein Satz.")
+
+    assert again is None
+    assert brain.version(session) == 1
+
+
+def test_saving_the_shipped_text_unchanged_stores_no_override(session):
+    """Opening a block, changing nothing and pressing save is not a decision to
+    override it."""
+    assert brain.edit(session, A_BLOCK, brain.shipped()[A_BLOCK]) is None
+    assert brain.stored(session) == {}
+
+
+@pytest.mark.parametrize("empty", ["", "   ", "\n\n", "\t \r\n "])
+def test_an_empty_or_whitespace_only_block_is_refused(session, empty: str):
+    """A prompt composing an empty standard drops it in silence and goes on
+    producing text that looks fine, so the refusal is at the edit rather than at
+    the render."""
+    with pytest.raises(ValueError):
+        brain.edit(session, A_BLOCK, empty)
+
+    assert brain.stored(session) == {}
+    assert brain.version(session) == 0
+
+
+def test_editing_a_block_that_does_not_exist_raises_rather_than_creating_one(session):
+    """The key is in the URL. Without this a typo would conjure a block no
+    prompt reads and no panel would ever explain."""
+    with pytest.raises(brain.UnknownBlock):
+        brain.edit(session, "gibt_es_nicht", "Ein Satz.")
+    assert brain.stored(session) == {}
+
+
+def test_a_textarea_submission_does_not_carry_windows_line_endings_into_a_prompt(
+    session,
+):
+    """Browsers submit \\r\\n from a textarea and the blocks use \\n. Invisible in
+    the interface, and a diff in every golden file the block touches."""
+    brain.edit(session, A_BLOCK, "Erste Zeile.\r\nZweite Zeile.\r\n")
+    assert brain.stored(session)[A_BLOCK] == "Erste Zeile.\nZweite Zeile."
+
+
+def test_reverting_restores_the_shipped_text_exactly(session):
+    brain.edit(session, A_BLOCK, "Etwas anderes.")
+    brain.revert(session, A_BLOCK)
+
+    assert brain.stored(session) == {}
+    assert brain.resolved(brain.stored(session))[A_BLOCK] == brain.shipped()[A_BLOCK]
+
+
+def test_reverting_is_itself_a_recorded_change_rather_than_a_disappearance(session):
+    """The override row stays and the revert is a row of its own, so the history
+    reads "changed, then changed back" and not "nothing ever happened here"."""
+    brain.edit(session, A_BLOCK, "Etwas anderes.", now=FIXED_CLOCK)
+    undo = brain.revert(session, A_BLOCK, now=FIXED_CLOCK + dt.timedelta(hours=1))
+
+    assert undo is not None
+    assert undo.version == 2
+    assert brain.version(session) == 2
+    assert [row.version for row in brain.history(session, A_BLOCK)] == [2, 1]
+
+
+def test_reverting_a_block_that_was_never_overridden_is_not_a_version(session):
+    """A second click on a page held open in another tab must not spend a
+    version on a no-op."""
+    assert brain.revert(session, A_BLOCK) is None
+    assert brain.version(session) == 0
+
+
+def test_the_history_carries_the_previous_wording_and_not_only_its_date(session):
+    """A date says a change happened and nothing about what the house believed
+    afterwards, which is the only question a history is opened for."""
+    brain.edit(session, A_BLOCK, "Erste Fassung.", edited_by="lucas", now=FIXED_CLOCK)
+    brain.edit(session, A_BLOCK, "Zweite Fassung.", edited_by="raphael")
+
+    entries = brain.history(session, A_BLOCK)
+    assert [row.text for row in entries] == ["Zweite Fassung.", "Erste Fassung."]
+    assert [row.edited_by for row in entries] == ["raphael", "lucas"]
+    assert entries[-1].edited_at == FIXED_CLOCK
+
+
+def test_a_history_is_per_block_and_not_the_whole_house(session):
+    brain.edit(session, "refusal", "Nur hier.")
+    brain.edit(session, "house_style", "Nur dort.")
+
+    assert [row.key for row in brain.history(session, "refusal")] == ["refusal"]
+
+
+def test_the_newest_row_wins_when_a_block_has_been_edited_twice(session):
+    brain.edit(session, A_BLOCK, "Alt.")
+    brain.edit(session, A_BLOCK, "Neu.")
+
+    assert brain.stored(session)[A_BLOCK] == "Neu."
+
+
+def test_a_version_from_a_restored_table_cannot_collide_with_one_that_has_a_text(
+    session,
+):
+    """The counter and the rows are written in one commit, so they can only
+    disagree if the table was restored from a dump without the settings row.
+    Taking the maximum means the next change gets a fresh number rather than a
+    second text for a version somebody has already been shown."""
+    session.add(
+        BrainOverride(
+            key=A_BLOCK, text="Aus einem Dump.", edited_at=FIXED_CLOCK,
+            edited_by="lucas", version=7,
+        )
+    )
+    session.commit()
+
+    assert brain.version(session) == 7
+    assert brain.edit(session, A_BLOCK, "Danach.").version == 8
+
+
+def test_a_version_lost_to_a_race_is_retaken_rather_than_raising(session, monkeypatch):
+    """Two tabs saving at once both read the same next number, and the unique
+    constraint rejects the second. That constraint is doing its job; the answer
+    is to take the next free number, not to hand the operator a 500 on the panel
+    that owns the tool's standards. Both edits end up recorded."""
+    brain.edit(session, A_BLOCK, "Erst.")
+    real_version = brain.version
+    stale = [True]
+
+    def _reads_a_taken_number(open_session):
+        """The loser's read: it still sees the number the winner just took."""
+        if stale[0]:
+            stale[0] = False
+            return real_version(open_session) - 1
+        return real_version(open_session)
+
+    monkeypatch.setattr(brain, "version", _reads_a_taken_number)
+    change = brain.edit(session, A_BLOCK, "Dann.")
+
+    assert change is not None
+    assert change.version == 2
+    assert [row.version for row in brain.history(session, A_BLOCK)] == [2, 1]
+    assert brain.stored(session) == {A_BLOCK: "Dann."}
+
+
+def test_a_collision_that_survives_the_retry_is_not_swallowed(session, monkeypatch):
+    """One retry, not a loop: a number that is still taken on the second read is
+    not contention on a single-operator tool, it is something wrong worth
+    hearing about."""
+    brain.edit(session, A_BLOCK, "Erst.")
+    monkeypatch.setattr(brain, "version", lambda _session: 0)
+
+    with pytest.raises(IntegrityError):
+        brain.edit(session, A_BLOCK, "Dann.")
+
+
+# --------------------------------------------------------------------------
+# The source that actually runs in production, which the suite otherwise pins
+# away for every test (see conftest.brain_composes_the_shipped_blocks).
+# --------------------------------------------------------------------------
+
+
+def test_the_production_override_source_reads_the_stored_overrides(
+    session, live_override_source
+):
+    """Nothing else in the suite exercises ``_stored_overrides``: every other
+    test either installs its own source or drives ``edit`` with an explicit
+    session. This is the one path a running installation takes."""
+    assert brain.current()[A_BLOCK] == brain.shipped()[A_BLOCK]
+
+    brain.edit(session, A_BLOCK, "AUS DER DATENBANK\n\nEin Satz.")
+
+    assert brain._stored_overrides() == {A_BLOCK: "AUS DER DATENBANK\n\nEin Satz."}
+    assert brain.current()[A_BLOCK] == "AUS DER DATENBANK\n\nEin Satz."
+    assert "AUS DER DATENBANK" in brain.compose("{{brain:%s}}" % A_BLOCK)
+
+
+def test_an_unmigrated_database_composes_the_shipped_text(monkeypatch):
+    """The one failure the fallback is for, and it is reachable on every fresh
+    install: the table is not there yet and the shipped blocks are the correct
+    answer by construction."""
+    _install_database(monkeypatch, _memory_engine())  # schema deliberately unbuilt
+    monkeypatch.setattr(brain, "_override_source", brain._stored_overrides)
+
+    assert brain._stored_overrides() == {}
+    assert brain.current() == dict(brain.shipped())
+
+
+def test_a_database_failure_that_is_not_a_missing_table_is_not_swallowed(
+    monkeypatch, live_override_source
+):
+    """A locked database is not an unmigrated one. Composing the shipped text
+    there would produce a letter written against the developer's defaults while
+    the agency believed its own standards were in force — with nothing in the
+    output saying so, and, once BRN-03 lands, a version stamp asserting they
+    applied."""
+
+    def _locked(_session):
+        raise OperationalError("SELECT 1", {}, Exception("database is locked"))
+
+    monkeypatch.setattr(brain, "stored", _locked)
+
+    with pytest.raises(OperationalError):
+        brain._stored_overrides()
+
+
+# --------------------------------------------------------------------------
+# The panel: every block readable, its provenance stated, its history reachable.
+# --------------------------------------------------------------------------
+
+
+def _panel(body: str) -> str:
+    """The brain section of the settings page, between its own markers."""
+    return body.split("<!-- ── Brain")[1].split("<!-- ── /Brain")[0]
+
+
+def test_the_panel_lists_every_block_with_its_current_text(client):
+    body = _panel(client.get("/settings").text)
+
+    for key, text in brain.shipped().items():
+        assert key in body, key
+        # The first line of each block, which is its heading in the file: enough
+        # to prove the text is on the page rather than only its name.
+        assert text.splitlines()[0] in body, key
+
+
+def test_the_panel_says_a_block_is_the_shipped_default_when_nothing_was_changed(client):
+    body = _panel(client.get("/settings").text)
+    assert "Vorgabe" in body
+    assert "Überschrieben" not in body
+    assert "Noch nie geändert" in body
+
+
+def test_the_panel_says_a_block_is_an_override_once_it_has_been_edited(
+    factory, client
+):
+    with factory() as session:
+        brain.edit(session, A_BLOCK, "Ein anderer Maßstab.", edited_by="lucas")
+
+    body = _panel(client.get("/settings").text)
+    assert "Überschrieben" in body
+    assert "Ein anderer Maßstab." in body
+    assert "lucas" in body
+
+
+def test_editing_through_the_page_stores_the_override(factory, client):
+    resp = client.post(
+        f"/settings/brain/{A_BLOCK}",
+        data={"text": "Schweigen ist meistens richtig."},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == f"/settings/brain/{A_BLOCK}"
+    with factory() as session:
+        assert brain.stored(session) == {A_BLOCK: "Schweigen ist meistens richtig."}
+        assert brain.version(session) == 1
+
+
+def test_an_empty_edit_is_refused_on_the_page_with_the_reason(factory, client):
+    resp = client.post(f"/settings/brain/{A_BLOCK}", data={"text": "   "})
+
+    assert resp.status_code == 200
+    assert "leer" in _panel(resp.text)
+    with factory() as session:
+        assert brain.stored(session) == {}
+
+
+def test_reverting_through_the_page_restores_the_shipped_text(factory, client):
+    with factory() as session:
+        brain.edit(session, A_BLOCK, "Etwas anderes.")
+
+    resp = client.post(f"/settings/brain/{A_BLOCK}/revert", follow_redirects=False)
+
+    assert resp.status_code == 303
+    with factory() as session:
+        assert brain.stored(session) == {}
+        assert brain.version(session) == 2
+
+
+def test_the_block_page_shows_every_version_with_its_wording(factory, client):
+    with factory() as session:
+        brain.edit(session, A_BLOCK, "Erste Fassung.", edited_by="lucas")
+        brain.edit(session, A_BLOCK, "Zweite Fassung.", edited_by="raphael")
+
+    body = _panel(client.get(f"/settings/brain/{A_BLOCK}").text)
+
+    assert "Fassung 1" in body and "Fassung 2" in body
+    assert "Erste Fassung." in body and "Zweite Fassung." in body
+    assert "lucas" in body and "raphael" in body
+
+
+def test_a_reverted_version_shows_the_wording_it_restored(factory, client):
+    with factory() as session:
+        brain.edit(session, A_BLOCK, "Etwas anderes.")
+        brain.revert(session, A_BLOCK)
+
+    body = _panel(client.get(f"/settings/brain/{A_BLOCK}").text)
+
+    assert "Auf die Vorgabe zurückgesetzt" in body
+    # Both wordings are readable: the one that was overridden and the one that
+    # came back.
+    assert "Etwas anderes." in body
+    assert brain.shipped()[A_BLOCK].splitlines()[0] in body
+
+
+def test_an_override_whose_block_no_longer_ships_is_shown_as_orphaned(factory, client):
+    """A renamed block must not leave a live override nobody can find."""
+    with factory() as session:
+        session.add(
+            BrainOverride(
+                key="alter_name", text="Gilt noch.", edited_at=FIXED_CLOCK,
+                edited_by="lucas", version=1,
+            )
+        )
+        session.commit()
+
+    body = _panel(client.get("/settings").text)
+    assert "alter_name" in body
+    assert "Verwaist" in body
+    assert "Gilt noch." in body
+
+
+def test_an_orphaned_override_can_be_reverted_away(factory, client):
+    with factory() as session:
+        session.add(
+            BrainOverride(
+                key="alter_name", text="Gilt noch.", edited_at=FIXED_CLOCK,
+                edited_by="lucas", version=1,
+            )
+        )
+        session.commit()
+
+    resp = client.post("/settings/brain/alter_name/revert", follow_redirects=False)
+
+    assert resp.status_code == 303
+    # Nowhere left to land: the block has no shipped default to show.
+    assert resp.headers["location"] == "/settings#brain"
+    with factory() as session:
+        assert brain.stored(session) == {}
+
+
+def test_a_reverted_orphan_stays_gone_on_both_verbs(factory, client):
+    """The URL is the same after a revert; the two verbs must answer the same.
+
+    A revert is recorded rather than deleted, so a reverted orphan still has rows
+    in the table. Admitting it as an editable key would let a POST from a tab held
+    open across the revert put a live override back on a block the repository no
+    longer ships — while the GET for that same URL answers 404.
+    """
+    with factory() as session:
+        session.add(
+            BrainOverride(
+                key="alter_name", text="Gilt noch.", edited_at=FIXED_CLOCK,
+                edited_by="lucas", version=1,
+            )
+        )
+        session.commit()
+    client.post("/settings/brain/alter_name/revert")
+
+    assert client.get("/settings/brain/alter_name").status_code == 404
+    assert client.post(
+        "/settings/brain/alter_name", data={"text": "Wieder da."}
+    ).status_code == 404
+    with factory() as session:
+        assert brain.stored(session) == {}
+        assert brain.orphaned(brain.stored(session)) == ()
+
+
+def test_editing_a_reverted_orphan_directly_is_refused(session):
+    """The same rule under the route, since ``brain.edit`` is the public seam."""
+    session.add(
+        BrainOverride(
+            key="alter_name", text="Gilt noch.", edited_at=FIXED_CLOCK,
+            edited_by="lucas", version=1,
+        )
+    )
+    session.commit()
+    brain.revert(session, "alter_name")
+
+    with pytest.raises(brain.UnknownBlock):
+        brain.edit(session, "alter_name", "Wieder da.")
+
+
+@pytest.mark.parametrize("method", ["get", "post"])
+def test_a_block_key_that_exists_nowhere_is_a_404(client, method: str):
+    """The key comes from the URL. Without this a typo renders an editor for a
+    block that does not exist, over a save button that would refuse it."""
+    call = getattr(client, method)
+    kwargs = {"data": {"text": "Ein Satz."}} if method == "post" else {}
+    assert call("/settings/brain/gibt_es_nicht", **kwargs).status_code == 404
+
+
+def test_the_panel_names_the_version_the_standards_are_at(factory, client):
+    with factory() as session:
+        brain.edit(session, A_BLOCK, "Ein anderer Maßstab.")
+
+    assert "Fassung 1" in _panel(client.get("/settings").text)
+
+
+def test_every_german_string_in_the_brain_panel_has_an_english_entry():
+    """A half-translated panel reads as broken in a way a fully German one does
+    not, and the strings that get forgotten are always the new ones."""
+    markup = _panel(
+        (Path(brain.__file__).parent / "web/templates/settings.html").read_text("utf-8")
+    )
+    called = set(re.findall(r"""t\(\s*['"](.+?)['"]\s*\)""", markup, re.DOTALL))
+    missing = sorted(called - set(i18n.known_keys()))
+    assert not missing, f"no English for: {missing}"
+
+
+def test_the_german_the_panel_renders_as_a_value_is_translated_too():
+    """The hole the test above cannot see.
+
+    It scans for ``t('…')`` call sites, so it is blind to a German sentence that
+    reaches the page as a variable — which is exactly how the refusal for an empty
+    block arrives. It shipped as a bare ``{{ brain_error }}`` and rendered German
+    inside an otherwise English panel.
+    """
+    assert brain.EMPTY_BLOCK_MESSAGE in i18n.known_keys()
+    assert i18n.translate(brain.EMPTY_BLOCK_MESSAGE, "en") != brain.EMPTY_BLOCK_MESSAGE
+
+
+def test_a_refused_edit_reads_in_english_on_an_english_page(client):
+    """The whole point of the entry above, driven through the route."""
+    client.cookies.set(i18n.COOKIE_NAME, "en")
+    response = client.post(f"/settings/brain/{A_BLOCK}", data={"text": "   "})
+
+    assert response.status_code == 200
+    assert i18n.translate(brain.EMPTY_BLOCK_MESSAGE, "en") in _panel(response.text)
+    assert brain.EMPTY_BLOCK_MESSAGE not in _panel(response.text)
+
+
+def test_a_configured_user_name_is_shown_as_typed_and_not_run_through_the_lookup(
+    factory, client
+):
+    """The author is a value, not chrome. The panel translated every author to
+    make the "mensch" sentinel read as "human" in English, which also meant a
+    ``NEWSPULSE_AUTH_USER`` colliding with a German UI key would render the
+    person who made a change as an unrelated English word."""
+    with factory() as session:
+        brain.edit(session, A_BLOCK, "Ein Satz.", edited_by="Vorgabe")
+
+    client.cookies.set(i18n.COOKIE_NAME, "en")
+    body = _panel(client.get("/settings").text)
+
+    assert "Vorgabe" in body
+    # "Shipped" is what t("Vorgabe") returns, and it is still the tag on every
+    # other block — so the assertion that bites is that the author line is not it.
+    assert f"· {i18n.translate('Vorgabe', 'en')} ·" not in body
+    assert "· Vorgabe ·" in body
+
+
+def test_a_revert_with_no_shipped_wording_left_says_so_rather_than_showing_nothing(
+    factory, client
+):
+    """AC 4 wants previous texts readable, not just their dates.
+
+    Reachable exactly once: a block that was edited, reverted and edited again,
+    and only then renamed away in the repository. The revert in the middle has no
+    text of its own and no shipped default left to stand in for it, which used to
+    render as a version, a date, an author and an empty box.
+    """
+    with factory() as session:
+        for version_number, text in ((1, "Erst."), (2, None), (3, "Wieder da.")):
+            session.add(
+                BrainOverride(
+                    key="alter_name", text=text, edited_at=FIXED_CLOCK,
+                    edited_by="lucas", version=version_number,
+                )
+            )
+        session.commit()
+
+    body = _panel(client.get("/settings/brain/alter_name").text)
+
+    assert "Erst." in body
+    assert "Wieder da." in body
+    assert "der ausgelieferte Wortlaut existiert nicht mehr" in body
+    assert "<pre class=\"brainblock__text\"></pre>" not in body
+
+
+def test_the_recorded_author_is_translated_rather_than_shown_as_a_german_noun():
+    """`edited_by` is rendered through the same lookup as the chrome around it,
+    so the fallback author does not sit in German in an English panel.
+
+    Asserted on the sentinel rather than on ``brain.editor()``, which reads
+    ``config.AUTH_USER`` — set from the environment at import, and required to be
+    set for any non-localhost bind. On a machine with ``NEWSPULSE_AUTH_USER``
+    exported this used to fail for a reason that has nothing to do with what it
+    is about.
+    """
+    assert i18n.translate(brain._ANONYMOUS_EDITOR, "en") == "human"
+
+
+def test_the_fallback_author_is_used_when_the_install_has_no_named_user(monkeypatch):
+    """And that the sentinel above is what ``editor()`` actually reaches for."""
+    monkeypatch.setattr(brain.config, "AUTH_USER", "")
+    assert brain.editor() == brain._ANONYMOUS_EDITOR
+
+    monkeypatch.setattr(brain.config, "AUTH_USER", "lucas")
+    assert brain.editor() == "lucas"
