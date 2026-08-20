@@ -63,7 +63,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import config, gemini, guide, pitch, profile, prose
-from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
+from .analyzer import AnalyzerError, ParseError, invoke_with_fallback, strip_code_fence
 from .models import Angle, Article, Asset, AssetKind, CheckState, Client, ClientFact
 from .pitch import PitchTarget
 from .schemas import MAX_CONCERNS, AssetDraft, GuideVerdict, MessageReview
@@ -2024,6 +2024,19 @@ class Checkable:
         return prose.plain(self.title), prose.plain(self.body)
 
 
+#: Every way a check can fail to produce a verdict, as one tuple used by all three
+#: places that have to survive one. :class:`AnalyzerError` rather than
+#: ``ParseError`` because it is the base of both that and
+#: :class:`newspulse.analyzer.BackendError`, and ``BackendError`` is what
+#: :func:`newspulse.gemini.generate` raises for *every* realistic failure — host
+#: unreachable, timeout, HTTP error, empty completion. It is not a
+#: ``RuntimeError``, so a handler naming only those caught the rare case and let
+#: the common one through. ``RuntimeError`` stays for
+#: :func:`newspulse.gemini.reviewer` refusing on an unconfigured second model, and
+#: ``OSError`` for the socket underneath.
+_CHECK_FAULTS = (AnalyzerError, RuntimeError, OSError)
+
+
 @dataclass(frozen=True, slots=True)
 class Checked:
     """Both verdicts on one text, and which model gave each.
@@ -2137,7 +2150,7 @@ def check(
             kind=item.kind,
             generate=guide_generate if guide_generate is not None else generate,
         )
-    except (ParseError, RuntimeError, OSError):
+    except _CHECK_FAULTS:
         # ERROR rather than WARNING: nothing read this text against the mandate's
         # own rules, and that is the check whose absence costs a mandate.
         _log.error("guide check failed for %r", client.name, exc_info=True)
@@ -2321,7 +2334,7 @@ def produce(
             generate=generate,
             guide_generate=guide_generate,
         )
-    except (ParseError, RuntimeError, OSError) as exc:
+    except _CHECK_FAULTS as exc:
         _log.warning("%s for %r went unchecked: %s", fmt.key, client.name, exc)
         _tell(
             note,
@@ -2375,6 +2388,21 @@ UNREAD_SINCE_EDIT = (
     "ihn das Zweitmodell noch einmal lesen."
 )
 
+#: What is stored on a text whose check was attempted and could not run, in the
+#: field the verdict would have gone in. On the row rather than in a note in
+#: memory, because it is a fact about this text and has to be on screen at the
+#: reader's next visit, which may be after a restart.
+#:
+#: It exists so that an edited text does not become permanently unreleasable on an
+#: installation with no second model: the alternative was the tool blocking the
+#: release exactly where a human had taken responsibility for the words, while
+#: still permitting it on an unchecked draft only a model had ever seen. The
+#: sentence says what the reader is deciding.
+CHECK_UNAVAILABLE = (
+    "Das Zweitmodell konnte diesen Text nicht lesen. Er ist ungeprüft — "
+    "wer ihn jetzt freigibt, gibt ihn ungelesen frei."
+)
+
 
 def state_of(asset: Asset | None) -> AssetState:
     """The state one format is in on one impulse. ``None`` means unwritten."""
@@ -2387,15 +2415,38 @@ def state_of(asset: Asset | None) -> AssetState:
     return AssetState.ENTWURF
 
 
+def _read_since_edit(asset: Asset) -> bool:
+    """Whether anything at all has been recorded about this text since the edit.
+
+    :func:`edit` blanks all four verdict fields, so every one of them is empty on a
+    freshly edited row and any of them being filled means something has since
+    happened to it. Two things can fill them and both count: a verdict, and a
+    check that was attempted and could not run (:data:`CHECK_UNAVAILABLE`).
+
+    Counting the second one is the point. "The check has not run yet" and "the
+    check could not run" are different facts, and only the first is a reason to
+    keep the release control out of reach. Neither reads as clean: ``check_state``
+    still wants a reviewer's name before it says GEPRUEFT, so a text nothing could
+    read stays visibly unchecked and merely becomes releasable by a human who is
+    told so.
+    """
+    return bool(
+        asset.reviewed_by
+        or asset.guide_reviewed_by
+        or asset.review
+        or asset.guide_review
+    )
+
+
 def needs_recheck(asset: Asset) -> bool:
-    """Whether a human changed this text after the last check ran.
+    """Whether a human changed this text and nothing has looked at it since.
 
     Readable off the row because :func:`edit` clears the verdicts as it stores the
     edit: a stored verdict always belongs to the text beside it, so after an edit
     there is no verdict, and "edited and unread" is exactly those two facts
     together. No second timestamp column, and no way for the two to disagree.
     """
-    return asset.edited_at is not None and asset.check_state is CheckState.UNGEPRUEFT
+    return asset.edited_at is not None and not _read_since_edit(asset)
 
 
 def releasable(asset: Asset) -> bool:
@@ -2441,6 +2492,15 @@ def recheck(
     The same two checks a freshly written one goes through, over the stored title
     and body rather than a draft, which is what makes it worth running after an
     edit: what it reads is what the consultant will send.
+
+    A check that cannot run is recorded rather than raised, the same isolation
+    :func:`produce` has and for a sharper reason. Leaving the row untouched left
+    an edited text with both halves of :func:`needs_recheck` true forever, so on
+    an installation with no second model a consultant could write and edit but
+    never release — the tool refusing the one person accountable for the words.
+    What is stored instead is :data:`CHECK_UNAVAILABLE`, which is an answer and is
+    not a clean one: no reviewer's name is written, so ``check_state`` still says
+    UNGEPRUEFT and the page still draws the text as unread.
     """
     angle = session.get(Angle, asset.angle_id)
     if angle is None:  # pragma: no cover - the FK cascades, so only a race
@@ -2452,10 +2512,18 @@ def recheck(
         angle,
         AssetDraft(title=asset.title, body=asset.body, speaker=asset.speaker),
     )
-    _apply_checks(
-        asset,
-        check(client, item, generate=generate, guide_generate=guide_generate),
-    )
+    try:
+        _apply_checks(
+            asset,
+            check(client, item, generate=generate, guide_generate=guide_generate),
+        )
+    except _CHECK_FAULTS as exc:
+        _log.warning("re-check of %s for %r failed: %s", asset.kind, client.name, exc)
+        _apply_checks(asset, None)
+        asset.review = f"{CHECK_UNAVAILABLE} ({exc})"
+        # Never ok: an unread text must draw with the warning dot, not the clean
+        # one, whatever the reader then decides to do about it.
+        asset.review_ok = False
     session.add(asset)
     session.commit()
     return asset
@@ -2552,6 +2620,7 @@ def _newest_per_kind(rows: list[Asset]) -> dict[str, Asset]:
 
 
 __all__ = [
+    "CHECK_UNAVAILABLE",
     "FORMATS",
     "GASTBEITRAG_CHARS",
     "MAX_TALKING_POINTS",
