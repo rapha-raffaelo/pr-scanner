@@ -21,7 +21,7 @@ import json
 import logging
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from . import config
 
@@ -124,6 +124,37 @@ def generate(
         # say so rather than returning "" and letting the parser blame itself.
         raise BackendError(f"Gemini returned no text (finish: {payload.get('promptFeedback')})")
     return text
+
+
+def reviewer() -> Callable[..., str]:
+    """The configured second model, as a callable that takes a prompt.
+
+    Every check in this codebase that reads a finished text runs here, and it is
+    deliberately *not* :func:`newspulse.analyzer.invoke_with_fallback`: falling
+    back to the model that wrote the text would quietly turn a cross-check into a
+    self-check, and a self-check reliably answers "looks good".
+
+    Raises :class:`RuntimeError` when no second provider is configured, rather
+    than returning something that skips the check. A check that silently did not
+    happen is worse than no check: the page shows a text with no objections and
+    the reader takes that for a verdict.
+    """
+    if not config.review_configured():
+        raise RuntimeError(
+            "Kein Zweitmodell hinterlegt: GEMINI_API_KEY (oder "
+            "NEWSPULSE_GEMINI_API_KEY) in der .env setzen, damit ein anderes "
+            "Modell den Text gegenliest."
+        )
+
+    def _generate(prompt: str, **kwargs) -> str:
+        return generate(
+            prompt,
+            model=config.review_model(),
+            api_key=config.review_api_key(),
+            **kwargs,
+        )
+
+    return _generate
 
 
 def stream(

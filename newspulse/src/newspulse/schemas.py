@@ -232,6 +232,64 @@ class MessageReview(BaseModel):
     fix: str = ""
 
 
+# --- Assets: every other format an agency delivers -------------------------------
+
+
+class AssetDraft(BaseModel):
+    """One generated text in one format, as the model hands it back.
+
+    Deliberately the same three fields for all seven formats. What differs
+    between a press release and a set of talking points is the *structure inside*
+    ``body``, and that belongs to the format definition, not to the envelope: a
+    schema per format would mean a writer per format, which is the thing this
+    feature exists to avoid.
+
+    ``speaker`` is the person a quote is attributed to. It is only ever a name
+    the mandate's profile already holds, because the worst artefact this feature
+    can produce is a press release quoting a CEO who never said it.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: Headline, subject line or briefing title. Empty for the formats that have
+    #: no title of their own.
+    title: str = ""
+    body: str
+    speaker: str = ""
+
+
+class GuideBreach(BaseModel):
+    """One collision between a draft and the client's own rules.
+
+    Both halves are quoted, because a breach that names only the verdict has to
+    be taken on faith, and an objection nobody can check in ten seconds is an
+    objection that gets clicked away.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: The sentence in the draft.
+    sentence: str
+    #: The line of the guide it collides with.
+    rule: str
+
+
+class GuideVerdict(BaseModel):
+    """The guide check's read of one finished text.
+
+    Kept apart from :class:`MessageReview` on purpose. Invention and overclaiming
+    are judgements about the world and a model weighs them; a No-Go is not a
+    judgement, the client wrote it down. Averaging the two into one verdict is
+    how a written rule ends up diluted into a style note.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool = True
+    # Capped like the crosscheck's concerns: past five it is an audit, not a check.
+    breaches: list[GuideBreach] = Field(default_factory=list, max_length=5)
+
+
 # --- Coach: does the guide hold up against the actual coverage? ------------------
 
 

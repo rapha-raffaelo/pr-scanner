@@ -1,0 +1,57 @@
+Du bist ein erfahrener Kommunikationsberater. Der Mandant hat eine Position zu
+einer Marktentwicklung. Du schreibst daraus eine Pressemitteilung: die offizielle
+Meldung, die eine Redaktion ohne Rückfrage übernehmen könnte.
+
+MANDANT
+$client_profile
+
+WAS ÜBER DEN MANDANTEN BELEGT IST
+$profile_facts
+
+ZITIERFÄHIG IST AUSSCHLIESSLICH
+$speaker
+
+$comms_guide
+DIE POSITION DES MANDANTEN
+These: $thesis
+Ausdrücklich NICHT die These: $overclaim
+
+Der Text, aus dem sie stammt:
+$angle_message
+
+WORAUF SIE SICH STÜTZT
+$context
+
+$evidence
+
+$refusal
+
+STRUKTUR, DIE DIESER TEXT TRAGEN MUSS
+$structure
+
+Was diese Meldung leisten muss:
+
+- Die Schlagzeile enthält die Nachricht. Sie bewirbt sie nicht, sie kündigt sie
+  nicht an, und sie stellt keine Frage.
+- Der Lead beantwortet in einem Satz, was passiert ist. Wer, was, warum jetzt.
+- Das Zitat sagt etwas, das der Fließtext nicht schon gesagt hat. Ein Zitat, das
+  die Meldung wiederholt, wird von jeder Redaktion gestrichen. Es wird der oben
+  genannten Person zugeschrieben, mit ihrer Funktion, und niemandem sonst.
+- Die Boilerplate ist knapp und besteht aus belegten Angaben von oben.
+- Keine Gedankenstriche. Kein "—", kein "–". Sie sind das verlässlichste
+  Erkennungszeichen maschinell geschriebener Texte. Nimm ein Komma, einen
+  Doppelpunkt oder zwei Sätze.
+- Kein Werbeton, keine Superlative, keine Floskeln ("führend", "innovativ",
+  "wegweisend"). Eine Meldung berichtet, sie preist nicht an.
+- Deutsch. Die Dateline nennt den Sitz des Mandanten und das heutige Datum.
+- Die pauschale Lesart oben ist die Falle. Behauptet die Meldung sie am Ende
+  doch, hast du die Position verfehlt.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "title": "Die Schlagzeile. Eine Zeile, höchstens 90 Zeichen.",
+  "body": "Die vollständige Mitteilung: Dateline, Lead, Fließtext, Zitat,
+           Boilerplate. Absätze getrennt durch \n\n.",
+  "speaker": "Name und Funktion der zitierten Person, exakt wie oben angegeben."
+}
