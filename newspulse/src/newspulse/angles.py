@@ -44,7 +44,7 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config, guide, prose
+from . import brain, config, guide, prose
 from .analyzer import (
     AnalyzerError,
     ParseError,
@@ -85,7 +85,7 @@ class Development:
 
 def _prompt_template() -> Template:
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text("utf-8")
-    return Template(text)
+    return Template(brain.compose(text))
 
 
 def _client_profile(client: Client) -> str:

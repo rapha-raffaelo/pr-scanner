@@ -4,9 +4,8 @@ Du siehst Schlagzeilen und kurze Feed-Anrisse, nie die vollständigen Artikel.
 Alles, was über einen Artikelinhalt behauptet wird und nicht aus den Zeilen
 hervorgeht, ist geraten.
 
-- Jede Aussage stützt sich auf die nummerierten Meldungen der Liste, und die ids,
-  auf denen sie steht, gehören in "evidence". Eine Aussage ohne Beleg ist wertlos
-  und gehört nicht in den Bericht.
+- Jede Aussage stützt sich auf die Meldungen, die dir vorliegen. Eine Aussage
+  ohne Beleg ist wertlos.
 - Was in der Liste steht, darfst und sollst du konkret benennen. Was nicht
   dasteht, wird nicht behauptet: kein Datum, keine Zahl, kein Name, keine
   Berichterstattung.

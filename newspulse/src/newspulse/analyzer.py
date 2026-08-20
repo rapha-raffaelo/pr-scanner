@@ -36,7 +36,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import ValidationError
 
-from . import config
+from . import brain, config
 from .quota import is_quota_error
 from .models import Article, Category, Client
 from .schemas import Analysis, ArticleVerdict, BatchVerdict
@@ -98,7 +98,7 @@ class Analyzer(Protocol):
 def _prompt_template() -> Template:
     """Load and cache the prompt template shipped in the package."""
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text(encoding="utf-8")
-    return Template(text)
+    return Template(brain.compose(text))
 
 
 def _chunks(items: Sequence[Article], size: int) -> list[Sequence[Article]]:

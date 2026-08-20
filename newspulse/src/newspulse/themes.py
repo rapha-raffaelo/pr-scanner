@@ -31,7 +31,7 @@ from importlib import resources
 from string import Template
 from sqlalchemy.orm import Session
 
-from . import config, gnews
+from . import brain, config, gnews
 from .analyzer import AnalyzerError, ParseError, invoke_with_fallback, strip_code_fence
 from .clients import update_client
 from .ingest import fetch_feed
@@ -80,7 +80,7 @@ class ThemeProbe:
 
 def _prompt_template() -> Template:
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text("utf-8")
-    return Template(text)
+    return Template(brain.compose(text))
 
 
 def _parse(raw: str) -> ThemeSuggestions:

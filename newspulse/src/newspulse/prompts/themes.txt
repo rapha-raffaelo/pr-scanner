@@ -1,5 +1,7 @@
+#blocks: journalistic_value
+
 Du benennst die Marktthemen, zu denen sich ein Unternehmen öffentlich äußern
-kann — die Debatten seines Feldes, nicht seine eigene Geschichte.
+kann, die Debatten seines Feldes, nicht seine eigene Geschichte.
 
 UNTERNEHMEN
 Name: $client_name
@@ -8,16 +10,16 @@ Land: $country
 $extra
 
 Wozu die Themen dienen: Ein Nachrichtensuchlauf sucht damit nach Meldungen, zu
-denen sich das Unternehmen positionieren kann. Ein Thema taugt also nur, wenn die
-Fach- und Wirtschaftspresse darüber schreibt, OHNE dieses Unternehmen zu
-erwähnen.
+denen sich das Unternehmen positionieren kann.
 
-Regeln:
+{{brain:journalistic_value}}
 
-- Keine Selbstbeschreibung. Der Firmenname, Produktnamen, Marken oder Wendungen,
-  die nur dieses Unternehmen benutzt, sind als Thema wertlos: Sie finden nur die
-  eigene Berichterstattung zurück, und daraus entsteht kein Impuls, sondern
-  Eigenwerbung.
+Hier heißt das: Ein Thema taugt nur, wenn die Fach- und Wirtschaftspresse darüber
+schreibt, OHNE dieses Unternehmen zu erwähnen. Der Firmenname, Produktnamen,
+Marken oder Wendungen, die nur dieses Unternehmen benutzt, sind als Thema wertlos.
+
+Regeln für diese Themen:
+
 - Formuliere jedes Thema so, wie es in einer Schlagzeile stünde. "Clean Beauty"
   und "KI in der Produktentwicklung" findet die Presse; "KI-gestützte
   Rezepturentwicklung für Hautpflege" findet niemand, weil so niemand schreibt.

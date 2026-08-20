@@ -1,6 +1,8 @@
+#blocks: evidence, refusal, no_invention
+
 Du prüfst, ob der Kommunikations-Guide eines Mandanten mit dem übereinstimmt, was
 tatsächlich über ihn geschrieben wird. Du bewertest nicht die Berichterstattung
-und nicht den Guide — du benennst, wo beide auseinanderlaufen.
+und nicht den Guide, du benennst, wo beide auseinanderlaufen.
 
 MANDANT
 $client_profile
@@ -9,6 +11,15 @@ $comms_guide
 BERICHTERSTATTUNG DER LETZTEN $days TAGE (je mit einer id)
 $coverage
 
+{{brain:evidence}}
+
+{{brain:no_invention}}
+
+{{brain:refusal}}
+
+Hier heißt das: Steht im Guide nichts, was sich prüfen ließe, gib eine leere
+Liste zurück.
+
 Drei Arten von Befund, und nur diese drei:
 
 - "luecke": Eine Kernbotschaft steht im Guide, taucht in der Berichterstattung
@@ -16,20 +27,16 @@ Drei Arten von Befund, und nur diese drei:
 - "konflikt": Die Berichterstattung widerspricht dem Guide, oder ein Zitat nähert
   sich einem No-Go. Nenne die Meldung, um die es geht.
 - "traegt": Etwas aus dem Guide setzt sich sichtbar durch. Seltener, und nur
-  wenn es wirklich belegt ist — Lob ohne Beleg ist wertlos.
+  wenn es wirklich belegt ist.
 
-Regeln:
+Regeln für diesen Bericht:
 
-- Stütze JEDEN Befund auf ids aus der Liste. Ein Befund ohne Beleg gehört nicht in
-  den Bericht.
-- Höchstens fünf Befunde. Lieber zwei belastbare als fünf beliebige.
-- Bei "luecke" und "konflikt" gehört ein konkreter Vorschlag dazu: was zu tun ist,
-  nicht dass etwas zu tun ist. Bei "traegt" bleibt der Vorschlag leer —
+- Nenne die ids, auf die sich ein Befund stützt, in "evidence". Ein Befund ohne
+  Beleg gehört nicht in den Bericht.
+- Höchstens fünf Befunde.
+- Bei "luecke" und "konflikt" gehört ein konkreter Vorschlag dazu: was zu tun
+  ist, nicht dass etwas zu tun ist. Bei "traegt" bleibt der Vorschlag leer,
   "weitermachen" ist keine Maßnahme.
-- Steht im Guide nichts, was sich prüfen ließe, gib eine leere Liste zurück. Das
-  ist ein ehrliches Ergebnis, keine Fehlleistung.
-- Du siehst Schlagzeilen und Kurzfassungen, nicht die vollen Artikel. Behaupte
-  nichts über Details, die du nicht belegen kannst.
 
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
