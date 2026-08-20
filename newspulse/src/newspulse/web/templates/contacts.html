@@ -30,11 +30,11 @@
   .file__outlet { font-size: var(--t-subhead); color: var(--muted); margin-top: 2px; }
   .file__meta { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s2); }
   .file__meta b { color: var(--ink-2); font-weight: 600; }
-  /* "Bearbeiten" is a link that navigates, so it is an <a> wearing .btn — and
-     the global a:hover would underline it, which no other button in the app
-     does. Beaten on specificity here rather than by changing .btn app-wide. */
+  /* No .btn:hover override here any more: app.css now says text-decoration:
+     none for every button and .btn, so an <a class="btn"> is already not
+     underlined. A second, page-local declaration of a shared component is the
+     thing test_styles exists to stop. */
   .file__acts { margin-left: auto; display: flex; gap: var(--s2); align-items: center; }
-  .file__acts .btn:hover { text-decoration: none; }
   .tally { display: flex; gap: var(--s5); margin-bottom: var(--s5); flex-wrap: wrap; }
   .tally div { min-width: 96px; }
   .tally__n { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }

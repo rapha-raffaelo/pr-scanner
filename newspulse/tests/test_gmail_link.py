@@ -777,3 +777,46 @@ def _a_released_letter(factory) -> int:
         session.add(letter)
         session.commit()
         return letter.id
+
+
+# --- Which account Google opens on ---------------------------------------------
+
+
+def test_the_consent_screen_opens_on_the_signed_in_address(volume, monkeypatch):
+    """Google is told which account to offer, so the operator is not asked to
+    consent from whichever Google account the browser happens to be holding.
+
+    The address comes from the session the middleware verified, never from the
+    query string: a hand-supplied hint would let a link decide which mailbox a
+    consent screen proposes, which is a phishing aid rather than a convenience.
+    """
+    from newspulse import gmail_link
+    from newspulse.web import auth, google_auth
+    from newspulse.web.app import create_app
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("NEWSPULSE_GOOGLE_CLIENT_ID", "signin.apps.googleusercontent.com")
+    monkeypatch.setenv("NEWSPULSE_GOOGLE_CLIENT_SECRET", "shh")
+    monkeypatch.setenv("NEWSPULSE_ALLOWED_EMAILS", "lucas.neurauter@gmail.com")
+
+    web = TestClient(create_app(), follow_redirects=False)
+    web.cookies.set(
+        google_auth.SESSION_COOKIE,
+        google_auth.issue_session(
+            google_auth.Identity("lucas.neurauter@gmail.com", "42")
+        ),
+    )
+
+    started = web.get("/settings/gmail/start?login_hint=angreifer@example.com")
+    query = parse_qs(urlparse(started.headers["location"]).query)
+
+    assert query["login_hint"] == ["lucas.neurauter@gmail.com"]
+
+
+def test_no_hint_is_sent_when_nobody_is_signed_in(volume):
+    """Under basic auth there is no address to offer, and an empty `login_hint`
+    is worse than none: Google shows it as a blank account row."""
+    from newspulse import gmail_link
+
+    query = parse_qs(urlparse(gmail_link.authorize_url("s")).query)
+    assert "login_hint" not in query

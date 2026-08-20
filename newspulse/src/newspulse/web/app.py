@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import branding, config, gnews, i18n
 from ..db import get_session
-from . import navigation, runlock
+from . import google_auth, navigation, runlock
 from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
 
 # The web package ships its own templates/ and static/ next to this module, so
@@ -238,6 +238,10 @@ templates.env.globals["LANGUAGES"] = i18n.LANGUAGES
 # the same reason ``run_active`` is: the shared layout needs it and no route
 # should have to remember to pass it.
 templates.env.globals["nav_clients"] = navigation.nav_clients
+# Who is signed in, for the sidebar footer. A global for the same reason as the
+# roster: the shared layout needs it and no route should have to pass it.
+templates.env.globals["signed_in_as"] = lambda request: request.scope.get("user_email")
+templates.env.globals["google_login_active"] = google_auth.is_configured
 templates.env.filters["monogram"] = branding.monogram
 templates.env.filters["brand_colour"] = branding.colour
 
@@ -277,9 +281,12 @@ def create_app() -> FastAPI:
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
         advisory, archive, assistant, client, contacts, guide_routes, language,
-        profile as profile_routes, rivals_view, runstatus, settings, today, triage,
+        login, profile as profile_routes, rivals_view, runstatus, settings, today,
+        triage,
     )
 
+    # First, so the sign-in pages exist before anything that needs a session.
+    app.include_router(login.router)
     app.include_router(today.router)
     app.include_router(client.router)
     app.include_router(archive.router)

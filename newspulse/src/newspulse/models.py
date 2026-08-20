@@ -291,6 +291,24 @@ class Client(Base):
     impulse_checked_at: Mapped[dt.datetime | None] = mapped_column(
         UTCDateTime(), nullable=True
     )
+    # When the deep-dive profile was last re-read from the web, whatever that read
+    # produced. Same reasoning as ``impulse_checked_at`` above: the answer is
+    # produced by an unattended sweep and read by a person hours later, so it has
+    # to be on the client rather than in the process that produced it. NULL means
+    # never checked, which the page says out loud — a profile that has aged for a
+    # year and one that was checked this morning must not look alike.
+    profile_checked_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+    #: Why the last profile check produced nothing, empty when it produced
+    #: something or found nothing to change. The stamp above is set on every
+    #: attempt including a failed one, which is right — an attempt happened — and
+    #: on its own it makes a mandate whose research broke read as "geprüft: heute"
+    #: while quieting its age trigger for sixty days. Exactly the hole
+    #: ``impulse_note`` was added to close, so it is closed the same way.
+    profile_note: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1")
     )
@@ -781,6 +799,114 @@ class ClientFact(Base):
 OUTCOME_BY_MAILBOX = "postfach"
 
 
+class ProfileProposal(Base):
+    """One "this looks different now", waiting for a yes.
+
+    The background refresh proposes and never writes (see
+    :mod:`newspulse.profile_refresh`), so its output has to live somewhere between
+    the sweep that produced it and the person who decides on it. That used to be a
+    dict in the web process, which was defensible while only a button wrote to it
+    and is not now: the 06:10 sweep would produce a pile of findings and a restart
+    — a deploy, a crash, a machine going to sleep — would silently drop them, and
+    nobody would ever know what the tool had found.
+
+    ``previous_value`` is copied at proposal time rather than read back at render
+    time. It is what the proposal is *about*: "Umsatz: 84 Mio. (2025)" is not a
+    decision anyone can make without the number it replaces beside it. Copying it
+    also keeps the row honest if the fact changes underneath — the proposal still
+    says which value it was arguing against.
+
+    Keyed on (client, key) while it is outstanding: a mandate has one CEO field,
+    and a second refresh replaces that client's open proposals rather than
+    stacking a fresh guess beside last week's.
+
+    A discarded row stays, stamped rather than deleted. It is the only record that
+    the consultant already said no to this exact value, and without it the next
+    refresh would read the same about page, find the same sentence and put the
+    same rejected proposal back on the page — which is how a review pile becomes
+    something nobody opens. The one exception is a row the profile has caught up
+    with: the field already holds the value being proposed, so there is no claim
+    left to refuse and stamping one would suppress that field's next real
+    correction (see :func:`newspulse.profile_refresh.discard`).
+
+    Which is why the uniqueness is *partial*, over the open rows only. A refusal
+    is of a sentence and not of a field — "not this CEO" must not mean "never ask
+    about the CEO again" — so a field accumulates one row per value that was
+    refused, plus at most one still waiting for an answer. A whole-table UNIQUE
+    would force the refresh to delete last month's "no" in order to file this
+    month's different finding, and the value it said no to would be back on the
+    page the next time a website repeated it.
+    """
+
+    __tablename__ = "profile_proposals"
+    __table_args__ = (
+        Index(
+            "uq_profile_proposals_key",
+            "client_id",
+            "key",
+            unique=True,
+            sqlite_where=text("discarded_at IS NULL"),
+        ),
+        # AUTOINCREMENT, so an id is never handed out twice. The review page's
+        # buttons carry row ids — "the rows I was looking at" — and a refresh
+        # replaces a client's proposals by deleting and re-inserting them. A
+        # plain SQLite rowid is reused after the delete, so yesterday's id could
+        # come back attached to this morning's finding and a stale tab's
+        # "übernehmen" would write a value nobody had read. Measured, not
+        # theorised: the test for that promise failed on reused ids.
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: A key from :data:`newspulse.profile.FIELDS`, exactly as ``client_facts``
+    #: holds it — a proposal is a candidate value for one of those rows.
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Every text column below carries ``server_default`` as well as ``default``:
+    # migration 0022 emits one, so a schema built by ``Base.metadata.create_all``
+    # (what the tests use) without it is a *different* schema, and an INSERT that
+    # omits a column would then pass in production and fail in a test.
+    value: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: Where it was read. A proposal without one is a machine asserting something
+    #: it cannot back up, and the review page does not show it at all.
+    source_url: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    source_title: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: What the profile said when this was proposed. Empty when the field was
+    #: blank, which is the "found something new" case rather than a contradiction.
+    #: Re-read from the profile when the row is refused, because a refusal is
+    #: always said *against* something: "not Bob, the CEO is Anna". That is what
+    #: lets the refusal expire when Anna turns out to be wrong and is cleared —
+    #: see :func:`newspulse.profile_refresh._refused`.
+    previous_value: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    proposed_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The model that read the web for it. Never "mensch": a human does not
+    #: propose to himself, he types the value in.
+    proposed_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default="", server_default=""
+    )
+    #: When the consultant said no, and the whole reason a discarded row is kept
+    #: instead of deleted: the refresh reads it before proposing, so a value that
+    #: was refused once is not offered again the next morning. An accepted row is
+    #: deleted rather than stamped — the fact it became is its own memory, and a
+    #: "no" recorded against a value the profile now holds would suppress a real
+    #: correction later.
+    discarded_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, default=None
+    )
+
+
 class Outreach(Base):
     """One personalised message: an impulse, written at a named recipient.
 
@@ -1026,6 +1152,7 @@ __all__ = [
     "ClientFact",
     "Contact",
     "OUTCOME_BY_MAILBOX",
+    "ProfileProposal",
     "Outreach",
     "OutreachReply",
     "OutreachState",

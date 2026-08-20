@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 
@@ -230,4 +231,44 @@ def search(
     return text, sources
 
 
-__all__ = ["generate", "stream"]
+#: The host every grounded citation is handed back behind. The URI the grounding
+#: metadata carries is a click-tracking redirect, not the page: it expires within
+#: weeks, so a citation stored as-is is a dead link by the time anyone follows it.
+_REDIRECT_HOST = "vertexaisearch.cloud.google.com"
+
+#: How long the one redirect lookup may take. Short on purpose: this runs inside
+#: a research call that already spent a model call and a web search, and a source
+#: link is worth a couple of seconds and not a stalled sweep.
+_RESOLVE_TIMEOUT = 5.0
+
+
+def resolve_source(url: str, *, timeout: float = _RESOLVE_TIMEOUT) -> str:
+    """The durable page behind a grounding redirect, or ``url`` unchanged.
+
+    A stored citation outlives the answer that produced it: a proposal can sit on
+    the review pile for weeks, and a fact accepted from one keeps its link for as
+    long as the mandate lasts. Google's grounding URI does not last that long, so
+    it is followed once here — while it still works — and the page it lands on is
+    what gets written down.
+
+    Anything that is not one of those redirects is handed straight back, so no
+    ordinary source URL and no injected test double ever reaches the network.
+    Every failure — offline, timeout, a redirect that has already expired — keeps
+    the original: a link that may be stale beats no link at all.
+    """
+    # The host, parsed, and never a substring match: "in url" would also fire on
+    # a link that merely mentions the host in a query string, and this function
+    # then fetches whatever it was handed.
+    if urllib.parse.urlsplit(url).hostname != _REDIRECT_HOST:
+        return url
+    try:
+        request = urllib.request.Request(url, method="HEAD")  # noqa: S310 - host checked above
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            resolved = response.url or ""
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        _log.debug("gemini: could not resolve grounding redirect: %s", exc)
+        return url
+    return resolved or url
+
+
+__all__ = ["generate", "resolve_source", "search", "stream"]

@@ -1427,8 +1427,12 @@ def gmail_start_route(request: Request) -> Response:
         # lands here and is told the same thing the panel says.
         return _back_to_panel(GmailNotice.FAILED)
     state = gmail_link.new_state()
+    # The address this person signed in to RauteOS with, so Google opens on that
+    # account rather than whichever one the browser was last used for. Empty
+    # under basic auth, where nobody has told us who is asking.
     response = RedirectResponse(
-        gmail_link.authorize_url(state), status_code=_SEE_OTHER
+        gmail_link.authorize_url(state, login_hint=request.scope.get("user_email", "")),
+        status_code=_SEE_OTHER,
     )
     response.set_cookie(
         _GMAIL_STATE_COOKIE,

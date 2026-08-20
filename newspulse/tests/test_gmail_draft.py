@@ -617,7 +617,17 @@ def test_a_failed_send_keeps_the_draft_so_the_retry_updates_it(
     session.refresh(row)
     assert row.gmail_message_id == _MESSAGE_ID
     assert len(gmail.drafts) == 0  # the one draft was sent, not left behind
-    assert gmail.calls[-2].method == "PUT"  # the retry updated it
+
+    # The guarantee is that the retry *rewrote* the draft it already had, and
+    # that the journalist was never at risk of a second near-identical message.
+    # Asserted on what was called rather than on where it sat in the sequence:
+    # the positional form (calls[-2]) silently stopped testing this the day a
+    # follow-up read was appended after the send, while the behaviour it was
+    # guarding never changed.
+    calls = [(c.method or "POST", str(c.url)) for c in gmail.calls]
+    assert any(method == "PUT" and _DRAFT_ID in url for method, url in calls)
+    created = [url for method, url in calls if method == "POST" and url.endswith("/drafts")]
+    assert len(created) == 1
 
 
 def test_a_send_whose_answer_was_lost_is_recorded_rather_than_sent_a_second_time(

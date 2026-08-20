@@ -121,6 +121,58 @@ def no_real_mailbox(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_live_profile_research(monkeypatch):
+    """Stop the sweep's profile refresh from reaching the web in a test run.
+
+    ``job.run`` now re-researches the mandates whose profile has aged, which is a
+    live search plus a model call per mandate. Whether that happens in a test
+    would otherwise depend on whether the developer running it happens to have a
+    ``GEMINI_API_KEY`` in the shell — the suite would be silent and free on CI and
+    would quietly spend money on someone's laptop.
+
+    So the boundary is closed rather than the feature switched off: with an
+    injected ``generate`` this is the real function, parsing a canned answer with
+    no network anywhere near it, and without one it refuses instead of picking up
+    an ambient key.
+    """
+    from newspulse import profile
+
+    original = profile.research
+
+    def _research(client, *, generate=None):
+        if generate is None:
+            raise RuntimeError("no research provider configured in the test suite")
+        return original(client, generate=generate)
+
+    monkeypatch.setattr(profile, "research", _research)
+    return original
+
+
+@pytest.fixture(autouse=True)
+def no_sweep_profile_refresh(monkeypatch):
+    """Keep the sweep's profile pass out of the tests that are not about it.
+
+    ``no_live_profile_research`` above closes the network boundary, which is the
+    part that must never depend on whose laptop the suite runs on. It leaves the
+    pass *running*, though, and that is its own problem: every test that drives
+    ``job.run`` walks up to ``config.PROFILE_REFRESH_PER_RUN`` never-checked
+    mandates, has each
+    one refuse, and logs an ERROR with a traceback per mandate. Dozens of tests
+    with nothing to do with profiles then print a wall of stack traces, which is
+    how a real failure stops being visible in the output.
+
+    So the boundary stays closed *and* the feature is switched off here. Yields
+    the real helper, so the two tests that are about the wiring can put it back
+    and assert the sweep genuinely reaches it.
+    """
+    from newspulse import job
+
+    original = job._refresh_profiles
+    monkeypatch.setattr(job, "_refresh_profiles", lambda session, now: 0)
+    return original
+
+
+@pytest.fixture(autouse=True)
 def no_theme_settling(monkeypatch):
     """Stop the sweep from proposing themes in a test run.
 

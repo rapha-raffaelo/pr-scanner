@@ -235,9 +235,25 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--line); border-radius: var(--radius); box-shadow: none;
   padding: 0; margin-bottom: var(--s5); overflow: hidden;
 }
-.panel > *, .sect > * { padding-left: var(--s4); padding-right: var(--s4); }
-.panel > *:first-child, .sect > *:first-child { padding-top: var(--s4); }
-.panel > *:last-child, .sect > *:last-child { padding-bottom: var(--s4); }
+/* The panel's inset is applied to its children rather than to the panel itself,
+   so a grouped row can still run edge to edge. That has to skip anything whose
+   own box is the thing you see: a button given 16px of extra side padding is not
+   an indented button, it is a wider one, and the label stops lining up with the
+   text above it. Bitten by exactly that on the mailbox panel. */
+.panel > :not(button):not(.btn):not(.linkbtn),
+.sect > :not(button):not(.btn):not(.linkbtn) {
+  padding-left: var(--s4); padding-right: var(--s4);
+}
+.panel > button, .panel > .btn, .panel > .linkbtn,
+.sect > button, .sect > .btn, .sect > .linkbtn { margin-left: var(--s4); }
+.panel > :not(button):not(.btn):not(.linkbtn):first-child,
+.sect > :not(button):not(.btn):not(.linkbtn):first-child { padding-top: var(--s4); }
+.panel > :not(button):not(.btn):not(.linkbtn):last-child,
+.sect > :not(button):not(.btn):not(.linkbtn):last-child { padding-bottom: var(--s4); }
+/* A button as the panel's last child gets the inset as margin, for the same
+   reason: padding would make the button taller, not the panel. */
+.panel > :is(button, .btn, .linkbtn):last-child,
+.sect > :is(button, .btn, .linkbtn):last-child { margin-bottom: var(--s4); }
 
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
@@ -1657,6 +1673,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 
 /* --- Buttons -------------------------------------------------------------- */
 button, .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
   font: inherit; font-size: var(--t-subhead); font-weight: 500;
   min-height: 28px; padding: 5px 12px;
   border: 1px solid var(--line); border-radius: var(--radius-s);
@@ -1694,3 +1711,62 @@ button:disabled { opacity: .55; cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+/* --- Sign in -------------------------------------------------------------- */
+/* Its own page, with no sidebar and no chrome: nothing here is navigation, and
+   the only decision on the screen is one button. Centred because a single card
+   with one action is the one layout where centring is the honest answer rather
+   than the default one. */
+.signin {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: var(--ground); padding: var(--s6);
+}
+.signin__card {
+  width: 100%; max-width: 380px; text-align: center;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: var(--s7) var(--s6) var(--s6);
+}
+.signin__mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 11px; margin-bottom: var(--s4);
+  background: var(--tint); color: #fff; font-size: var(--t-title2); font-weight: 700; line-height: 1;
+}
+.signin__title { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.022em; margin-bottom: var(--s2); }
+.signin__lead { font-size: var(--t-subhead); color: var(--muted); margin-bottom: var(--s5); }
+/* The Google button keeps Google's own shape: white, hairlined, the wordmark
+   colours in the glyph. A tinted capsule with our blue in it would be a button
+   that claims to be Google's and is not. */
+.signin__go {
+  display: flex; align-items: center; justify-content: center; gap: var(--s3);
+  width: 100%; min-height: 40px; padding: 0 var(--s4);
+  background: var(--card); color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-s);
+  font-size: var(--t-body); font-weight: 500;
+}
+.signin__go:hover { background: var(--fill-2); text-decoration: none; }
+.signin__g { width: 18px; height: 18px; flex: none; }
+.signin__err {
+  background: var(--alert-wash); color: var(--alert);
+  border-radius: var(--radius-s); padding: var(--s2) var(--s3);
+  font-size: var(--t-footnote); margin-bottom: var(--s4); text-align: left;
+}
+.signin__who {
+  margin-top: var(--s5); font-size: var(--t-caption); color: var(--faint);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.signin__note { font-size: var(--t-footnote); color: var(--muted); text-align: left; }
+.signin__note code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: var(--t-caption); background: var(--fill-2);
+  padding: 1px 4px; border-radius: 4px;
+}
+/* The signed-in address doubles as the sign-out control: one row, not two. */
+.side__out { display: block; }
+.side__outbtn {
+  width: 100%; background: none; border: 0; padding: 5px var(--s2);
+  font: inherit; font-size: var(--t-footnote); color: var(--muted);
+  cursor: pointer; text-align: left;
+}
+.side__outbtn:hover { background: rgba(255, 255, 255, .6); color: var(--ink); }
+.side__outbtn .side__nm { flex: 1; }
+.side__outmark { flex: none; opacity: .5; }
