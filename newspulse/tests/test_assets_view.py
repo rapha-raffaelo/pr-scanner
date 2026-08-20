@@ -37,6 +37,7 @@ from newspulse.models import (
     CheckState,
     Client,
 )
+from newspulse.schemas import AssetDraft
 from newspulse.web.app import create_app, get_db
 from newspulse.web.routes import assets_view
 
@@ -261,6 +262,57 @@ def test_a_text_whose_check_could_not_run_is_stored_as_unchecked(session):
     assert any("gegengelesen" in reason for reason in said)
 
 
+def test_the_second_models_own_failure_class_does_not_lose_the_text(session):
+    """The realistic version of the test above, and the one that used to escape.
+
+    Every way :func:`newspulse.gemini.generate` actually fails — host unreachable,
+    timeout, HTTP error, empty completion — raises ``BackendError``, which is an
+    ``AnalyzerError`` and *not* a ``RuntimeError``. A handler that named only
+    ``ParseError``/``RuntimeError``/``OSError`` therefore caught the case nobody
+    hits and let the common one throw the paid-for draft away.
+    """
+    client, angle = _mandate(session)
+    said: list[str] = []
+
+    stored = assets.produce(
+        session,
+        assets.definition(AssetKind.STATEMENT),
+        client,
+        angle,
+        invoke=lambda *a, **k: _statement_reply(),
+        generate=_raises(analyzer.BackendError("Gemini unreachable: timed out")),
+        note=said.append,
+    )
+
+    assert stored.body.startswith("Die Verwahrung wandert")
+    assert stored.check_state is CheckState.UNGEPRUEFT
+    assert any("gegengelesen" in reason for reason in said)
+
+
+def test_a_guide_check_that_dies_on_the_backend_keeps_the_crosscheck(session):
+    """The crosscheck has been paid for by then; a second failure must not spend it.
+
+    Same blind spot, one layer in: ``guide.check_guide`` reaches the same provider
+    and raises the same class.
+    """
+    client, angle = _mandate(session)
+
+    stored = assets.produce(
+        session,
+        assets.definition(AssetKind.STATEMENT),
+        client,
+        angle,
+        invoke=lambda *a, **k: _statement_reply(),
+        generate=lambda *a, **k: _review(),
+        guide_generate=_raises(analyzer.BackendError("Gemini HTTP 503")),
+    )
+
+    assert stored.reviewed_by, "the verdict that did arrive is kept"
+    assert stored.review_ok
+    assert not stored.guide_review_ok, "and the one that did not never reads as clean"
+    assert stored.check_state is CheckState.EINWAND
+
+
 def test_a_refused_format_leaves_the_text_that_already_stood(session):
     """The acceptance in one test: a failed run must not cost the last good text."""
     client, angle = _mandate(session)
@@ -390,6 +442,84 @@ def test_a_recheck_reads_the_edited_text_and_clears_it_for_release(session):
     assert assets.releasable(stored)
 
 
+def test_a_recheck_that_could_not_run_says_so_instead_of_locking_the_text(session):
+    """The deadlock this used to be, and the asymmetry underneath it.
+
+    ``needs_recheck`` was "edited, and unchecked". A re-check that could not run
+    left both halves true forever, so on an installation with no second model a
+    consultant could write a text and edit it and never release it — while an
+    unedited draft whose check had failed the same way stayed releasable. The tool
+    blocked the human exactly where a human had taken responsibility for the words
+    and waved through the one only a model had seen.
+
+    So the attempt is the record. It is not a clean one: no reviewer is named, the
+    state stays UNGEPRUEFT, the verdict is not ok, and the sentence on the row
+    says whoever releases now releases unread.
+    """
+    client, angle = _mandate(session)
+    stored = _produce(session, client, angle)
+    assets.edit(session, stored, title="", body="Der Satz, den ich sagen will.")
+
+    assets.recheck(
+        session,
+        client,
+        stored,
+        generate=_raises(analyzer.BackendError("Gemini unreachable: timed out")),
+    )
+
+    assert assets.CHECK_UNAVAILABLE in stored.review
+    assert "Gemini unreachable" in stored.review, "and why, for the person fixing it"
+    assert stored.reviewed_by == "", "nothing read it, so nobody is named"
+    assert not stored.review_ok, "it draws with the warning dot, never the clean one"
+    assert stored.check_state is CheckState.UNGEPRUEFT
+    assert stored.edited_at is not None, "the human edit is still on the record"
+    assert not assets.needs_recheck(stored), "the check has run, and could not"
+    assert assets.releasable(stored), "so the decision is the consultant's"
+
+
+def test_a_recheck_that_could_not_run_is_still_offered_a_second_attempt(factory, web):
+    """A text nothing has read keeps the button that would have it read."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        stored = _produce(session, client, angle)
+        assets.edit(session, stored, title="", body="Der Satz, den ich sagen will.")
+        assets.recheck(
+            session, client, stored, generate=_raises(RuntimeError("kein Zweitmodell"))
+        )
+        client_id, asset_id = client.id, stored.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert f"/asset/{asset_id}/recheck" in body, "try again"
+    assert f"/asset/{asset_id}/release" in body, "or release it, having been told"
+    assert assets.CHECK_UNAVAILABLE in body
+
+
+def test_a_draft_nothing_read_can_be_sent_back_without_being_rewritten(factory, web):
+    """The re-check was gated on ``edited_at``, which is not what makes a text unread.
+
+    A draft written while the second model was down is unread through nobody's
+    fault, and the only way back to a checked state was "Neu schreiben" — a second
+    full model call that throws away a text there was nothing wrong with.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        stored = assets.produce(
+            session,
+            assets.definition(AssetKind.STATEMENT),
+            client,
+            angle,
+            invoke=lambda *a, **k: _statement_reply(),
+            generate=_raises(analyzer.BackendError("Gemini unreachable")),
+        )
+        client_id, asset_id = client.id, stored.id
+        assert stored.edited_at is None
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert f"/asset/{asset_id}/recheck" in body
+
+
 def test_the_house_style_reaches_an_edit_as_well(session):
     """The dash rule is about what leaves the building, not about who typed it."""
     client, angle = _mandate(session)
@@ -457,6 +587,59 @@ def test_the_strip_shows_every_format_and_the_state_it_is_in(factory, web):
     assert "fmt-dot--geprueft" in body, "the written statement is checked"
     assert "fmt-dot--ungeschrieben" in body, "the six others do not exist yet"
     assert "1 von 7 Formaten geschrieben" in " ".join(body.split())
+
+
+def test_an_impulse_with_nothing_written_gets_the_mocks_invitation(factory, web):
+    """DEC-1's empty package: a thesis and no text is an invitation, not a void.
+
+    Seven empty tabs answer a question nobody asked yet. The strip stays below it
+    so a single format can still be picked.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        client_id, angle_id = client.id, angle.id
+
+    body = " ".join(web.get(f"/client/{client_id}/advice").text.split())
+
+    assert "Zu diesem Anlass gibt es eine These und noch keinen Text." in body
+    assert "Paket schreiben" in body
+    assert "noch nichts geschrieben" in body
+    assert f'data-pane="pane-{angle_id}-qa"' in body, "the strip is still there"
+
+
+def test_a_package_with_a_text_gets_the_head_and_not_the_invitation(factory, web):
+    with factory() as session:
+        client, angle = _mandate(session)
+        _produce(session, client, angle)
+        client_id = client.id
+
+    body = " ".join(web.get(f"/client/{client_id}/advice").text.split())
+
+    assert "Paket schreiben" not in body
+    assert "1 von 7 Formaten geschrieben" in body
+
+
+def test_a_reader_on_another_impulse_is_told_why_the_buttons_are_out(factory, web):
+    """The lock is process-wide and the notice is not.
+
+    Without this line the reader sees dead buttons and no cause, which reads as a
+    broken page rather than as a queue of one.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        client_id, angle_id = client.id, angle.id
+    assets_view._generating.acquire()
+    try:
+        # Running on some *other* impulse, so this one's notice stays down.
+        assets_view._progress[client_id] = assets_view.Progress(
+            angle_id=angle_id + 999, label="Pressemitteilung", done=0, total=1
+        )
+        body = " ".join(web.get(f"/client/{client_id}/advice").text.split())
+    finally:
+        assets_view._generating.release()
+
+    assert "Es wird gerade ein anderer Text geschrieben" in body
+    assert "Wird geschrieben: Pressemitteilung" not in body
 
 
 def test_a_format_that_cannot_be_written_yet_says_which_field_is_missing(
@@ -608,7 +791,9 @@ def test_asking_for_a_second_reading_hands_the_text_to_the_worker(
 
     web.post(f"/client/{client_id}/impulse/{angle_id}/asset/{asset_id}/recheck")
 
-    assert worker.wait() == [(client_id, asset_id)]
+    # The impulse travels with the call rather than being read off the row: it is
+    # where a failure has to be written, and the row is what may be unreachable.
+    assert worker.wait() == [(client_id, angle_id, asset_id)]
 
 
 def test_editing_through_the_route_stores_the_text_and_marks_it(factory, web):
@@ -716,7 +901,30 @@ def test_the_page_reports_which_format_is_being_written(factory, web):
     body = " ".join(web.get(f"/client/{client_id}/advice").text.split())
 
     assert "Wird geschrieben: Pressemitteilung (2 von 6)" in body
-    assert 'hx-trigger="every 3s"' in body, "and the page fetches itself until it is"
+    # Fetches itself until it is done, and replaces this package only: every
+    # other impulse's tab strip and open edit form is left alone.
+    assert f'hx-trigger="every 3s [!npEditing({angle_id})]"' in body
+    assert f'hx-target="#pack-{angle_id}"' in body
+
+
+def test_the_poller_holds_off_while_somebody_is_editing_that_package(factory, web):
+    """The swap would take the textarea and everything typed into it.
+
+    Editing in place is why this surface exists rather than a card with a copy
+    button, so the refresh gives way to it: the trigger asks whether an edit panel
+    on *this* package is open, and the notice keeps saying what is happening.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        client_id, angle_id = client.id, angle.id
+    assets_view._progress[client_id] = assets_view.Progress(
+        angle_id=angle_id, label="Pressemitteilung", done=0, total=1
+    )
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "window.npEditing = function" in body, "the trigger's own condition"
+    assert "details.fmtedit[open]" in body
 
 
 # --- The worker itself ---------------------------------------------------------
@@ -779,6 +987,69 @@ def test_the_worker_writes_every_format_it_was_given(
     assert "Sitz (im Profil)" in refused, "and the one that could not names its field"
 
 
+def test_a_format_whose_commit_failed_does_not_poison_the_rest_of_the_run(
+    factory, session, monkeypatch, worker
+):
+    """A caught exception is not a clean session.
+
+    ``produce`` ends in ``store`` -> ``commit``, and the two commits most likely to
+    fail here are real: the partial unique index on one unreleased draft per
+    format per impulse, and SQLite's "database is locked" against the cron sweep,
+    which runs in another process and is not covered by the run guard. Either
+    leaves the transaction in ``PendingRollbackError``, and without a rollback
+    every later format in the same run dies on the poisoned session — one bad
+    third format losing formats four through six, which is the exact failure the
+    per-format handler exists to prevent.
+    """
+    client, angle = _mandate(session, facts={"ceo": _SPEAKER})
+    client_id, angle_id = client.id, angle.id
+    monkeypatch.setattr(assets_view, "get_session", lambda: _sessions(factory))
+
+    seen: list[str] = []
+
+    def _produce_or_break(sess, fmt, cl, ang, **kwargs):
+        seen.append(fmt.key)
+        if len(seen) == 1:
+            # Two unreleased drafts of one format on one impulse: exactly what
+            # ux_assets_angle_kind_unreleased refuses, and it refuses at commit.
+            for _ in range(2):
+                sess.add(
+                    Asset(
+                        client_id=cl.id, angle_id=ang.id, kind=fmt.key,
+                        title="Doppelt", body="Zweimal derselbe Entwurf.",
+                    )
+                )
+            sess.commit()
+        # Every later format asks the database something, which is what dies on a
+        # session nobody rolled back.
+        return assets.store(
+            sess, fmt, cl, ang, AssetDraft(title="Titel", body="Text.", speaker="")
+        )
+
+    monkeypatch.setattr(assets, "produce", _produce_or_break)
+
+    assets_view._generating.acquire()
+    worker.real_write(
+        client_id,
+        angle_id,
+        (AssetKind.PRESSEMITTEILUNG.value, AssetKind.STATEMENT.value),
+    )
+
+    assert seen == [AssetKind.PRESSEMITTEILUNG.value, AssetKind.STATEMENT.value], (
+        "the run reached the second format"
+    )
+    assert "nicht geschrieben" in assets_view._notes[
+        (angle_id, AssetKind.PRESSEMITTEILUNG.value)
+    ], "the one that failed says so"
+    assert (angle_id, AssetKind.STATEMENT.value) not in assets_view._notes, (
+        "and the one after it went through on a clean session"
+    )
+    session.expire_all()
+    assert {row.kind for row in assets.for_angle(session, angle_id)} == {
+        AssetKind.STATEMENT.value
+    }
+
+
 class _sessions:
     """``get_session()`` against the fixture database, as a context manager."""
 
@@ -833,3 +1104,33 @@ def test_the_strings_the_code_holds_are_translated_too():
     for remedy in _REMEDIES.values():
         assert remedy.label in i18n.known_keys(), remedy.label
     assert assets.UNREAD_SINCE_EDIT in i18n.known_keys()
+    assert assets.CHECK_UNAVAILABLE in i18n.known_keys()
+
+
+def test_no_german_string_is_translated_twice():
+    """Python keeps the last entry for a repeated key and drops the first silently.
+
+    Harmless only while both say the same thing; the next person to reword one of
+    them rewords the one that loses. Guarded for the strings this surface holds
+    rather than for the whole dict, which carries older duplicates.
+    """
+    source = (
+        pathlib.Path(i18n.__file__).read_text(encoding="utf-8").split("\n")
+    )
+    keys = [
+        m.group(1)
+        for line in source
+        if (m := re.match(r'\s{4}"((?:[^"\\]|\\.)*)":\s', line))
+    ]
+    ours = {
+        *_STATE_NAMES,
+        "Das Paket zu diesem Anlass",
+        "Fehlende schreiben",
+        "Paket schreiben",
+        "Gegenlesen lassen",
+    }
+    twice = sorted(k for k in ours if keys.count(k) > 1)
+    assert not twice, f"translated twice, so one of them is dead: {twice}"
+
+
+_STATE_NAMES = ("Nicht geschrieben", "Entwurf", "Geprüft", "Freigegeben")

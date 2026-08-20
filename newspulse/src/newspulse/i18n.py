@@ -439,6 +439,10 @@ _EN: dict[str, str] = {
     "Es wird gerade ein anderer Text geschrieben — die Knöpfe sind so lange aus.":
         "Another text is being written right now — the buttons are off until "
         "it is done.",
+    "Das Zweitmodell konnte diesen Text nicht lesen. Er ist ungeprüft — "
+    "wer ihn jetzt freigibt, gibt ihn ungelesen frei.":
+        "The second model could not read this text. It is unchecked — "
+        "releasing it now means releasing it unread.",
     "Zu diesem Anlass gibt es eine These und noch keinen Text. Sieben Formate stehen bereit.":
         "This occasion has a thesis and no text yet. Seven formats are ready.",
     "Paket schreiben": "Write the package",
