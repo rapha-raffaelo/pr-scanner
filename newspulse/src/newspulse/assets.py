@@ -64,7 +64,7 @@ from sqlalchemy.orm import Session
 
 from . import config, gemini, guide, pitch, profile, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
-from .models import Angle, Article, Asset, AssetKind, Client, ClientFact
+from .models import Angle, Article, Asset, AssetKind, CheckState, Client, ClientFact
 from .pitch import PitchTarget
 from .schemas import MAX_CONCERNS, AssetDraft, GuideVerdict, MessageReview
 
@@ -2283,6 +2283,210 @@ def store(
     return row
 
 
+def produce(
+    session: Session,
+    fmt: FormatDef,
+    client: Client,
+    angle: Angle,
+    *,
+    invoke: Callable[..., str] = invoke_with_fallback,
+    generate: Callable[..., str] | None = None,
+    guide_generate: Callable[..., str] | None = None,
+    note: Callable[[str], None] | None = None,
+) -> Asset:
+    """Write one format, have it read, and store it: the whole act, once.
+
+    The surface asks for a text, not for three steps, and the three steps have an
+    order that must not be got wrong twice. Composed here rather than in the route
+    that starts the worker, because a second surface calling it — the daily sweep,
+    a crisis in PR-06 — would otherwise recompose it from memory and get the
+    fault isolation below subtly different.
+
+    That isolation is the part worth stating. A check that cannot run must not
+    lose the text that has already been paid for: the model call is spent, the
+    draft is good, and the honest answer is a stored text that says plainly that
+    nothing read it. :func:`newspulse.models.Asset.check_state` renders exactly
+    that, and never as a clean bill of health.
+
+    Raises whatever :func:`write` raises: nothing is stored when the format was
+    refused for a missing field or gave up on its structure, so a failed run
+    leaves the previous text for this format standing untouched.
+    """
+    draft = write(session, fmt, client, angle, invoke=invoke, note=note)
+    checked: Checked | None = None
+    try:
+        checked = check(
+            client,
+            checkable(session, fmt, angle, draft),
+            generate=generate,
+            guide_generate=guide_generate,
+        )
+    except (ParseError, RuntimeError, OSError) as exc:
+        _log.warning("%s for %r went unchecked: %s", fmt.key, client.name, exc)
+        _tell(
+            note,
+            f"{fmt.name}: Der Text steht, aber das Zweitmodell hat ihn nicht "
+            f"gegengelesen: {exc}",
+        )
+    return store(session, fmt, client, angle, draft, checked)
+
+
+# --- What state one stored text is in ------------------------------------------
+
+
+class AssetState(StrEnum):
+    """Where one format stands on one impulse, as the surface shows it.
+
+    Four states because the surface owes four answers, and the first two are the
+    pair that matters: a format nobody has written and a draft nobody has read
+    are both "not ready", and a strip that drew them alike would hide the six
+    unwritten formats behind the one that exists.
+    """
+
+    UNGESCHRIEBEN = "ungeschrieben"
+    ENTWURF = "entwurf"
+    GEPRUEFT = "geprueft"
+    FREIGEGEBEN = "freigegeben"
+
+
+class Refused(RuntimeError):
+    """An act the asset's own state does not allow.
+
+    One exception rather than one per rule: what the caller does with any of them
+    is the same thing, which is to show the sentence to the person who pressed the
+    button. The message is that sentence, already in German.
+    """
+
+
+#: Why a released text takes no more edits. The letter's rule, arriving here for
+#: the same reason it exists there: a released text is the record of what actually
+#: went out, and a record that can be rewritten afterwards is not a record.
+RELEASED_IS_FINAL = (
+    "Dieser Text ist freigegeben. Freigegebene Texte werden weder geändert noch "
+    "ersetzt, weil sie festhalten, was tatsächlich hinausgegangen ist."
+)
+
+#: Why an edited text cannot be released yet. The whole reason editing is a
+#: separate act here: the verdicts on screen belonged to the words the model
+#: wrote, and a text a human changed after the check was cleared is a text
+#: nothing has read.
+UNREAD_SINCE_EDIT = (
+    "Der Text wurde nach der Prüfung von Hand geändert. Vor der Freigabe muss "
+    "ihn das Zweitmodell noch einmal lesen."
+)
+
+
+def state_of(asset: Asset | None) -> AssetState:
+    """The state one format is in on one impulse. ``None`` means unwritten."""
+    if asset is None:
+        return AssetState.UNGESCHRIEBEN
+    if asset.released:
+        return AssetState.FREIGEGEBEN
+    if asset.check_state is CheckState.GEPRUEFT:
+        return AssetState.GEPRUEFT
+    return AssetState.ENTWURF
+
+
+def needs_recheck(asset: Asset) -> bool:
+    """Whether a human changed this text after the last check ran.
+
+    Readable off the row because :func:`edit` clears the verdicts as it stores the
+    edit: a stored verdict always belongs to the text beside it, so after an edit
+    there is no verdict, and "edited and unread" is exactly those two facts
+    together. No second timestamp column, and no way for the two to disagree.
+    """
+    return asset.edited_at is not None and asset.check_state is CheckState.UNGEPRUEFT
+
+
+def releasable(asset: Asset) -> bool:
+    """Whether the release control may be offered for this text at all."""
+    return not asset.released and not needs_recheck(asset)
+
+
+def edit(session: Session, asset: Asset, *, title: str, body: str) -> Asset:
+    """Store a human's edit, and mark the text as one a human has been through.
+
+    Two effects, and the second is the point. The edit is kept, and both verdicts
+    are dropped, because they were given on the words the model wrote. Leaving
+    them would put a green "keine Einwände" over a paragraph the checker never
+    saw, which is the one thing this whole column exists to prevent.
+
+    A released text is refused: its words are the record of what went out.
+    """
+    if asset.released:
+        raise Refused(RELEASED_IS_FINAL)
+    # The house rule reaches a human's words too. It is a rule about what leaves
+    # the building, not about who typed it, and a page that enforced it on the
+    # model's paragraph and not on the one edited underneath would ship the tell
+    # it exists to remove. See newspulse.prose.
+    asset.title = prose.plain(title)
+    asset.body = prose.plain(body)
+    asset.edited_at = dt.datetime.now(dt.UTC)
+    _apply_checks(asset, None)
+    session.add(asset)
+    session.commit()
+    return asset
+
+
+def recheck(
+    session: Session,
+    client: Client,
+    asset: Asset,
+    *,
+    generate: Callable[..., str] | None = None,
+    guide_generate: Callable[..., str] | None = None,
+) -> Asset:
+    """Read a stored text again, exactly as it now stands.
+
+    The same two checks a freshly written one goes through, over the stored title
+    and body rather than a draft, which is what makes it worth running after an
+    edit: what it reads is what the consultant will send.
+    """
+    angle = session.get(Angle, asset.angle_id)
+    if angle is None:  # pragma: no cover - the FK cascades, so only a race
+        raise Refused("Der Impuls zu diesem Text existiert nicht mehr.")
+    fmt = definition(asset.kind)
+    item = checkable(
+        session,
+        fmt,
+        angle,
+        AssetDraft(title=asset.title, body=asset.body, speaker=asset.speaker),
+    )
+    _apply_checks(
+        asset,
+        check(client, item, generate=generate, guide_generate=guide_generate),
+    )
+    session.add(asset)
+    session.commit()
+    return asset
+
+
+#: What fits in ``assets.released_by``. Cut here rather than at the database,
+#: which would raise on a long operator name instead of releasing the text.
+_MAX_RELEASER_CHARS = 80
+
+
+def release(session: Session, asset: Asset, by: str = "") -> Asset:
+    """Record the human release, the way the outreach ledger records a letter's.
+
+    Grade F without exception: nothing leaves this tool because a model was
+    content with it. What is stored is who and when, so the release is a trace
+    rather than a state change nobody signed.
+
+    Releasing twice is not an error, it is the second click on a button that had
+    not repainted yet; the first release stands, timestamp and all.
+    """
+    if asset.released:
+        return asset
+    if needs_recheck(asset):
+        raise Refused(UNREAD_SINCE_EDIT)
+    asset.released_at = dt.datetime.now(dt.UTC)
+    asset.released_by = by.strip()[:_MAX_RELEASER_CHARS]
+    session.add(asset)
+    session.commit()
+    return asset
+
+
 def _replaceable(session: Session, angle_id: int, kind: str) -> Asset | None:
     """The draft this write would replace, if there is one that may be replaced."""
     return session.scalars(
@@ -2325,17 +2529,43 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Asset]]:
     return grouped
 
 
+def current(session: Session, angle_ids: list[int]) -> dict[int, dict[str, Asset]]:
+    """The text that stands for each format on each impulse, keyed twice.
+
+    "Stands" is the newest row of that kind, which is the one the strip shows and
+    the one the buttons act on. There can be more than one — a released text keeps
+    its row when a later draft is written beside it — and the older ones are the
+    record of what went out, not the working copy.
+    """
+    return {
+        angle_id: _newest_per_kind(rows)
+        for angle_id, rows in by_angle(session, angle_ids).items()
+    }
+
+
+def _newest_per_kind(rows: list[Asset]) -> dict[str, Asset]:
+    """The first row of each kind, given rows already ordered newest first."""
+    per: dict[str, Asset] = {}
+    for row in rows:
+        per.setdefault(row.kind, row)
+    return per
+
+
 __all__ = [
     "FORMATS",
     "GASTBEITRAG_CHARS",
     "MAX_TALKING_POINTS",
     "REGISTRY",
+    "RELEASED_IS_FINAL",
+    "UNREAD_SINCE_EDIT",
+    "AssetState",
     "Checkable",
     "Checked",
     "FormatDef",
     "Given",
     "Malformed",
     "Readiness",
+    "Refused",
     "Requirement",
     "RequirementsMissing",
     "Source",
@@ -2344,13 +2574,21 @@ __all__ = [
     "check",
     "checkable",
     "crosscheck",
+    "current",
     "definition",
+    "edit",
     "for_angle",
+    "needs_recheck",
     "nogo_terms",
     "nogos",
+    "produce",
     "prompt_for",
+    "recheck",
     "recipient",
+    "release",
+    "releasable",
     "requirements_met",
+    "state_of",
     "store",
     "today",
     "validate",
