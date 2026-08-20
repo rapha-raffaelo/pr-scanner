@@ -78,3 +78,54 @@ def test_alembic_upgrade_creates_schema_and_round_trips_arrays(tmp_path, monkeyp
         assert json.loads(row[2]) == ["Rückruf"]
     finally:
         engine.dispose()
+
+
+def test_a_row_written_before_the_stamp_carries_no_version_rather_than_zero(
+    tmp_path, monkeypatch
+):
+    """AC 2, against the real migration rather than against the ORM.
+
+    The interesting row is one that already exists when ``0019_brain_version``
+    runs, so the database is brought up to the revision *before* it, given a
+    draft, and only then upgraded. Backfilling zero would have been the easy
+    default and it is a lie: zero means "the standards have never been changed
+    here", which a row from before anything was recorded cannot claim. NULL is
+    the honest answer and the interface renders it as "unbekannt".
+    """
+    db_path = tmp_path / "stamped.db"
+    monkeypatch.setattr(config, "DATABASE_PATH", db_path)
+    cfg = _alembic_config()
+
+    command.upgrade(cfg, "0018_brain_overrides")
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO clients "
+                    "(name, aliases, industry, country, keywords, alert_topics, "
+                    "active, created_at) "
+                    "VALUES ('Alpha AG', '[]', 'Neobroker', 'DE', '[]', '[]', 1, "
+                    "'2026-07-24 08:00:00')"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO angles "
+                    "(client_id, generated_at, subject, message, context) "
+                    "VALUES (1, '2026-07-24 08:00:00', 'Betreff', 'Text.', 'Kontext.')"
+                )
+            )
+
+        command.upgrade(cfg, "head")
+
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT brain_version FROM angles")).scalar() is None
+            # Every generator's table, not only the one with a row in it: a
+            # column missing from the third would leave that generator unable to
+            # stamp at all, which no ORM-built test would notice.
+            for table in ("angles", "outreach", "advisories"):
+                columns = {c["name"] for c in inspect(engine).get_columns(table)}
+                assert "brain_version" in columns, table
+    finally:
+        engine.dispose()
