@@ -1269,10 +1269,51 @@ def test_the_nogo_terms_are_the_words_that_name_the_subject():
 
 def test_the_nogos_are_read_out_of_the_guide_the_consultant_wrote(session):
     """Out of the guide rather than a field of their own, because that is where a
-    consultant writes them and a second field is the one nobody fills."""
+    consultant writes them and a second field is the one nobody fills. The block
+    ends where the next labelled section starts."""
     client, _ = _mandate(session, comms_guide=_NOGO_GUIDE)
 
     assert assets.nogos(client) == ("No-Go: das Wort günstig.",)
+
+
+def test_every_nogo_in_the_block_counts_not_only_the_one_carrying_the_label(session):
+    """A consultant writes three No-Gos as three sentences after one label.
+    Keeping only the first refuses a Q&A that asks about the second or the third,
+    which is a Q&A doing exactly what it was asked to do."""
+    client, _ = _mandate(
+        session,
+        comms_guide=(
+            "Positionierung: Verwahrung mit Haftung.\n"
+            "No-Gos: Keine Heilversprechen. Nie über Preise sprechen. "
+            "Keine Vergleiche mit Wettbewerbern.\n"
+            "Tonalität: nüchtern."
+        ),
+    )
+
+    terms = assets.nogo_terms(assets.nogos(client))
+
+    assert "heilversprechen" in terms
+    assert "preise" in terms
+    assert "wettbewerbern" in terms
+    assert "verwahrung" not in terms, "the block began at the No-Go label"
+    assert "nüchtern" not in terms, "the block ended at the next label"
+
+
+def test_a_bulleted_nogo_list_under_its_own_heading_is_read_whole(session):
+    """``guide.distill`` separates short points with "·" and a consultant editing
+    the field by hand writes one per line. Both are the same three No-Gos."""
+    client, _ = _mandate(
+        session,
+        comms_guide=(
+            "No-Gos:\n· Keine Heilversprechen\n· Nie über Preise sprechen\n"
+            "Tonalität: nüchtern."
+        ),
+    )
+
+    terms = assets.nogo_terms(assets.nogos(client))
+
+    assert "heilversprechen" in terms
+    assert "preise" in terms
 
 
 # --- Talking Points ------------------------------------------------------------

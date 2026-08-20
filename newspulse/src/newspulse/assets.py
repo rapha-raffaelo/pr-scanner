@@ -429,6 +429,13 @@ _NOGO_NOISE = frozenset(
     }
 )
 
+#: A labelled section in a guide: "Positionierung:", "No-Gos:", "Tonalität:".
+#: Up to three words and a colon, which is what :mod:`newspulse.guide` asks the
+#: distiller for and what a consultant types by hand. It is the boundary of the
+#: No-Go block: everything from the marker to the next label is a No-Go, and a
+#: sentence like "Nie über Preise sprechen." carries no colon and does not end it.
+_GUIDE_LABEL = re.compile(r"^[·\s]*\w[\w&/-]*(?:\s+[\w&/-]+){0,2}\s*:")
+
 #: How many terms out of the guide's No-Gos the Q&A check considers. A guide runs
 #: to a few hundred words; past a dozen terms the check stops being "does this ask
 #: the uncomfortable question" and starts matching on incidental vocabulary.
@@ -1132,20 +1139,52 @@ def _speaker(fmt: FormatDef, facts: dict[str, ClientFact]) -> str:
     return fact.value.strip() if fact else ""
 
 
+def _guide_items(text: str) -> list[str]:
+    """The guide's smallest readable units: one line, one bullet, one sentence.
+
+    All three, because a guide is written all three ways. The tool's own
+    :func:`newspulse.guide.distill` puts the No-Gos on one line separated by "·";
+    a consultant editing the field by hand writes them as a list of lines or as
+    three sentences after the label.
+    """
+    items: list[str] = []
+    for line in _lines(text):
+        for chunk in line.split("·"):
+            items.extend(part.strip() for part in _sentences(chunk) if part.strip())
+    return items
+
+
 def nogos(client: Client) -> tuple[str, ...]:
-    """The sentences of the mandate's guide that name something it never says.
+    """What the mandate's guide says it never says.
 
     Read out of the guide rather than out of a field of their own, because that is
     where the consultant writes them and a second field would be the one nobody
-    fills. Sentence by sentence: a guide is a paragraph of prose as often as it is
-    a list, and the No-Go is one sentence in it.
+    fills.
+
+    The whole block, not the one sentence carrying the label. "No-Gos: Keine
+    Heilversprechen. Nie über Preise sprechen. Keine Vergleiche mit
+    Wettbewerbern." is three No-Gos, and keeping only the first refuses a Q&A that
+    asks about either of the other two, which is a Q&A that does exactly what it
+    was asked to do. So collection starts at the marker and runs to the next
+    labelled section.
+
+    Where a guide is a paragraph of prose with no further label, that runs to the
+    end of it. The over-collection is deliberate and bounded: extra terms can only
+    make the Q&A check pass, :data:`_MAX_NOGO_TERMS` counts from the marker
+    outwards, and a wrongly refused Q&A costs a text while a wrongly accepted one
+    costs a second read.
     """
     text = (getattr(client, "comms_guide", "") or "").strip()
-    return tuple(
-        sentence.strip()
-        for sentence in _sentences(text)
-        if "no-go" in sentence.casefold()
-    )
+    collected: list[str] = []
+    collecting = False
+    for item in _guide_items(text):
+        if "no-go" in item.casefold():
+            collecting = True
+        elif collecting and _GUIDE_LABEL.match(item):
+            collecting = False
+        if collecting:
+            collected.append(item)
+    return tuple(collected)
 
 
 def _recipient_block(session: Session, target: PitchTarget | None) -> str:
