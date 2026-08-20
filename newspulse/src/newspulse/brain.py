@@ -59,13 +59,31 @@ from types import MappingProxyType
 _BLOCK_DIR = "blocks"
 _BLOCK_SUFFIX = ".txt"
 
-#: ``{{brain:key}}``. Keys are lowercase snake_case so a typo is a miss rather
-#: than an accidental hit on a different block.
-_INCLUDE = re.compile(r"\{\{brain:([a-z0-9_]+)\}\}")
+#: ``{{brain:key}}``. Deliberately generous about the marker and strict about the
+#: key. An earlier version matched only ``[a-z0-9_]+`` with no surrounding space,
+#: which meant ``{{brain:Evidence}}`` and ``{{brain: evidence}}`` were not unknown
+#: blocks at all: they were not markers, so :func:`compose` returned them verbatim
+#: and the literal braces went to the model as prompt text. That is the silent
+#: composition-without-the-standard this whole layer exists to prevent, so a typo
+#: has to land inside the capture where :func:`block` can raise on it.
+_INCLUDE = re.compile(r"\{\{\s*brain\s*:\s*(?P<key>[^{}]*?)\s*\}\}", re.IGNORECASE)
+
+#: The spellings too broken to parse as an include at all: ``{{brain}}``,
+#: ``{{ brain evidence }}``, a marker with a stray brace inside it. Checked after
+#: expansion, so whatever survives is a mistake rather than prompt text. Broader
+#: than ``_INCLUDE`` on purpose: this one only has to *notice*, not resolve.
+_SUSPECT_INCLUDE = re.compile(r"\{\{[^}]*brain[^}]*\}\}", re.IGNORECASE)
 
 #: ``#blocks: a, b, c`` on a line of its own. Stripped before the prompt is sent:
 #: it addresses the person editing the file, not the model reading it.
 _DECLARATION = re.compile(r"(?m)^[ \t]*#blocks:[ \t]*(?P<keys>[^\n]*)\n?")
+
+#: How many expansion rounds :func:`compose` will follow before it calls the text
+#: cyclic. A block is one screen a consultant reads, and four levels of block
+#: including block is already past the point where anyone can say what a prompt
+#: contains; beyond it the likelier explanation is that two blocks include each
+#: other, which without a cap expands until the process dies.
+_MAX_INCLUDE_DEPTH = 5
 
 #: Enough hex to make a collision between two block sets a non-worry, short
 #: enough to read in a log line or a test failure.
@@ -93,6 +111,23 @@ class UnknownBlock(LookupError):
         super().__init__(
             f"unknown brain block {key!r}; the shipped blocks are: "
             f"{', '.join(known) or '(none)'}"
+        )
+
+
+class BlockCycle(RecursionError):
+    """Blocks include each other, or nest deeper than composition will follow.
+
+    Unreachable while the blocks are files somebody reviews, and reachable the
+    moment BRN-02 makes block text a field a consultant edits: two blocks that
+    name each other would otherwise expand until the process runs out of memory,
+    in a request that looks like a slow render right up to the point it dies.
+    """
+
+    def __init__(self, keys: list[str]) -> None:
+        self.keys = keys
+        super().__init__(
+            f"brain blocks still expand after {_MAX_INCLUDE_DEPTH} rounds; "
+            f"a cycle through: {', '.join(keys) or '(unknown)'}"
         )
 
 
@@ -160,7 +195,13 @@ def has_declaration(text: str) -> bool:
 
 
 def included(text: str) -> tuple[str, ...]:
-    """The keys the prompt actually includes, in the order they appear."""
+    """The keys the prompt actually includes, in the order they appear.
+
+    A misspelled marker reports the misspelling rather than nothing, because the
+    caller that matters is the test holding a prompt's ``#blocks:`` header to its
+    includes: a header that silently matches because the typo below it was
+    invisible is worse than no header.
+    """
     return tuple(dict.fromkeys(_INCLUDE.findall(text)))
 
 
@@ -169,22 +210,43 @@ def compose(text: str, source: Mapping[str, str] | None = None) -> str:
 
     Pure: the same text and the same source always give the same result, and
     nothing here reads the clock or the database. Raises :class:`UnknownBlock`
-    for a key that does not resolve, rather than leaving the marker in place or
-    quietly dropping it.
+    for a key that does not resolve *and* for a marker too malformed to name a
+    key at all, rather than leaving either in place: a prompt that ships
+    ``{{brain:Evidence}}`` to the model as literal text has quietly composed
+    without the standard, which is the one outcome this layer exists to prevent.
+
+    Expansion repeats to a fixed point and the header is stripped afterwards, so
+    block text obeys the same two rules as prompt text. A block is a file today
+    and an editable field from BRN-02 on, and a single pass would let whatever a
+    consultant typed into one leak through unread.
 
     Block text is escaped for ``string.Template``, which runs after this. A
     ``$`` in the prompt itself is the caller's placeholder and stays untouched; a
     ``$`` inside a block is a character a consultant typed, and once BRN-02 makes
     block text editable someone will type a price. Unescaped it would raise a
     ``KeyError`` from ``substitute`` in a call site that has no idea a block was
-    involved.
+    involved. Escaping only what each round inserts is what keeps a nested
+    expansion from doubling an earlier round's escapes.
     """
     available = shipped() if source is None else source
 
     def _expand(match: re.Match[str]) -> str:
-        return block(match.group(1), available).replace("$", "$$")
+        return block(match.group("key"), available).replace("$", "$$")
 
-    return _INCLUDE.sub(_expand, _DECLARATION.sub("", text)).strip() + "\n"
+    composed = text
+    for _ in range(_MAX_INCLUDE_DEPTH):
+        expanded = _INCLUDE.sub(_expand, composed)
+        if expanded == composed:
+            break
+        composed = expanded
+    else:
+        raise BlockCycle(sorted(set(_INCLUDE.findall(composed))))
+
+    composed = _DECLARATION.sub("", composed)
+    malformed = _SUSPECT_INCLUDE.search(composed)
+    if malformed is not None:
+        raise UnknownBlock(malformed.group(0), sorted(available))
+    return composed.strip() + "\n"
 
 
 def version(source: Mapping[str, str] | None = None) -> str:
@@ -213,6 +275,7 @@ def version(source: Mapping[str, str] | None = None) -> str:
 
 
 __all__ = [
+    "BlockCycle",
     "UnknownBlock",
     "block",
     "blocks",
