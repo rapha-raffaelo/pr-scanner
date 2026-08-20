@@ -98,6 +98,25 @@ def background_locks_are_free():
 
 
 @pytest.fixture(autouse=True)
+def brain_composes_the_shipped_blocks(monkeypatch):
+    """Compose prompts against the repository's blocks, not against a database.
+
+    ``brain.current()`` resolves the stored overrides in front of the shipped
+    text, and it does that by opening its own session — a prompt render has no
+    session to be handed one. In a test run that means every generator test would
+    create a SQLite file in whatever directory pytest was started from and read a
+    table that fixture databases build separately anyway.
+
+    So the override source is pinned to "nothing overridden" here, which is the
+    state every test that is not about the brain assumes. The tests that *are*
+    about it install a source over the top of this one (``test_brain.py``).
+    """
+    from newspulse import brain
+
+    monkeypatch.setattr(brain, "_override_source", dict)
+
+
+@pytest.fixture(autouse=True)
 def no_theme_settling(monkeypatch):
     """Stop the sweep from proposing themes in a test run.
 
