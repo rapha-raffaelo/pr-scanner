@@ -121,6 +121,18 @@ _MAX_RELEASE_QUOTES = 1
 #: which grouping the questions means anything at all.
 _MIN_QA_QUESTIONS = 3
 
+#: The profile field the release's dateline names. Read by the validator as well
+#: as declared as a requirement, so it is written once: a rename that reached the
+#: requirement but not the check would leave the dateline unheld and say nothing.
+_SEAT_KEY = "sitz"
+
+#: How much of the complaint travels into the retry prompt. A release can miss
+#: six things at once, and a retry that ends in a paragraph of grievances is a
+#: prompt the model reads past the part that mattered. The faults are appended in
+#: contract order, so cutting the tail cuts the least structural half. The
+#: refusal the consultant reads is never cut.
+_MAX_FAULT_CHARS = 600
+
 #: One retry, then refuse: two attempts in total, the same budget
 #: :mod:`newspulse.analyzer` gives a batch. A model that missed the structure twice
 #: is not going to find it on a third pass, and each attempt is a paid call a
@@ -323,6 +335,18 @@ class Given:
     nogos: tuple[str, ...] = ()
     #: Who is asking, for the one format written at somebody.
     recipient: PitchTarget | None = None
+    #: The mandate's seat, for the one format whose dateline has to name it. The
+    #: field is a hard requirement of that format precisely so the dateline has a
+    #: source, and without it here the validator could only check that *some*
+    #: place was named, which is the invention the requirement was added against.
+    seat: str = ""
+    #: The day the text is being written, for the same dateline. Supplied to the
+    #: prompt as a slot; carried here so the two halves cannot disagree.
+    day: dt.date | None = None
+    #: The headlines the writing prompt listed as this journalist's. A briefing
+    #: may name these and no others, so the validator needs the same list rather
+    #: than the target's own evidence tuple, which is a different one.
+    headlines: tuple[str, ...] = ()
 
 
 #: A format's structural check: the finished draft in, everything it fails to
@@ -359,6 +383,82 @@ _DATELINE = re.compile(
 #: A quotation of at least a clause. The length floor is what keeps a quoted
 #: product name or a scare-quoted adjective from passing as the release's quote.
 _QUOTE = re.compile(r"[\"„»“]([^\"„»“”«]{20,}?)[\"“«”]", re.S)
+
+#: How a German release attributes a quote: the inquit. Either a speech verb
+#: beside the quotation, or the "…, so Prot" form, which carries no verb at all
+#: and is why the comma is part of that alternative rather than a bare "so".
+#:
+#: This is what tells the release's one quote apart from a scare-quoted phrase.
+#: Without it, any quoted run of twenty characters counted as a quote, so a
+#: release carrying its quote and one quoted phrase was refused for "2 Zitate",
+#: retried, refused again, and delivered nothing.
+_INQUIT = re.compile(
+    r"\b(?:sagt|sagte|erklärt|erklärte|betont|betonte|ergänzt|ergänzte|"
+    r"kommentiert|kommentierte|berichtet|berichtete|meint|meinte|"
+    r"fügt|führt|unterstreicht|resümiert)\b"
+    r"|,\s*so\s+[A-ZÄÖÜ]"
+)
+
+#: How long the inquit between the two halves of a split quote may be.
+#: "…“, sagt Alexandra Prot, Geschäftsführerin der Alpha AG, „…" is the long end
+#: of what a desk prints; past this the two halves are two quotes with a sentence
+#: standing between them.
+_MAX_INQUIT_CHARS = 100
+
+#: The release's boilerplate, as a heading rather than as a prefix. Bare
+#: ``startswith("Über")`` also matched a paragraph opening "Überdies" or
+#: "Überraschend", which is a body paragraph being read as the boilerplate.
+_BOILERPLATE_START = re.compile(rf"{re.escape(_BOILERPLATE)}\b")
+
+#: The "Nicht sagen" block's heading, as a heading: at the start of its own line,
+#: with or without markup. ``partition`` on the first occurrence anywhere cut the
+#: points in half whenever one of them contained the words, and then reported the
+#: bridges under the lost half as missing.
+_DO_NOT_SAY_HEADING = re.compile(
+    rf"^[#\s*]*{re.escape(_DO_NOT_SAY)}\b.*$", re.IGNORECASE | re.MULTILINE
+)
+
+#: Tokens that end in a full stop without ending a sentence. Splitting on every
+#: ". " counted "Das gilt z. B. für Banken." as three sentences, which pushed an
+#: ordinary four-sentence statement past the five-sentence bound and refused it
+#: twice. It also cut "sagt Dr. Alexandra Prot" in half, which is where the
+#: release's attribution is read. Short on purpose: a name missing from this set
+#: costs a wrong sentence count, a wrong entry runs two sentences together.
+_ABBREVIATIONS = frozenset(
+    {
+        "abs",
+        "bspw",
+        "bzw",
+        "ca",
+        "dipl",
+        "dr",
+        "etc",
+        "evtl",
+        "ggf",
+        "hrsg",
+        "inkl",
+        "ing",
+        "max",
+        "min",
+        "mio",
+        "mrd",
+        "nr",
+        "prof",
+        "sog",
+        "usw",
+        "vgl",
+    }
+)
+
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
+_TRAILING_TOKEN = re.compile(r"([\wÄÖÜäöüß]+)\.$")
+
+#: The date inside a dateline, either spelling. Read rather than pattern-matched,
+#: because "20. August 2026" and "20.08.2026" are the same day and the question
+#: the release is held to is whether it is *today*.
+_DATELINE_DATE = re.compile(
+    r"(\d{1,2})\.\s*(?:([A-Za-zÄÖÜäöü]+)|(\d{1,2})\.)\s*(\d{4})"
+)
 
 #: A numbered talking point. The number is the format: a consultant scanning this
 #: in a green room counts them, and an unnumbered list is prose.
@@ -460,6 +560,28 @@ _GUIDE_LABEL = re.compile(r"^[·\s]*\w[\w&/-]*(?:\s+[\w&/-]+){0,2}\s*:")
 #: the uncomfortable question" and starts matching on incidental vocabulary.
 _MAX_NOGO_TERMS = 12
 
+#: How much of a No-Go's word has to appear before the Q&A counts as having asked
+#: about it. The same floor the terms are collected at, because a stem shorter
+#: than the shortest term worth collecting would match on grammar again.
+_NOGO_STEM = _MIN_NOGO_TERM
+
+#: What a consultant calls the things the mandate never says. "No-Go" is what
+#: :func:`newspulse.guide.distill` writes and what most guides use, and for a
+#: while it was the only one recognised: a guide headed "Tabus:" produced no
+#: No-Gos at all, so the Q&A's central check silently did not run and nothing
+#: anywhere said so. Over-collection is the safe direction here, since extra
+#: terms can only make that check pass.
+_NOGO_MARKERS = (
+    "no-go",
+    "no go",
+    "nogo",
+    "tabu",
+    "nie sagen",
+    "niemals sagen",
+    "sagen wir nie",
+    "was wir nicht sagen",
+)
+
 
 def _paragraphs(text: str) -> list[str]:
     return [block.strip() for block in re.split(r"\n\s*\n", text or "") if block.strip()]
@@ -469,9 +591,45 @@ def _lines(text: str) -> list[str]:
     return [line.strip() for line in (text or "").splitlines() if line.strip()]
 
 
+def _abbreviated(part: str) -> bool:
+    """Whether this piece ends in an abbreviation rather than in a sentence."""
+    match = _TRAILING_TOKEN.search(part)
+    if not match:
+        return False
+    token = match.group(1).casefold()
+    # A single letter is "z. B.", "u. a.", an initial: never a sentence on its own.
+    return len(token) == 1 or token in _ABBREVIATIONS
+
+
 def _sentences(text: str) -> list[str]:
-    """The text's sentences, counted the way a subeditor counts them."""
-    return [part for part in re.split(r"(?<=[.!?])\s+", (text or "").strip()) if part]
+    """The text's sentences, counted the way a subeditor counts them.
+
+    "z. B." and "Dr." end no sentence. That matters in two places that both cost
+    a text when they are wrong: the statement's three-to-five bound is counted off
+    this, and the release's attribution is read out of the clause around its
+    quote, which "sagt Dr. Alexandra Prot" would otherwise be cut out of.
+    """
+    merged: list[str] = []
+    for piece in _SENTENCE_BREAK.split((text or "").strip()):
+        if not piece:
+            continue
+        if merged and _abbreviated(merged[-1]):
+            merged[-1] = f"{merged[-1]} {piece}"
+        else:
+            merged.append(piece)
+    return merged
+
+
+def _clause_before(text: str) -> str:
+    """The clause a quotation follows, no further back than its own paragraph."""
+    parts = _sentences(re.split(r"\n\s*\n", text)[-1])
+    return parts[-1] if parts else ""
+
+
+def _clause_after(text: str) -> str:
+    """The clause a quotation runs into, no further on than its own paragraph."""
+    parts = _sentences(re.split(r"\n\s*\n", text)[0])
+    return parts[0] if parts else ""
 
 
 def _surname(name: str) -> str:
@@ -518,6 +676,20 @@ def nogo_terms(nogos: tuple[str, ...]) -> list[str]:
     return list(dict.fromkeys(terms))[:_MAX_NOGO_TERMS]
 
 
+def _mentions(text: str, terms: list[str]) -> bool:
+    """Whether ``text`` names any of these No-Go subjects, inflections included.
+
+    On the stem, not on the whole word. German inflects and compounds: a guide
+    saying "Keine Vergleiche mit Wettbewerbern" is answered by a question about
+    "dem Wettbewerber X", and an exact-substring match refuses that Q&A, retries,
+    refuses again and delivers no text. Matching short can only make the check
+    pass, and a Q&A wrongly cleared costs a second read where one wrongly refused
+    costs the whole thing.
+    """
+    folded = text.casefold()
+    return any(term[:_NOGO_STEM] in folded for term in terms)
+
+
 def _release_contract(draft: AssetDraft, given: Given) -> list[str]:
     """Headline, dateline, lead, body, one attributed quote, boilerplate.
 
@@ -536,48 +708,178 @@ def _release_contract(draft: AssetDraft, given: Given) -> list[str]:
     paragraphs = _paragraphs(draft.body)
     if not draft.title.strip():
         faults.append("Die Schlagzeile fehlt.")
-    if not paragraphs or not _DATELINE.search(paragraphs[0]):
-        faults.append("Die Dateline (Ort, Datum) fehlt am Anfang.")
+    faults.extend(_dateline_faults(paragraphs[0] if paragraphs else "", given))
     if len(paragraphs) < _MIN_RELEASE_PARAGRAPHS:
         faults.append(
             f"Der Text hat {len(paragraphs)} Absätze. Lead, Fließtext und "
             f"Boilerplate sind mindestens {_MIN_RELEASE_PARAGRAPHS}."
         )
-    faults.extend(_quote_faults(draft.body, paragraphs, given.speaker))
-    if not paragraphs or not paragraphs[-1].startswith(_BOILERPLATE):
+    faults.extend(_quote_faults(draft.body, given.speaker))
+    if not paragraphs or not _BOILERPLATE_START.match(paragraphs[-1]):
         faults.append(f'Die Boilerplate fehlt: kein Absatz beginnt mit "{_BOILERPLATE}".')
     return faults
 
 
-def _quote_faults(body: str, paragraphs: list[str], speaker: str) -> list[str]:
+def _city(seat: str) -> str:
+    """The place a dateline would print out of a stored seat.
+
+    A profile holds "Berlin", "Berlin, Deutschland" or "Berlin (Mitte)"; a
+    dateline prints the city. Comparing the whole stored value would refuse the
+    correct dateline for every mandate whose seat was typed with a country.
+    """
+    return (seat or "").split(",")[0].split("(")[0].strip()
+
+
+def _dateline_day(text: str) -> dt.date | None:
+    """The day a dateline is stamped with, in either spelling, or ``None``."""
+    match = _DATELINE_DATE.search(text)
+    if match is None:
+        return None
+    day, month_name, month_number, year = match.groups()
+    if month_name:
+        names = [name.casefold() for name in _DE_MONTHS]
+        if month_name.casefold() not in names:
+            return None
+        month = names.index(month_name.casefold()) + 1
+    else:
+        month = int(month_number)
+    try:
+        return dt.date(int(year), month, int(day))
+    except ValueError:
+        return None
+
+
+def _dateline_faults(opening: str, given: Given) -> list[str]:
+    """Whether the dateline says the place and the date the writer was handed.
+
+    Both were supplied for exactly this. The seat is a hard requirement of the
+    format, today's date travels into the prompt as a slot, and the prompt says
+    of both that they are copied and not replaced. A release datelined from a
+    city the mandate does not sit in, or from a date that is not today, is an
+    invented fact of the kind the refusal block forbids two paragraphs above, and
+    unlike a clumsy sentence it is a send failure the desk sees before the news.
+
+    Checked only against what was actually handed over: a ``Given`` carrying
+    neither, which is what a caller validating a text by hand passes, gets the
+    structural check and no judgement about facts it was not told.
+    """
+    found = _DATELINE.search(opening)
+    if found is None:
+        return ["Die Dateline (Ort, Datum) fehlt am Anfang."]
+    line = found.group(0)
+    place = line.partition(",")[0]
+    faults: list[str] = []
+    seat = _city(given.seat)
+    if seat and seat.casefold() not in place.casefold():
+        faults.append(
+            f"Die Dateline nennt {place.strip()}, nicht den Sitz des Mandanten "
+            f"({seat})."
+        )
+    if given.day is not None and _dateline_day(line) != given.day:
+        faults.append(
+            f"Die Dateline ist nicht auf heute datiert. Heute ist der "
+            f"{today(day=given.day)}."
+        )
+    return faults
+
+
+@dataclass(frozen=True, slots=True)
+class _Quotation:
+    """One quotation in a release, with the text that could attribute it.
+
+    Three pieces rather than one string, because the two questions asked of it
+    are different: whether anything presents this as somebody's words at all, and
+    whose words it says they are.
+    """
+
+    #: The clause the quotation follows.
+    before: str
+    #: What stands between the halves of a split quote, which is the inquit.
+    inner: str
+    #: The clause the quotation runs into.
+    after: str
+
+    @property
+    def frame(self) -> str:
+        parts = (self.before, self.inner, self.after)
+        return " ".join(part.strip() for part in parts if part.strip())
+
+    @property
+    def spoken(self) -> bool:
+        """Whether anything around it presents it as somebody's words."""
+        return bool(_INQUIT.search(self.frame)) or self.before.rstrip().endswith(":")
+
+
+def _is_inquit_gap(gap: str) -> bool:
+    """Whether what stands between two quotations is an inquit and nothing else."""
+    clause = gap.strip()
+    return (
+        clause.startswith(",")
+        and clause.endswith(",")
+        and len(clause) <= _MAX_INQUIT_CHARS
+        and bool(_INQUIT.search(clause))
+    )
+
+
+def _quotations(body: str) -> list[_Quotation]:
+    """The body's quotations, one per quotation rather than one per quote mark.
+
+    Two things this gets right that counting ``_QUOTE`` matches does not.
+
+    The split quote is one quote. "„Verfügbarkeit ist ein Risikoparameter“, sagt
+    Prot, „und die Banken tragen es selbst.“" is the most ordinary construction in
+    a German release and the most ordinary thing for a model to write. Counted as
+    two, a correct release was refused for carrying two quotes, retried with a
+    complaint it could only answer by writing unnatural German, and then refused
+    for good. The halves are joined again when what stands between them is an
+    inquit and nothing else.
+
+    And the attribution is read out of the clause, not the paragraph. "…, sagt
+    Finanzvorstand Thomas Lang. Alexandra Prot war nicht erreichbar." names the
+    profile's spokesperson in the same paragraph and puts the quote in an invented
+    CFO's mouth, which is the artefact this module exists to prevent.
+    """
+    runs: list[list[tuple[int, int]]] = []
+    for match in _QUOTE.finditer(body):
+        span = match.span()
+        if runs and _is_inquit_gap(body[runs[-1][-1][1] : span[0]]):
+            runs[-1].append(span)
+        else:
+            runs.append([span])
+    return [
+        _Quotation(
+            before=_clause_before(body[: run[0][0]]),
+            inner=" ".join(body[left[1] : right[0]] for left, right in zip(run, run[1:])),
+            after=_clause_after(body[run[-1][1] :]),
+        )
+        for run in runs
+    ]
+
+
+def _quote_faults(body: str, speaker: str) -> list[str]:
     """What is wrong with the release's quoting: how many, and whose.
+
+    Counted as quotations rather than as quote marks. A scare-quoted phrase, a
+    quoted product name and the second half of a split quote are not the
+    release's second quote, and refusing a release for two quotes it does not
+    carry costs a second paid call and then the text.
 
     ``_MAX_RELEASE_QUOTES`` is the contract the definition and the prompt both
     state, and it is enforced here rather than taken on trust, because the number
-    is what makes the attribution check exhaustive: with one quote there is one
-    mouth to check, and the retry that carries this complaint tells the model
+    is what makes the attribution check exhaustive: with one quotation there is
+    one mouth to check, and the retry carrying this complaint tells the model
     exactly which sentence to drop.
-
-    A long quoted phrase that is not somebody's quote will be counted as one and
-    cost a retry. That is the accepted direction of the error: a second attempt
-    against a stated complaint is cheap, and a fabricated quote from a named
-    person is the one artefact here that cannot be repaired after it goes out.
     """
-    quotes = _QUOTE.findall(body)
-    if not quotes:
+    spoken = [quote for quote in _quotations(body) if quote.spoken]
+    if not spoken:
         return ["Es steht kein Zitat in der Meldung."]
     faults: list[str] = []
-    if len(quotes) > _MAX_RELEASE_QUOTES:
+    if len(spoken) > _MAX_RELEASE_QUOTES:
         faults.append(
-            f"Die Meldung enthält {len(quotes)} Zitate. Verlangt ist genau "
+            f"Die Meldung enthält {len(spoken)} Zitate. Verlangt ist genau "
             f"{_MAX_RELEASE_QUOTES}, damit erkennbar bleibt, wer spricht."
         )
-    unattributed = [
-        block
-        for block in paragraphs
-        if _QUOTE.search(block) and not _names(block, speaker)
-    ]
-    if unattributed:
+    if any(not _names(quote.frame, speaker) for quote in spoken):
         faults.append(
             f"Das Zitat ist nicht {speaker or 'der im Profil genannten Person'} "
             "zugeschrieben."
@@ -612,10 +914,21 @@ def _statement_contract(draft: AssetDraft, given: Given) -> list[str]:
 
 
 def _qa_contract(draft: AssetDraft, given: Given) -> list[str]:
-    """Questions, grouped, the uncomfortable ones marked and actually asked."""
+    """Questions, grouped, the uncomfortable ones marked and actually asked.
+
+    Two things are counted over the questions rather than over the body, and both
+    are the format's whole point. A group heading shaped like a question
+    ("## Und die Kosten?") is a heading, so three of those satisfied the floor
+    over a Q&A carrying one real pair. And a No-Go named only in an *answer* is
+    the reassuring text the prompt forbids: the uncomfortable question has to be
+    on the page, which is the one thing a consultant cannot write for himself in
+    the ten minutes before the call.
+    """
     faults: list[str] = []
     lines = _lines(draft.body)
-    questions = [line for line in lines if line.endswith("?")]
+    questions = [
+        line for line in lines if line.endswith("?") and not line.startswith(_GROUP)
+    ]
     if len(questions) < _MIN_QA_QUESTIONS:
         faults.append(
             f"Das Q&A stellt {len(questions)} Fragen, mindestens "
@@ -628,11 +941,48 @@ def _qa_contract(draft: AssetDraft, given: Given) -> list[str]:
     if _TOUCHY not in draft.body:
         faults.append(f'Keine Frage ist als unangenehm markiert ("{_TOUCHY}").')
     terms = nogo_terms(given.nogos)
-    if terms and not any(term in draft.body.casefold() for term in terms):
+    if terms and not _mentions(" ".join(questions), terms):
         faults.append(
             "Keine Frage rührt an die No-Gos des Guides. Genau die werden gestellt."
         )
     return faults
+
+
+def _split_do_not_say(body: str) -> tuple[str, str | None]:
+    """The points and what must not be said, split at the heading between them.
+
+    At the heading, and at the first one that is a heading. Splitting on the first
+    occurrence of the words anywhere put a point reading "Nicht sagen, dass die
+    Kette unzuverlässig sei" in the wrong half, took every bridge below it with
+    it, and then reported those bridges as missing.
+    """
+    match = _DO_NOT_SAY_HEADING.search(body or "")
+    if match is None:
+        return body or "", None
+    return body[: match.start()], body[match.end() :]
+
+
+def _bridgeless(head: str) -> list[str]:
+    """The numbered points that carry no bridge before the next point starts.
+
+    Counted as pairs rather than as two totals. Three bridges stacked under point
+    one with points two and three bare satisfies "as many bridges as points" and
+    is exactly the artefact the format exists to prevent: a consultant in a green
+    room with two points and no way back to the thesis.
+    """
+    bare: list[str] = []
+    current: str | None = None
+    bridged = False
+    for line in _lines(head):
+        if _POINT.match(line):
+            if current is not None and not bridged:
+                bare.append(current)
+            current, bridged = line, False
+        elif current is not None and line.startswith(_BRIDGE):
+            bridged = True
+    if current is not None and not bridged:
+        bare.append(current)
+    return bare
 
 
 def _talking_points_contract(draft: AssetDraft, given: Given) -> list[str]:
@@ -643,9 +993,9 @@ def _talking_points_contract(draft: AssetDraft, given: Given) -> list[str]:
     refuse a perfectly good set of four points for having three things to avoid.
     """
     faults: list[str] = []
-    head, marker, tail = draft.body.partition(_DO_NOT_SAY)
+    head, tail = _split_do_not_say(draft.body)
     points = [line for line in _lines(head) if _POINT.match(line)]
-    bridges = [line for line in _lines(head) if line.startswith(_BRIDGE)]
+    bare = _bridgeless(head)
     if not points:
         faults.append("Der Text enthält keine nummerierten Punkte.")
     elif len(points) > MAX_TALKING_POINTS:
@@ -653,25 +1003,31 @@ def _talking_points_contract(draft: AssetDraft, given: Given) -> list[str]:
             f"{len(points)} Punkte. Talking Points sind höchstens "
             f"{MAX_TALKING_POINTS}, sonst liest sie im Gespräch niemand mehr."
         )
-    if len(bridges) < len(points):
+    if bare:
         faults.append(
-            f"{len(points)} Punkte, aber {len(bridges)} Brücken zurück zur These. "
-            f'Jeder Punkt braucht eine Zeile "{_BRIDGE} …".'
+            f"Ohne Brücke zurück zur These: {len(bare)} von {len(points)} Punkten. "
+            f'Unter jedem Punkt braucht es eine Zeile "{_BRIDGE} …".'
         )
-    if not marker or not tail.strip():
+    if tail is None or not tail.strip():
         faults.append(f'Der Abschnitt "{_DO_NOT_SAY}" fehlt.')
     return faults
 
 
 def _gastbeitrag_contract(draft: AssetDraft, given: Given) -> list[str]:
-    """Argued, first person, roughly an op-ed page, and not a release in disguise."""
+    """Argued, first person, roughly an op-ed page, and not a release in disguise.
+
+    The dateline is looked for in every paragraph and the news hook in the whole
+    lead paragraph, not in the first sentence of the first one. "It cannot be
+    mistaken for a release" is the acceptance, and a dateline in paragraph two is
+    read by a desk as a release with a preamble; the hook, likewise, lands in the
+    lead paragraph rather than always in its opening words.
+    """
     faults: list[str] = []
     paragraphs = _paragraphs(draft.body)
-    opening = paragraphs[0] if paragraphs else ""
-    if _DATELINE.search(opening):
+    lead = paragraphs[0] if paragraphs else ""
+    if any(_DATELINE.search(block) for block in paragraphs):
         faults.append("Der Beitrag trägt eine Dateline. Er ist dann eine Mitteilung.")
-    first_sentence = (_sentences(opening) or [""])[0].casefold()
-    hook = next((o for o in _NEWS_LEAD_OPENERS if o in first_sentence), "")
+    hook = next((o for o in _NEWS_LEAD_OPENERS if o in lead.casefold()), "")
     if hook:
         faults.append(
             f'Der Beitrag beginnt mit einem Nachrichtenaufhänger ("{hook}") '
@@ -689,7 +1045,15 @@ def _gastbeitrag_contract(draft: AssetDraft, given: Given) -> list[str]:
 
 
 def _briefing_contract(draft: AssetDraft, given: Given) -> list[str]:
-    """Who is asking, what they wrote, what they will ask, what to say anyway."""
+    """Who is asking, what they wrote, what they will ask, what to say anyway.
+
+    The headlines are held to the list the prompt carried, verbatim. "Names the
+    journalist's recent headlines" is half of what this format is for, and the
+    failure it has is not omission but invention: a briefing that credits a piece
+    the journalist did not write is read out loud in the first minute of the
+    interview. When no headline was supplied the prompt said so and asked for a
+    sentence to that effect, and there is nothing here to hold it to.
+    """
     faults: list[str] = []
     body = draft.body.casefold()
     target = given.recipient
@@ -699,6 +1063,12 @@ def _briefing_contract(draft: AssetDraft, given: Given) -> list[str]:
     journalist = (target.journalist if target else "") or ""
     if journalist and not _names(draft.body, journalist):
         faults.append(f"Der Fragesteller ({journalist}) kommt im Briefing nicht vor.")
+    supplied = [line.strip() for line in given.headlines if line.strip()]
+    if supplied and not any(headline in draft.body for headline in supplied):
+        faults.append(
+            "Keine der belegten Schlagzeilen steht im Briefing. Unter "
+            f'"{_BRIEFING_SECTIONS[1]}" gehören genau diese und keine anderen.'
+        )
     absent = [
         section for section in _BRIEFING_SECTIONS if section.casefold() not in body
     ]
@@ -917,6 +1287,11 @@ def _validate_registry() -> None:
             raise RuntimeError(
                 f"{fmt.key}: speaker_key {fmt.speaker_key!r} is not a profile field"
             )
+    if _SEAT_KEY not in profile.FIELDS_BY_KEY:
+        raise RuntimeError(
+            f"the dateline is written from profile field {_SEAT_KEY!r}, which no "
+            "longer exists; fix the key or drop the check"
+        )
 
 
 _validate_registry()
@@ -1215,21 +1590,48 @@ def nogos(client: Client) -> tuple[str, ...]:
     make the Q&A check pass, :data:`_MAX_NOGO_TERMS` counts from the marker
     outwards, and a wrongly refused Q&A costs a text while a wrongly accepted one
     costs a second read.
+
+    A guide that names its No-Gos some other way, "Tabus:" or "Was wir nie
+    sagen:", is recognised too, and a guide that names them in a way nothing here
+    recognises leaves a log line. That case is otherwise invisible: the Q&A's
+    central check simply does not run, no fault is raised, and the text reads as
+    though it had been held to the guide.
     """
     text = (getattr(client, "comms_guide", "") or "").strip()
     collected: list[str] = []
     collecting = False
     for item in _guide_items(text):
-        if "no-go" in item.casefold():
+        folded = item.casefold()
+        if any(marker in folded for marker in _NOGO_MARKERS):
             collecting = True
         elif collecting and _GUIDE_LABEL.match(item):
             collecting = False
         if collecting:
             collected.append(item)
+    if text and not collected:
+        _log.info(
+            "no No-Go block found in the guide for %r; the Q&A is written but not "
+            "held to any No-Go",
+            getattr(client, "name", ""),
+        )
     return tuple(collected)
 
 
-def _recipient_block(session: Session, target: PitchTarget | None) -> str:
+def _headlines(session: Session, target: PitchTarget | None) -> tuple[str, ...]:
+    """The bylined headlines a briefing may name, and no others.
+
+    Looked up once and handed to both halves that need them: the prompt, which
+    lists them as the only pieces the briefing may refer to, and the validator,
+    which holds the finished briefing to that same list. Two lookups would be two
+    lists the moment a sweep landed between them, and the second one is the one
+    the text would be refused against.
+    """
+    if target is None or not target.journalist:
+        return ()
+    return tuple(pitch.recent_headlines(session, target.journalist, target.outlet))
+
+
+def _recipient_block(target: PitchTarget | None, headlines: tuple[str, ...]) -> str:
     """Who is asking, and what they published lately.
 
     The headlines come from :func:`newspulse.pitch.recent_headlines`, off the same
@@ -1245,7 +1647,6 @@ def _recipient_block(session: Session, target: PitchTarget | None) -> str:
     lines = [f"Medium: {target.outlet}"]
     if target.journalist:
         lines.append(f"Journalist/in: {target.journalist}")
-        headlines = pitch.recent_headlines(session, target.journalist, target.outlet)
         if headlines:
             lines.append("Zuletzt von dieser Person, nur diese Schlagzeilen belegt:")
             lines.extend(f"- {headline}" for headline in headlines)
@@ -1268,6 +1669,15 @@ def _recipient_block(session: Session, target: PitchTarget | None) -> str:
     return "WER FRAGT\n" + "\n".join(lines)
 
 
+def _today_date() -> dt.date:
+    """Today in the mandate's own zone, which is what a dateline is stamped with.
+
+    UTC would date a release written at one in the morning to the day before the
+    desk receives it, and the validator holds the dateline to this same answer.
+    """
+    return dt.datetime.now(config.local_zone()).date()
+
+
 def today(*, day: dt.date | None = None) -> str:
     """Today, written the way a dateline writes it: "20. August 2026".
 
@@ -1280,7 +1690,7 @@ def today(*, day: dt.date | None = None) -> str:
     In the mandate's own zone rather than UTC, because a release written at one in
     the morning is dated the day the desk receives it.
     """
-    date = day or dt.datetime.now(config.local_zone()).date()
+    date = day or _today_date()
     return f"{date.day}. {_DE_MONTHS[date.month - 1]} {date.year}"
 
 
@@ -1311,18 +1721,25 @@ def prompt_for(
     *,
     facts: dict[str, ClientFact] | None = None,
     target: Recipient = _UNRESOLVED,
+    headlines: tuple[str, ...] | None = None,
 ) -> str:
     """Render one format's prompt. Every format gets the same blocks.
 
     One shared slot set rather than one per format: a prompt file uses what it
     needs and ignores the rest, which is what lets a seventh format be a file
     somebody writes rather than a change here.
+
+    ``headlines`` is the byline's recent work when the caller already holds it,
+    the same courtesy ``facts`` and ``target`` are. :func:`write` holds it because
+    the validator is held to the same list.
     """
     if facts is None:
         facts = profile.stored(session, client.id)
     resolved = _resolved(session, fmt, client, angle, target)
+    if headlines is None:
+        headlines = _headlines(session, resolved)
     return fmt.template().substitute(
-        recipient=_recipient_block(session, resolved),
+        recipient=_recipient_block(resolved, headlines),
         today=today(),
         format_name=fmt.name,
         structure="\n".join(f"- {line}" for line in fmt.structure),
@@ -1409,9 +1826,10 @@ def _correction(fault: str) -> str:
     """
     if not fault:
         return ""
+    complaint = fault if len(fault) <= _MAX_FAULT_CHARS else f"{fault[:_MAX_FAULT_CHARS]} …"
     return (
         "\n\nDER VORIGE VERSUCH WURDE ABGELEHNT\n"
-        f"{fault}\n"
+        f"{complaint}\n"
         "Schreibe den Text neu, vollständig, mit genau der oben verlangten "
         "Struktur. Erfinde nichts dazu, um eine Lücke zu füllen."
     )
@@ -1422,10 +1840,22 @@ def _given(
     client: Client,
     facts: dict[str, ClientFact],
     target: PitchTarget | None,
+    headlines: tuple[str, ...],
 ) -> Given:
-    """Everything the validators may hold the finished text against."""
+    """Everything the validators may hold the finished text against.
+
+    Every field here was in the prompt that wrote the text. That is the rule the
+    whole contract rests on: a validator may ask whether the release copied the
+    seat and the date it was handed, and may not ask whether the news is true.
+    """
+    seat = facts.get(_SEAT_KEY)
     return Given(
-        speaker=_speaker(fmt, facts), nogos=nogos(client), recipient=target
+        speaker=_speaker(fmt, facts),
+        nogos=nogos(client),
+        recipient=target,
+        seat=seat.value.strip() if seat else "",
+        day=_today_date(),
+        headlines=headlines,
     )
 
 
@@ -1522,12 +1952,15 @@ def write(
         refused = RequirementsMissing(fmt, readiness)
         _tell(note, str(refused))
         raise refused
-    prompt = prompt_for(session, fmt, client, angle, facts=facts, target=target)
+    headlines = _headlines(session, target)
+    prompt = prompt_for(
+        session, fmt, client, angle, facts=facts, target=target, headlines=headlines
+    )
     try:
         return _drafted(
             fmt,
             prompt,
-            _given(fmt, client, facts, target),
+            _given(fmt, client, facts, target, headlines),
             facts,
             invoke=invoke,
             label=client.name,

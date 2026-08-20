@@ -273,6 +273,23 @@ def targets_for(
     return targets
 
 
+def _spellings(name: str) -> list[str]:
+    """The ways a feed writes one byline, folded: "Marie Faber", "Faber, Marie".
+
+    Only the swap, never a partial match. A surname alone would pull in every
+    namesake in the table, and the whole point of the headline list is that a
+    briefing may read it out loud.
+    """
+    folded = name.casefold()
+    surname, comma, forename = folded.partition(",")
+    if comma and forename.strip():
+        return [folded, f"{forename.strip()} {surname.strip()}"]
+    parts = folded.split()
+    if len(parts) < 2:
+        return [folded]
+    return [folded, f"{parts[-1]}, {' '.join(parts[:-1])}"]
+
+
 def recent_headlines(
     session: Session,
     journalist: str,
@@ -292,6 +309,11 @@ def recent_headlines(
     ``outlet`` narrows the match when it is known, because two people share a name
     more often than one person writes for two mastheads in a quarter, and a
     briefing that credits a stranger's article is worse than one that credits none.
+
+    Both spellings of the byline count. Feeds carry "Marie Faber" and "Faber,
+    Marie" for the same person, sometimes in the same week, and matching only the
+    one :func:`targets_for` happened to name leaves a briefing saying nothing is
+    on file about a journalist whose last three pieces are in the table.
     """
     name = (journalist or "").strip()
     if not name:
@@ -300,7 +322,7 @@ def recent_headlines(
     query = (
         select(Article.title)
         .where(
-            func.lower(Article.author) == name.lower(),
+            func.lower(Article.author).in_(_spellings(name)),
             Article.published_at >= reference - dt.timedelta(days=LOOKBACK_DAYS),
         )
         .order_by(Article.published_at.desc())

@@ -144,9 +144,15 @@ _FULL_PROFILE = {
 
 
 def _release_body(*, lead: str = "Alpha AG erweitert ihr Angebot für Banken.") -> str:
+    """A release datelined the way the writer was told to dateline it.
+
+    Place and date rather than a fixed string: the validator holds the dateline
+    to the seat the profile carries and to today, so a fixture stamped with the
+    day it was typed would refuse every release the moment the day turned over.
+    """
     return "\n\n".join(
         (
-            f"Berlin, 20. August 2026. {lead}",
+            f"Berlin, {assets.today()}. {lead}",
             "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
             f'"Verfügbarkeit ist ein eigener Risikoparameter", sagt {_SPEAKER}.',
             "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
@@ -1030,6 +1036,7 @@ def _given(**over) -> assets.Given:
         "speaker": _SPEAKER,
         "nogos": (_NOGO_GUIDE.split(".")[0] + ".",),
         "recipient": _TARGET,
+        "headlines": (f"{_HEADLINE} (0)",),
     }
     fields.update(over)
     return assets.Given(**fields)
@@ -1338,8 +1345,8 @@ def test_a_talking_point_without_a_bridge_is_rejected():
     faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
 
     assert faults == [
-        "3 Punkte, aber 2 Brücken zurück zur These. "
-        'Jeder Punkt braucht eine Zeile "Brücke: …".'
+        "Ohne Brücke zurück zur These: 1 von 3 Punkten. "
+        'Unter jedem Punkt braucht es eine Zeile "Brücke: …".'
     ]
 
 
@@ -1478,7 +1485,7 @@ def test_a_briefing_for_a_desk_with_no_byline_says_so_rather_than_inventing_one(
         outlet=_OUTLET, journalist=None, reason="", evidence=(), about_client=0
     )
 
-    block = assets._recipient_block(session, target)
+    block = assets._recipient_block(target, assets._headlines(session, target))
 
     assert _OUTLET in block
     assert "Erfinde" in block
