@@ -232,10 +232,13 @@ def advise(
         # store the one value the whole change reserves for "written before the
         # standards were recorded" — and the page says exactly that in words, so
         # a brief made this morning would render a false claim about its own age.
+        #
+        # Set with ``model_copy`` and not in the constructor: the field discards
+        # anything handed to it through validation, which is what keeps a model
+        # from stamping its own text (see ``schemas._never_from_the_model``).
         return (
-            AdvisoryBrief(
-                situation="Keine Berichterstattung im Zeitraum.",
-                brain_version=written_under,
+            AdvisoryBrief(situation="Keine Berichterstattung im Zeitraum.").model_copy(
+                update={"brain_version": written_under}
             ),
             [],
         )

@@ -1711,6 +1711,30 @@ def test_a_model_that_invents_a_version_of_its_own_does_not_get_to_keep_it(sessi
     assert draft.brain_version == 0
 
 
+def test_a_version_the_model_wrote_as_text_does_not_cost_the_draft(session):
+    """The other half of that rule, and the more expensive half.
+
+    Putting a system-owned field on the schema that parses model output means the
+    model can put a *string* there, and a strict int field would answer that by
+    raising ParseError — throwing away a finished draft, that a consultant is
+    watching a spinner for, over the one field the model does not own. It is
+    discarded before validation instead, so the reply survives and the generator
+    stamps it.
+    """
+    brain.edit(session, A_BLOCK, "Erst.")
+    client = _a_mandate(session)
+    material = [(_an_article(session, "markt"), "Themen-Radar: Alpha AG")]
+
+    draft, _numbered = angles.suggest(
+        session,
+        client,
+        material,
+        invoke=lambda *a, **k: _angle_reply(brain_version="v2"),
+    )
+
+    assert draft.brain_version == 1
+
+
 # --------------------------------------------------------------------------
 # Reading the stamp back: a number nobody can open is not provenance.
 # --------------------------------------------------------------------------

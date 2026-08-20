@@ -222,6 +222,13 @@ def suggest(
     # call below takes seconds and the storing happens after it, so a standard
     # edited in between would otherwise change what this text claims to have been
     # written under. The version is captured with the prompt or it is a guess.
+    #
+    # Read *before* composition rather than after, which leaves microseconds in
+    # which an edit could land between this line and the compose below — the
+    # prompt would then go out under one version more than the stamp names. The
+    # window is not closed, and it is the right way round: reading afterwards
+    # would let a stamp claim standards the prompt never saw, where this one can
+    # only ever understate.
     written_under = brain.version(session)
     prompt = _prompt_template().substitute(
         client_profile=_client_profile(client),

@@ -11,10 +11,6 @@ is a true statement â€” the standards have never been changed on this install â€
 backfilling it would make every old row claim standards nobody ever wrote down.
 NULL is the honest answer and the interface renders it as "unbekannt".
 
-Named 0019 and not 0027: the story was written against a repository expected to
-carry twenty-six migrations by now, and this one carries eighteen. Numbering it
-0027 would leave a gap that reads as eight lost revisions.
-
 Revision ID: 0019_brain_version
 Revises: 0018_brain_overrides
 Create Date: 2026-08-20
