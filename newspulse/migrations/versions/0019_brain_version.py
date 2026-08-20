@@ -32,12 +32,23 @@ depends_on: str | Sequence[str] | None = None
 #: whose absence says nothing.
 _STAMPED_TABLES = ("angles", "outreach", "advisories")
 
+#: The cross-check is a second model call under a second brain prompt, composed
+#: seconds after the letter it reads. Almost always the same version, and
+#: "almost" is the problem: an edit landing between the two calls would file the
+#: checker's text under a version it never read. Its own column, so the row does
+#: not have to make one claim about two texts.
+_SECOND_TEXT_ON_A_LETTER = ("outreach", "review_brain_version")
+
 
 def upgrade() -> None:
     for table in _STAMPED_TABLES:
         op.add_column(table, sa.Column("brain_version", sa.Integer(), nullable=True))
+    table, column = _SECOND_TEXT_ON_A_LETTER
+    op.add_column(table, sa.Column(column, sa.Integer(), nullable=True))
 
 
 def downgrade() -> None:
+    table, column = _SECOND_TEXT_ON_A_LETTER
+    op.drop_column(table, column)
     for table in _STAMPED_TABLES:
         op.drop_column(table, "brain_version")

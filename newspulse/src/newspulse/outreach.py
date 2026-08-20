@@ -236,6 +236,12 @@ def crosscheck(
     call; by default it is :func:`newspulse.gemini.generate`, which is deliberately
     *not* the fallback-wrapped invoker the drafting side uses — falling back to
     Claude here would quietly turn the cross-check into a self-check.
+
+    The review carries its own brain version and not the letter's. This composes a
+    second prompt out of the same blocks, seconds after :func:`draft` composed the
+    first, and an edit landing between the two model calls belongs to the check
+    and not to the letter. Filing both under one number would make the row say
+    something about the checker's text that is not true of it.
     """
     if generate is None:
         if not config.review_configured():
@@ -253,6 +259,7 @@ def crosscheck(
                 **kwargs,
             )
 
+    written_under = brain.version(session)
     template = Template(
         brain.compose(
             resources.files("newspulse")
@@ -272,10 +279,11 @@ def crosscheck(
     )
     raw = generate(prompt)
     try:
-        payload = json.loads(strip_code_fence(raw))
+        payload = without_provenance(json.loads(strip_code_fence(raw)))
         review = MessageReview.model_validate(payload)
     except Exception as exc:  # noqa: BLE001 — pydantic and json raise their own
         raise ParseError(f"crosscheck did not match the schema: {exc}") from exc
+    review = review.model_copy(update={"brain_version": written_under})
 
     # One thing the checker cannot be trusted to catch, because it is mechanical:
     # the house rule on dashes. Checked here rather than believed.
@@ -334,10 +342,13 @@ def store(
     row.brain_version = stamped
     # A stored review always belongs to the text beside it: re-writing for the
     # same recipient clears the old verdict rather than letting it stand over a
-    # letter it never read.
+    # letter it never read. Its stamp is cleared with it, for the same reason.
     row.review = "\n".join(review.concerns) if review else ""
     row.reviewed_by = reviewed_by if review else ""
     row.review_ok = review.send if review else True
+    row.review_brain_version = (
+        brain.stamp(review.brain_version, what="this cross-check") if review else None
+    )
     if review and review.fix:
         row.review = f"{row.review}\nZuerst ändern: {review.fix}".strip()
     row.generated_at = dt.datetime.now(dt.UTC)

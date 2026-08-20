@@ -800,6 +800,9 @@ _EN: dict[str, str] = {
     # is deliberately not rendered as version zero — zero is a true claim (the
     # standards have never been changed here) that an old row cannot make.
     "unbekannt": "unknown",
+    # Only ever rendered when the cross-check read different standards from the
+    # letter it read: two model calls, and a block edited between them.
+    "gegengelesen unter": "cross-checked under",
     "vor der Aufzeichnung der Maßstäbe entstanden":
         "written before the standards were recorded",
     # What the reader is looking at after following a stamp. The version counts

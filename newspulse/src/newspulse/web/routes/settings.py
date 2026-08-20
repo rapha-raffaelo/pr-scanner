@@ -999,8 +999,14 @@ def brain_version_view(
     # redirect nothing can follow. Belt and braces — the keys are file stems
     # today — but the cost of being wrong here is a dead link on a stored letter.
     key = quote(change.key, safe="")
+    # The fragment carries the version alone and not the key. Versions are unique
+    # across the whole table (``uq_brain_overrides_version``), so it identifies
+    # the entry on its own — and the key would have to be encoded here to survive
+    # the header while the ``id`` in the template is emitted raw, which is a
+    # mismatch that silently lands the reader at the top of the page for exactly
+    # the keys the quoting above was added to protect.
     return RedirectResponse(
-        f"/settings/brain/{key}?fassung={wanted}#brain-{key}-v{wanted}",
+        f"/settings/brain/{key}?fassung={wanted}#brain-v{wanted}",
         status_code=_SEE_OTHER,
     )
 

@@ -1798,11 +1798,14 @@ def test_a_stamped_version_resolves_to_the_wording_it_names(factory, client):
 
     assert resp.status_code == 303
     assert resp.headers["location"] == (
-        f"/settings/brain/{A_BLOCK}?fassung=1#brain-{A_BLOCK}-v1"
+        f"/settings/brain/{A_BLOCK}?fassung=1#brain-v1"
     )
     body = _panel(client.get(resp.headers["location"].split("#")[0]).text)
     assert "Die Fassung, die gesucht wird." in body
-    assert f'id="brain-{A_BLOCK}-v1"' in body
+    # The fragment the redirect sent and the id the page emits, asserted as one
+    # pair: they are written in two files and a link that lands at the top of a
+    # long history instead of at the change looks like nothing is wrong.
+    assert f'id="{resp.headers["location"].split("#")[1]}"' in body
 
 
 def test_the_page_a_stamp_lands_on_says_what_that_version_covers(factory, client):

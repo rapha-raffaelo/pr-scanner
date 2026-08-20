@@ -127,5 +127,10 @@ def test_a_row_written_before_the_stamp_carries_no_version_rather_than_zero(
             for table in ("angles", "outreach", "advisories"):
                 columns = {c["name"] for c in inspect(engine).get_columns(table)}
                 assert "brain_version" in columns, table
+            # The letter carries a second model-written text — the cross-check —
+            # composed under its own brain prompt after the letter was already
+            # written. One column cannot honestly stamp both.
+            outreach_columns = {c["name"] for c in inspect(engine).get_columns("outreach")}
+            assert "review_brain_version" in outreach_columns
     finally:
         engine.dispose()

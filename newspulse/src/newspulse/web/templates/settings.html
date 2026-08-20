@@ -748,7 +748,12 @@
                  afterwards, which is the only question a history is opened for. #}
               <ol class="brainhist">
                 {% for change in brain_history %}
-                  <li class="brainhist__one" id="brain-{{ b.key }}-v{{ change.version }}">
+                  {# The version alone identifies the entry: it is unique across
+                     the whole table, and keeping the key out of the id keeps it
+                     matchable by the redirect, which has to percent-encode the
+                     key to put it in a Location header and cannot encode it
+                     here. #}
+                  <li class="brainhist__one" id="brain-v{{ change.version }}">
                     <div class="brainhist__head">
                       <span class="brainhist__version">{{ t("Fassung") }} {{ change.version }}</span>
                       <span class="brainhist__when">{{ change.changed_at | de_datetime }}</span>

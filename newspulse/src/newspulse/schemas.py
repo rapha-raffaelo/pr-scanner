@@ -284,6 +284,11 @@ class MessageReview(BaseModel):
     concerns: list[str] = Field(default_factory=list, max_length=5)
     #: The one thing to change first, if anything.
     fix: str = ""
+    #: See "Provenance" above. Set by :func:`newspulse.outreach.crosscheck`, and
+    #: its own rather than the letter's: the check composes a second brain prompt
+    #: after the letter is already written, so the two can land on either side of
+    #: an edit.
+    brain_version: int | None = None
 
 
 # --- Coach: does the guide hold up against the actual coverage? ------------------

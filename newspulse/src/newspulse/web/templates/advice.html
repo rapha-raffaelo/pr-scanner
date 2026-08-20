@@ -244,6 +244,19 @@
                 {% else %}
                   <span class="crosscheck__clean">{{ t("keine Einwände") }}</span>
                 {% endif %}
+                {# Shown only when the check read a different set of standards
+                   from the ones the letter was written under, which happens when
+                   a block is edited in the seconds between the two model calls.
+                   Silent otherwise: one stamp per card is the normal case, and a
+                   second identical number beside it would be noise that teaches
+                   the reader to skip both. #}
+                {% if msg.review_brain_version is not none
+                      and msg.review_brain_version != msg.brain_version %}
+                  <span class="crosscheck__stamp">
+                    {{ t("gegengelesen unter") }}
+                    <a href="/settings/brain/version/{{ msg.review_brain_version }}">{{ t("Fassung") }} {{ msg.review_brain_version }}</a>
+                  </span>
+                {% endif %}
               </div>
             {% else %}
               <p class="crosscheck crosscheck--none">

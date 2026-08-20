@@ -871,6 +871,14 @@ class Outreach(Base):
     brain_version: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
+    #: The standards the *cross-check* was composed under, which is not always the
+    #: letter's. :func:`newspulse.outreach.crosscheck` builds its own brain prompt
+    #: seconds after the letter, and an edit landing between the two model calls
+    #: would otherwise file the checker's text under a version it never read.
+    #: NULL for an unchecked letter and for every row from before the column.
+    review_brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
 
 
 __all__ = [
