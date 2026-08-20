@@ -50,6 +50,11 @@ def session(factory):
 
 _HEADLINE = "Verwahrung im Wandel: Banken bauen eigene Depots"
 _SNIPPET = "Laut Marktbeobachtern verlagert sich die Verwahrung zurück zu Banken."
+_OUTLET = "Börsen-Zeitung"
+_SPEAKER = "Alexandra Prot, Geschäftsführerin"
+
+
+_BYLINE = "Marie Faber"
 
 
 def _mandate(
@@ -58,11 +63,17 @@ def _mandate(
     facts: dict[str, str] | None = None,
     comms_guide: str = "",
     articles: int = 2,
+    author: str | None = None,
 ) -> tuple[Client, Angle]:
     """A mandate with an impulse, and exactly the profile the test needs.
 
     ``facts`` defaults to a filled profile because most tests are about something
     other than the refusal; the refusal tests pass an empty one deliberately.
+
+    ``author`` puts a byline on the impulse's stories, which is what makes
+    ``pitch.targets_for`` able to name a recipient. Off by default, because most
+    feeds carry no byline and the formats that do not need one must not quietly
+    depend on the fixture having one.
     """
     client = Client(
         name="Alpha AG",
@@ -81,7 +92,8 @@ def _mandate(
         article = Article(
             title=f"{_HEADLINE} ({i})",
             url=f"https://ex.de/field-{i}",
-            source="Börsen-Zeitung",
+            source=_OUTLET,
+            author=author,
             published_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=2),
             fetched_at=dt.datetime.now(dt.UTC),
             summary_text=_SNIPPET,
@@ -108,17 +120,111 @@ def _mandate(
 
 
 _FULL_PROFILE = {
-    "ceo": "Alexandra Prot, Geschäftsführerin",
+    "ceo": _SPEAKER,
     "geschaeftsfeld": "Verwahrung digitaler Vermögenswerte für Banken.",
 }
 
 
-def _drafted(**over) -> str:
+# --- Fixture model output, one shape per format --------------------------------
+#
+# Six builders rather than one payload, because as of FMT-02 there is no such
+# thing as "a draft": there is a release, which owes a dateline and an attributed
+# quote, and a set of talking points, which owes bridges and a "Nicht sagen". A
+# shared fixture could only satisfy all six by satisfying none of their contracts,
+# and then every test in this file would be driving output the writer refuses.
+#
+# Each builder takes the one part its tests vary and holds the rest of the
+# contract fixed, so a test about the house style or the crosscheck says what it
+# is about and does not restate a press release to get there.
+
+
+def _release_body(*, lead: str = "Alpha AG erweitert ihr Angebot für Banken.") -> str:
+    return "\n\n".join(
+        (
+            f"Berlin, 20. August 2026. {lead}",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
+            f'"Verfügbarkeit ist ein eigener Risikoparameter", sagt {_SPEAKER}.',
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
+        )
+    )
+
+
+def _statement_body(*, opening: str = "Die Verwahrung wandert zu den Banken.") -> str:
+    return (
+        f"{opening} Wir halten diese Entwicklung für richtig. "
+        "Verfügbarkeit ist dabei ein eigener Risikoparameter, kein Detail."
+        f"\n\n{_SPEAKER}"
+    )
+
+
+def _qa_body(*, touchy: str = "Ist Ihr Angebot am Ende einfach günstig?") -> str:
+    return (
+        "## Zum Geschäft\n"
+        "Was ändert sich für Banken?\n"
+        "Sie verwahren wieder selbst und tragen das Risiko dafür.\n\n"
+        "## Zur Position\n"
+        "Warum jetzt?\n"
+        "Weil die Verfügbarkeit der Kette zum Risikoparameter geworden ist.\n\n"
+        "## Wo es unangenehm wird\n"
+        f"[heikel] {touchy}\n"
+        "Nein. Wir sprechen über Risiko, nicht über den Preis."
+    )
+
+
+def _talking_points_body(*, points: int = 3, bridges: int | None = None) -> str:
+    bridges = points if bridges is None else bridges
+    lines = []
+    for i in range(1, points + 1):
+        lines.append(f"{i}. Verfügbarkeit ist ein eigener Risikoparameter ({i}).")
+        if i <= bridges:
+            lines.append("Brücke: Zurück zur These, dass Liveness ein Risiko ist.")
+    return (
+        "\n".join(lines)
+        + "\n\nNicht sagen\nDass die Kette unzuverlässig sei und Liquidität abwandere."
+    )
+
+
+def _gastbeitrag_body(*, opening: str = "Ich halte die Debatte für verkürzt.") -> str:
+    """A guest article of about the length one actually is, in one place."""
+    argument = (
+        "Wir sehen in der Verwahrung eine Verschiebung, die weniger mit Technik "
+        "zu tun hat als mit Haftung. Wer verwahrt, trägt das Risiko, und dieses "
+        "Risiko lässt sich nicht auslagern, indem man es einer Kette überlässt. "
+    )
+    return f"{opening} " + argument * 12
+
+
+def _briefing_body(*, outlet: str = _OUTLET, journalist: str = _BYLINE) -> str:
+    return (
+        f"Wer fragt\n{journalist}, {outlet}.\n\n"
+        f"Was zuletzt erschien\n{_HEADLINE} (0)\n\n"
+        "Womit zu rechnen ist\nFragen nach der Haftung bei Ausfällen.\n\n"
+        "Was gesagt werden soll\nVerfügbarkeit ist ein eigener Risikoparameter.\n\n"
+        "Wo es unangenehm wird\nDie Frage nach dem Preis."
+    )
+
+
+_BODIES = {
+    AssetKind.PRESSEMITTEILUNG: _release_body,
+    AssetKind.STATEMENT: _statement_body,
+    AssetKind.QA: _qa_body,
+    AssetKind.TALKING_POINTS: _talking_points_body,
+    AssetKind.GASTBEITRAG: _gastbeitrag_body,
+    AssetKind.INTERVIEW_BRIEFING: _briefing_body,
+}
+
+
+def _drafted(fmt=None, **over) -> str:
+    """One model reply, carrying the structure ``fmt`` declares.
+
+    ``fmt`` may be a definition or a kind. Without one the reply is a press
+    release, which is what a test that does not care is testing against.
+    """
+    kind = getattr(fmt, "kind", fmt) or AssetKind.PRESSEMITTEILUNG
     payload = {
         "title": "Alpha AG baut Verwahrung für Banken aus",
-        "body": "Berlin, 20. August 2026. Alpha AG erweitert ihr Angebot.\n\n"
-        "Der Schritt folgt auf die Verlagerung der Verwahrung.",
-        "speaker": "Alexandra Prot, Geschäftsführerin",
+        "body": _BODIES[AssetKind(kind)](),
+        "speaker": _SPEAKER,
     }
     payload.update(over)
     return json.dumps(payload)
@@ -258,7 +364,7 @@ def test_a_missing_requirement_writes_nothing_and_names_the_field(session):
     with pytest.raises(assets.RequirementsMissing) as caught:
         assets.write(
             session, fmt, client, angle,
-            invoke=lambda prompt, **k: calls.append(prompt) or _drafted(),
+            invoke=lambda prompt, **k: calls.append(prompt) or _drafted(fmt),
         )
 
     assert calls == [], "the model was asked despite a missing requirement"
@@ -276,7 +382,7 @@ def test_a_guest_article_needs_the_person_it_appears_under(session):
     fmt = assets.definition(AssetKind.GASTBEITRAG)
 
     with pytest.raises(assets.RequirementsMissing) as caught:
-        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     assert "ceo" in [req.key for req in caught.value.missing]
 
@@ -288,7 +394,7 @@ def test_a_client_without_a_guide_gets_no_qa(session):
     fmt = assets.definition(AssetKind.QA)
 
     with pytest.raises(assets.RequirementsMissing) as caught:
-        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     assert "Kommunikations-Guide" in str(caught.value)
 
@@ -397,7 +503,7 @@ def test_a_stored_asset_carries_the_angle_it_came_from(session):
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
 
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     stored = assets.store(session, fmt, client, angle, draft)
 
     assert stored.angle_id == angle.id
@@ -412,9 +518,9 @@ def test_prose_plain_is_applied_to_the_title_and_the_body(session):
     draft = assets.write(
         session, fmt, client, angle,
         invoke=lambda *a, **k: _drafted(
+            fmt,
             title="Verwahrung — die Begründung verschiebt sich",
-            body="Berlin, 20. August 2026. Die Anprobe ist gewandert — und wird "
-            "dort bezahlt.\n\nZweiter Absatz.",
+            body=_release_body(lead="Die Anprobe ist gewandert — und wird dort bezahlt."),
         ),
     )
 
@@ -422,7 +528,7 @@ def test_prose_plain_is_applied_to_the_title_and_the_body(session):
 
     assert not prose.has_dash(stored.title)
     assert not prose.has_dash(stored.body)
-    assert stored.body.count("\n\n") == 1, "the paragraphs survive"
+    assert stored.body.count("\n\n") == 3, "the paragraphs survive"
 
 
 def test_the_attribution_is_the_profiles_and_not_the_models(session):
@@ -434,7 +540,7 @@ def test_the_attribution_is_the_profiles_and_not_the_models(session):
 
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(speaker="Alexander Prot, CEO"),
+        invoke=lambda *a, **k: _drafted(fmt, speaker="Alexander Prot, CEO"),
     )
     stored = assets.store(session, fmt, client, angle, draft)
 
@@ -450,7 +556,7 @@ def test_a_format_that_quotes_nobody_stores_no_attribution(session):
 
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(speaker="Dr. Erfunden, Sprecher"),
+        invoke=lambda *a, **k: _drafted(fmt, speaker="Dr. Erfunden, Sprecher"),
     )
     stored = assets.store(session, fmt, client, angle, draft)
 
@@ -460,18 +566,18 @@ def test_a_format_that_quotes_nobody_stores_no_attribution(session):
 def test_rewriting_a_format_replaces_the_draft_it_supersedes(session):
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
-    first = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    first = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     assets.store(session, fmt, client, angle, first)
 
     second = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Berlin, 20. August 2026. Neu."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_release_body(lead="Neu ist der zweite Anlauf.")),
     )
     assets.store(session, fmt, client, angle, second)
 
     rows = assets.for_angle(session, angle.id)
     assert len(rows) == 1
-    assert "Neu." in rows[0].body
+    assert "Neu ist" in rows[0].body
 
 
 def test_a_released_asset_is_never_overwritten_by_a_rewrite(session):
@@ -479,7 +585,7 @@ def test_a_released_asset_is_never_overwritten_by_a_rewrite(session):
     beside it, not a change to it."""
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
-    first = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    first = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     released = assets.store(session, fmt, client, angle, first)
     released.released_at = dt.datetime.now(dt.UTC)
     released.released_by = "mensch"
@@ -487,13 +593,13 @@ def test_a_released_asset_is_never_overwritten_by_a_rewrite(session):
 
     second = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Berlin, 20. August 2026. Neu."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_release_body(lead="Neu ist der zweite Anlauf.")),
     )
     assets.store(session, fmt, client, angle, second)
 
     rows = assets.for_angle(session, angle.id)
     assert len(rows) == 2
-    assert session.get(Asset, released.id).body.endswith("Verlagerung der Verwahrung.")
+    assert "Neu ist" not in session.get(Asset, released.id).body
 
 
 def test_a_reply_without_text_is_a_parse_error_rather_than_an_empty_asset(session):
@@ -503,14 +609,14 @@ def test_a_reply_without_text_is_a_parse_error_rather_than_an_empty_asset(sessio
 
     with pytest.raises(ParseError):
         assets.write(
-            session, fmt, client, angle, invoke=lambda *a, **k: _drafted(body="   ")
+            session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt, body="   ")
         )
 
 
 def test_the_texts_for_several_impulses_come_back_keyed_by_impulse(session):
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     assets.store(session, fmt, client, angle, draft)
 
     grouped = assets.by_angle(session, [angle.id, angle.id + 99])
@@ -526,7 +632,7 @@ def test_an_asset_with_neither_check_recorded_is_unchecked_not_clean(session):
     """The one state the page must never draw as a clean bill of health."""
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     stored = assets.store(session, fmt, client, angle, draft)
 
@@ -538,7 +644,7 @@ def test_an_asset_with_neither_check_recorded_is_unchecked_not_clean(session):
 def test_both_checks_run_over_a_format_and_are_stored_with_it(session):
     client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     seen: list[str] = []
 
     checked = assets.check(
@@ -559,7 +665,7 @@ def test_the_crosscheck_sees_the_text_and_what_it_may_claim(session):
     """It can only judge invention if it knows what was provable."""
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     seen: list[str] = []
 
     assets.crosscheck(
@@ -581,7 +687,7 @@ def test_the_crosscheck_is_shown_the_profile_the_format_was_written_from(session
     one, and that comparison is the whole reason this check runs."""
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     seen: list[str] = []
 
     assets.crosscheck(
@@ -602,7 +708,7 @@ def test_both_checkers_read_the_text_the_reader_will_see(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Die Verwahrung wandert — zurück."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Die Verwahrung wandert — zurück.")),
     )
     seen: list[str] = []
 
@@ -625,7 +731,7 @@ def test_an_asset_carrying_an_objection_never_renders_as_checked(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Eins — zwei.")),
     )
 
     checked = assets.check(
@@ -644,7 +750,7 @@ def test_a_guide_breach_is_stored_with_both_halves_quoted(session):
     """An objection nobody can check in ten seconds gets clicked away."""
     client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     checked = assets.check(
         client,
@@ -672,7 +778,7 @@ def test_a_mandate_without_a_guide_is_told_the_check_could_not_run(session):
     """"Nothing objected" and "nothing to object with" must not read alike."""
     client, angle = _mandate(session, comms_guide="")
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     guide_calls: list[str] = []
 
     checked = assets.check(
@@ -730,7 +836,7 @@ def test_a_dash_is_caught_even_if_the_checker_misses_it(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Eins — zwei.")),
     )
 
     review, _ = assets.crosscheck(
@@ -750,7 +856,7 @@ def test_the_checker_reads_the_text_that_will_be_stored(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Eins — zwei.")),
     )
     seen: list[str] = []
 
@@ -772,7 +878,7 @@ def test_the_mechanical_finding_survives_a_full_concern_list(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Eins — zwei.")),
     )
 
     review, _ = assets.crosscheck(
@@ -790,7 +896,7 @@ def test_more_concerns_than_the_cap_are_truncated_rather_than_rejected(session):
     that produces no verdict at all."""
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     review, _ = assets.crosscheck(
         client,
@@ -808,7 +914,7 @@ def test_rewriting_clears_the_verdicts_of_the_text_they_replace(session):
     """A verdict must never stand over a text it never read."""
     client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     checked = assets.check(
         client,
         assets.checkable(session, fmt, angle, draft),
@@ -818,7 +924,7 @@ def test_rewriting_clears_the_verdicts_of_the_text_they_replace(session):
     assets.store(session, fmt, client, angle, draft, checked)
 
     again = assets.write(
-        session, fmt, client, angle, invoke=lambda *a, **k: _drafted(body="Neu.")
+        session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Neu ist der zweite Anlauf."))
     )
     stored = assets.store(session, fmt, client, angle, again)
 
@@ -837,7 +943,7 @@ def test_without_a_second_model_the_check_refuses_rather_than_passes(
 
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     monkeypatch.setattr(config, "review_configured", lambda: False)
 
     with pytest.raises(RuntimeError, match="Zweitmodell"):
