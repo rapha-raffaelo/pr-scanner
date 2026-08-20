@@ -455,6 +455,14 @@ a:hover { text-decoration: underline; }
 .impulse__sources a { color: var(--accent); }
 .impulse__caveat { margin-top: 10px; font-size: var(--t-caption2); color: var(--muted); }
 
+/* Provenance, not content: the standards a text was written under sit at the
+   foot of it in the smallest voice the system has. It is there to be found when
+   the question comes up, never to compete with the draft above it. In the system
+   sheet rather than on one page, because the partial that renders it is imported
+   by every page that shows a generated text (partials/brain_stamp.html). */
+.stamp { margin-top: var(--s2); font-size: var(--t-caption2); color: var(--faint); }
+.stamp a { color: inherit; text-underline-offset: 2px; }
+
 .colhead {
   font-size: var(--t-footnote);
   text-transform: uppercase;

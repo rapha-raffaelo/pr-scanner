@@ -1,0 +1,30 @@
+{# The one line that says which standards a generated text was written under.
+
+   A partial imported by every page that renders a generated text — the impulse
+   page and the Today column — rather than a macro living on whichever template
+   happened to need it first. The stamp is only worth something if it is on every
+   text a reader sees, and two copies of it would drift the moment one page
+   learned something the other did not.
+
+   A missing version renders as "unbekannt" and not as Fassung 0: zero is a real
+   version, the one a fresh install is at before anybody has changed a standard,
+   and a row stored before this column existed cannot honestly claim it.
+
+   `t` is passed in rather than read from the surrounding template: an imported
+   macro does not see the caller's context at all, and a stamp that silently
+   rendered its German source string on an English page would be the
+   mixed-language failure the suite forbids.
+
+   The styling is `.stamp` in app.css, not a block here: an imported template
+   contributes its macros and nothing else, so any markup outside the macro would
+   never reach the page. #}
+{% macro brain_stamp(version, t) %}
+  <div class="stamp">
+    {{ t("Maßstäbe") }}:
+    {% if version is not none %}
+      <a href="/settings/brain/version/{{ version }}">{{ t("Fassung") }} {{ version }}</a>
+    {% else %}
+      {{ t("unbekannt") }} ({{ t("vor der Aufzeichnung der Maßstäbe entstanden") }})
+    {% endif %}
+  </div>
+{% endmacro %}

@@ -76,6 +76,11 @@ class AngleView:
     # Days between the draft and the viewed day. Shown, because a card that stays
     # for a week would otherwise read as this morning's work every morning.
     age_days: int
+    # The brain version the draft was written under, or None for a row stored
+    # before the stamp existed. Carried here and not only on the detail page:
+    # this column is where the drafts are actually read, and a provenance line
+    # that appears only on the page nobody opens is provenance nobody has.
+    brain_version: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,6 +337,7 @@ def _fetch_angles(session: Session, day: dt.date) -> list[AngleView]:
                 age_days=max(
                     0, (day - draft.generated_at.astimezone(_local_tz()).date()).days
                 ),
+                brain_version=draft.brain_version,
             )
         )
     return views

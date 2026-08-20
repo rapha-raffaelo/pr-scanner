@@ -41,7 +41,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import advisor, angles, brain, i18n, outreach, prose
+from newspulse import advisor, angles, brain, config, i18n, outreach, prose
 from newspulse.models import (
     Advisory,
     Analysis,
@@ -58,6 +58,13 @@ from newspulse.web.app import create_app, get_db
 
 PROMPTS = Path(brain.__file__).parent / "prompts"
 GOLDEN = Path(__file__).parent / "fixtures" / "prompts"
+
+#: The one place the provenance line is written, imported by every page that
+#: renders a generated text. A second copy of it somewhere is the drift this
+#: partial exists to prevent, so the tests read it from here.
+_STAMP_PARTIAL = (
+    Path(brain.__file__).parent / "web/templates/partials/brain_stamp.html"
+)
 
 #: A block set with no relationship to the shipped one, so a test using it fails
 #: if resolution ever quietly falls back to the real files.
@@ -1688,8 +1695,8 @@ def test_a_version_belonging_to_a_block_that_no_longer_ships_falls_back(
     assert resp.headers["location"] == "/settings#brain"
 
 
-def _advice(client, session, *, brain_version: int | None) -> str:
-    """The impulse page for a mandate with one stored draft at that stamp."""
+def _a_stored_draft(session, *, brain_version: int | None) -> Client:
+    """A mandate with one stored draft at that stamp, for the pages to render."""
     mandate = _a_mandate(session)
     session.add(
         Angle(
@@ -1702,7 +1709,21 @@ def _advice(client, session, *, brain_version: int | None) -> str:
         )
     )
     session.commit()
+    return mandate
+
+
+def _advice(client, session, *, brain_version: int | None) -> str:
+    """The impulse page for a mandate with one stored draft at that stamp."""
+    mandate = _a_stored_draft(session, brain_version=brain_version)
     return client.get(f"/client/{mandate.id}/advice").text
+
+
+def _today_column(client, session, *, brain_version: int | None) -> str:
+    """The Impulse rail on Heute, which is where the drafts are actually read."""
+    _a_stored_draft(session, brain_version=brain_version)
+    today = dt.datetime.now(dt.UTC).astimezone(config.local_zone()).date()
+    body = client.get("/today", params={"date": today.isoformat()}).text
+    return body.split('class="anglecol"', 1)[1]
 
 
 def test_a_draft_shows_the_version_it_was_written_under_as_a_link_to_it(
@@ -1713,6 +1734,42 @@ def test_a_draft_shows_the_version_it_was_written_under_as_a_link_to_it(
 
     assert "/settings/brain/version/4" in body
     assert "Fassung 4" in body
+
+
+def test_the_today_column_stamps_the_draft_it_shows(session, client):
+    """The impulse page is opened when a question comes up; Heute is read every
+    morning. A stamp on the first and not the second is provenance the person who
+    reads the drafts never sees, which is most of the way to no stamp at all."""
+    column = _today_column(client, session, brain_version=4)
+
+    assert "/settings/brain/version/4" in column
+    assert "Fassung 4" in column
+
+
+def test_the_today_column_says_unknown_for_a_draft_from_before_the_stamp(
+    session, client
+):
+    """AC 2 holds on both pages or on neither: a Fassung 0 here would be the same
+    false claim it would be on the impulse page."""
+    column = _today_column(client, session, brain_version=None)
+
+    assert "unbekannt" in column
+    assert "Fassung 0" not in column
+
+
+def test_both_pages_render_the_stamp_from_the_one_partial(session, client):
+    """The two surfaces import the same macro rather than keeping a copy each.
+
+    Asserted against the markup and not only against the rendered pages: two
+    copies would agree on the day they were written and drift on the day one of
+    them learned something, which is how the Today column came to be missing the
+    stamp in the first place.
+    """
+    templates = Path(brain.__file__).parent / "web/templates"
+    for page in ("advice.html", "today.html"):
+        markup = (templates / page).read_text("utf-8")
+        assert '{% import "partials/brain_stamp.html"' in markup, page
+        assert "{% macro brain_stamp" not in markup, f"{page} keeps its own copy"
 
 
 def test_a_draft_from_before_the_stamp_says_unknown_rather_than_version_zero(
@@ -1766,9 +1823,7 @@ def test_a_letter_carries_its_own_stamp_and_not_the_impulse_it_came_from(
 def test_every_german_string_in_the_stamp_has_an_english_entry():
     """Same rule as the panel: the strings that get forgotten are the new ones,
     and a German line under an English letter reads as broken."""
-    markup = (
-        Path(brain.__file__).parent / "web/templates/advice.html"
-    ).read_text("utf-8")
+    markup = _STAMP_PARTIAL.read_text("utf-8")
     stamp = markup.split("{% macro brain_stamp")[1].split("{% endmacro %}")[0]
     called = set(re.findall(r"""t\(\s*['"](.+?)['"]\s*\)""", stamp, re.DOTALL))
 
