@@ -206,15 +206,18 @@ _KIND = "ein Anschreiben an eine namentliche Journalistin"
 def _evidence_block(
     session: Session, client: Client, target: PitchTarget | None
 ) -> str:
-    """Everything the letter was allowed to claim, as one block for the checker."""
+    """Everything the letter was allowed to claim, as one block for the checker.
+
+    Each part carries its own heading, like the two that already did. The
+    recipient block is several lines, and behind an inline label the first of them
+    joined the label and the rest lost their heading entirely.
+    """
     return "\n".join(
-        block
-        for block in (
-            f"Empfänger: {_recipient_block(target)}",
-            _recipient_work(target) or "Keine belegten Schlagzeilen dieser Person.",
+        (
+            f"EMPFÄNGER\n{_recipient_block(target)}\n",
+            _recipient_work(target) or "Keine belegten Schlagzeilen dieser Person.\n",
             _own_coverage_block(session, client.id),
         )
-        if block
     )
 
 

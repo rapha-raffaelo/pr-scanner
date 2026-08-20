@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime as dt
 import inspect
 import json
+import re
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -149,15 +150,20 @@ def test_every_declared_format_has_a_definition_and_a_prompt_file():
 
 def test_the_writer_branches_on_no_individual_format():
     """The load-bearing half of "a seventh format is a definition and a prompt":
-    no function in the writing path may name a format."""
+    no function in the writing path may name a format.
+
+    Matched on word boundaries rather than as a substring: ``qa`` is two letters
+    and would otherwise collide with an ordinary word in a future docstring, and a
+    guard that fails for a reason it does not name gets deleted rather than read.
+    """
     path = (
         inspect.getsource(assets.write)
         + inspect.getsource(assets.prompt_for)
         + inspect.getsource(assets.store)
     )
     for fmt in assets.FORMATS:
-        assert fmt.key not in path
-        assert fmt.name not in path
+        assert not re.search(rf"\b{re.escape(fmt.key)}\b", path)
+        assert not re.search(rf"\b{re.escape(fmt.name)}\b", path)
 
 
 def test_a_seventh_format_needs_only_a_definition_and_a_prompt(session):
@@ -531,7 +537,7 @@ def test_the_guide_check_reads_the_text_against_the_written_rules(session):
     client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
     seen: list[str] = []
 
-    verdict, model = guide.check(
+    verdict, model = guide.check_guide(
         client,
         title="Alpha AG baut aus",
         body="Wir bauen aus.",
@@ -549,7 +555,7 @@ def test_a_listed_breach_overrules_the_checkers_own_ok_flag(session):
     cleared."""
     client, _ = _mandate(session, comms_guide="No-Go: das Wort günstig.")
 
-    verdict, _ = guide.check(
+    verdict, _ = guide.check_guide(
         client,
         title="",
         body="Das günstigste Angebot am Markt.",

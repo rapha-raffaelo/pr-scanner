@@ -53,7 +53,7 @@ from sqlalchemy.orm import Session
 from . import config, gemini, guide, profile, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Angle, Article, Asset, AssetKind, Client, ClientFact
-from .schemas import AssetDraft, GuideVerdict, MessageReview
+from .schemas import MAX_CONCERNS, AssetDraft, GuideVerdict, MessageReview
 
 _log = logging.getLogger(__name__)
 
@@ -79,6 +79,13 @@ GASTBEITRAG_CHARS = 4000
 
 #: What a guest article needs under it before it may argue anything.
 _MIN_GASTBEITRAG_EVIDENCE = 2
+
+#: The one objection this module raises itself. Worded against what the reader will
+#: actually see: the dash was in the reply, prose.plain() has already replaced it,
+#: and what is left is a sentence worth re-reading rather than a dash to hunt for.
+_DASH_CONCERN = (
+    "Gedankenstrich im Entwurf, hier durch ein Komma ersetzt. Den Satz gegenlesen."
+)
 
 
 class Source(StrEnum):
@@ -274,7 +281,12 @@ FORMATS: tuple[FormatDef, ...] = (
         name="Gastbeitrag",
         description="Ein argumentierter Text in der ersten Person, ohne Nachrichtenaufhänger.",
         prompt="prompts/gastbeitrag.txt",
+        # A guest article is printed under somebody's byline, so the author is a
+        # required fact like the release's spokesperson is. Without this the prompt
+        # asked for a name and the only place to find one was the free-text profile
+        # block, which is exactly the inference DEC-2 exists to forbid.
         requires=(
+            Requirement(Source.PROFIL, "ceo"),
             Requirement(Source.IMPULS, "thesis"),
             Requirement(
                 Source.IMPULS, "article_ids", minimum=_MIN_GASTBEITRAG_EVIDENCE
@@ -285,6 +297,7 @@ FORMATS: tuple[FormatDef, ...] = (
             "Erste Person, ein Argument, das sich entwickelt.",
             "Kein Nachrichtenaufhänger, keine Dateline, kein Zitat von sich selbst.",
         ),
+        speaker_key="ceo",
     ),
     FormatDef(
         kind=AssetKind.INTERVIEW_BRIEFING,
@@ -338,14 +351,21 @@ def requirements_met(
     fmt: FormatDef,
     client: Client,
     angle: Angle | None = None,
+    *,
+    facts: dict[str, ClientFact] | None = None,
 ) -> Readiness:
     """What this format is still missing for this mandate.
 
     ``angle`` may be ``None``: the surface asks which formats a mandate could
     write before an impulse is picked, and everything the impulse would supply is
     then honestly reported as missing rather than assumed.
+
+    ``facts`` is the mandate's profile when the caller already holds it. Writing
+    one format reads the profile three times otherwise, and FMT-03 writes six in
+    a row off one impulse.
     """
-    facts = profile.stored(session, client.id)
+    if facts is None:
+        facts = profile.stored(session, client.id)
     missing = tuple(
         req for req in fmt.requires if not _satisfied(req, facts, client, angle)
     )
@@ -409,18 +429,22 @@ def _evidence_block(session: Session, angle: Angle) -> str:
     snippet is cut at :data:`_MAX_SNIPPET_CHARS`.
     """
     ids = list(angle.article_ids or [])[:_MAX_EVIDENCE]
-    if not ids:
+    lines: list[str] = []
+    if ids:
+        rows = session.scalars(select(Article).where(Article.id.in_(ids))).all()
+        for article in rows:
+            lines.append(f"- ({article.source}) {article.title}")
+            snippet = (article.summary_text or "").strip()
+            if snippet:
+                lines.append(f"  Feed-Anriss: {snippet[:_MAX_SNIPPET_CHARS]}")
+    # Built first, then asked about: an impulse can name ids that no longer
+    # resolve, and the header below promises that what follows is what is known.
+    # Promising it over an empty list is how a model concludes it may fill one.
+    if not lines:
         return (
             "BELEGTE MELDUNGEN\nKeine. Der Text darf sich also auf keine "
             "Berichterstattung berufen."
         )
-    rows = session.scalars(select(Article).where(Article.id.in_(ids))).all()
-    lines: list[str] = []
-    for article in rows:
-        lines.append(f"- ({article.source}) {article.title}")
-        snippet = (article.summary_text or "").strip()
-        if snippet:
-            lines.append(f"  Feed-Anriss: {snippet[:_MAX_SNIPPET_CHARS]}")
     return (
         "BELEGTE MELDUNGEN\n"
         "Schlagzeilen und Feed-Anrisse, mehr war nie zu sehen. Was hier nicht "
@@ -456,7 +480,12 @@ def _refusal_block(fmt: FormatDef) -> str:
 
 
 def prompt_for(
-    session: Session, fmt: FormatDef, client: Client, angle: Angle
+    session: Session,
+    fmt: FormatDef,
+    client: Client,
+    angle: Angle,
+    *,
+    facts: dict[str, ClientFact] | None = None,
 ) -> str:
     """Render one format's prompt. Every format gets the same blocks.
 
@@ -464,7 +493,8 @@ def prompt_for(
     needs and ignores the rest, which is what lets a seventh format be a file
     somebody writes rather than a change here.
     """
-    facts = profile.stored(session, client.id)
+    if facts is None:
+        facts = profile.stored(session, client.id)
     return fmt.template().substitute(
         format_name=fmt.name,
         structure="\n".join(f"- {line}" for line in fmt.structure),
@@ -499,6 +529,35 @@ def _parse(raw: str) -> AssetDraft:
     return draft
 
 
+def _attributed(
+    draft: AssetDraft, fmt: FormatDef, facts: dict[str, ClientFact]
+) -> AssetDraft:
+    """The draft with its attribution taken from the profile, not from the reply.
+
+    The prompt asks the model to copy the name verbatim and the model mostly does.
+    "Mostly" is not a guarantee, and the thing it is not a guarantee about is a
+    named person's quote, which is the one artefact here that cannot be repaired
+    after it has gone out. So the reply's answer is not kept: the format named a
+    profile field, that field is on file because :func:`requirements_met` said so,
+    and its value is what is stored.
+
+    A format that names no field quotes nobody, and its attribution is empty
+    rather than whatever the model found in the free-text profile block.
+    """
+    named = _speaker(fmt, facts)
+    returned = draft.speaker.strip()
+    if returned and returned != named:
+        # Worth a line in the log: the body was written by the same call and may
+        # carry the same wrong name in its quote, which FMT-02's validator reads.
+        _log.warning(
+            "%s: attribution %r replaced with the profile's %r",
+            fmt.key,
+            returned,
+            named,
+        )
+    return draft.model_copy(update={"speaker": named})
+
+
 def write(
     session: Session,
     fmt: FormatDef,
@@ -517,15 +576,20 @@ def write(
     carries the requirements, the structure and the prompt, so this function is
     the same code for the first format and for the seventh.
 
+    The returned draft's ``speaker`` is the profile's, not the model's. See
+    :func:`_attributed`.
+
     ``invoke`` is injectable so the tests drive the whole path, prompt to stored
     row, without a subprocess.
     """
-    readiness = requirements_met(session, fmt, client, angle)
+    facts = profile.stored(session, client.id)
+    readiness = requirements_met(session, fmt, client, angle, facts=facts)
     if not readiness.ok:
         _log.info("%s refused for %r: %s", fmt.key, client.name, readiness.reason)
         raise RequirementsMissing(fmt, readiness)
-    prompt = prompt_for(session, fmt, client, angle)
-    return _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
+    prompt = prompt_for(session, fmt, client, angle, facts=facts)
+    draft = _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
+    return _attributed(draft, fmt, facts)
 
 
 # --- The checks, shared by every format ----------------------------------------
@@ -566,8 +630,12 @@ class Checked:
     reviewed_by: str = ""
     guide: GuideVerdict | None = None
     guide_reviewed_by: str = ""
-    #: Why the guide check did not run, when it did not.
+    #: Why the guide check produced no verdict, when it produced none.
     guide_note: str = ""
+    #: Whether that was a malfunction rather than a mandate with no guide. The two
+    #: are stored differently on purpose: having nothing to check against is a
+    #: state of the mandate, and a check that ran and broke is a text nobody read.
+    guide_failed: bool = False
 
 
 def crosscheck(
@@ -590,6 +658,13 @@ def crosscheck(
     if generate is None:
         generate = gemini.reviewer()
 
+    # The checker reads the text as it will be stored, not as it came back: both
+    # storage paths put title and body through prose.plain(), and a checker quoting
+    # a sentence that the house-style rewrite has since changed sends the reader
+    # looking for words that are not on the page.
+    title = prose.plain(item.title)
+    body = prose.plain(item.body)
+
     template = Template(
         resources.files("newspulse").joinpath(_CROSSCHECK_RESOURCE).read_text("utf-8")
     )
@@ -600,8 +675,8 @@ def crosscheck(
         overclaim=item.overclaim or "nicht ausformuliert",
         evidence=item.evidence,
         title_label=item.title_label,
-        title=item.title,
-        body=item.body,
+        title=title,
+        body=body,
     )
     raw = generate(prompt)
     try:
@@ -611,15 +686,13 @@ def crosscheck(
         raise ParseError(f"crosscheck did not match the schema: {exc}") from exc
 
     # One thing the checker cannot be trusted to catch, because it is mechanical:
-    # the house rule on dashes. Checked here rather than believed.
+    # the house rule on dashes. Read off the draft rather than the rewritten text,
+    # since by then there is nothing left to find. Prepended rather than appended
+    # so the cap drops one of the model's judgements instead of the one finding
+    # here that is not a judgement at all.
     if prose.has_dash(item.body) or prose.has_dash(item.title):
         review = review.model_copy(
-            update={
-                "concerns": [
-                    *review.concerns,
-                    "Gedankenstrich im Text, verrät maschinelles Schreiben.",
-                ][:5]
-            }
+            update={"concerns": [_DASH_CONCERN, *review.concerns][:MAX_CONCERNS]}
         )
     return review, config.review_model()
 
@@ -641,15 +714,33 @@ def check(
     judgements about the world and the checker weighs them; a No-Go is not a
     judgement, the client wrote it down, so it is reported on its own and never
     averaged into a style note.
+
+    Two verdicts also means two failures, and neither takes the other down with
+    it. The crosscheck has been paid for by the time the guide check runs, so a
+    guide pass that breaks leaves a :class:`Checked` carrying the verdict that did
+    arrive and a note saying the other one did not. Discarding a completed check
+    because a second one failed would spend a model call to end up with less than
+    the caller had a line earlier.
     """
     review, reviewed_by = crosscheck(client, item, generate=generate)
-    verdict = guide.check(
-        client,
-        title=item.title,
-        body=item.body,
-        kind=item.kind,
-        generate=guide_generate if guide_generate is not None else generate,
-    )
+    try:
+        verdict = guide.check_guide(
+            client,
+            title=item.title,
+            body=item.body,
+            kind=item.kind,
+            generate=guide_generate if guide_generate is not None else generate,
+        )
+    except (ParseError, RuntimeError, OSError):
+        # ERROR rather than WARNING: nothing read this text against the mandate's
+        # own rules, and that is the check whose absence costs a mandate.
+        _log.error("guide check failed for %r", client.name, exc_info=True)
+        return Checked(
+            review=review,
+            reviewed_by=reviewed_by,
+            guide_note=guide.CHECK_FAILED,
+            guide_failed=True,
+        )
     if verdict is None:
         return Checked(
             review=review, reviewed_by=reviewed_by, guide_note=guide.NO_GUIDE
@@ -703,9 +794,11 @@ def _apply_checks(row: Asset, checked: Checked | None) -> None:
     if checked is None or checked.guide is None:
         # A mandate with no guide leaves a note and no reviewer, so the page can
         # say the check could not run instead of showing an empty objection list.
+        # A check that ran and broke is not allowed to read as clean on top of
+        # that: it is the state this whole column exists to keep visible.
         row.guide_review = checked.guide_note if checked else ""
         row.guide_reviewed_by = ""
-        row.guide_review_ok = True
+        row.guide_review_ok = not (checked and checked.guide_failed)
     else:
         row.guide_review = "\n".join(
             f"«{breach.sentence}» verstößt gegen: {breach.rule}"

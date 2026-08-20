@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import SCORE_MAX as _SCORE_MAX
 from .models import SCORE_MIN as _SCORE_MIN
@@ -209,6 +209,24 @@ class PersonalMessage(BaseModel):
     hook: str = ""
 
 
+#: How many objections one check may raise, for the crosscheck and the guide check
+#: alike: past five it is an audit, not a check, and a list nobody reads to the end
+#: is a list that gets clicked away whole.
+MAX_CONCERNS = 5
+
+
+def _capped(value: object) -> object:
+    """Keep the worst five and drop the rest, rather than rejecting the reply.
+
+    A ``max_length`` alone would make a sixth objection a validation error, so the
+    most thorough read of the worst draft would be the one that produced no verdict
+    at all. Truncating is what the cap was always meant to do.
+    """
+    if isinstance(value, list):
+        return value[:MAX_CONCERNS]
+    return value
+
+
 class MessageReview(BaseModel):
     """A second model's read of a letter the first one wrote.
 
@@ -227,9 +245,14 @@ class MessageReview(BaseModel):
     send: bool = True
     #: One line per concern, in the consultant's language. Empty is the good case
     #: and must stay possible: a checker that always finds something is noise.
-    concerns: list[str] = Field(default_factory=list, max_length=5)
+    concerns: list[str] = Field(default_factory=list, max_length=MAX_CONCERNS)
     #: The one thing to change first, if anything.
     fix: str = ""
+
+    @field_validator("concerns", mode="before")
+    @classmethod
+    def _cap_concerns(cls, value: object) -> object:
+        return _capped(value)
 
 
 # --- Assets: every other format an agency delivers -------------------------------
@@ -244,9 +267,11 @@ class AssetDraft(BaseModel):
     schema per format would mean a writer per format, which is the thing this
     feature exists to avoid.
 
-    ``speaker`` is the person a quote is attributed to. It is only ever a name
-    the mandate's profile already holds, because the worst artefact this feature
-    can produce is a press release quoting a CEO who never said it.
+    ``speaker`` is the person a quote is attributed to. The model is asked for it
+    and its answer is not what is kept: :func:`newspulse.assets.write` replaces it
+    with the profile fact the format named, because the worst artefact this feature
+    can produce is a press release quoting a CEO who never said it, and a name that
+    only a prompt guarantees is a name nothing guarantees.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -286,8 +311,15 @@ class GuideVerdict(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     ok: bool = True
-    # Capped like the crosscheck's concerns: past five it is an audit, not a check.
-    breaches: list[GuideBreach] = Field(default_factory=list, max_length=5)
+    # Capped like the crosscheck's concerns, and truncated rather than rejected for
+    # the same reason: the draft that breaks six rules is the one whose verdict
+    # matters most, and it must not be the one that fails to parse.
+    breaches: list[GuideBreach] = Field(default_factory=list, max_length=MAX_CONCERNS)
+
+    @field_validator("breaches", mode="before")
+    @classmethod
+    def _cap_breaches(cls, value: object) -> object:
+        return _capped(value)
 
 
 # --- Coach: does the guide hold up against the actual coverage? ------------------

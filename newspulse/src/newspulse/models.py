@@ -866,8 +866,9 @@ class Asset(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False, default="")
     body: Mapped[str] = mapped_column(Text, nullable=False)
     #: Who the text is attributed to, for the formats that quote a person. Never
-    #: derived and never invented: it is copied from the mandate's profile, and a
-    #: format that needs it will not be written without it.
+    #: invented: :func:`newspulse.assets.write` copies it out of the profile field
+    #: the format named and discards whatever the model answered, and a format that
+    #: needs it will not be written without it.
     speaker: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     #: When a human last changed the text. ``None`` means the model's words are
     #: still exactly as they came back, which is a different artefact from one a

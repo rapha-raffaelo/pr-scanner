@@ -225,8 +225,13 @@ _CHECK_RESOURCE = "prompts/guide_check.txt"
 #: "Nothing objected" and "nothing to object with" must not read alike.
 NO_GUIDE = "Kein Guide hinterlegt, gegen den geprüft werden könnte."
 
+#: What is stored when the check was attempted and broke. A third sentence rather
+#: than either of the other two: the guide exists, the check ran, and it produced
+#: nothing, which is not the same as a mandate that has no guide to check against.
+CHECK_FAILED = "Die Guide-Prüfung ist fehlgeschlagen. Der Text ist ungeprüft."
 
-def check(
+
+def check_guide(
     client: Client,
     *,
     title: str,
@@ -297,12 +302,13 @@ def for_prompt(client: Client) -> str:
 
 
 __all__ = [
+    "CHECK_FAILED",
     "ExtractionError",
     "GUIDE_MAX_CHARS",
     "MAX_UPLOAD_BYTES",
     "NO_GUIDE",
     "SUPPORTED_SUFFIXES",
-    "check",
+    "check_guide",
     "delete_source",
     "distill",
     "extract_text",
