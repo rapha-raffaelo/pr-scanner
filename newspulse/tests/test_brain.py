@@ -29,12 +29,14 @@ import datetime as dt
 import importlib
 import os
 import re
+from contextlib import contextmanager
 from pathlib import Path
 from string import Template
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -605,17 +607,29 @@ FIXED_CLOCK = dt.datetime(2026, 9, 3, 9, 30, tzinfo=dt.UTC)
 A_BLOCK = "refusal"
 
 
-@pytest.fixture
-def factory():
-    """A sessionmaker on a fresh in-memory database with the schema built.
+def _memory_engine():
+    """A private in-memory database, schema not built.
 
     StaticPool keeps every session on one connection, so a POST's write is
-    visible to the GET that follows it.
+    visible to the GET that follows it — and so a table left uncreated stays
+    uncreated for every session in the test.
     """
-    engine = create_engine(
+    return create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
-    Base.metadata.create_all(engine)
+
+
+@pytest.fixture
+def engine():
+    """The fixture database, migrated."""
+    built = _memory_engine()
+    Base.metadata.create_all(built)
+    return built
+
+
+@pytest.fixture
+def factory(engine):
+    """A sessionmaker on the fixture database."""
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
@@ -623,6 +637,41 @@ def factory():
 def session(factory):
     with factory() as open_session:
         yield open_session
+
+
+@pytest.fixture
+def live_override_source(monkeypatch, engine):
+    """Put the *production* override source back, pointed at the fixture database.
+
+    ``conftest`` pins ``brain._override_source`` to ``dict`` for the whole suite,
+    which is right — without it every generator test would open a SQLite file in
+    whatever directory pytest was started from. The cost is that
+    ``_stored_overrides``, the only source that ever runs in production, is the
+    one thing the suite never exercises. This opts out of the guard narrowly, for
+    the handful of tests that are about that function.
+    """
+    _install_database(monkeypatch, engine)
+    monkeypatch.setattr(brain, "_override_source", brain._stored_overrides)
+
+
+def _install_database(monkeypatch, target) -> None:
+    """Point ``brain``'s own database handles at ``target``.
+
+    ``brain`` does ``from .db import get_engine, get_session``, so the names to
+    replace are the ones bound in that module rather than the ones in ``db``.
+    """
+    sessions = sessionmaker(bind=target, expire_on_commit=False)
+
+    @contextmanager
+    def _session():
+        open_session = sessions()
+        try:
+            yield open_session
+        finally:
+            open_session.close()
+
+    monkeypatch.setattr(brain, "get_session", _session)
+    monkeypatch.setattr(brain, "get_engine", lambda: target)
 
 
 @pytest.fixture
@@ -863,6 +912,92 @@ def test_a_version_from_a_restored_table_cannot_collide_with_one_that_has_a_text
     assert brain.edit(session, A_BLOCK, "Danach.").version == 8
 
 
+def test_a_version_lost_to_a_race_is_retaken_rather_than_raising(session, monkeypatch):
+    """Two tabs saving at once both read the same next number, and the unique
+    constraint rejects the second. That constraint is doing its job; the answer
+    is to take the next free number, not to hand the operator a 500 on the panel
+    that owns the tool's standards. Both edits end up recorded."""
+    brain.edit(session, A_BLOCK, "Erst.")
+    real_version = brain.version
+    stale = [True]
+
+    def _reads_a_taken_number(open_session):
+        """The loser's read: it still sees the number the winner just took."""
+        if stale[0]:
+            stale[0] = False
+            return real_version(open_session) - 1
+        return real_version(open_session)
+
+    monkeypatch.setattr(brain, "version", _reads_a_taken_number)
+    change = brain.edit(session, A_BLOCK, "Dann.")
+
+    assert change is not None
+    assert change.version == 2
+    assert [row.version for row in brain.history(session, A_BLOCK)] == [2, 1]
+    assert brain.stored(session) == {A_BLOCK: "Dann."}
+
+
+def test_a_collision_that_survives_the_retry_is_not_swallowed(session, monkeypatch):
+    """One retry, not a loop: a number that is still taken on the second read is
+    not contention on a single-operator tool, it is something wrong worth
+    hearing about."""
+    brain.edit(session, A_BLOCK, "Erst.")
+    monkeypatch.setattr(brain, "version", lambda _session: 0)
+
+    with pytest.raises(IntegrityError):
+        brain.edit(session, A_BLOCK, "Dann.")
+
+
+# --------------------------------------------------------------------------
+# The source that actually runs in production, which the suite otherwise pins
+# away for every test (see conftest.brain_composes_the_shipped_blocks).
+# --------------------------------------------------------------------------
+
+
+def test_the_production_override_source_reads_the_stored_overrides(
+    session, live_override_source
+):
+    """Nothing else in the suite exercises ``_stored_overrides``: every other
+    test either installs its own source or drives ``edit`` with an explicit
+    session. This is the one path a running installation takes."""
+    assert brain.current()[A_BLOCK] == brain.shipped()[A_BLOCK]
+
+    brain.edit(session, A_BLOCK, "AUS DER DATENBANK\n\nEin Satz.")
+
+    assert brain._stored_overrides() == {A_BLOCK: "AUS DER DATENBANK\n\nEin Satz."}
+    assert brain.current()[A_BLOCK] == "AUS DER DATENBANK\n\nEin Satz."
+    assert "AUS DER DATENBANK" in brain.compose("{{brain:%s}}" % A_BLOCK)
+
+
+def test_an_unmigrated_database_composes_the_shipped_text(monkeypatch):
+    """The one failure the fallback is for, and it is reachable on every fresh
+    install: the table is not there yet and the shipped blocks are the correct
+    answer by construction."""
+    _install_database(monkeypatch, _memory_engine())  # schema deliberately unbuilt
+    monkeypatch.setattr(brain, "_override_source", brain._stored_overrides)
+
+    assert brain._stored_overrides() == {}
+    assert brain.current() == dict(brain.shipped())
+
+
+def test_a_database_failure_that_is_not_a_missing_table_is_not_swallowed(
+    monkeypatch, live_override_source
+):
+    """A locked database is not an unmigrated one. Composing the shipped text
+    there would produce a letter written against the developer's defaults while
+    the agency believed its own standards were in force — with nothing in the
+    output saying so, and, once BRN-03 lands, a version stamp asserting they
+    applied."""
+
+    def _locked(_session):
+        raise OperationalError("SELECT 1", {}, Exception("database is locked"))
+
+    monkeypatch.setattr(brain, "stored", _locked)
+
+    with pytest.raises(OperationalError):
+        brain._stored_overrides()
+
+
 # --------------------------------------------------------------------------
 # The panel: every block readable, its provenance stated, its history reachable.
 # --------------------------------------------------------------------------
@@ -1092,5 +1227,21 @@ def test_a_refused_edit_reads_in_english_on_an_english_page(client):
 
 def test_the_recorded_author_is_translated_rather_than_shown_as_a_german_noun():
     """`edited_by` is rendered through the same lookup as the chrome around it,
-    so the fallback author does not sit in German in an English panel."""
-    assert i18n.translate(brain.editor(), "en") == "human"
+    so the fallback author does not sit in German in an English panel.
+
+    Asserted on the sentinel rather than on ``brain.editor()``, which reads
+    ``config.AUTH_USER`` — set from the environment at import, and required to be
+    set for any non-localhost bind. On a machine with ``NEWSPULSE_AUTH_USER``
+    exported this used to fail for a reason that has nothing to do with what it
+    is about.
+    """
+    assert i18n.translate(brain._ANONYMOUS_EDITOR, "en") == "human"
+
+
+def test_the_fallback_author_is_used_when_the_install_has_no_named_user(monkeypatch):
+    """And that the sentinel above is what ``editor()`` actually reaches for."""
+    monkeypatch.setattr(brain.config, "AUTH_USER", "")
+    assert brain.editor() == brain._ANONYMOUS_EDITOR
+
+    monkeypatch.setattr(brain.config, "AUTH_USER", "lucas")
+    assert brain.editor() == "lucas"

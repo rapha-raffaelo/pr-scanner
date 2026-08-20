@@ -58,12 +58,12 @@ from functools import lru_cache
 from importlib import resources
 from types import MappingProxyType
 
-from sqlalchemy import func, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import func, inspect, select
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from . import config
-from .db import get_session
+from .db import get_engine, get_session
 from .models import BrainOverride, Setting
 
 _log = logging.getLogger(__name__)
@@ -335,17 +335,46 @@ def _stored_overrides() -> Mapping[str, str]:
     the one place that must never get it wrong, which is the edit that has just
     been saved and is expected to hold for the next text.
 
-    Fails soft to the shipped set. The reachable case is a database that has not
-    been migrated yet, and the shipped blocks are a correct answer there by
-    construction — refusing to compose would take the tool down over a table that
-    is empty on every fresh install anyway.
+    Fails soft to the shipped set for exactly one case: a database that has not
+    been migrated yet, where the shipped blocks are a correct answer by
+    construction and refusing to compose would take the tool down over a table
+    that is empty on every fresh install anyway.
+
+    Everything else propagates, deliberately. A locked database, a disk error or
+    a corrupt file are *not* that case, and swallowing them produces the failure
+    this layer exists to prevent: a generated text written against the
+    developer's defaults while the agency believes its own standards are in
+    force, with nothing in the output saying otherwise. It gets worse once BRN-03
+    stamps texts with a brain version that asserts the overrides applied. A loud
+    failure on the page is the better answer than a quiet lie in a letter.
     """
     try:
         with get_session() as session:
             return stored(session)
-    except SQLAlchemyError as exc:
-        _log.warning("brain overrides unreadable, composing the shipped text: %s", exc)
+    except OperationalError as exc:
+        if not _table_is_missing():
+            _log.error("brain overrides unreadable: %s", exc)
+            raise
+        _log.warning(
+            "brain_overrides is not migrated yet; composing the shipped text: %s", exc
+        )
         return {}
+
+
+def _table_is_missing() -> bool:
+    """Whether ``brain_overrides`` genuinely is not there yet.
+
+    Asked of the schema rather than pattern-matched against the driver's error
+    text, so which failures fail soft does not depend on how SQLite happens to
+    word "no such table" this release, and so Postgres behaves the same.
+    """
+    try:
+        return not inspect(get_engine()).has_table(BrainOverride.__tablename__)
+    except SQLAlchemyError:
+        # The database is unreachable altogether. That is not the documented
+        # case and must not be reported as one, or the narrowing above buys
+        # nothing: the caller re-raises and the operator sees the real error.
+        return False
 
 
 #: Where :func:`current` reads the overrides. A seam rather than a direct call so
@@ -515,7 +544,32 @@ def _record(
     One commit for both, so the counter and the row it belongs to cannot disagree
     — a bumped counter with no row would leave a version nobody can read the
     standards for.
+
+    The version is read and then written, which is a race: two saves landing
+    together — two tabs, or a double-submit — both read the same number, and the
+    unique constraint on ``version`` rejects the second. That constraint is doing
+    its job, so the answer is to take the next free number rather than to hand the
+    operator a 500 on the panel that owns the tool's standards. Both edits are
+    then recorded with versions of their own, which is what an append-only log
+    should say happened.
     """
+    try:
+        return _write_change(session, key, text, edited_by=edited_by, now=now)
+    except IntegrityError:
+        session.rollback()
+        _log.warning("brain version %d was taken; retrying", version(session))
+        return _write_change(session, key, text, edited_by=edited_by, now=now)
+
+
+def _write_change(
+    session: Session,
+    key: str,
+    text: str | None,
+    *,
+    edited_by: str,
+    now: dt.datetime | None,
+) -> BrainOverride:
+    """One attempt at the write above, at whatever version is free right now."""
     change = BrainOverride(
         key=key,
         text=text,
@@ -567,6 +621,7 @@ def _store_counter(session: Session, value: int) -> None:
 
 
 __all__ = [
+    "EMPTY_BLOCK_MESSAGE",
     "BlockCycle",
     "UnknownBlock",
     "block",
