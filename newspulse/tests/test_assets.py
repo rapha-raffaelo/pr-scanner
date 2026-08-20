@@ -235,6 +235,19 @@ def test_a_list_requirement_counts_rather_than_checks_presence(session):
     assert [req.key for req in readiness.missing] == ["article_ids"]
 
 
+def test_a_refusal_says_how_many_a_list_requirement_wants(session):
+    """A refusal has to name work the consultant can do. Told only "Belegte
+    Meldungen" while looking at an impulse that visibly has a story attached, he
+    reads a bug rather than an instruction."""
+    client, angle = _mandate(session, articles=1)
+    fmt = assets.definition(AssetKind.GASTBEITRAG)
+
+    reason = assets.requirements_met(session, fmt, client, angle).reason
+
+    assert f"mindestens {assets._MIN_GASTBEITRAG_EVIDENCE}" in reason
+    assert "Belegte Meldungen" in reason
+
+
 def test_a_missing_requirement_writes_nothing_and_names_the_field(session):
     """DEC-2, as it was recommended: refuse and say why. The model is never
     reached, so a fabricated spokesperson cannot even be generated."""
@@ -319,6 +332,21 @@ def test_a_long_feed_snippet_is_cut_before_it_reaches_the_prompt(session):
 
     assert "A" * assets._MAX_SNIPPET_CHARS in prompt
     assert "A" * (assets._MAX_SNIPPET_CHARS + 1) not in prompt
+
+
+def test_the_evidence_keeps_the_impulses_order_and_counts_stories_not_ids(session):
+    """``IN`` hands rows back in database order, and the impulse ranked them: that
+    ranking is what the prompt is for. The cap counts what resolved, so an id that
+    no longer exists does not silently cost the brief a story."""
+    client, angle = _mandate(session, articles=assets._MAX_EVIDENCE + 1)
+    angle.article_ids = [999_001, *reversed(angle.article_ids)]
+    session.commit()
+
+    block = assets._evidence_block(session, angle)
+
+    headlines = [line for line in block.splitlines() if line.startswith("- (")]
+    assert len(headlines) == assets._MAX_EVIDENCE, "a dead id ate a slot"
+    assert headlines[0].endswith(f"({assets._MAX_EVIDENCE})"), "the order is the DB's"
 
 
 def test_the_prompt_states_the_structure_the_definition_declares(session):
@@ -544,6 +572,72 @@ def test_the_crosscheck_sees_the_text_and_what_it_may_claim(session):
     assert _HEADLINE in seen[0]                                  # what is provable
     assert "Solana ist unzuverlässig" in seen[0]                 # the overclaim
     assert "Schlagzeile" in seen[0]                              # named as its kind
+
+
+def test_the_crosscheck_is_shown_the_profile_the_format_was_written_from(session):
+    """The formats that quote a person are written *from* the profile, and the
+    checker is told an attributed quote nobody backed is the unrepairable
+    mistake. Without the profile it cannot tell the backed one from the invented
+    one, and that comparison is the whole reason this check runs."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    seen: list[str] = []
+
+    assets.crosscheck(
+        client,
+        assets.checkable(session, fmt, angle, draft),
+        generate=lambda prompt, **k: seen.append(prompt) or _review(),
+    )
+
+    assert "Alexandra Prot, Geschäftsführerin" in seen[0]  # the attribution is backed
+    assert "Verwahrung digitaler Vermögenswerte" in seen[0]
+
+
+def test_both_checkers_read_the_text_the_reader_will_see(session):
+    """A guide breach is stored with the sentence it objects to quoted verbatim.
+    Read off the raw reply, that quote is a sentence the house-style rewrite has
+    since changed, and it is not on the page it points at."""
+    client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
+    fmt = assets.definition(AssetKind.STATEMENT)
+    draft = assets.write(
+        session, fmt, client, angle,
+        invoke=lambda *a, **k: _drafted(body="Die Verwahrung wandert — zurück."),
+    )
+    seen: list[str] = []
+
+    assets.check(
+        client,
+        assets.checkable(session, fmt, angle, draft),
+        generate=lambda *a, **k: _review(),
+        guide_generate=lambda prompt, **k: seen.append(prompt) or _guide_verdict(),
+    )
+
+    assert "Die Verwahrung wandert, zurück." in seen[0]
+    assert "—" not in seen[0]
+
+
+def test_an_asset_carrying_an_objection_never_renders_as_checked(session):
+    """The checker's own flag is not trusted against findings it never made. The
+    mechanical dash concern is added after it has answered, so a reply of "send,
+    no concerns" would otherwise store an objection on a row drawn as clean."""
+    client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
+    fmt = assets.definition(AssetKind.STATEMENT)
+    draft = assets.write(
+        session, fmt, client, angle,
+        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+    )
+
+    checked = assets.check(
+        client,
+        assets.checkable(session, fmt, angle, draft),
+        generate=lambda *a, **k: _review(send=True),
+        guide_generate=lambda *a, **k: _guide_verdict(),
+    )
+    stored = assets.store(session, fmt, client, angle, draft, checked)
+
+    assert assets._DASH_CONCERN in stored.review
+    assert stored.check_state is CheckState.EINWAND
 
 
 def test_a_guide_breach_is_stored_with_both_halves_quoted(session):
