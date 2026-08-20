@@ -52,7 +52,7 @@ from sqlalchemy.orm import Session
 
 from . import config, gemini, guide, profile, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
-from .models import Angle, Article, Asset, AssetKind, Client
+from .models import Angle, Article, Asset, AssetKind, Client, ClientFact
 from .schemas import AssetDraft, GuideVerdict, MessageReview
 
 _log = logging.getLogger(__name__)
@@ -352,7 +352,12 @@ def requirements_met(
     return Readiness(missing)
 
 
-def _satisfied(req: Requirement, facts: dict, client: Client, angle: Angle | None) -> bool:
+def _satisfied(
+    req: Requirement,
+    facts: dict[str, ClientFact],
+    client: Client,
+    angle: Angle | None,
+) -> bool:
     if req.source is Source.PROFIL:
         fact = facts.get(req.key)
         return bool(fact and fact.value.strip())
@@ -379,7 +384,7 @@ def _client_profile(client: Client) -> str:
     return "\n".join(parts)
 
 
-def _facts_block(facts: dict) -> str:
+def _facts_block(facts: dict[str, ClientFact]) -> str:
     """The deep-dive profile, in the order the page reads it.
 
     Everything a format is allowed to state about the mandate as fact comes from
@@ -423,7 +428,7 @@ def _evidence_block(session: Session, angle: Angle) -> str:
     )
 
 
-def _speaker(fmt: FormatDef, facts: dict) -> str:
+def _speaker(fmt: FormatDef, facts: dict[str, ClientFact]) -> str:
     """The person a quote may be attributed to, exactly as the profile holds it."""
     if not fmt.speaker_key:
         return ""
