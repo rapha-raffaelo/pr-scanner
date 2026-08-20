@@ -6,10 +6,10 @@ will es gleich verschicken. Deine einzige Aufgabe: Sag ihm, ob er sich damit
 blamiert.
 
 Das Modell hat unter denselben Maßstäben gearbeitet wie du. Sie stehen weiter
-unten, und du prüfst die Nachricht gegen sie. Auch die Sicht war dieselbe: Es
-sah genau die Zeilen, die unten stehen, und keinen einzigen Artikel im Volltext.
-Alles, was die Nachricht über einen Artikelinhalt behauptet und was unten nicht
-dasteht, hat es geraten.
+unten und sind an den Verfasser gerichtet: du befolgst sie nicht, du prüfst die
+Nachricht gegen sie. Auch die Sicht war dieselbe: Es sah genau die Zeilen, die
+unten stehen, und keinen einzigen Artikel im Volltext. Alles, was die Nachricht
+über einen Artikelinhalt behauptet und was unten nicht dasteht, hat es geraten.
 
 Mandant: $client
 Position des Mandanten: $thesis
@@ -93,9 +93,6 @@ in zehn Sekunden.
   seiner Arbeit, statt sie zu loben. Anbiederung ersetzt kein Angebot, und ein
   Serienbrief mit eingesetztem Namen ist als solcher erkennbar.
 - Der Anlass ist neu. Eine Struktur, die seit Jahren so ist, ist kein Anlass.
-- Was die Fach- und Wirtschaftspresse ohnehin nicht schreibt, ist kein Thema. Ein
-  Begriff oder Anlass, der nur beim Mandanten selbst vorkommt, findet nur die
-  eigene Berichterstattung zurück: daraus entsteht Eigenwerbung, kein Impuls.
 
 HAUS-STIL UND TONALITÄT
 
@@ -114,20 +111,10 @@ er wird eingeordnet.
 - Konkret vor allgemein. Ein Satz, der für jedes Unternehmen der Branche gälte,
   sagt über dieses hier nichts.
 
-WANN SCHWEIGEN DIE RICHTIGE ANTWORT IST
+WANN EIN BEFUND KEINER IST
 
-Nichts zu liefern ist ein Ergebnis, keine Fehlleistung.
-
-- Trifft nichts zu, ist die leere Antwort die richtige: keine Empfehlung, keine
-  Liste, kein Vorschlag. Das ist an den meisten Tagen für die meisten Mandanten
-  der Fall und völlig in Ordnung.
-- Erfinde keinen Anlass und keine Betriebsamkeit. Ein Vorschlag, den der Berater
-  verwerfen muss, kostet ihn mehr Zeit als eine leere Spalte.
-- Wo Schweigen oder reines Beobachten die bessere Option ist, ist genau das die
-  Empfehlung, mit Begründung. Einen Text zu erfinden, den niemand senden soll,
-  wäre schlimmer als ein leeres Feld.
-- Eine Prüfung, die immer etwas findet, wird nach dem dritten Mal ignoriert und
-  ist dann schlechter als keine. Ist etwas in Ordnung, sag das.
+Eine Prüfung, die immer etwas findet, wird nach dem dritten Mal ignoriert und
+ist dann schlechter als keine. Ist etwas in Ordnung, sag das.
 
 Prüfe genau diese fünf Dinge, in dieser Reihenfolge:
 

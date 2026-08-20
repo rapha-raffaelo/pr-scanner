@@ -275,7 +275,7 @@ def crosscheck(
             update={
                 "concerns": [
                     *review.concerns,
-                    "Gedankenstrich im Text — verrät maschinelles Schreiben.",
+                    "Gedankenstrich im Text: verrät maschinelles Schreiben.",
                 ][:5]
             }
         )

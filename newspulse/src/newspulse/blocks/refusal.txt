@@ -10,5 +10,3 @@ Nichts zu liefern ist ein Ergebnis, keine Fehlleistung.
 - Wo Schweigen oder reines Beobachten die bessere Option ist, ist genau das die
   Empfehlung, mit Begründung. Einen Text zu erfinden, den niemand senden soll,
   wäre schlimmer als ein leeres Feld.
-- Eine Prüfung, die immer etwas findet, wird nach dem dritten Mal ignoriert und
-  ist dann schlechter als keine. Ist etwas in Ordnung, sag das.

@@ -125,6 +125,37 @@ def test_compose_fails_loudly_at_render_for_an_unknown_block():
         brain.compose("{{brain:ghost}}", FIXTURE_BLOCKS)
 
 
+@pytest.mark.parametrize(
+    "marker",
+    ["{{brain:Alpha}}", "{{brain:al-pha}}", "{{brain:}}", "{{brain}}", "{{ brain alpha }}"],
+)
+def test_compose_raises_for_a_mistyped_marker_instead_of_shipping_it(marker: str):
+    """The hole the first version left open. A marker the pattern did not match
+    was not an unknown block, it was not a marker at all, so it survived
+    composition and went to the model as the literal string `{{brain:Alpha}}`:
+    the standard silently absent and the braces in the prompt. Every spelling
+    close enough to be a typo has to land inside the capture and raise."""
+    with pytest.raises(brain.UnknownBlock):
+        brain.compose(f"Aufgabe.\n{marker}\n", FIXTURE_BLOCKS)
+
+
+def test_compose_expands_an_include_a_block_itself_contains():
+    """Composition is closed over block text: a `{{brain:…}}` or a `#blocks:`
+    line inside a block obeys the same two rules as one inside a prompt. Moot
+    while blocks are repo files, and live from BRN-02, which is the same reason
+    `$` is escaped."""
+    source = {"outer": "#blocks: inner\nAUSSEN\n{{brain:inner}}", "inner": "INNEN"}
+    composed = brain.compose("{{brain:outer}}", source)
+    assert composed.strip() == "AUSSEN\nINNEN"
+
+
+def test_compose_stops_rather_than_expanding_two_blocks_into_each_other():
+    """A cycle is reachable as soon as block text is a field somebody types in,
+    and without the cap it is an out-of-memory kill that looks like a slow render."""
+    with pytest.raises(brain.BlockCycle):
+        brain.compose("{{brain:links}}", {"links": "{{brain:rechts}}", "rechts": "{{brain:links}}"})
+
+
 def test_compose_leaves_template_placeholders_untouched():
     """`$name` belongs to the caller's string.Template substitution, which runs
     after composition. Eating one here would be invisible until a render fails."""
@@ -230,18 +261,24 @@ CARRIED_BEFORE = {
     # All six, one per check plus the frame: ERFUNDENES, "NIE die vollständigen
     # Artikel", the overclaim check, "zweihundert PR-Anschreiben" / "Serienbrief
     # mit eingesetztem Namen", WERBESPRACHE and MASCHINENSPUR, "Eine Prüfung, die
-    # immer etwas findet".
+    # immer etwas findet" -- that last one and *only* that one, which is why it is
+    # `false_alarm` here and not `refusal`. See CONTRADICTIONS: `refusal` also
+    # licenses the empty answer, and MessageReview reads an empty answer as
+    # send=True, so the one prompt that must never return nothing was the one
+    # prompt being told that returning nothing is right.
     "crosscheck.txt": {"no_invention", "position", "journalistic_value",
-                       "house_style", "evidence", "refusal"},
+                       "house_style", "evidence", "false_alarm"},
     # "Nichts ergänzen, nichts aus der Branche herleiten ... Was nicht dasteht,
     # fehlt eben."
     "guide.txt": {"no_invention"},
     # "Keine Selbstbeschreibung des Unternehmens und kein Produktname. Der
     # Begriff muss auch in Meldungen vorkommen, in denen dieses Unternehmen nicht
-    # auftaucht." The original carried no invention rule: it instructs the model
-    # to derive the industry from name and website, which is what no_invention
-    # forbids. See test_industry_does_not_forbid_the_inference_it_asks_for.
-    "industry.txt": {"journalistic_value"},
+    # auftaucht." One clause, which is `press_relevance` and not the whole of
+    # `journalistic_value`: this prompt emits a search term, not a pitch. The
+    # original carried no invention rule either: it instructs the model to derive
+    # the industry from name and website, which is what no_invention forbids. See
+    # test_industry_does_not_forbid_the_inference_it_asks_for.
+    "industry.txt": {"press_relevance"},
     # "an einen Menschen ... nicht an einen Verteiler"; "die pauschale Lesart ist
     # die Falle"; the dash and Werbeton rules; "Du siehst nur Schlagzeilen";
     # "ohne erfundene Personennamen oder Kontaktdaten".
@@ -250,8 +287,8 @@ CARRIED_BEFORE = {
     # "Erfinde keinen Namen und rate nicht"; "leere Liste ... keine Fehlleistung".
     "rivals.txt": {"no_invention", "refusal"},
     # "Keine Selbstbeschreibung ... daraus entsteht kein Impuls, sondern
-    # Eigenwerbung."
-    "themes.txt": {"journalistic_value"},
+    # Eigenwerbung." Same clause, same reason as industry.txt.
+    "themes.txt": {"press_relevance"},
 }
 
 #: Standards a prompt did *not* carry before and now does. Every one is a
@@ -298,8 +335,51 @@ RESTATEMENT_TELLS = {
                      "Nichts aus der Branche herleiten", "Was nicht dasteht, fehlt eben",
                      "Nie erfunden werden"],
     "refusal": ["leere Antwort die richtige", "mehr Zeit als eine leere Spalte",
-                "nach dem dritten Mal ignoriert", "keine Fehlleistung",
-                "erfinde keinen Anlass"],
+                "keine Fehlleistung", "erfinde keinen Anlass"],
+    "false_alarm": ["nach dem dritten Mal ignoriert", "Ist etwas in Ordnung, sag das"],
+    "press_relevance": ["ohnehin nicht schreibt", "Eigenwerbung, kein Impuls"],
+}
+
+#: The other half of DEC-2's guard, and the half RESTATEMENT_TELLS structurally
+#: cannot hold: a standard written out again *in different words*. A paraphrase
+#: appears in no block by definition, so
+#: `test_the_restatement_rule_would_actually_catch_a_restatement` cannot validate
+#: these the way it validates the map above, and the list is a judgement call
+#: rather than a derivation from the blocks.
+#:
+#: It catches the short forms somebody reaches for when they have forgotten the
+#: block exists. It does not catch a careful paraphrase, and no phrase list will:
+#: what actually holds AC #4 for a rewording is CARRIED_BEFORE plus
+#: ADDED_IN_MIGRATION plus CONTRADICTIONS, which account for every clause a
+#: prompt composes rather than for the words it avoids.
+PARAPHRASE_TELLS = {
+    "house_style": ["vermeide Superlative", "verzichte auf Superlative",
+                    "keine Marketingsprache"],
+    "no_invention": ["nichts erfinden", "erfinde nichts", "nicht erfinden"],
+    "refusal": ["lieber nichts als"],
+}
+
+#: Clauses that must not reach a given prompt's model, checked against the
+#: *composed* text rather than the include list. The per-block accounting above
+#: asks "was this key carried before?" and cannot see that a block states four
+#: things where the prompt only ever needed one: that is how industry.txt and
+#: themes.txt, which emit a durable search term, came to compose "Eine Struktur,
+#: die seit Jahren so ist, ist kein Anlass" and two hundred PR letters' worth of
+#: advice about writing to a person. Every entry here is a defect that shipped
+#: once. The fix was to split the block; this is what stops the split being
+#: quietly undone by an include that looks harmless in a diff.
+CONTRADICTIONS = {
+    # Both prompts emit a search term a news filter runs against. A Branchenbegriff
+    # is a long-standing structure by construction, and neither prompt composes a
+    # letter to anybody.
+    "industry.txt": ["Eine Struktur, die seit Jahren so ist, ist kein Anlass",
+                     "zweihundert PR-Anschreiben", "an einen Menschen gerichtet"],
+    "themes.txt": ["Eine Struktur, die seit Jahren so ist, ist kein Anlass",
+                   "zweihundert PR-Anschreiben", "an einen Menschen gerichtet"],
+    # The safety gate, and the one prompt whose empty answer is not a result:
+    # MessageReview defaults to send=True, so "nichts zurückgeben" reads as an
+    # unconditional approval of a letter nobody reviewed.
+    "crosscheck.txt": ["die leere Antwort die richtige", "Nichts zu liefern ist ein Ergebnis"],
 }
 
 
@@ -323,7 +403,11 @@ def test_prompt_declaration_matches_what_it_includes(path: Path):
     """The header is what a person reads to know which standards apply. If it can
     drift from the includes it is worse than nothing, so it cannot drift."""
     raw = path.read_text("utf-8")
-    assert set(brain.declared(raw)) == set(brain.included(raw)), (
+    # Tuples, not sets: the header claims an order ("in the order written") and a
+    # set comparison let three prompts list their standards in an order the
+    # rendered prompt does not use, which is a header that reads as documentation
+    # and is not.
+    assert brain.declared(raw) == brain.included(raw), (
         f"{path.name}: declared {brain.declared(raw)} but includes {brain.included(raw)}"
     )
 
@@ -331,7 +415,9 @@ def test_prompt_declaration_matches_what_it_includes(path: Path):
 @pytest.mark.parametrize("path", _prompt_files(), ids=lambda p: p.name)
 def test_prompt_composes_against_the_shipped_blocks(path: Path):
     composed = brain.compose(path.read_text("utf-8"))
-    assert "{{brain:" not in composed
+    # Not `"{{brain:" not in composed`: that spelling is the one an unresolved
+    # marker is least likely to have, and it would have missed `{{Brain:evidence}}`.
+    assert not re.search(r"\{\{[^}]*brain", composed, re.IGNORECASE)
     assert composed.strip()
 
 
@@ -376,7 +462,8 @@ def test_prompt_does_not_restate_a_standard_inline(path: Path):
     raw = _flat(path.read_text("utf-8"))
     restated = [
         (key, tell)
-        for key, tells in RESTATEMENT_TELLS.items()
+        for tells_by_key in (RESTATEMENT_TELLS, PARAPHRASE_TELLS)
+        for key, tells in tells_by_key.items()
         for tell in tells
         if _flat(tell) in raw
     ]
@@ -388,12 +475,32 @@ def test_prompt_does_not_restate_a_standard_inline(path: Path):
 def test_the_restatement_rule_would_actually_catch_a_restatement():
     """A guard that cannot fail is a guard that is not there. Every tell must
     really occur in the block it belongs to, or this suite is passing on
-    phrases nobody would ever write."""
+    phrases nobody would ever write.
+
+    PARAPHRASE_TELLS is deliberately not checked here: a paraphrase is by
+    definition not in the block, so the same proof is not available for it."""
     shipped = brain.blocks()
     for key, tells in RESTATEMENT_TELLS.items():
         block_text = _flat(shipped[key])
         for tell in tells:
             assert _flat(tell) in block_text, f"{key!r} no longer says {tell!r}"
+
+
+@pytest.mark.parametrize("path", _prompt_files(), ids=lambda p: p.name)
+def test_composed_prompt_carries_no_clause_its_own_task_contradicts(path: Path):
+    """The clause-level half of DEC-2, and the one the include list cannot give.
+    A prompt does not compose a block, it composes every sentence in it, and a
+    block that is right for four prompts can be wrong for the fifth in a way no
+    per-key accounting can see."""
+    composed = _flat(brain.compose(path.read_text("utf-8")))
+    everything = _flat("\n".join(brain.blocks().values()))
+    for clause in CONTRADICTIONS.get(path.name, []):
+        # A reworded block would otherwise retire this guard without anyone
+        # deciding to, and it would keep passing while it did.
+        assert _flat(clause) in everything, f"no block says {clause!r} any more"
+        assert _flat(clause) not in composed, (
+            f"{path.name} composes {clause!r}, which its own task contradicts"
+        )
 
 
 def test_every_block_is_included_by_at_least_one_prompt():

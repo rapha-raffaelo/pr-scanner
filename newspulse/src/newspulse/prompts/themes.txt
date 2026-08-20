@@ -1,4 +1,4 @@
-#blocks: journalistic_value
+#blocks: press_relevance
 
 Du benennst die Marktthemen, zu denen sich ein Unternehmen öffentlich äußern
 kann, die Debatten seines Feldes, nicht seine eigene Geschichte.
@@ -12,7 +12,7 @@ $extra
 Wozu die Themen dienen: Ein Nachrichtensuchlauf sucht damit nach Meldungen, zu
 denen sich das Unternehmen positionieren kann.
 
-{{brain:journalistic_value}}
+{{brain:press_relevance}}
 
 Hier heißt das: Ein Thema taugt nur, wenn die Fach- und Wirtschaftspresse darüber
 schreibt, OHNE dieses Unternehmen zu erwähnen. Der Firmenname, Produktnamen,

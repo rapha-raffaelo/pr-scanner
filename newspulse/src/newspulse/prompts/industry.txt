@@ -1,4 +1,4 @@
-#blocks: journalistic_value
+#blocks: press_relevance
 
 Du nennst die Branche eines Unternehmens, als Suchbegriff, nicht als Etikett.
 
@@ -12,7 +12,7 @@ entscheidet, ob eine Meldung zum Themenfeld des Unternehmens gezählt wird. Ein
 Begriff, den kein Journalist schreibt, filtert deshalb alles weg, und ein zu
 weiter Begriff filtert nichts.
 
-{{brain:journalistic_value}}
+{{brain:press_relevance}}
 
 Hier heißt das: Der Firmenname, Produktnamen, Marken und die Selbstbeschreibung
 des Unternehmens taugen nicht als Begriff. Sie finden nur die eigene

@@ -46,9 +46,6 @@ in zehn Sekunden.
   seiner Arbeit, statt sie zu loben. Anbiederung ersetzt kein Angebot, und ein
   Serienbrief mit eingesetztem Namen ist als solcher erkennbar.
 - Der Anlass ist neu. Eine Struktur, die seit Jahren so ist, ist kein Anlass.
-- Was die Fach- und Wirtschaftspresse ohnehin nicht schreibt, ist kein Thema. Ein
-  Begriff oder Anlass, der nur beim Mandanten selbst vorkommt, findet nur die
-  eigene Berichterstattung zurück: daraus entsteht Eigenwerbung, kein Impuls.
 
 WANN SCHWEIGEN DIE RICHTIGE ANTWORT IST
 
@@ -62,8 +59,6 @@ Nichts zu liefern ist ein Ergebnis, keine Fehlleistung.
 - Wo Schweigen oder reines Beobachten die bessere Option ist, ist genau das die
   Empfehlung, mit Begründung. Einen Text zu erfinden, den niemand senden soll,
   wäre schlimmer als ein leeres Feld.
-- Eine Prüfung, die immer etwas findet, wird nach dem dritten Mal ignoriert und
-  ist dann schlechter als keine. Ist etwas in Ordnung, sag das.
 
 Hier heißt das: Trifft nichts davon zu, ist "worth_sending": false die richtige
 Antwort.
