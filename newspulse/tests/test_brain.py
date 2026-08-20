@@ -26,6 +26,7 @@ Nothing here reaches a model.
 from __future__ import annotations
 
 import datetime as dt
+import importlib
 import os
 import re
 from pathlib import Path
@@ -670,6 +671,48 @@ def test_an_edit_takes_effect_on_the_next_composition_without_a_restart(
 
     after = brain.compose("{{brain:%s}}" % A_BLOCK)
     assert "NEUER MASSSTAB" in after
+    assert after != before
+
+
+#: Every module that turns a shipped prompt file into a template, paired with a
+#: block that prompt includes. The point of the list is that it is exhaustive: an
+#: edit is only "live" if it reaches the prompt a generator actually sends, and a
+#: loader that memoises its template is invisible to any test that asserts
+#: against ``brain.compose`` directly.
+PROMPT_LOADERS = [
+    ("advisor", "no_invention"),
+    ("analyzer", "no_invention"),
+    ("angles", "position"),
+    ("coach", "refusal"),
+    ("guide", "no_invention"),
+    ("industry", "press_relevance"),
+    ("outreach", "journalistic_value"),
+    ("rivals", "refusal"),
+    ("themes", "press_relevance"),
+]
+
+
+@pytest.mark.parametrize(("module_name", "key"), PROMPT_LOADERS)
+def test_an_edit_reaches_every_prompt_a_generator_sends(
+    session, monkeypatch, module_name: str, key: str
+):
+    """AC 2 held where it is written about, not one layer below it.
+
+    ``analyzer._prompt_template`` was ``@lru_cache(maxsize=1)``, which was correct
+    while the blocks only changed with a deployment. Runs happen in threads inside
+    the long-lived web process, so once a block became editable that cache meant
+    an edited standard governed nine prompts immediately and article analysis —
+    the highest-volume path there is — only after a container restart. Asserting
+    against ``brain.compose`` cannot see that; this composes through the loader.
+    """
+    module = importlib.import_module(f"newspulse.{module_name}")
+    monkeypatch.setattr(brain, "_override_source", lambda: brain.stored(session))
+    before = module._prompt_template().template
+
+    brain.edit(session, key, f"NEUER MASSSTAB FUER {key.upper()}\n\nEin Satz.")
+
+    after = module._prompt_template().template
+    assert f"NEUER MASSSTAB FUER {key.upper()}" in after
     assert after != before
 
 

@@ -29,7 +29,6 @@ import os
 import subprocess
 from pathlib import Path
 from collections.abc import Sequence
-from functools import lru_cache
 from importlib import resources
 from string import Template
 from typing import Protocol, runtime_checkable
@@ -94,9 +93,19 @@ class Analyzer(Protocol):
     def analyze(self, client: Client, articles: Sequence[Article]) -> list[Analysis]: ...
 
 
-@lru_cache(maxsize=1)
 def _prompt_template() -> Template:
-    """Load and cache the prompt template shipped in the package."""
+    """Load the prompt template shipped in the package, composed against the brain.
+
+    Deliberately *not* cached, the way the other nine prompt loaders are not.
+    This one used to be ``@lru_cache(maxsize=1)``, which was correct while the
+    blocks only changed with a deployment. BRN-02 made them a field a consultant
+    edits, and runs happen in threads inside the long-lived web process — so a
+    cached template meant an edited standard reached every other prompt on the
+    next generated text and reached article analysis, the highest-volume path
+    there is, only on the next container restart. Re-reading one small file and
+    expanding a handful of markers costs microseconds against a model call that
+    takes seconds.
+    """
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text(encoding="utf-8")
     return Template(brain.compose(text))
 
