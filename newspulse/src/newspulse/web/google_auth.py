@@ -113,8 +113,36 @@ def is_configured() -> bool:
     return bool(client_id() and client_secret() and allowed_emails())
 
 
+# Gmail ignores dots in the local part and everything after a plus, so
+# lucas.neurauter@, lucasneurauter@ and lucas+rauteos@ are one mailbox. Google
+# returns whichever spelling the account was registered with, which is not
+# necessarily the one somebody typed into the allow-list — and an exact string
+# comparison then locks out a person whose address is, to Google, identical.
+_GMAIL_DOMAINS = frozenset({"gmail.com", "googlemail.com"})
+
+
+def canonical(email: str) -> str:
+    """One spelling per mailbox, for comparison only.
+
+    Never stored and never displayed: the address a person sees is the one
+    Google returned. This exists so that two spellings of the same Gmail
+    account do not read as two different people.
+
+    Left alone outside Gmail, where dots and plus signs may genuinely separate
+    mailboxes and folding them would let one address stand in for another.
+    """
+    local, _, domain = (email or "").strip().casefold().partition("@")
+    if domain not in _GMAIL_DOMAINS:
+        return f"{local}@{domain}" if domain else local
+    local = local.partition("+")[0].replace(".", "")
+    # googlemail.com is the same inbox as gmail.com — the domain Google issued
+    # in Germany and the UK for years, so it is the likelier spelling here, not
+    # an edge case.
+    return f"{local}@gmail.com"
+
+
 def allowed_emails() -> frozenset[str]:
-    """The addresses that may sign in, lowercased."""
+    """The addresses that may sign in, as written, lowercased."""
     return frozenset(
         part.strip().casefold()
         for part in config.allowed_emails().split(",")
@@ -123,7 +151,14 @@ def allowed_emails() -> frozenset[str]:
 
 
 def is_allowed(email: str) -> bool:
-    return (email or "").strip().casefold() in allowed_emails()
+    """Whether Google's answer names somebody on the list.
+
+    Compared on the canonical form, so the list may carry any spelling of a
+    Gmail address and still recognise the person Google authenticated.
+    """
+    if not (email or "").strip():
+        return False
+    return canonical(email) in {canonical(a) for a in allowed_emails()}
 
 
 def redirect_uri(base: str | None = None) -> str:
