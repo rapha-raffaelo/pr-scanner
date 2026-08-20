@@ -569,6 +569,27 @@ def test_releasing_twice_keeps_the_first_release(session):
     assert stored.released_by == "lucas"
 
 
+def test_a_release_that_lands_during_a_rewrite_still_stands_on_the_strip(session):
+    """The one way the immutability rule could be lost without anything refusing.
+
+    A release that lands while the worker for that same format is inside its model
+    call leaves ``store`` with no replaceable draft, so the worker's text is
+    inserted *beside* the released row and is the newer of the two. Picked on
+    recency, the released text dropped off the strip, the package counted nothing
+    as released, and every control that refuses on a released row went live again
+    over the record of what actually went out.
+    """
+    client, angle = _mandate(session)
+    stored = _produce(session, client, angle)
+    assets.release(session, stored, by="lucas")
+
+    _produce(session, client, angle)  # the worker's store() lands after it
+
+    standing = assets.current(session, [angle.id])[angle.id][AssetKind.STATEMENT]
+    assert standing.id == stored.id, "the released record was replaced on the surface"
+    assert standing.released is True
+
+
 # --- The surface ---------------------------------------------------------------
 
 
@@ -765,6 +786,29 @@ def test_rewriting_a_draft_writes_that_format_again(factory, web, worker):
     assert worker.wait() == [(client_id, angle_id, (AssetKind.STATEMENT.value,))]
 
 
+def test_a_row_whose_format_the_registry_forgot_does_not_wedge_the_lock(factory, web):
+    """``Asset.kind`` is a plain string column, so a row can outlive its definition.
+
+    ``definition`` is loud on a kind it does not know, and it used to be called
+    between the acquire and the thread that releases: one POST on such a row held
+    the process-wide write lock for good, and every write, re-write and re-check
+    for every mandate was refused with the "busy" sentence until a restart.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = Asset(
+            client_id=client.id, angle_id=angle.id, kind="pressemappe", body="Text."
+        )
+        session.add(row)
+        session.commit()
+        client_id, angle_id, asset_id = client.id, angle.id, row.id
+
+    resp = web.post(f"/client/{client_id}/impulse/{angle_id}/asset/{asset_id}/rewrite")
+
+    assert resp.status_code == 404
+    assert not assets_view._generating.locked(), "the write lock is held forever"
+
+
 def test_rewriting_a_released_text_is_refused(factory, web, worker):
     """The letter's immutability rule: the released text is the record."""
     with factory() as session:
@@ -844,6 +888,66 @@ def test_releasing_through_the_route_records_the_release(factory, web, monkeypat
         again = session.get(Asset, asset_id)
         assert again.released is True
         assert again.released_by == "lucas"
+
+
+def test_the_release_control_is_out_while_a_text_is_being_written(factory, web):
+    """The other half of the rule above, on the page rather than in the store.
+
+    Every other control on this strip goes out while the process-wide lock is
+    held; this one did not, so the only click that could overwrite a released row
+    was the only one still live.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        _produce(session, client, angle)
+        client_id = client.id
+
+    assets_view._generating.acquire()
+    try:
+        page = web.get(f"/client/{client_id}/advice").text
+    finally:
+        assets_view._generating.release()
+
+    forms = re.findall(r'/release"[^<]*<button[^>]*>', page, re.S)
+    assert forms, "the release control is not on the page at all"
+    assert all("disabled" in form for form in forms), forms
+
+
+def test_an_edit_posted_against_a_text_that_was_rewritten_is_refused(factory, web):
+    """``store`` reuses the row, so the stale form posts to the right id.
+
+    An edit panel opened before a re-write would put the words that reader was
+    looking at back over the ones the model has since written, and stamp them
+    ``edited_at`` — a human's approval of a text no human has seen.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        stored = _produce(session, client, angle)
+        opened_on = assets.version(stored)
+        client_id, angle_id, asset_id = client.id, angle.id, stored.id
+        # The re-write the reader never saw: same row, different text.
+        _produce(
+            session,
+            client,
+            angle,
+            body=(
+                "Der zweite Anlauf steht. Die Verwahrung wandert zu den Banken. "
+                "Verfügbarkeit bleibt ein eigener Risikoparameter."
+                f"\n\n{_SPEAKER}"
+            ),
+        )
+
+    web.post(
+        f"/client/{client_id}/impulse/{angle_id}/asset/{asset_id}/edit",
+        data={"title": "", "body": "Was ich vorhin gelesen habe.", "seen": opened_on},
+    )
+
+    with factory() as session:
+        again = session.get(Asset, asset_id)
+        assert again.body.startswith("Der zweite Anlauf steht")
+        assert again.edited_at is None, "and it is not stamped as a human's"
+    body = " ".join(web.get(f"/client/{client_id}/advice").text.split())
+    assert "nicht gespeichert" in body
 
 
 def test_a_release_posted_after_an_edit_is_refused(factory, web):
@@ -1050,6 +1154,32 @@ def test_a_format_whose_commit_failed_does_not_poison_the_rest_of_the_run(
     }
 
 
+def test_a_busy_refusal_recorded_during_a_run_does_not_outlive_it(session, monkeypatch):
+    """The refusal was still on screen beside the text the run went on to write.
+
+    Clicking a format while that same format is being written records the "busy"
+    sentence under its key — and the run had already forgotten that key when it
+    started, so nothing dropped it again. The consultant read "der Auftrag wurde
+    nicht angenommen" over a finished text.
+    """
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.STATEMENT)
+    monkeypatch.setattr(config, "review_configured", lambda: False)
+
+    def _model(prompt, **kwargs):
+        # The second click, landing while this call is out.
+        assets_view._remember(angle.id, fmt.key, assets_view._BUSY)
+        return _statement_reply()
+
+    monkeypatch.setattr(analyzer, "invoke_claude_cli", _model)
+
+    assets_view._write_one(session, client, angle, fmt)
+
+    assert not assets_view._said(angle.id, fmt.key)
+    standing = assets.current(session, [angle.id])[angle.id][fmt.key]
+    assert standing.body.startswith("Die Verwahrung wandert"), "and the text is there"
+
+
 class _sessions:
     """``get_session()`` against the fixture database, as a context manager."""
 
@@ -1096,15 +1226,37 @@ def test_every_german_string_on_the_package_has_an_english_entry():
 
 
 def test_the_strings_the_code_holds_are_translated_too():
-    """The state names and the two refusals are written in Python, not markup."""
-    from newspulse.web.routes.assets_view import _REMEDIES, _STATE_LABELS
+    """The state names and the refusals are written in Python, not in markup.
+
+    Which is exactly why they are the ones that go missing: nothing that reads the
+    template for German strings can see them, so the gate above passes over a page
+    whose every refusal is still in German.
+    """
+    from newspulse.web.routes.assets_view import (
+        _BUSY,
+        _REMEDIES,
+        _STATE_LABELS,
+        _SWEEP_RUNNING,
+    )
 
     for label in _STATE_LABELS.values():
         assert label in i18n.known_keys(), label
     for remedy in _REMEDIES.values():
         assert remedy.label in i18n.known_keys(), remedy.label
-    assert assets.UNREAD_SINCE_EDIT in i18n.known_keys()
-    assert assets.CHECK_UNAVAILABLE in i18n.known_keys()
+    for sentence in (
+        assets.UNREAD_SINCE_EDIT,
+        assets.CHECK_UNAVAILABLE,
+        assets.RELEASED_IS_FINAL,
+        assets.STALE_EDIT,
+        _BUSY,
+        _SWEEP_RUNNING,
+    ):
+        assert sentence in i18n.known_keys(), sentence
+    # ``recheck`` stores CHECK_UNAVAILABLE as a line of its own with the backend's
+    # words under it, and the page renders that field line by line through ``t()``.
+    # Interpolated into one string and printed raw, as it was, the entry above
+    # existed and could never be looked up: an English reader read the German.
+    assert "{{ t(line) }}" in _package_markup(), "the verdict block prints it raw"
 
 
 def test_no_german_string_is_translated_twice():
