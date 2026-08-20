@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Form, HTTPException
@@ -84,12 +85,13 @@ _notes: dict[tuple[int, str], str] = {}
 # operation at a time, is cheaper than reasoning about which ones are safe.
 _state = threading.Lock()
 
-#: How many format notes are kept. Unlike the impulse's refusal, which is bounded
-#: by the number of mandates, this is keyed by impulse — and impulses are made
-#: daily, seven keys each, for the lifetime of the process. Generous enough that
-#: nothing a reader could still be looking at is dropped, finite so the dict is
-#: not a slow leak.
-_MAX_NOTES = 200
+#: How many *impulses* keep their notes. Counted in impulses rather than in notes
+#: because the notes of one impulse are bounded already — one per format plus the
+#: package's own — while impulses are made daily for the lifetime of the process.
+#: A flat cap on notes trimmed in insertion order, which is what this was, let one
+#: busy package of six formats evict a different mandate's fresh refusal off the
+#: page it was still being read on.
+_MAX_NOTE_ANGLES = 40
 
 #: The key under which the package as a whole speaks: a refused second click, or a
 #: worker that died before it reached any single format. Not a format key, so it
@@ -102,6 +104,16 @@ _BUSY = (
     "bezahlt."
 )
 
+#: What the package says when the daily sweep holds the run guard. Refused rather
+#: than waited out: the guard was taken blocking here and nothing else in the app
+#: takes it that way, so a click during a sweep sat on it for the length of a full
+#: run with every button out and a progress notice naming a format that nothing
+#: was writing. A sentence the reader can act on is the honest version of that.
+_SWEEP_RUNNING = (
+    "Es läuft gerade ein Sammellauf. Der Auftrag wurde nicht angenommen: "
+    "warten Sie, bis er durch ist, und klicken Sie dann noch einmal."
+)
+
 
 def _remember(angle_id: int, key: str, reason: str) -> None:
     """Record what the last attempt on one format had to say, and stay bounded."""
@@ -112,8 +124,24 @@ def _remember(angle_id: int, key: str, reason: str) -> None:
         # thing in here.
         _notes.pop((angle_id, key), None)
         _notes[(angle_id, key)] = reason
-        while len(_notes) > _MAX_NOTES:
-            _notes.pop(next(iter(_notes)))
+        _trim()
+
+
+def _trim() -> None:
+    """Drop the impulses nobody has heard from in a while. Caller holds ``_state``.
+
+    Newest first, keeping the formats of the most recently spoken-for impulses
+    together: a package that says six things about itself may cost older impulses
+    their notes, never its neighbour's freshest one.
+    """
+    keep: list[int] = []
+    for angle_id, _key in reversed(_notes):
+        if angle_id not in keep:
+            if len(keep) == _MAX_NOTE_ANGLES:
+                break
+            keep.append(angle_id)
+    for stale in [key for key in _notes if key[0] not in keep]:
+        del _notes[stale]
 
 
 def _forget(angle_id: int, key: str) -> None:
@@ -218,8 +246,30 @@ class Slot:
         return self.asset is not None and assets.needs_recheck(self.asset)
 
     @property
+    def version(self) -> str:
+        """Which text the edit panel was opened on, for the form to post back.
+
+        Not the row id: :func:`newspulse.assets.store` reuses the row when it
+        replaces a draft, so the id is exactly what a stale form and a fresh one
+        have in common.
+        """
+        return assets.version(self.asset) if self.asset is not None else ""
+
+    @property
+    def unchecked(self) -> bool:
+        """Whether nothing has read this text, released or not.
+
+        Drawn beside the release control rather than only in the verdict block
+        below it: releasing is the act grade F is about, and "no second model
+        looked at this" is the one thing the person clicking it has to know at the
+        moment of clicking.
+        """
+        row = self.asset
+        return row is not None and row.check_state is CheckState.UNGEPRUEFT
+
+    @property
     def recheckable(self) -> bool:
-        """Whether "Gegengelesen lassen" may be offered at all.
+        """Whether "Gegenlesen lassen" may be offered at all.
 
         Any unreleased text nothing has read, not only an edited one. The narrower
         rule left a draft whose crosscheck went down — the exact case
@@ -404,15 +454,38 @@ def _done(client_id: int) -> None:
     _generating.release()
 
 
-def _run_write(client_id: int, angle_id: int, kinds: tuple[str, ...]) -> None:
-    """Write these formats in sequence on a worker thread; always let go.
+@contextmanager
+def _sweep_free() -> Iterator[bool]:
+    """The sweep's guard, taken without waiting, and let go however this ends.
 
-    Holds the sweep's guard as well, so the header's wheel covers the wait and a
-    sweep cannot start mid-write and race it on the same articles — the same two
-    reasons the impulse and the letter hold it.
+    Non-blocking like every other caller of that lock. Held blocking, a click
+    during a sweep queued behind a job that fetches 40+ feeds and shells out per
+    batch, while the page said "Wird geschrieben: Pressemitteilung" and kept every
+    button out for the whole of it. The reason for taking the guard at all is
+    unchanged: the header's wheel covers the wait, and a sweep must not start
+    mid-write and race it on the same articles.
     """
+    taken = _run_guard.acquire(blocking=False)
     try:
-        with _run_guard:
+        yield taken
+    finally:
+        if taken:
+            _run_guard.release()
+
+
+def _speaks_for(kinds: tuple[str, ...]) -> str:
+    """Where a refusal about this run belongs: one format speaks in its own pane,
+    a whole package speaks for itself."""
+    return kinds[0] if len(kinds) == 1 else _PACKAGE
+
+
+def _run_write(client_id: int, angle_id: int, kinds: tuple[str, ...]) -> None:
+    """Write these formats in sequence on a worker thread; always let go."""
+    try:
+        with _sweep_free() as free:
+            if not free:
+                _remember(angle_id, _speaks_for(kinds), _SWEEP_RUNNING)
+                return
             with get_session() as session:
                 client = session.get(Client, client_id)
                 angle = session.get(Angle, angle_id)
@@ -457,8 +530,11 @@ def _write_one(
     no spokesperson.
     """
     _forget(angle.id, fmt.key)
+    said = False
 
     def _tell(reason: str) -> None:
+        nonlocal said
+        said = True
         _remember(angle.id, fmt.key, reason)
 
     try:
@@ -483,6 +559,13 @@ def _write_one(
             f"{fmt.name} nicht geschrieben: {exc}. Details stehen im Log.",
         )
         _log.exception("%s failed for %r", fmt.key, client.name)
+    else:
+        if not said:
+            # The forget at the top of this function is not enough. A click on a
+            # format while that same format is being written records the "busy"
+            # refusal *after* that opening forget, so without this the refusal is
+            # still standing beside the text the run went on to write.
+            _forget(angle.id, fmt.key)
 
 
 def _run_recheck(client_id: int, angle_id: int, asset_id: int) -> None:
@@ -498,7 +581,12 @@ def _run_recheck(client_id: int, angle_id: int, asset_id: int) -> None:
     under a key no page ever asks for.
     """
     try:
-        with _run_guard:
+        with _sweep_free() as free:
+            if not free:
+                # Under the package's own key: the row that would name the format
+                # is exactly what has not been loaded yet.
+                _remember(angle_id, _PACKAGE, _SWEEP_RUNNING)
+                return
             with get_session() as session:
                 asset = session.get(Asset, asset_id)
                 client = session.get(Client, client_id)
@@ -554,6 +642,23 @@ def _asset_or_404(
     return asset
 
 
+def _writable_asset_or_404(
+    session: Session, client_id: int, angle_id: int, asset_id: int
+) -> Asset:
+    """The text, and that something still knows how to write and check its format.
+
+    ``Asset.kind`` is a plain string column with no CHECK constraint, so a row can
+    outlive the definition it was written against — a format retired from the
+    registry, a hand-inserted row. Both acts below go straight to
+    ``assets.definition``, which is loud on a kind it does not know, and the same
+    404 ``write_assets`` gives for an unknown ``kind`` is the honest answer here.
+    """
+    asset = _asset_or_404(session, client_id, angle_id, asset_id)
+    if asset.kind not in assets.REGISTRY:
+        raise HTTPException(status_code=404, detail="Format not found")
+    return asset
+
+
 def _spawn(
     target: Callable[..., None],
     args: tuple[object, ...],
@@ -571,6 +676,13 @@ def _spawn(
     what the run will write, in order: its first format names the notice, and its
     length is what the "3 von 6" counts.
     """
+    # Looked up before the lock is taken, and that order is the whole point.
+    # ``definition`` is loud on a kind the registry does not know — deliberately,
+    # since ``Asset.kind`` is a plain string column with no CHECK constraint — and
+    # only the worker releases ``_generating``. A raise between the acquire and
+    # the thread therefore wedged the lock for the life of the process: every
+    # write, re-write and re-check for every mandate refused until a restart.
+    label = assets.definition(kinds[0]).name
     if not _generating.acquire(blocking=False):
         _remember(angle_id, refuse_under, _BUSY)
         return
@@ -579,12 +691,7 @@ def _spawn(
     # doing would carry no notice, and then nothing would ever ask again.
     _announce(
         client_id,
-        Progress(
-            angle_id=angle_id,
-            label=assets.definition(kinds[0]).name,
-            done=0,
-            total=len(kinds),
-        ),
+        Progress(angle_id=angle_id, label=label, done=0, total=len(kinds)),
     )
     try:
         threading.Thread(target=target, args=args, daemon=True, name=name).start()
@@ -607,8 +714,7 @@ def _start(client_id: int, angle_id: int, kinds: tuple[str, ...]) -> None:
         angle_id=angle_id,
         kinds=kinds,
         name=f"newspulse-assets-{angle_id}",
-        # One format speaks in its own pane; a whole package speaks for itself.
-        refuse_under=kinds[0] if len(kinds) == 1 else _PACKAGE,
+        refuse_under=_speaks_for(kinds),
     )
 
 
@@ -675,7 +781,7 @@ def rewrite_asset(
     released text is the record of what went out, and a record that a later click
     can overwrite is not one.
     """
-    asset = _asset_or_404(session, client_id, angle_id, asset_id)
+    asset = _writable_asset_or_404(session, client_id, angle_id, asset_id)
     if asset.released:
         _remember(angle_id, asset.kind, assets.RELEASED_IS_FINAL)
         return _back(client_id, angle_id)
@@ -690,6 +796,7 @@ def edit_asset(
     asset_id: int,
     title: str = Form(""),
     body: str = Form(""),
+    seen: str = Form(""),
     session: Session = Depends(get_db),
 ) -> Response:
     """Store the consultant's version of this text.
@@ -698,6 +805,13 @@ def edit_asset(
     the boilerplate because this release is not going out with one has made an
     editorial decision, and a tool that answered it by refusing to save his work
     would be wrong about the text and about who is accountable for it.
+
+    ``seen`` is which text the panel was opened on. A re-write replaces the draft
+    in place, so an edit panel left open across one posts back to the same row and
+    would put the words on that reader's screen over the ones the model has since
+    written — and stamp them ``edited_at``, which reads as a human's approval of a
+    text no human has seen. The poller already refuses to swap an open panel away;
+    this is the other half, for the post it cannot see coming.
     """
     asset = _asset_or_404(session, client_id, angle_id, asset_id)
     if not body.strip():
@@ -708,7 +822,7 @@ def edit_asset(
         )
         return _back(client_id, angle_id)
     try:
-        assets.edit(session, asset, title=title, body=body)
+        assets.edit(session, asset, title=title, body=body, seen=seen)
     except assets.Refused as exc:
         _remember(angle_id, asset.kind, str(exc))
         return _back(client_id, angle_id)
@@ -725,7 +839,7 @@ def recheck_asset(
     session: Session = Depends(get_db),
 ) -> Response:
     """Have the second model read the text again, so it can be released."""
-    asset = _asset_or_404(session, client_id, angle_id, asset_id)
+    asset = _writable_asset_or_404(session, client_id, angle_id, asset_id)
     if asset.released:
         _remember(angle_id, asset.kind, assets.RELEASED_IS_FINAL)
         return _back(client_id, angle_id)

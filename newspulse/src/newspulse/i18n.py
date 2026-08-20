@@ -443,8 +443,33 @@ _EN: dict[str, str] = {
     "wer ihn jetzt freigibt, gibt ihn ungelesen frei.":
         "The second model could not read this text. It is unchecked — "
         "releasing it now means releasing it unread.",
+    "Ungeprüft: wer jetzt freigibt, gibt ungelesen frei.":
+        "Unchecked: releasing it now means releasing it unread.",
     "Zu diesem Anlass gibt es eine These und noch keinen Text. Sieben Formate stehen bereit.":
         "This occasion has a thesis and no text yet. Seven formats are ready.",
+    # The refusals the routes and the acts hold. Written in Python rather than in
+    # markup and rendered as ``asset_notes`` / ``slot.note`` / ``slot.hint``, which
+    # is why they were the ones missing: nothing that reads the template for German
+    # strings can see them.
+    "Es wird gerade ein Text geschrieben. Der Auftrag wurde nicht angenommen: "
+    "warten Sie, bis der laufende steht, sonst wird derselbe Aufruf zweimal "
+    "bezahlt.":
+        "A text is being written right now. The request was not accepted: wait "
+        "for the running one to finish, or the same call gets paid for twice.",
+    "Es läuft gerade ein Sammellauf. Der Auftrag wurde nicht angenommen: "
+    "warten Sie, bis er durch ist, und klicken Sie dann noch einmal.":
+        "A collection run is going on right now. The request was not accepted: "
+        "wait for it to finish and click again.",
+    "Dieser Text ist freigegeben. Freigegebene Texte werden weder geändert noch "
+    "ersetzt, weil sie festhalten, was tatsächlich hinausgegangen ist.":
+        "This text is released. Released texts are neither changed nor replaced, "
+        "because they record what actually went out.",
+    "Der Text wurde neu geschrieben, während dieses Formular offen war. Die "
+    "Änderung wurde nicht gespeichert, damit sie den neuen Text nicht "
+    "überschreibt. Bitte den jetzt angezeigten Text bearbeiten.":
+        "The text was written again while this form was open. The change was not "
+        "stored, so that it cannot overwrite the new text. Please edit the text "
+        "as it is shown now.",
     "Paket schreiben": "Write the package",
     "Noch nicht schreibbar.": "Not writable yet.",
     "Profil ergänzen": "Fill in the profile",

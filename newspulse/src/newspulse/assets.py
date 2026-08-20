@@ -2267,6 +2267,12 @@ def store(
     never replaced, because its text is the record of what actually went out; a
     re-write becomes a new row beside it.
 
+    The surface never asks for that second row: every control that would write a
+    format refuses once the format is released, so it can only be reached by a
+    release landing while a worker is inside its model call. When it is,
+    :func:`current` keeps the released row standing, which is what stops that
+    race from quietly demoting a released text back to a draft.
+
     Deliberately not the place the structural contract is enforced. :func:`write`
     has already refused anything that missed it, and the other text that arrives
     here is one a human edited. A consultant who deletes the boilerplate because
@@ -2398,9 +2404,27 @@ UNREAD_SINCE_EDIT = (
 #: release exactly where a human had taken responsibility for the words, while
 #: still permitting it on an unchecked draft only a model had ever seen. The
 #: sentence says what the reader is deciding.
+#:
+#: Stored as a line of its own, with whatever the backend said underneath it. The
+#: two belong to different readers: this sentence is the consultant's and is
+#: translated, and the exception text is the operator's and is whatever the
+#: backend wrote. Run together as one interpolated string neither worked — the
+#: page printed the lot raw, so the English entry for this sentence could never
+#: be looked up and an English reader read the German.
 CHECK_UNAVAILABLE = (
     "Das Zweitmodell konnte diesen Text nicht lesen. Er ist ungeprüft — "
     "wer ihn jetzt freigibt, gibt ihn ungelesen frei."
+)
+
+#: Why an edit posted from a page the text has moved on from is not stored.
+#: :func:`store` reuses the row when it replaces a draft, so an edit panel opened
+#: before a re-write posts back to the same id and would put the words the reader
+#: was looking at over the ones the model has since written — and stamp the
+#: result ``edited_at``, which reads as a human having approved them.
+STALE_EDIT = (
+    "Der Text wurde neu geschrieben, während dieses Formular offen war. Die "
+    "Änderung wurde nicht gespeichert, damit sie den neuen Text nicht "
+    "überschreibt. Bitte den jetzt angezeigten Text bearbeiten."
 )
 
 
@@ -2454,7 +2478,24 @@ def releasable(asset: Asset) -> bool:
     return not asset.released and not needs_recheck(asset)
 
 
-def edit(session: Session, asset: Asset, *, title: str, body: str) -> Asset:
+def _stamp(when: dt.datetime | None) -> str:
+    return when.isoformat() if when is not None else ""
+
+
+def version(asset: Asset) -> str:
+    """Which text this is, as one token an edit form can post back.
+
+    Both timestamps, because both acts replace the words in the box: a re-write
+    stamps ``generated_at``, a save stamps ``edited_at``. The row id says nothing
+    about either — :func:`store` reuses the row when it replaces a draft — so the
+    id is exactly what a stale form and a fresh one have in common.
+    """
+    return f"{_stamp(asset.generated_at)}/{_stamp(asset.edited_at)}"
+
+
+def edit(
+    session: Session, asset: Asset, *, title: str, body: str, seen: str = ""
+) -> Asset:
     """Store a human's edit, and mark the text as one a human has been through.
 
     Two effects, and the second is the point. The edit is kept, and both verdicts
@@ -2462,10 +2503,17 @@ def edit(session: Session, asset: Asset, *, title: str, body: str) -> Asset:
     them would put a green "keine Einwände" over a paragraph the checker never
     saw, which is the one thing this whole column exists to prevent.
 
-    A released text is refused: its words are the record of what went out.
+    A released text is refused: its words are the record of what went out. So is
+    an edit whose ``seen`` token no longer matches :func:`version` — the text
+    moved on while the panel was open, and saving would put the old words back
+    under a human's timestamp. An empty ``seen`` is a caller that does not carry
+    the token and gets the rule it had before: the check is a guard on the form,
+    not a second lock on the row.
     """
     if asset.released:
         raise Refused(RELEASED_IS_FINAL)
+    if seen and seen != version(asset):
+        raise Refused(STALE_EDIT)
     # The house rule reaches a human's words too. It is a rule about what leaves
     # the building, not about who typed it, and a page that enforced it on the
     # model's paragraph and not on the one edited underneath would ship the tell
@@ -2520,7 +2568,10 @@ def recheck(
     except _CHECK_FAULTS as exc:
         _log.warning("re-check of %s for %r failed: %s", asset.kind, client.name, exc)
         _apply_checks(asset, None)
-        asset.review = f"{CHECK_UNAVAILABLE} ({exc})"
+        # The sentence on its own line, the backend's words under it. The page
+        # renders this field line by line through the translator, so the reader's
+        # half is looked up and the operator's half passes through as written.
+        asset.review = f"{CHECK_UNAVAILABLE}\n{exc}"
         # Never ok: an unread text must draw with the warning dot, not the clean
         # one, whatever the reader then decides to do about it.
         asset.review_ok = False
@@ -2600,22 +2651,39 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Asset]]:
 def current(session: Session, angle_ids: list[int]) -> dict[int, dict[str, Asset]]:
     """The text that stands for each format on each impulse, keyed twice.
 
-    "Stands" is the newest row of that kind, which is the one the strip shows and
-    the one the buttons act on. There can be more than one — a released text keeps
-    its row when a later draft is written beside it — and the older ones are the
-    record of what went out, not the working copy.
+    "Stands" is the released row of that kind if one exists and the newest row
+    otherwise, which is the one the strip shows and the one the buttons act on.
+    There can be more than one row — a released text keeps its row when a draft
+    is written beside it — and a released one is never the loser of that pair:
+    it is the record of what went out, and the strip is where the immutability
+    rule is enforced.
     """
     return {
-        angle_id: _newest_per_kind(rows)
+        angle_id: _standing_per_kind(rows)
         for angle_id, rows in by_angle(session, angle_ids).items()
     }
 
 
-def _newest_per_kind(rows: list[Asset]) -> dict[str, Asset]:
-    """The first row of each kind, given rows already ordered newest first."""
+def _standing_per_kind(rows: list[Asset]) -> dict[str, Asset]:
+    """What stands for each kind: the released row if there is one, else the newest.
+
+    Released beats recent, and that is the immutability rule surviving a race
+    rather than a preference. A release that lands while a re-write of the same
+    format is inside its model call leaves :func:`store` with no replaceable
+    draft, so the worker's text is inserted *beside* the released row and is the
+    newer of the two. Picked on recency alone, the released text would drop off
+    the strip, the package would count nothing as released, and every control
+    that refuses on a released row — re-write, re-check, "Fehlende schreiben" —
+    would go live again over the record of what actually went out.
+
+    ``rows`` arrives newest first, so the newest row of a kind is taken and only
+    a released one displaces it.
+    """
     per: dict[str, Asset] = {}
     for row in rows:
-        per.setdefault(row.kind, row)
+        standing = per.get(row.kind)
+        if standing is None or (row.released and not standing.released):
+            per[row.kind] = row
     return per
 
 
@@ -2626,6 +2694,7 @@ __all__ = [
     "MAX_TALKING_POINTS",
     "REGISTRY",
     "RELEASED_IS_FINAL",
+    "STALE_EDIT",
     "UNREAD_SINCE_EDIT",
     "AssetState",
     "Checkable",
@@ -2661,5 +2730,6 @@ __all__ = [
     "store",
     "today",
     "validate",
+    "version",
     "write",
 ]

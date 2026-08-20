@@ -263,8 +263,13 @@
                reason for them. #}
             <p class="pack__off">{{ t("Es wird gerade ein anderer Text geschrieben — die Knöpfe sind so lange aus.") }}</p>
           {% endif %}
+          {# Through the translator: the refusals the routes hold are fixed German
+             sentences written in Python, and an untranslated one is the only
+             German paragraph on an English page. A note built around an exception
+             message is not in the table and passes through as written, which is
+             the right answer for it. #}
           {% if asset_notes.get(angle.id) %}
-            <p class="sect__empty sect__refusal">{{ asset_notes[angle.id] }}</p>
+            <p class="sect__empty sect__refusal">{{ t(asset_notes[angle.id]) }}</p>
           {% endif %}
 
           {% if not pack.written %}
@@ -338,10 +343,22 @@
                           <button type="submit" class="btn btn--ghost btn--sm"{% if busy %} disabled{% endif %}>{{ t("Gegenlesen lassen") }}</button>
                         </form>
                       {% endif %}
+                      {# Out while anything is being written, like every other
+                         control on this strip. A live one took the click, and a
+                         release landing while the worker for that same format was
+                         inside its model call left the worker's text standing
+                         beside a released row it knew nothing about. #}
                       {% if slot.releasable %}
                         <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/release">
-                          <button type="submit" class="btn btn--sm">{{ t("Freigeben") }}</button>
+                          <button type="submit" class="btn btn--sm"{% if busy %} disabled{% endif %}>{{ t("Freigeben") }}</button>
                         </form>
+                        {# Grade F is a human's decision, not a model's, and this
+                           is the state in which the human is the only reader the
+                           text has had. Said beside the button rather than only in
+                           the verdict block further down. #}
+                        {% if slot.unchecked %}
+                          <span class="panel-hint">{{ t("Ungeprüft: wer jetzt freigibt, gibt ungelesen frei.") }}</span>
+                        {% endif %}
                       {% endif %}
                     {% endif %}
                   </span>
@@ -370,8 +387,16 @@
                      thing as no second model being configured — and saying the
                      wrong one of the two sends the reader to a settings page that
                      is already filled in. The sentence stored on the row says
-                     which, and that whoever releases now releases unread. #}
-                  <p class="crosscheck crosscheck--hold">{{ asset.review }}</p>
+                     which, and that whoever releases now releases unread.
+
+                     Line by line through the translator: the first line is the
+                     stored sentence and is in the table, the line under it is
+                     whatever the backend said and is the operator's, not the
+                     consultant's. Printed as one interpolated string the lookup
+                     never matched and an English reader read the German. #}
+                  <p class="crosscheck crosscheck--hold">
+                    {% for line in asset.review.split("\n") if line.strip() %}{{ t(line) }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                  </p>
                 {% else %}
                   <p class="crosscheck crosscheck--none">
                     {{ t("Nicht gegengelesen — es ist kein Zweitmodell hinterlegt.") }}
@@ -395,7 +420,7 @@
                   <p class="crosscheck crosscheck--hold">{{ t(slot.hint) }}</p>
                 {% endif %}
                 {% if slot.note %}
-                  <p class="sect__empty sect__refusal">{{ slot.note }}</p>
+                  <p class="sect__empty sect__refusal">{{ t(slot.note) }}</p>
                 {% endif %}
 
                 {# Editing is why this surface exists and not a card with a copy
@@ -404,6 +429,11 @@
                   <details class="fmtedit">
                     <summary>{{ t("Bearbeiten") }}</summary>
                     <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/edit">
+                      {# Which text this panel was opened on. A re-write replaces
+                         the draft in place, so without this a panel left open
+                         across one posts the old words back over the new ones and
+                         stamps them as a human's. #}
+                      <input type="hidden" name="seen" value="{{ slot.version }}">
                       <label>
                         <span>{{ t(slot.fmt.title_label) }}</span>
                         <input type="text" name="title" value="{{ asset.title }}">
@@ -436,7 +466,7 @@
                     </p>
                   {% endif %}
                   {% if slot.note %}
-                    <p class="sect__empty sect__refusal">{{ slot.note }}</p>
+                    <p class="sect__empty sect__refusal">{{ t(slot.note) }}</p>
                   {% endif %}
                 </div>
               {% endif %}
