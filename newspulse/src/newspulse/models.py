@@ -114,6 +114,41 @@ class RunStatus(StrEnum):
     FAILED = "failed"
 
 
+class AssetKind(StrEnum):
+    """The formats an impulse can become, beside the letter.
+
+    Named here so the six are spelled once rather than quoted in five modules and
+    three templates. What this is *not* is the authority on which formats exist:
+    that is the registry in :mod:`newspulse.assets`, and ``assets.kind`` is a
+    plain string column for exactly that reason. A CHECK constraint here would
+    make a seventh format a schema migration, when the whole point of holding a
+    format as data is that a seventh is a definition and a prompt file.
+
+    The letter is deliberately not in here. It has a recipient and its own
+    ledger, and it stays in :class:`Outreach`.
+    """
+
+    PRESSEMITTEILUNG = "pressemitteilung"
+    STATEMENT = "statement"
+    QA = "qa"
+    TALKING_POINTS = "talking_points"
+    GASTBEITRAG = "gastbeitrag"
+    INTERVIEW_BRIEFING = "interview_briefing"
+
+
+class CheckState(StrEnum):
+    """Where a generated text stands with the two models that read it.
+
+    Three states rather than a boolean, for the reason the outreach review
+    columns exist: "nothing objected" and "nothing looked" must never render
+    alike. The second is the one that ships a fabricated quote.
+    """
+
+    UNGEPRUEFT = "ungeprueft"
+    EINWAND = "einwand"
+    GEPRUEFT = "geprueft"
+
+
 def _utcnow() -> dt.datetime:
     """Timezone-aware UTC now, used as a Python-side column default."""
     return dt.datetime.now(dt.UTC)
@@ -790,9 +825,117 @@ class Outreach(Base):
     review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class Asset(Base):
+    """One generated text in one format: a release, a statement, a Q&A, a briefing.
+
+    A new table rather than six more columns on :class:`Outreach`, and the
+    reason is what those columns *are*. A letter's ``journalist`` and ``outlet``
+    are its recipient; five of the six formats here have no recipient at all. On
+    one shared table most rows would carry mostly empty columns and every query
+    would have to guess which shape it was reading. The letter keeps its table
+    and its ledger, and the two are read together where both belong.
+
+    ``angle_id`` is not decoration: it is what makes a text traceable back to
+    the position it argues and the coverage under that position. A stored text
+    whose impulse is unknown cannot be checked by anyone.
+
+    ``kind`` names the format definition this row was written against. It is a
+    string rather than a DB enum on purpose: the registry in
+    :mod:`newspulse.assets` decides which formats exist, and a CHECK constraint
+    here would turn every new format into a schema migration. A kind the registry
+    does not know fails loudly at the lookup, which is where it should.
+    """
+
+    __tablename__ = "assets"
+    __table_args__ = (
+        # One unreleased draft per format per impulse, enforced rather than
+        # assumed. newspulse.assets.store() looks for the draft it replaces and
+        # then inserts, and the daily run writes formats from a background
+        # worker: two writes that interleave between the read and the insert
+        # leave two drafts of the same release on one impulse, and the page
+        # renders both with no way to tell which one anybody meant. Partial, so
+        # the released rows beside them stay untouched: those are the record of
+        # what went out, and there can be several.
+        Index(
+            "ux_assets_angle_kind_unreleased",
+            "angle_id",
+            "kind",
+            unique=True,
+            sqlite_where=text("released_at IS NULL"),
+            postgresql_where=text("released_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    angle_id: Mapped[int] = mapped_column(
+        ForeignKey("angles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    # Indexed for the same reason as the letter's: a day's texts are asked for
+    # on every render of the Today column.
+    generated_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow, index=True
+    )
+    #: Headline, subject line or briefing title, depending on the format. Empty
+    #: for the formats that have no title of their own.
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Who the text is attributed to, for the formats that quote a person. Never
+    #: invented: :func:`newspulse.assets.write` copies it out of the profile field
+    #: the format named and discards whatever the model answered, and a format that
+    #: needs it will not be written without it.
+    speaker: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    #: When a human last changed the text. ``None`` means the model's words are
+    #: still exactly as they came back, which is a different artefact from one a
+    #: person has been through.
+    edited_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: The second model's verdict, one concern per line. The three columns mirror
+    #: :class:`Outreach` exactly, so a letter and a release mean the same thing by
+    #: "gegengelesen".
+    review: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    reviewed_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: The same three for the check against the mandate's own guide. Kept apart
+    #: from the crosscheck because a No-Go is not a judgement about the world:
+    #: the client wrote it down, and it must never be averaged into a style note.
+    guide_review: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    guide_reviewed_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default=""
+    )
+    guide_review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: The human release. Grade F, without exception: nothing leaves this tool
+    #: because a model was content with it.
+    released_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+    released_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+
+    @property
+    def released(self) -> bool:
+        return self.released_at is not None
+
+    @property
+    def check_state(self) -> CheckState:
+        """Unchecked, objected to, or clean. Never clean by omission.
+
+        Both checkers silent means nothing has read this text, and that is the
+        one state the page must not draw as a clean bill of health.
+        """
+        if not (self.reviewed_by or self.guide_reviewed_by):
+            return CheckState.UNGEPRUEFT
+        if not self.review_ok or not self.guide_review_ok:
+            return CheckState.EINWAND
+        return CheckState.GEPRUEFT
+
+
 __all__ = [
     "Base",
     "Category",
+    "CheckState",
+    "AssetKind",
     "RunStatus",
     "Tonality",
     "TriageState",
@@ -804,6 +947,7 @@ __all__ = [
     "Angle",
     "ClientFact",
     "Outreach",
+    "Asset",
     "TopicHit",
     "GuideSource",
     "Run",
