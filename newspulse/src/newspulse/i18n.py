@@ -794,6 +794,36 @@ _EN: dict[str, str] = {
     # word ClientFact.filled_by uses, and translated for the same reason: it is a
     # value the interface renders, not a stored German noun the reader must parse.
     "mensch": "human",
+    # --- The stamp: which standards a generated text was written under ---------
+    # Two states and they must not blur. A number is a version somebody can open
+    # and read; "unbekannt" is a text from before the tool recorded any, and it
+    # is deliberately not rendered as version zero — zero is a true claim (the
+    # standards have never been changed here) that an old row cannot make.
+    "unbekannt": "unknown",
+    # Only ever rendered when the cross-check read different standards from the
+    # letter it read: two model calls, and a block edited between them.
+    "gegengelesen unter": "cross-checked under",
+    "vor der Aufzeichnung der Maßstäbe entstanden":
+        "written before the standards were recorded",
+    # What the reader is looking at after following a stamp. The version counts
+    # changes across the whole house and resolves to the single change that
+    # produced it, so this page answers the question for one block and shows the
+    # others as they are today. Said outright, because a page that let the reader
+    # believe it was showing "the standards at version N" would be a better lie
+    # than no link at all.
+    "Von einem Text hierher gekommen:": "Followed here from a text:",
+    "ist die unten markierte Änderung an diesem Block.":
+        "is the change marked below, on this block.",
+    # A revert is a change too, and a text stamped with one was written under the
+    # shipped wording rather than under an override. Same sentence otherwise.
+    "ist die unten markierte Rücksetzung: der Text entstand unter der "
+    "ausgelieferten Vorgabe dieses Blocks.":
+        "is the reset marked below: the text was written under this block's "
+        "shipped default.",
+    "Die Fassung zählt alle Änderungen am ganzen Haus — die übrigen Blöcke "
+    "stehen in ihrem heutigen Wortlaut, nicht in dem von damals.":
+        "The version counts every change across the whole house, so the other "
+        "blocks are shown as they read today and not as they read then.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

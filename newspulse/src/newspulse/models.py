@@ -601,6 +601,14 @@ class Advisory(Base):
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
     )
+    #: The standards this brief was written under, on the same terms as
+    #: :attr:`Angle.brain_version`. Stamped even though the advisor has no page
+    #: of its own any more: it composes the same blocks and stores what a model
+    #: wrote, and a stamp that is only on the convenient generators is a stamp
+    #: nobody can trust the absence of.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
 
 
 class GuideSource(Base):
@@ -752,6 +760,20 @@ class Angle(Base):
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
     )
+    #: Which standards this draft was written under: the portfolio-wide brain
+    #: version (:func:`newspulse.brain.version`) as it stood when the *prompt* was
+    #: composed, not when the row was saved. A consultant editing a standard while
+    #: a sweep is running must not retroactively change what a finished text
+    #: claims to have been written under.
+    #:
+    #: NULL means "unknown", which is a different answer from ``0``. Zero is a
+    #: true statement — the standards have never been changed on this install —
+    #: and a row written before this column existed cannot make it. So the column
+    #: is nullable with no server default, and the interface says "unbekannt"
+    #: rather than claiming standards that were never recorded.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
 
 
 class ClientFact(Base):
@@ -841,6 +863,22 @@ class Outreach(Base):
     reviewed_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     #: The checker's own send/hold flag. True unless it objected.
     review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: The standards this letter was written under, on the same terms as
+    #: :attr:`Angle.brain_version`: captured with the prompt, NULL for a letter
+    #: from before there was anything to stamp. Its own column rather than a read
+    #: through ``angle_id`` — a letter is written days after the impulse it comes
+    #: from, and the house may have changed its mind in between.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    #: The standards the *cross-check* was composed under, which is not always the
+    #: letter's. :func:`newspulse.outreach.crosscheck` builds its own brain prompt
+    #: seconds after the letter, and an edit landing between the two model calls
+    #: would otherwise file the checker's text under a version it never read.
+    #: NULL for an unchecked letter and for every row from before the column.
+    review_brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
 
 
 __all__ = [

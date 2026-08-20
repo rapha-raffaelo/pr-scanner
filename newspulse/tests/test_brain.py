@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib
+import json
 import os
 import re
 from contextlib import contextmanager
@@ -35,17 +36,36 @@ from string import Template
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import brain, i18n, prose
-from newspulse.models import Base, BrainOverride
+from newspulse import advisor, angles, brain, config, i18n, outreach, prose
+from newspulse.models import (
+    Advisory,
+    Analysis,
+    Angle,
+    Article,
+    Base,
+    BrainOverride,
+    Category,
+    Client,
+    Outreach,
+)
+from newspulse.pitch import PitchTarget
+from newspulse.schemas import AngleDraft, PersonalMessage
 from newspulse.web.app import create_app, get_db
 
 PROMPTS = Path(brain.__file__).parent / "prompts"
 GOLDEN = Path(__file__).parent / "fixtures" / "prompts"
+
+#: The one place the provenance line is written, imported by every page that
+#: renders a generated text. A second copy of it somewhere is the drift this
+#: partial exists to prevent, so the tests read it from here.
+_STAMP_PARTIAL = (
+    Path(brain.__file__).parent / "web/templates/partials/brain_stamp.html"
+)
 
 #: A block set with no relationship to the shipped one, so a test using it fails
 #: if resolution ever quietly falls back to the real files.
@@ -1293,3 +1313,788 @@ def test_the_fallback_author_is_used_when_the_install_has_no_named_user(monkeypa
 
     monkeypatch.setattr(brain.config, "AUTH_USER", "lucas")
     assert brain.editor() == "lucas"
+
+
+# --------------------------------------------------------------------------
+# The stamp: every generated text says which standards it was written under.
+#
+# What the ledger does for the human act, this does for the machine one. The
+# tests below are the reason it is worth anything: the enumeration holds it to
+# *every* generator rather than the two with a page, and the capture tests hold
+# it to the moment the prompt was composed rather than the moment a row was
+# written, which are minutes and one consultant's edit apart.
+# --------------------------------------------------------------------------
+
+#: Material old enough to be real coverage and new enough for every window the
+#: generators look back over (the advisor's month, the angle's week).
+_RECENTLY = dt.datetime.now(dt.UTC) - dt.timedelta(days=2)
+
+
+def _a_mandate(session) -> Client:
+    client = Client(
+        name="Alpha AG",
+        aliases=[],
+        industry="Neobroker",
+        country="DE",
+        keywords=["Verwahrung"],
+        alert_topics=["Verwahrung"],
+    )
+    session.add(client)
+    session.commit()
+    return client
+
+
+def _an_article(session, slug: str) -> Article:
+    article = Article(
+        title=f"Verwahrung im Wandel ({slug})",
+        url=f"https://ex.de/{slug}",
+        source="Börsen-Zeitung",
+        published_at=_RECENTLY,
+        fetched_at=_RECENTLY,
+        summary_text=None,
+        language="de",
+        title_hash=slug[:10],
+    )
+    session.add(article)
+    session.commit()
+    return article
+
+
+def _own_coverage(session, client: Client) -> None:
+    """One analysed story about the mandate, which is what the advisor reads."""
+    article = _an_article(session, "eigene")
+    session.add(
+        Analysis(
+            article_id=article.id,
+            client_id=client.id,
+            summary="Alpha AG baut die Verwahrung aus.",
+            category=Category.PRODUKT,
+            relevance_score=6,
+            importance_score=6,
+            is_alert=False,
+        )
+    )
+    session.commit()
+
+
+def _angle_reply(**over) -> str:
+    payload = {
+        "worth_sending": True,
+        "subject": "Verfügbarkeit als Risikoparameter",
+        "message": "Zwei Absätze Positionierung.",
+        "context": "Laut Börsen-Zeitung steht die Verwahrung vor einem Umbau.",
+        "credibility": "Der Mandant betreibt die Infrastruktur selbst.",
+        "thesis": "Verwahrung ist ein eigener Risikoparameter.",
+        "overclaim": "Fremdverwahrung ist erledigt.",
+        "statements": ["Verwahrung ist Infrastruktur."],
+        "evidence": [0],
+    }
+    payload.update(over)
+    return json.dumps(payload)
+
+
+def _letter_reply() -> str:
+    return json.dumps(
+        {
+            "subject": "Verwahrung im Umbau",
+            "message": "Sehr geehrte Frau Nelson, zwei Absätze.",
+            "hook": "Sie haben zuletzt über Verwahrung geschrieben.",
+        }
+    )
+
+
+def _brief_reply() -> str:
+    return json.dumps({"situation": "Ruhige Woche.", "suggestions": []})
+
+
+def _never_called(*_args, **_kwargs) -> str:
+    """An ``invoke`` for the paths that must not reach a model at all."""
+    raise AssertionError("no prompt should have been composed here")
+
+
+def _store_an_angle(session) -> Angle:
+    """Drive ``angles`` the way the sweep does: suggest, then store."""
+    client = _a_mandate(session)
+    material = [(_an_article(session, "markt"), "Themen-Radar: Alpha AG")]
+    result = angles.suggest(
+        session, client, material, invoke=lambda *a, **k: _angle_reply()
+    )
+    assert result is not None
+    draft, numbered = result
+    return angles.store(session, client, draft, numbered)
+
+
+def _store_a_letter(session) -> Outreach:
+    """Drive ``outreach`` the way the button does: draft, then store."""
+    client = _a_mandate(session)
+    angle = Angle(
+        client_id=client.id,
+        generated_at=dt.datetime.now(dt.UTC),
+        subject="Verfügbarkeit als Risikoparameter",
+        message="Zwei Absätze Positionierung.",
+        context="Laut Börsen-Zeitung steht die Verwahrung vor einem Umbau.",
+        thesis="Verwahrung ist ein eigener Risikoparameter.",
+        overclaim="Fremdverwahrung ist erledigt.",
+    )
+    session.add(angle)
+    session.commit()
+    target = PitchTarget(
+        outlet="Börsen-Zeitung",
+        journalist="Jason Nelson",
+        reason="schreibt über das Themenfeld",
+        evidence=("Verwahrung im Wandel",),
+        about_client=0,
+    )
+    message = outreach.draft(
+        session, client, angle, target, invoke=lambda *a, **k: _letter_reply()
+    )
+    return outreach.store(session, client, angle, message, target)
+
+
+def _store_an_advisory(session) -> Advisory:
+    """Drive ``advisor``: advise, then store. It has no page any more and it is
+    still a generator — it composes the same blocks and stores what a model
+    wrote, which is the whole of what the stamp is about."""
+    client = _a_mandate(session)
+    _own_coverage(session, client)
+    brief, coverage = advisor.advise(
+        session, client, invoke=lambda *a, **k: _brief_reply()
+    )
+    return advisor.store(session, client, brief, coverage)
+
+
+#: Every generator in the tool, each paired with a call that drives its real
+#: generate-then-store path. The point of the list is that it is exhaustive, and
+#: the test below it is what keeps it that way: a stamp on the two generators
+#: with a page and not on the third is a stamp whose absence says nothing.
+GENERATORS = [
+    ("angles", _store_an_angle),
+    ("outreach", _store_a_letter),
+    ("advisor", _store_an_advisory),
+]
+
+
+#: What a module-level persister is called. A verb list and not ``store`` alone:
+#: the rule is meant to catch the *next* generator, whose author has no reason to
+#: know which verb this suite happens to look for, and a tripwire that a synonym
+#: walks past is a tripwire that reports "all stamped" while a table fills with
+#: unstamped rows. ``settle`` is on the list because it was exactly that hole:
+#: ``themes.settle`` composes the blocks and writes what the model proposed, and
+#: the first version of this rule never saw it.
+_PERSISTS = re.compile(
+    r"(?m)^def (?:store|save|persist|record|settle|apply|commit|write)\("
+)
+
+#: A call that builds something — ``Angle(...)``, ``json.dumps(...)``, ``str(x)``.
+#: Only the capitalised, unqualified ones are candidates for a row, and which of
+#: those *is* a row is settled by looking the name up in the module rather than by
+#: matching it: ``analyzer`` builds ``Analysis(...)`` and means the pydantic
+#: return object, while ``job`` builds ``Analysis(...)`` and means the table. A
+#: rule that went by the name alone would call the analyzer a persister on a name
+#: collision and be believed.
+_BUILDS = re.compile(r"(?<![\w.])([A-Z]\w*)\(")
+
+#: Modules that compose the blocks and write what came back, and are still not
+#: generators of the kind the stamp is about. Each is a decision, and each has to
+#: argue for itself:
+#:
+#: ``guide`` — ``guide.distill`` returns its proposal without storing anything,
+#: and ``guide.save`` writes what a consultant read, edited and submitted through
+#: a form. What lands in ``Client.comms_guide`` is a person's text on a mutable
+#: settings field, not a model's text in an artefact row: nothing to date it
+#: against and nobody to answer for it but the person who saved it.
+#:
+#: ``themes`` — ``themes.settle`` proposes search terms with a model and then
+#: *measures* them, keeping only the ones the press actually writes, and puts the
+#: survivors in ``Client.keywords``. The output is configuration for the radar,
+#: not prose anyone sends; there is no row per generation and no text to read
+#: back, so there is nowhere for a version to live and nothing it would explain.
+#: The ``Setting`` rows it builds are its own retry bookkeeping.
+#:
+#: If either becomes something the tool stores on the model's word as a text,
+#: its entry here is what has to come out.
+_NOT_ARTEFACT_GENERATORS = {"guide", "themes"}
+
+
+def _generating_modules() -> set[str]:
+    """Every module that composes a brain prompt *and* stores what came back.
+
+    The shape, deliberately, rather than a hand-kept list: a module that calls
+    ``brain.compose`` has standards governing its prompt, and one that either has
+    a module-level persister (:data:`_PERSISTS`) or constructs a mapped row
+    writes the answer somewhere it outlives the request. Both together is a
+    generator, and its rows have to say what they were written under.
+
+    Two rules and not one, because each catches what the other misses. The verb
+    list misses a module that writes through a differently-named function; the
+    row test misses a module that hands its row to a helper to build. A generator
+    has to slip past both to go unnoticed.
+
+    Walked over the whole package, subpackages included, so a generator that
+    lands under ``web/routes/`` or ``schedule/`` is not invisible for having been
+    put in a folder. The exclusions are named in :data:`_NOT_ARTEFACT_GENERATORS`
+    and each one has to argue for itself.
+
+    One honest limit remains, and it is ``analyzer``: it composes the blocks, and
+    the rows carrying its model-written summaries are built and committed by
+    ``job``, so it has neither a persister nor a row construction of its own for
+    this to find. That is a deliberate omission rather than an oversight — an
+    ``Analysis`` is a per-article judgement produced by the thousand on a sweep,
+    not one of the texts a consultant sends — but it is the shape that would let a
+    future generator through, so it is written down rather than left implied.
+    """
+    return _modules_that_compose_and_persist() - _NOT_ARTEFACT_GENERATORS
+
+
+def _modules_that_compose_and_persist() -> set[str]:
+    """The shape alone, before the exclusions are taken off it."""
+    package = Path(brain.__file__).parent
+    found = set()
+    for path in sorted(package.rglob("*.py")):
+        source = path.read_text("utf-8")
+        if "brain.compose(" not in source:
+            continue
+        if _PERSISTS.search(source) or _builds_a_row(path.stem, source):
+            found.add(path.stem)
+    return found
+
+
+def _builds_a_row(module_name: str, source: str) -> bool:
+    """Whether the module constructs a class that is mapped to a table.
+
+    Resolved through the module's own namespace, which is the only place that
+    knows whether the ``Analysis(`` on line 286 is the table or the schema of the
+    same name. Only modules that already passed the ``brain.compose`` filter are
+    imported, so this never reaches ``migrations/env.py``, which does work at
+    import time.
+    """
+    module = importlib.import_module(f"newspulse.{module_name}")
+    return any(
+        isinstance(built := getattr(module, name, None), type)
+        and hasattr(built, "__mapper__")
+        for name in set(_BUILDS.findall(source))
+    )
+
+
+def test_the_generator_list_names_every_generator_in_the_codebase():
+    """The enumeration AC 5 asks for, and the reason the stamp is worth having.
+
+    A new generator — the asset writer ``asset-formats.md`` adds, or whatever
+    comes after it — lands as a module that composes the blocks and stores what
+    the model wrote. It arrives here as a name this list does not have, and the
+    test below then has nothing driving it, so the two fail together rather than
+    the artefact quietly shipping unstamped.
+    """
+    assert _generating_modules() == {module for module, _ in GENERATORS}
+
+
+def test_every_excluded_module_is_one_the_rule_would_otherwise_have_caught():
+    """An exclusion has to be doing work, or it is a hole with a comment on it.
+
+    A name left here after the module it excused was renamed or rewritten would
+    silently subtract nothing today and the wrong thing tomorrow — the case where
+    a real generator is named ``guide`` again and never gets looked at.
+    """
+    assert _NOT_ARTEFACT_GENERATORS <= _modules_that_compose_and_persist()
+
+
+@pytest.mark.parametrize(("module_name", "run"), GENERATORS)
+def test_every_generator_stamps_what_it_stores(session, module_name: str, run):
+    """AC 1 and AC 5, driven through each generator's real path.
+
+    The version is asserted as a number rather than as "not None": a stamp that
+    quietly recorded zero on an installation whose standards have moved twice
+    would look present and be wrong.
+    """
+    brain.edit(session, A_BLOCK, "Erst.")
+    brain.edit(session, "house_style", "Dann.")
+    assert brain.version(session) == 2
+
+    row = run(session)
+
+    assert row.brain_version == 2
+
+
+@pytest.mark.parametrize(("module_name", "run"), GENERATORS)
+def test_a_generator_on_untouched_standards_stamps_zero_rather_than_nothing(
+    session, module_name: str, run
+):
+    """Zero is a true claim — nothing has been changed on this install — and it
+    has to be stored as one. Leaving it NULL would make a text written under
+    known standards indistinguishable from one written before there were any."""
+    assert brain.version(session) == 0
+
+    row = run(session)
+
+    assert row.brain_version == 0
+
+
+def test_a_brief_on_a_quiet_window_is_stamped_like_any_other_row(session):
+    """The advisor's one path that composes no prompt still writes a row.
+
+    NULL is spoken for: every other part of this change reads it as "stored
+    before the standards were recorded", and the page says so in words. A brief
+    written this morning is in no position to claim that, and the standards that
+    governed the install at the moment it was made are known — so it carries them
+    like every other row, and the two states stay distinguishable.
+    """
+    brain.edit(session, A_BLOCK, "Erst.")
+    mandate = _a_mandate(session)
+
+    brief, coverage = advisor.advise(
+        session, mandate, invoke=_never_called
+    )
+    stored = advisor.store(session, mandate, brief, coverage)
+
+    assert coverage == []
+    assert stored.brain_version == 1
+
+
+def test_an_edit_while_the_model_is_writing_does_not_move_an_angle_stamp(session):
+    """AC 4, at the moment it is actually reachable.
+
+    The model call is where the seconds are: the prompt goes out under one set of
+    standards and the row is written after the answer comes back. A consultant
+    who saves a block in between has changed the next text, not this one.
+    """
+
+    def _edits_mid_call(prompt, **_):
+        brain.edit(session, A_BLOCK, "Mitten im Schreiben geändert.")
+        return _angle_reply()
+
+    client = _a_mandate(session)
+    material = [(_an_article(session, "markt"), "Themen-Radar: Alpha AG")]
+    draft, numbered = angles.suggest(session, client, material, invoke=_edits_mid_call)
+    stored = angles.store(session, client, draft, numbered)
+
+    assert stored.brain_version == 0
+    assert brain.version(session) == 1
+
+
+def test_an_edit_between_writing_a_letter_and_storing_it_does_not_move_the_stamp(
+    session,
+):
+    """The same rule on the other side of the model call: the two are separate
+    calls here — a route drafts, shows, and stores — so the window is wider."""
+    client = _a_mandate(session)
+    angle = Angle(
+        client_id=client.id,
+        generated_at=dt.datetime.now(dt.UTC),
+        subject="Betreff",
+        message="Zwei Absätze Positionierung.",
+        context="Kontext.",
+    )
+    session.add(angle)
+    session.commit()
+
+    message = outreach.draft(
+        session, client, angle, None, invoke=lambda *a, **k: _letter_reply()
+    )
+    brain.edit(session, A_BLOCK, "Erst nach dem Schreiben geändert.")
+    stored = outreach.store(session, client, angle, message, None)
+
+    assert stored.brain_version == 0
+    assert brain.version(session) == 1
+
+
+def test_a_letter_with_no_stamp_is_refused_rather_than_filed_as_pre_migration(
+    session,
+):
+    """NULL is a claim, not a blank: the card reads it as "written before the
+    standards were recorded". Only the migration may make that claim, so a
+    persister handed a text that never went through a generator refuses it
+    instead of minting a fresh one — and, on a re-write, instead of replacing a
+    correct version with it."""
+    client = _a_mandate(session)
+    angle = Angle(
+        client_id=client.id,
+        generated_at=dt.datetime.now(dt.UTC),
+        subject="Betreff",
+        message="Zwei Absätze Positionierung.",
+        context="Kontext.",
+    )
+    session.add(angle)
+    session.commit()
+    written = outreach.draft(
+        session, client, angle, None, invoke=lambda *a, **k: _letter_reply()
+    )
+    assert outreach.store(session, client, angle, written, None).brain_version == 0
+
+    hand_built = PersonalMessage(subject="Betreff", message="Von Hand gebaut.")
+
+    with pytest.raises(brain.Unstamped):
+        outreach.store(session, client, angle, hand_built, None)
+    assert session.scalars(select(Outreach)).one().message != "Von Hand gebaut."
+
+
+def test_the_stamp_survives_a_round_trip_through_the_schema():
+    """The discard that keeps the model out of this field belongs to model output
+    and to nothing else. On the field it fired on every validation, so a draft
+    that was ever serialised and read back — a queue payload, a cached draft, an
+    API echo — came back claiming to predate the recorded standards."""
+    stamped = AngleDraft(
+        worth_sending=True, subject="s", message="m", context="c", thesis="t",
+        brain_version=5,
+    )
+
+    assert stamped.model_dump()["brain_version"] == 5
+    assert AngleDraft.model_validate(stamped.model_dump()).brain_version == 5
+
+
+def test_rewriting_a_letter_replaces_the_stamp_with_the_text(session):
+    """One row per recipient, so the stamp has to move with the wording in it —
+    otherwise the row would name the standards behind a letter nobody can read
+    any more."""
+    client = _a_mandate(session)
+    angle = Angle(
+        client_id=client.id,
+        generated_at=dt.datetime.now(dt.UTC),
+        subject="Betreff",
+        message="Zwei Absätze Positionierung.",
+        context="Kontext.",
+    )
+    session.add(angle)
+    session.commit()
+    first = outreach.draft(
+        session, client, angle, None, invoke=lambda *a, **k: _letter_reply()
+    )
+    outreach.store(session, client, angle, first, None)
+
+    brain.edit(session, A_BLOCK, "Neuer Maßstab.")
+    again = outreach.draft(
+        session, client, angle, None, invoke=lambda *a, **k: _letter_reply()
+    )
+    stored = outreach.store(session, client, angle, again, None)
+
+    assert stored.brain_version == 1
+    assert session.scalars(select(Outreach)).all() == [stored]
+
+
+def test_the_stamp_names_the_standards_the_prompt_was_actually_composed_from(
+    session, monkeypatch
+):
+    """The number and the text have to agree, or the stamp is decoration: the
+    version a draft carries must name the wording its prompt went out with."""
+    monkeypatch.setattr(brain, "_override_source", lambda: brain.stored(session))
+    brain.edit(session, A_BLOCK, "NUR IN FASSUNG EINS\n\nEin Satz.")
+    sent: list[str] = []
+
+    def _remembers(prompt, **_):
+        sent.append(prompt)
+        return _angle_reply()
+
+    client = _a_mandate(session)
+    material = [(_an_article(session, "markt"), "Themen-Radar: Alpha AG")]
+    draft, _numbered = angles.suggest(session, client, material, invoke=_remembers)
+
+    assert draft.brain_version == 1
+    assert "NUR IN FASSUNG EINS" in sent[0]
+
+
+def test_a_model_that_invents_a_version_of_its_own_does_not_get_to_keep_it(session):
+    """``extra="ignore"`` would validate a ``brain_version`` the model made up
+    straight into the field. Provenance is the system's to state, so the
+    generator overwrites it on the way out rather than trusting the reply."""
+    client = _a_mandate(session)
+    material = [(_an_article(session, "markt"), "Themen-Radar: Alpha AG")]
+
+    draft, _numbered = angles.suggest(
+        session, client, material, invoke=lambda *a, **k: _angle_reply(brain_version=99)
+    )
+
+    assert draft.brain_version == 0
+
+
+def test_a_version_the_model_wrote_as_text_does_not_cost_the_draft(session):
+    """The other half of that rule, and the more expensive half.
+
+    Putting a system-owned field on the schema that parses model output means the
+    model can put a *string* there, and a strict int field would answer that by
+    raising ParseError — throwing away a finished draft, that a consultant is
+    watching a spinner for, over the one field the model does not own. It is
+    discarded before validation instead, so the reply survives and the generator
+    stamps it.
+    """
+    brain.edit(session, A_BLOCK, "Erst.")
+    client = _a_mandate(session)
+    material = [(_an_article(session, "markt"), "Themen-Radar: Alpha AG")]
+
+    draft, _numbered = angles.suggest(
+        session,
+        client,
+        material,
+        invoke=lambda *a, **k: _angle_reply(brain_version="v2"),
+    )
+
+    assert draft.brain_version == 1
+
+
+# --------------------------------------------------------------------------
+# Reading the stamp back: a number nobody can open is not provenance.
+# --------------------------------------------------------------------------
+
+
+def test_a_stamped_version_resolves_to_the_wording_it_names(factory, client):
+    with factory() as open_session:
+        brain.edit(open_session, A_BLOCK, "Die Fassung, die gesucht wird.")
+        brain.edit(open_session, "house_style", "Eine spätere Änderung.")
+
+    resp = client.get("/settings/brain/version/1", follow_redirects=False)
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == (
+        f"/settings/brain/{A_BLOCK}?fassung=1#brain-v1"
+    )
+    body = _panel(client.get(resp.headers["location"].split("#")[0]).text)
+    assert "Die Fassung, die gesucht wird." in body
+    # The fragment the redirect sent and the id the page emits, asserted as one
+    # pair: they are written in two files and a link that lands at the top of a
+    # long history instead of at the change looks like nothing is wrong.
+    assert f'id="{resp.headers["location"].split("#")[1]}"' in body
+
+
+def test_the_page_a_stamp_lands_on_says_what_that_version_covers(factory, client):
+    """AC 3 without overclaiming it.
+
+    The stamp is one portfolio-wide number and it resolves to the single change
+    that produced it, so this page shows *this* block as it stood then and every
+    other block as it stands now. A reader who came here to answer "what was this
+    letter written under" would otherwise read the whole panel as that answer.
+    """
+    with factory() as open_session:
+        brain.edit(open_session, A_BLOCK, "Die Fassung, die gesucht wird.")
+        brain.edit(open_session, "house_style", "Eine spätere Änderung.")
+
+    body = _panel(client.get(f"/settings/brain/{A_BLOCK}", params={"fassung": 1}).text)
+
+    assert "Von einem Text hierher gekommen:" in body
+    assert "nicht in dem von damals" in body
+
+
+def test_a_version_that_belongs_to_another_block_is_not_echoed_as_this_one(
+    factory, client
+):
+    """``?fassung=`` is typeable, and the sentence it prints is a claim about the
+    history below it. Version 2 changed a different block, so this page has
+    nothing to point at and says nothing."""
+    with factory() as open_session:
+        brain.edit(open_session, A_BLOCK, "Die erste Änderung.")
+        brain.edit(open_session, "house_style", "Die zweite, woanders.")
+
+    body = _panel(client.get(f"/settings/brain/{A_BLOCK}", params={"fassung": 2}).text)
+
+    assert "Von einem Text hierher gekommen:" not in body
+
+
+def test_an_ordinary_block_page_carries_no_arrival_note(factory, client):
+    """The note is for a reader who followed a stamp. Opened from the panel, the
+    page is the standards as they are, and a sentence about a version nobody
+    named would be noise."""
+    with factory() as open_session:
+        brain.edit(open_session, A_BLOCK, "Die einzige Änderung.")
+
+    body = _panel(client.get(f"/settings/brain/{A_BLOCK}").text)
+
+    assert "Von einem Text hierher gekommen:" not in body
+
+
+def test_a_version_no_change_produced_lands_on_the_standards_rather_than_a_404(client):
+    """Version 0 is every install where nothing has ever been changed, and a
+    letter written there is stamped with it. A dead link on that letter would be
+    worse than the block list, which is exactly what the standards were at 0."""
+    resp = client.get("/settings/brain/version/0", follow_redirects=False)
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/settings#brain"
+
+
+def test_a_version_belonging_to_a_block_that_no_longer_ships_falls_back(
+    factory, client
+):
+    """The block page 404s for a reverted orphan, so the stamp must not send a
+    reader there: the change is real, the page for it is gone."""
+    with factory() as open_session:
+        open_session.add(
+            BrainOverride(
+                key="alter_name", text="Gilt noch.", edited_at=FIXED_CLOCK,
+                edited_by="lucas", version=1,
+            )
+        )
+        open_session.commit()
+        brain.revert(open_session, "alter_name")
+
+    resp = client.get("/settings/brain/version/1", follow_redirects=False)
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/settings#brain"
+
+
+#: A version past what a signed 64-bit column holds. The driver raises
+#: ``OverflowError`` on binding a number this size rather than matching no rows,
+#: so it is the one bad version that used to reach the database as an exception
+#: instead of as a query.
+_WIDER_THAN_THE_COLUMN = 10**20
+
+
+def test_a_version_wider_than_the_column_falls_back_like_any_other_unknown(client):
+    """Every other absurd version — zero, negative, unknown, orphaned — already
+    redirected to the block list. This one crashed the resolver with a 500, which
+    is the same dead link the fallback exists to prevent, only louder."""
+    resp = client.get(
+        f"/settings/brain/version/{_WIDER_THAN_THE_COLUMN}", follow_redirects=False
+    )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/settings#brain"
+
+
+def test_a_fassung_wider_than_the_column_leaves_the_block_page_standing(
+    factory, client
+):
+    """``?fassung=`` is hand-typeable and reaches the same resolver. A number
+    nobody could have been sent here by must cost the arrival note, not the page."""
+    with factory() as open_session:
+        brain.edit(open_session, A_BLOCK, "Eins.")
+
+    resp = client.get(
+        f"/settings/brain/{A_BLOCK}", params={"fassung": _WIDER_THAN_THE_COLUMN}
+    )
+
+    assert resp.status_code == 200
+    assert "Von einem Text hierher gekommen:" not in _panel(resp.text)
+
+
+def _a_stored_draft(session, *, brain_version: int | None) -> Client:
+    """A mandate with one stored draft at that stamp, for the pages to render."""
+    mandate = _a_mandate(session)
+    session.add(
+        Angle(
+            client_id=mandate.id,
+            generated_at=dt.datetime.now(dt.UTC),
+            subject="Betreff",
+            message="Zwei Absätze Positionierung.",
+            context="Kontext.",
+            brain_version=brain_version,
+        )
+    )
+    session.commit()
+    return mandate
+
+
+def _advice(client, session, *, brain_version: int | None) -> str:
+    """The impulse page for a mandate with one stored draft at that stamp."""
+    mandate = _a_stored_draft(session, brain_version=brain_version)
+    return client.get(f"/client/{mandate.id}/advice").text
+
+
+def _today_column(client, session, *, brain_version: int | None) -> str:
+    """The Impulse rail on Heute, which is where the drafts are actually read."""
+    _a_stored_draft(session, brain_version=brain_version)
+    today = dt.datetime.now(dt.UTC).astimezone(config.local_zone()).date()
+    body = client.get("/today", params={"date": today.isoformat()}).text
+    return body.split('class="anglecol"', 1)[1]
+
+
+def test_a_draft_shows_the_version_it_was_written_under_as_a_link_to_it(
+    session, client
+):
+    """AC 3: readable, not merely numbered."""
+    body = _advice(client, session, brain_version=4)
+
+    assert "/settings/brain/version/4" in body
+    assert "Fassung 4" in body
+
+
+def test_the_today_column_stamps_the_draft_it_shows(session, client):
+    """The impulse page is opened when a question comes up; Heute is read every
+    morning. A stamp on the first and not the second is provenance the person who
+    reads the drafts never sees, which is most of the way to no stamp at all."""
+    column = _today_column(client, session, brain_version=4)
+
+    assert "/settings/brain/version/4" in column
+    assert "Fassung 4" in column
+
+
+def test_the_today_column_says_unknown_for_a_draft_from_before_the_stamp(
+    session, client
+):
+    """AC 2 holds on both pages or on neither: a Fassung 0 here would be the same
+    false claim it would be on the impulse page."""
+    column = _today_column(client, session, brain_version=None)
+
+    assert "unbekannt" in column
+    assert "Fassung 0" not in column
+
+
+def test_both_pages_render_the_stamp_from_the_one_partial(session, client):
+    """The two surfaces import the same macro rather than keeping a copy each.
+
+    Asserted against the markup and not only against the rendered pages: two
+    copies would agree on the day they were written and drift on the day one of
+    them learned something, which is how the Today column came to be missing the
+    stamp in the first place.
+    """
+    templates = Path(brain.__file__).parent / "web/templates"
+    for page in ("advice.html", "today.html"):
+        markup = (templates / page).read_text("utf-8")
+        assert '{% import "partials/brain_stamp.html"' in markup, page
+        assert "{% macro brain_stamp" not in markup, f"{page} keeps its own copy"
+
+
+def test_a_draft_from_before_the_stamp_says_unknown_rather_than_version_zero(
+    session, client
+):
+    """AC 2. Zero is a claim — "the standards have never been changed" — and a
+    row written before this column existed is in no position to make it."""
+    body = _advice(client, session, brain_version=None)
+
+    assert "unbekannt" in body
+    assert "Fassung 0" not in body
+    assert "/settings/brain/version/None" not in body
+
+
+def test_a_letter_carries_its_own_stamp_and_not_the_impulse_it_came_from(
+    session, client
+):
+    """A message is written days after the position it answers, and the house
+    may have changed its mind in between."""
+    mandate = _a_mandate(session)
+    angle = Angle(
+        client_id=mandate.id,
+        generated_at=dt.datetime.now(dt.UTC),
+        subject="Betreff",
+        message="Zwei Absätze Positionierung.",
+        context="Kontext.",
+        brain_version=1,
+    )
+    session.add(angle)
+    session.commit()
+    session.add(
+        Outreach(
+            angle_id=angle.id,
+            client_id=mandate.id,
+            generated_at=dt.datetime.now(dt.UTC),
+            journalist="Jason Nelson",
+            outlet="Börsen-Zeitung",
+            subject="Verwahrung im Umbau",
+            message="Sehr geehrte Frau Nelson, zwei Absätze.",
+            brain_version=7,
+        )
+    )
+    session.commit()
+
+    body = client.get(f"/client/{mandate.id}/advice").text
+
+    assert "/settings/brain/version/7" in body
+    assert "/settings/brain/version/1" in body
+
+
+def test_every_german_string_in_the_stamp_has_an_english_entry():
+    """Same rule as the panel: the strings that get forgotten are the new ones,
+    and a German line under an English letter reads as broken."""
+    markup = _STAMP_PARTIAL.read_text("utf-8")
+    stamp = markup.split("{% macro brain_stamp")[1].split("{% endmacro %}")[0]
+    called = set(re.findall(r"""t\(\s*['"](.+?)['"]\s*\)""", stamp, re.DOTALL))
+
+    assert called, "the stamp macro renders no strings; this test proves nothing"
+    assert not sorted(called - set(i18n.known_keys()))

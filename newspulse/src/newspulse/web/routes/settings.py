@@ -33,6 +33,7 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -71,6 +72,7 @@ from ...models import (
     DEFAULT_COUNTRY,
     SCORE_MAX,
     SCORE_MIN,
+    BrainOverride,
     Category,
     Client,
     Run,
@@ -581,6 +583,18 @@ def _brain_history(session: Session, key: str) -> list[BlockChange]:
     ]
 
 
+def _block_exists(session: Session, key: str) -> bool:
+    """Whether a block has a page: it ships, or something has overridden it.
+
+    One rule, asked in two places. The three block verbs 404 on it and the stamp
+    resolver decides whether to send a reader to that page or fall back to the
+    list — and if the two ever disagreed, the disagreement would show up as a
+    stored letter linking to a 404, or as a fallback away from a page that is
+    perfectly readable.
+    """
+    return key in brain.shipped() or key in brain.stored(session)
+
+
 def _require_block(session: Session, key: str) -> None:
     """404 for a key that neither ships nor has an override.
 
@@ -588,7 +602,7 @@ def _require_block(session: Session, key: str) -> None:
     whole settings page with an editor for a block that does not exist and a save
     button that would refuse it.
     """
-    if key not in brain.shipped() and key not in brain.stored(session):
+    if not _block_exists(session, key):
         raise HTTPException(status_code=404, detail="Brain block not found")
 
 
@@ -911,7 +925,10 @@ def settings_view(
 
 @router.get("/settings/brain/{key}", response_class=HTMLResponse)
 def brain_block_view(
-    key: str, request: Request, session: Session = Depends(get_db)
+    key: str,
+    request: Request,
+    fassung: int | None = None,
+    session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """The settings page with one block open for editing, and its history.
 
@@ -919,10 +936,86 @@ def brain_block_view(
     version has to be citable: BRN-03 stamps every generated text with the brain
     version it was written under, and that stamp is only worth something if it
     links to the wording it names.
+
+    ``?fassung=`` says the reader arrived from such a stamp, and the page then
+    states what that number does and does not cover. The version is
+    portfolio-wide — how many changes the standards have had across every block —
+    while what it can be resolved to is the *one* change that produced it. So the
+    history below names the wording in force for this block at that moment, and
+    every other block on the page shows what it says today. Without the note the
+    page would read as "the standards at version N", which it is not.
     """
     _require_block(session, key)
     return _render_settings(
-        request, session, brain_open=key, brain_history=_brain_history(session, key)
+        request,
+        session,
+        brain_open=key,
+        brain_history=_brain_history(session, key),
+        brain_from_change=_arrived_from_version(session, key, fassung),
+    )
+
+
+def _arrived_from_version(
+    session: Session, key: str, wanted: int | None
+) -> BrainOverride | None:
+    """The change the reader followed here, if this page can vouch for it.
+
+    A hand-typed ``?fassung=`` must not put a sentence on the page that the
+    history below it does not support — "Fassung 3 is the change marked below"
+    is false if version 3 was a change to another block, and version 0 was never
+    a change at all. Only a version this block actually produced is echoed.
+
+    The row and not the number, because a revert is a change too and the sentence
+    reads differently for one: a text stamped with a revert was written under the
+    *shipped* wording, because somebody had just put it back. The template asks
+    ``.text`` which change it is looking at.
+    """
+    if wanted is None:
+        return None
+    change = brain.change_at(session, wanted)
+    return change if change is not None and change.key == key else None
+
+
+@router.get("/settings/brain/version/{wanted}")
+def brain_version_view(
+    wanted: int, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Send a stamped text's version number to the wording it names.
+
+    Every generated angle, letter and brief carries the brain version it was
+    written under, and a number the reader cannot open is not provenance. So the
+    stamp links here and this resolves it: the change that produced that version
+    names a block, and the block page carries that version in its history with
+    the wording it put in force.
+
+    Falls back to the block list rather than a 404 for the three cases where
+    there is no single change to point at — version 0, which is every install
+    where nothing has ever been changed; a version whose row went missing with a
+    restored dump; and a change to a block the repository has since renamed away,
+    whose page the other two verbs already answer 404 for. In all three the
+    current standards are still the honest thing to show, and a dead link on a
+    letter is not.
+
+    Two path segments, so a block that were ever named ``version`` would live at
+    ``/settings/brain/version`` and not collide with this.
+    """
+    change = brain.change_at(session, wanted)
+    if change is None or not _block_exists(session, change.key):
+        return RedirectResponse("/settings#brain", status_code=_SEE_OTHER)
+    # Quoted, because the key reaches this as data: it comes off a stored row and
+    # goes into a Location header, where a space or an umlaut would produce a
+    # redirect nothing can follow. Belt and braces — the keys are file stems
+    # today — but the cost of being wrong here is a dead link on a stored letter.
+    key = quote(change.key, safe="")
+    # The fragment carries the version alone and not the key. Versions are unique
+    # across the whole table (``uq_brain_overrides_version``), so it identifies
+    # the entry on its own — and the key would have to be encoded here to survive
+    # the header while the ``id`` in the template is emitted raw, which is a
+    # mismatch that silently lands the reader at the top of the page for exactly
+    # the keys the quoting above was added to protect.
+    return RedirectResponse(
+        f"/settings/brain/{key}?fassung={wanted}#brain-v{wanted}",
+        status_code=_SEE_OTHER,
     )
 
 

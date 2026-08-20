@@ -137,11 +137,61 @@ class ActionSuggestion(BaseModel):
     evidence: list[int] = Field(default_factory=list)
 
 
+# --- Provenance: the one field on these schemas the model does not fill ---------
+#
+# ``brain_version`` appears on the three schemas a generator stores. It is the
+# brain version (:func:`newspulse.brain.version`) the prompt was composed under,
+# written onto the validated draft by the generator at the moment it builds that
+# prompt. It rides along with the text to whoever stores it rather than being
+# re-read at save time: a standard edited between the model answering and the row
+# being written must not change what the finished text says it was written under.
+#
+# It is a field on the reply schema rather than a second return value because a
+# stamp a caller has to remember to pass is a stamp that will be missing from
+# whichever call site was added last. The cost of putting a system-owned field on
+# a schema that parses model output is that the model can now reach it, and
+# :func:`without_provenance` below is what takes that back.
+
+
+def without_provenance(payload: object) -> object:
+    """The model's reply with the stamp field taken out of it, before validation.
+
+    Provenance is not the model's to state. A reply that volunteers
+    ``"brain_version": 3`` would otherwise be validated straight into the field
+    and the row would carry a number nothing recorded; one that volunteers
+    ``"brain_version": "v2"`` would fail validation outright and cost the whole
+    draft — a text a consultant is waiting for, lost over a field the model had
+    no business filling. Dropping the key answers both.
+
+    Applied by each generator's ``_parse`` to the decoded reply, and there alone,
+    which is the difference between this and a validator on the field. A
+    validator fires on *every* validation, so a draft that ever went through
+    ``model_validate(draft.model_dump())`` — a queue payload, a cached draft, an
+    API echo — would come back with its stamp silently reset to ``None``, and
+    ``None`` is the one value that means "written before the standards were
+    recorded". The discard belongs to model output, so it lives on the path model
+    output takes.
+
+    Non-mapping payloads pass through untouched: a reply that decoded to a list
+    is the schema's failure to report, not this function's to pre-empt.
+    """
+    if isinstance(payload, dict):
+        return {key: value for key, value in payload.items() if key != _STAMP_FIELD}
+    return payload
+
+
+#: The field :func:`without_provenance` takes out. Named once so the three
+#: ``_parse`` functions and the three schemas cannot drift apart on the spelling.
+_STAMP_FIELD = "brain_version"
+
+
 class AdvisoryBrief(BaseModel):
     """The model's read of a client's situation plus what it would do about it."""
 
     situation: str
     suggestions: list[ActionSuggestion] = Field(default_factory=list)
+    #: See "Provenance" above. Set by :func:`newspulse.advisor.advise`.
+    brain_version: int | None = None
 
 
 # --- Angle: a positioning message the consultant can send on ---------------------
@@ -184,6 +234,8 @@ class AngleDraft(BaseModel):
     # Indices into the numbered developments the prompt supplied, so every draft
     # can be traced back to the coverage that triggered it.
     evidence: list[int] = Field(default_factory=list)
+    #: See "Provenance" above. Set by :func:`newspulse.angles.suggest`.
+    brain_version: int | None = None
 
 
 # --- Outreach: the impulse, written at one recipient -----------------------------
@@ -207,6 +259,8 @@ class PersonalMessage(BaseModel):
     subject: str = ""
     message: str
     hook: str = ""
+    #: See "Provenance" above. Set by :func:`newspulse.outreach.draft`.
+    brain_version: int | None = None
 
 
 class MessageReview(BaseModel):
@@ -230,6 +284,11 @@ class MessageReview(BaseModel):
     concerns: list[str] = Field(default_factory=list, max_length=5)
     #: The one thing to change first, if anything.
     fix: str = ""
+    #: See "Provenance" above. Set by :func:`newspulse.outreach.crosscheck`, and
+    #: its own rather than the letter's: the check composes a second brain prompt
+    #: after the letter is already written, so the two can land on either side of
+    #: an edit.
+    brain_version: int | None = None
 
 
 # --- Coach: does the guide hold up against the actual coverage? ------------------

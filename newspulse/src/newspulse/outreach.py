@@ -41,7 +41,7 @@ from . import brain, config, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Analysis, Angle, Article, Client, Outreach, visible_coverage
 from .pitch import PitchTarget
-from .schemas import MessageReview, PersonalMessage
+from .schemas import MessageReview, PersonalMessage, without_provenance
 
 _log = logging.getLogger(__name__)
 
@@ -152,14 +152,16 @@ def _parse(raw: str) -> PersonalMessage:
 
     Same trust boundary as everywhere else in this codebase: the reply is text
     until the schema says otherwise. A fence is unwrapped because wrapping JSON in
-    ```json is a habit rather than an error.
+    ```json is a habit rather than an error. The stamp is taken out of the reply
+    first: provenance is the tool's to state and not the model's. See
+    :func:`newspulse.schemas.without_provenance`.
     """
     try:
         payload = json.loads(strip_code_fence(raw))
     except json.JSONDecodeError as exc:
         raise ParseError(f"outreach was not valid JSON: {exc}") from exc
     try:
-        message = PersonalMessage.model_validate(payload)
+        message = PersonalMessage.model_validate(without_provenance(payload))
     except Exception as exc:  # noqa: BLE001 — pydantic raises its own type
         raise ParseError(f"outreach did not match the schema: {exc}") from exc
     if not message.message.strip():
@@ -183,7 +185,13 @@ def draft(
     answering "no" to a direct request is not honesty here, it is a broken button.
     A backend failure still raises, because "the draft failed" and "here is your
     draft" must never look alike.
+
+    The letter carries the brain version it was written under, captured here with
+    the prompt rather than read again by :func:`store`: the model call takes
+    seconds, the storing happens after it, and a standard edited in between
+    belongs to the next letter.
     """
+    written_under = brain.version(session)
     prompt = _prompt_template().substitute(
         client_profile=_client_profile(client),
         comms_guide=guide.for_prompt(client),
@@ -195,7 +203,8 @@ def draft(
         recipient_work=_recipient_work(target),
         own_coverage=_own_coverage_block(session, client.id),
     )
-    return _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
+    message = _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
+    return message.model_copy(update={"brain_version": written_under})
 
 
 _CROSSCHECK_RESOURCE = "prompts/crosscheck.txt"
@@ -227,6 +236,12 @@ def crosscheck(
     call; by default it is :func:`newspulse.gemini.generate`, which is deliberately
     *not* the fallback-wrapped invoker the drafting side uses — falling back to
     Claude here would quietly turn the cross-check into a self-check.
+
+    The review carries its own brain version and not the letter's. This composes a
+    second prompt out of the same blocks, seconds after :func:`draft` composed the
+    first, and an edit landing between the two model calls belongs to the check
+    and not to the letter. Filing both under one number would make the row say
+    something about the checker's text that is not true of it.
     """
     if generate is None:
         if not config.review_configured():
@@ -244,6 +259,7 @@ def crosscheck(
                 **kwargs,
             )
 
+    written_under = brain.version(session)
     template = Template(
         brain.compose(
             resources.files("newspulse")
@@ -263,10 +279,11 @@ def crosscheck(
     )
     raw = generate(prompt)
     try:
-        payload = json.loads(strip_code_fence(raw))
+        payload = without_provenance(json.loads(strip_code_fence(raw)))
         review = MessageReview.model_validate(payload)
     except Exception as exc:  # noqa: BLE001 — pydantic and json raise their own
         raise ParseError(f"crosscheck did not match the schema: {exc}") from exc
+    review = review.model_copy(update={"brain_version": written_under})
 
     # One thing the checker cannot be trusted to catch, because it is mechanical:
     # the house rule on dashes. Checked here rather than believed.
@@ -292,7 +309,19 @@ def store(
     reviewed_by: str = "",
 ) -> Outreach:
     """Persist one message. Re-writing for the same recipient replaces the old
-    one: two drafts at the same journalist are two attempts, not two pitches."""
+    one: two drafts at the same journalist are two attempts, not two pitches.
+
+    The stamp is replaced with the text, for the same reason the review is: the
+    row then says which standards the letter *now* in it was written under, not
+    the ones behind a wording nobody can read any more.
+
+    Raises :class:`newspulse.brain.Unstamped` for a letter that carries no
+    version, and does so before touching the row. A re-write that overwrote a
+    correct stamp with a fresh NULL would not leave the old letter's provenance
+    standing — it would replace a readable version with the claim that the text
+    beside it predates the recorded standards.
+    """
+    stamped = brain.stamp(message.brain_version, what="this letter")
     journalist = (target.journalist or "") if target else ""
     outlet = (target.outlet or "") if target else ""
     existing = session.scalars(
@@ -310,12 +339,16 @@ def store(
     row.subject = prose.plain(message.subject)
     row.message = prose.plain(message.message)
     row.hook = message.hook.strip()
+    row.brain_version = stamped
     # A stored review always belongs to the text beside it: re-writing for the
     # same recipient clears the old verdict rather than letting it stand over a
-    # letter it never read.
+    # letter it never read. Its stamp is cleared with it, for the same reason.
     row.review = "\n".join(review.concerns) if review else ""
     row.reviewed_by = reviewed_by if review else ""
     row.review_ok = review.send if review else True
+    row.review_brain_version = (
+        brain.stamp(review.brain_version, what="this cross-check") if review else None
+    )
     if review and review.fix:
         row.review = f"{row.review}\nZuerst ändern: {review.fix}".strip()
     row.generated_at = dt.datetime.now(dt.UTC)
