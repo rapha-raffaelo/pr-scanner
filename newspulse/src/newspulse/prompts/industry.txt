@@ -1,4 +1,4 @@
-#blocks: journalistic_value, no_invention
+#blocks: journalistic_value
 
 Du nennst die Branche eines Unternehmens, als Suchbegriff, nicht als Etikett.
 
@@ -14,7 +14,9 @@ weiter Begriff filtert nichts.
 
 {{brain:journalistic_value}}
 
-{{brain:no_invention}}
+Hier heißt das: Der Firmenname, Produktnamen, Marken und die Selbstbeschreibung
+des Unternehmens taugen nicht als Begriff. Sie finden nur die eigene
+Berichterstattung zurück.
 
 Regeln für diese Begriffe:
 

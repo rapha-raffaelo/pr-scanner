@@ -29,6 +29,11 @@ $own_coverage
 
 {{brain:position}}
 
+Hier heißt das: Beide Lesarten stehen oben schon fest, du formulierst keine
+neue. Die Nachricht steht auf der belastbaren These. Die pauschale ist die
+Falle: Wenn deine Nachricht sie behauptet, hast du die Position verfehlt, und
+sie kommt in der Nachricht auch nicht als Abgrenzung vor.
+
 {{brain:house_style}}
 
 {{brain:evidence}}
@@ -43,8 +48,6 @@ Regeln für diese Nachricht:
 - Sie ist kurz. Drei kurze Absätze sind das Maximum, zwei sind besser.
 - Deutsch. Anrede und Grußformel gehören dazu, denn dieser Text geht so raus.
   Ohne bekannten Namen: "Sehr geehrte Redaktion".
-- Die pauschale Lesart oben ist die Falle. Wenn deine Nachricht sie behauptet,
-  hast du die Position verfehlt.
 
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 

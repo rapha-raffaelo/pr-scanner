@@ -59,6 +59,11 @@ Eine Position sagt etwas, das der Leser ohne den Mandanten nicht sähe.
   dass der Mandant genau dort arbeitet, ergibt sich daraus, statt behauptet zu
   werden.
 
+Hier heißt das: Beide Lesarten stehen oben schon fest, du formulierst keine
+neue. Die Nachricht steht auf der belastbaren These. Die pauschale ist die
+Falle: Wenn deine Nachricht sie behauptet, hast du die Position verfehlt, und
+sie kommt in der Nachricht auch nicht als Abgrenzung vor.
+
 HAUS-STIL UND TONALITÄT
 
 Deutsch, sachlich, im Ton einer Fachanalyse. Der Mandant wird nicht angepriesen,
@@ -113,8 +118,6 @@ Regeln für diese Nachricht:
 - Sie ist kurz. Drei kurze Absätze sind das Maximum, zwei sind besser.
 - Deutsch. Anrede und Grußformel gehören dazu, denn dieser Text geht so raus.
   Ohne bekannten Namen: "Sehr geehrte Redaktion".
-- Die pauschale Lesart oben ist die Falle. Wenn deine Nachricht sie behauptet,
-  hast du die Position verfehlt.
 
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 

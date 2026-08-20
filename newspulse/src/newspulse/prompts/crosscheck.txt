@@ -8,7 +8,10 @@ will es gleich verschicken. Deine einzige Aufgabe: Sag ihm, ob er sich damit
 blamiert.
 
 Das Modell hat unter denselben Maßstäben gearbeitet wie du. Sie stehen weiter
-unten, und du prüfst die Nachricht gegen sie.
+unten, und du prüfst die Nachricht gegen sie. Auch die Sicht war dieselbe: Es
+sah genau die Zeilen, die unten stehen, und keinen einzigen Artikel im Volltext.
+Alles, was die Nachricht über einen Artikelinhalt behauptet und was unten nicht
+dasteht, hat es geraten.
 
 Mandant: $client
 Position des Mandanten: $thesis
@@ -33,6 +36,9 @@ DIE MASSSTÄBE
 {{brain:evidence}}
 
 {{brain:position}}
+
+Hier heißt das: Beide Lesarten stehen oben schon fest. Du formulierst keine
+neue, du prüfst nur, auf welcher von beiden die Nachricht steht.
 
 {{brain:journalistic_value}}
 

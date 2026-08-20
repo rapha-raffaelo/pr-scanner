@@ -201,23 +201,80 @@ def test_version_does_not_collide_when_text_moves_between_blocks():
 # Structural: DEC-2 option B, enforced by a test rather than by convention.
 # --------------------------------------------------------------------------
 
-#: What each prompt must still carry, read off the ten prompt files as they stood
-#: before this migration. This is the "no standard was lost in the move" list: if
-#: an include is deleted, the prompt silently stops carrying a standard it used
-#: to state inline, and only this map notices.
+#: What each prompt must still carry, re-derived clause by clause from the ten
+#: prompt files as they stood at 5862614, the commit before they were rewritten
+#: (``git show 5862614:src/newspulse/prompts/<name>``). This is the "no standard
+#: was lost in the move" list: if an include is deleted, the prompt silently
+#: stops carrying a standard it used to state inline, and only this map notices.
+#:
+#: A key is listed only where the original demonstrably stated that standard,
+#: not where the standard would have been reasonable to hold. Reading it the
+#: generous way is what let the first version of this map list four keys for
+#: crosscheck.txt when the original carried six: two standards could have been
+#: deleted from it and the suite would have stayed green.
 CARRIED_BEFORE = {
-    "advisory.txt": {"evidence", "refusal", "no_invention"},
+    # "Eine Maßnahme ohne Beleg ist wertlos"; "nur Schlagzeilen und kurze
+    # Zusammenfassungen"; "Lieber drei gute als sechs beliebige" / "erfinde keine
+    # Betriebsamkeit"; "Empfiehl auch das Unterlassen".
+    "advisory.txt": {"evidence", "refusal"},
+    # "eine bloße Namensgleichheit ... NICHT als relevant".
     "analysis.txt": {"no_invention"},
+    # All six: the pauschale/belastbare split, "kein Anlass", "erfinde keinen
+    # Anlass", the dash and superlative rules, "nur Schlagzeilen und kurze
+    # Feed-Anrisse", "kein Datum, keine Zahl, keinen Namen".
     "angle.txt": {"position", "journalistic_value", "refusal", "house_style",
                   "evidence", "no_invention"},
-    "coach.txt": {"evidence", "refusal", "no_invention"},
-    "crosscheck.txt": {"no_invention", "position", "house_style", "evidence"},
+    # "Ein Befund ohne Beleg gehört nicht in den Bericht"; "leere Liste ... keine
+    # Fehlleistung".
+    "coach.txt": {"evidence", "refusal"},
+    # All six, one per check plus the frame: ERFUNDENES, "NIE die vollständigen
+    # Artikel", the overclaim check, "zweihundert PR-Anschreiben" / "Serienbrief
+    # mit eingesetztem Namen", WERBESPRACHE and MASCHINENSPUR, "Eine Prüfung, die
+    # immer etwas findet".
+    "crosscheck.txt": {"no_invention", "position", "journalistic_value",
+                       "house_style", "evidence", "refusal"},
+    # "Nichts ergänzen, nichts aus der Branche herleiten ... Was nicht dasteht,
+    # fehlt eben."
     "guide.txt": {"no_invention"},
-    "industry.txt": {"no_invention"},
+    # "Keine Selbstbeschreibung des Unternehmens und kein Produktname. Der
+    # Begriff muss auch in Meldungen vorkommen, in denen dieses Unternehmen nicht
+    # auftaucht." The original carried no invention rule: it instructs the model
+    # to derive the industry from name and website, which is what no_invention
+    # forbids. See test_industry_does_not_forbid_the_inference_it_asks_for.
+    "industry.txt": {"journalistic_value"},
+    # "an einen Menschen ... nicht an einen Verteiler"; "die pauschale Lesart ist
+    # die Falle"; the dash and Werbeton rules; "Du siehst nur Schlagzeilen";
+    # "ohne erfundene Personennamen oder Kontaktdaten".
     "outreach.txt": {"journalistic_value", "position", "house_style",
                      "evidence", "no_invention"},
+    # "Erfinde keinen Namen und rate nicht"; "leere Liste ... keine Fehlleistung".
     "rivals.txt": {"no_invention", "refusal"},
+    # "Keine Selbstbeschreibung ... daraus entsteht kein Impuls, sondern
+    # Eigenwerbung."
     "themes.txt": {"journalistic_value"},
+}
+
+#: Standards a prompt did *not* carry before and now does. Every one is a
+#: decision, so every one is written down: the point of a shared layer is that
+#: including a block is cheap, and cheap is how ten prompts quietly grow a
+#: standard nobody chose for them. Together with CARRIED_BEFORE this accounts for
+#: every include in every prompt, so an addition cannot arrive as a side effect.
+ADDED_IN_MIGRATION = {
+    # advisory writes drafts that go out as they stand, to a Redaktion or as a
+    # Sprachregelung. Both standards govern sendable text and the original
+    # relied on the model not needing to be told.
+    "advisory.txt": {"no_invention", "house_style"},
+    # coach quotes coverage back at the consultant. The original forbade
+    # unsupported claims but never named invented quotes as the failure.
+    "coach.txt": {"no_invention"},
+    "analysis.txt": set(),
+    "angle.txt": set(),
+    "crosscheck.txt": set(),
+    "guide.txt": set(),
+    "industry.txt": set(),
+    "outreach.txt": set(),
+    "rivals.txt": set(),
+    "themes.txt": set(),
 }
 
 #: Phrases that only appear in a prompt if somebody wrote a standard out again
@@ -247,9 +304,11 @@ RESTATEMENT_TELLS = {
 
 
 def test_all_ten_prompts_are_accounted_for():
-    """A new prompt has to be added to the map above deliberately, so it cannot
+    """A new prompt has to be added to the maps above deliberately, so it cannot
     join the codebase without anyone deciding which standards govern it."""
-    assert {p.name for p in _prompt_files()} == set(CARRIED_BEFORE)
+    names = {p.name for p in _prompt_files()}
+    assert names == set(CARRIED_BEFORE)
+    assert names == set(ADDED_IN_MIGRATION)
 
 
 @pytest.mark.parametrize("path", _prompt_files(), ids=lambda p: p.name)
@@ -281,6 +340,34 @@ def test_prompt_still_carries_every_standard_it_carried_before(path: Path):
     included = set(brain.included(path.read_text("utf-8")))
     missing = CARRIED_BEFORE[path.name] - included
     assert not missing, f"{path.name} no longer carries: {sorted(missing)}"
+
+
+@pytest.mark.parametrize("path", _prompt_files(), ids=lambda p: p.name)
+def test_prompt_includes_nothing_it_was_not_given_on_purpose(path: Path):
+    """The other half of the map, and the one the golden files cannot supply:
+    they were captured after the migration, so they notice future change and
+    prove nothing about what the move added. Including a block costs one line,
+    which is exactly how a prompt grows a standard nobody chose for it, and how
+    the analyzer's per-batch prompt would quietly take on advice about weighing
+    few solid claims over many arbitrary ones."""
+    included = set(brain.included(path.read_text("utf-8")))
+    unaccounted = included - CARRIED_BEFORE[path.name] - ADDED_IN_MIGRATION[path.name]
+    assert not unaccounted, (
+        f"{path.name} includes {sorted(unaccounted)}, which it did not carry before. "
+        f"If that is deliberate, add it to ADDED_IN_MIGRATION with the reason."
+    )
+
+
+def test_industry_does_not_forbid_the_inference_it_asks_for():
+    """industry.txt tells the model to derive an unknown client's field from its
+    name and website, and industry.propose() has no fallback for an empty list:
+    the search degrades to nothing for exactly the small, unknown clients that
+    bullet was written for. no_invention says "Nichts aus der Branche herleiten"
+    and "Raten ist Erfinden", so composing the two puts a contradiction in front
+    of the model on the onboarding path."""
+    raw = (PROMPTS / "industry.txt").read_text("utf-8")
+    assert "no_invention" not in brain.included(raw)
+    assert _flat("leite die Branche aus Name und Website ab") in _flat(raw)
 
 
 @pytest.mark.parametrize("path", _prompt_files(), ids=lambda p: p.name)
