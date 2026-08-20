@@ -15,6 +15,14 @@ Mandant: $client
 Position des Mandanten: $thesis
 Ausdrücklich NICHT die Position: $overclaim
 
+WAS ÜBER DEN MANDANTEN HINTERLEGT IST
+Diese Angaben hat der Berater eingetragen. Sie sind belegt, und der Text darf sie
+verwenden, auch wörtlich. Was der Text darüber hinaus als Tatsache über den
+Mandanten behauptet, ein Name, eine Funktion, eine Zahl, ein Gründungsjahr, steht
+hier nicht und ist damit geraten. Prüfe eine Zuschreibung Wort für Wort: ein Zitat
+unter einem Namen, der hier nicht steht, ist erfunden.
+$profile_facts
+
 $evidence
 
 DER TEXT
@@ -27,17 +35,20 @@ Prüfe genau diese fünf Dinge, in dieser Reihenfolge:
 1. ERFUNDENES. Behauptet der Text irgendetwas, das oben nicht belegt ist? Eine
    Zahl, ein Datum, ein Artikelinhalt, eine Aussage über die Arbeit einer
    Journalistin? Und vor allem: steht dort ein Zitat, das einer namentlich
-   genannten Person zugeschrieben wird, ohne dass diese Person es oben gesagt
-   hat? Das ist der schwerste Fehler, den es hier gibt, und bei einem Zitat ist
-   er nicht reparabel.
+   genannten Person zugeschrieben wird, die oben nicht hinterlegt ist? Ein Zitat
+   einer hinterlegten Person ist in Ordnung, das ist die Aufgabe dieses Formats;
+   ein Zitat unter einem Namen, den es oben nicht gibt, ist der schwerste Fehler,
+   den es hier gibt, und er ist nicht reparabel.
 2. ÜBERTREIBUNG. Behauptet der Text am Ende doch die pauschale Lesart, die der
    Mandant ausdrücklich nicht vertritt?
 3. ANBIEDERUNG. Lobt er seinen Leser, statt ihm etwas anzubieten? Klingt er nach
    Serienbrief mit eingesetztem Namen?
 4. WERBESPRACHE. Superlative, Floskeln, Selbstlob des Mandanten.
-5. MASCHINENSPUR. Gedankenstriche ("—", "–"), Dreiklänge, "nicht nur … sondern
-   auch", auffällig gleich lange Sätze. Ein Text, der wie ein KI-Text aussieht,
-   wird auch dann verworfen, wenn er inhaltlich stimmt.
+5. MASCHINENSPUR. Dreiklänge, "nicht nur … sondern auch", auffällig gleich lange
+   Sätze, immer derselbe Satzbau. Ein Text, der wie ein KI-Text aussieht, wird
+   auch dann verworfen, wenn er inhaltlich stimmt. Nach Gedankenstrichen suchst
+   du nicht: die sind vor dieser Prüfung mechanisch ersetzt worden, und was du
+   liest, ist die Fassung, die der Berater sieht.
 
 Sei streng bei 1 und 2 und sparsam bei 3 bis 5: Wenn der Text in Ordnung ist, sag
 das. Eine Prüfung, die immer etwas findet, wird nach dem dritten Mal ignoriert

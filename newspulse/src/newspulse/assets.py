@@ -44,6 +44,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import lru_cache
 from importlib import resources
 from string import Template
 
@@ -87,6 +88,26 @@ _DASH_CONCERN = (
     "Gedankenstrich im Entwurf, hier durch ein Komma ersetzt. Den Satz gegenlesen."
 )
 
+#: What the checker is told when a text was written with no profile on file. Not
+#: "nothing to check": a text written off an empty profile is a text whose every
+#: statement about the mandate is unbacked, which is exactly what to look for.
+_NO_FACTS = (
+    "Keine hinterlegt. Jede Tatsachenbehauptung über den Mandanten in diesem "
+    "Text ist damit unbelegt."
+)
+
+
+@lru_cache(maxsize=None)
+def _template(resource: str) -> Template:
+    """One prompt file, read once per process.
+
+    Writing all six formats off one impulse is six prompt files plus two checker
+    prompts per text, and these are packaged resources: they cannot change under
+    a running process, so re-reading them is a syscall per model call for a
+    string that is already known.
+    """
+    return Template(resources.files("newspulse").joinpath(resource).read_text("utf-8"))
+
 
 class Source(StrEnum):
     """Where a required input is read from.
@@ -119,6 +140,15 @@ _WHERE = {
 }
 
 
+def _label_for(source: Source, key: str) -> str | None:
+    """The page's name for one required field, or ``None`` when nothing names it."""
+    if source is Source.PROFIL:
+        field = profile.FIELDS_BY_KEY.get(key)
+        return field.label if field else None
+    table = _MANDATE_LABELS if source is Source.MANDAT else _ANGLE_LABELS
+    return table.get(key)
+
+
 @dataclass(frozen=True, slots=True)
 class Requirement:
     """One thing a format needs before it may be written.
@@ -133,12 +163,23 @@ class Requirement:
     minimum: int = 1
 
     @property
+    def field_name(self) -> str:
+        """What the page calls this field. The raw key only if nothing names it,
+        which :func:`_validate_registry` rules out for the formats that ship."""
+        return _label_for(self.source, self.key) or self.key
+
+    @property
     def label(self) -> str:
-        if self.source is Source.PROFIL:
-            field = profile.FIELDS_BY_KEY.get(self.key)
-            return field.label if field else self.key
-        table = _MANDATE_LABELS if self.source is Source.MANDAT else _ANGLE_LABELS
-        return table.get(self.key, self.key)
+        """The field, and how much of it is needed.
+
+        The count belongs in the label because a refusal has to name work the
+        consultant can actually do. A guest article wants two stories under the
+        impulse; told only "Belegte Meldungen" while looking at an impulse that
+        visibly has one, he reads a bug rather than an instruction.
+        """
+        if self.minimum > 1:
+            return f"{self.field_name}, mindestens {self.minimum}"
+        return self.field_name
 
     @property
     def where(self) -> str:
@@ -211,8 +252,7 @@ class FormatDef:
         return str(self.kind)
 
     def template(self) -> Template:
-        text = resources.files("newspulse").joinpath(self.prompt).read_text("utf-8")
-        return Template(text)
+        return _template(self.prompt)
 
 
 FORMATS: tuple[FormatDef, ...] = (
@@ -317,6 +357,31 @@ FORMATS: tuple[FormatDef, ...] = (
 REGISTRY: dict[str, FormatDef] = {fmt.key: fmt for fmt in FORMATS}
 
 
+def _validate_registry() -> None:
+    """Fail at import when a definition names a field nothing can label.
+
+    Same posture as :func:`definition` on an unknown kind, and for a worse
+    failure: an unlabelled key falls back to the key itself, so a typo turns
+    into a refusal that sends the consultant to fill "geschaftsfeld" on a page
+    that has no such row. He cannot act on that and cannot tell it from a real
+    gap. Loud at import is the one place it costs nothing.
+    """
+    for fmt in FORMATS:
+        for req in fmt.requires:
+            if _label_for(req.source, req.key) is None:
+                raise RuntimeError(
+                    f"{fmt.key}: requirement {req.source.value}/{req.key} has no "
+                    "label; add one or fix the key"
+                )
+        if fmt.speaker_key and fmt.speaker_key not in profile.FIELDS_BY_KEY:
+            raise RuntimeError(
+                f"{fmt.key}: speaker_key {fmt.speaker_key!r} is not a profile field"
+            )
+
+
+_validate_registry()
+
+
 def definition(kind: AssetKind | str) -> FormatDef:
     """The definition for one stored kind. Raises ``KeyError`` for an unknown one.
 
@@ -404,20 +469,52 @@ def _client_profile(client: Client) -> str:
     return "\n".join(parts)
 
 
+def _fact_lines(facts: dict[str, ClientFact]) -> str:
+    """The filled profile fields, in the order the page reads them, or "".
+
+    Empty rather than an excuse, because the two readers of this block need
+    different sentences when it is empty: the writer is told to claim nothing,
+    the checker is told that every claim it finds is unbacked.
+    """
+    return "\n".join(
+        f"{field.label}: {facts[field.key].value}"
+        for field in profile.FIELDS
+        if field.key in facts and facts[field.key].value.strip()
+    )
+
+
 def _facts_block(facts: dict[str, ClientFact]) -> str:
-    """The deep-dive profile, in the order the page reads it.
+    """The deep-dive profile as the writing prompt carries it.
 
     Everything a format is allowed to state about the mandate as fact comes from
     here. A line that is not in this block is not a fact, it is a guess.
     """
-    lines = [
-        f"{field.label}: {facts[field.key].value}"
-        for field in profile.FIELDS
-        if field.key in facts and facts[field.key].value.strip()
+    return (
+        _fact_lines(facts)
+        or "Noch nichts hinterlegt. Behaupte also nichts über den Mandanten."
+    )
+
+
+def _evidence_articles(session: Session, angle: Angle) -> list[Article]:
+    """The impulse's stories, in the impulse's own order, capped after resolving.
+
+    Two things the one-line version gets wrong, both silently. ``IN`` hands rows
+    back in database order, so the order :func:`newspulse.angles.suggest` chose,
+    which is the order it ranked them in, is lost in every prompt. And capping
+    the id list before the query means an impulse whose first ids no longer
+    resolve shows fewer stories than it has, rather than the first
+    :data:`_MAX_EVIDENCE` that still exist.
+    """
+    ids = list(dict.fromkeys(angle.article_ids or []))
+    if not ids:
+        return []
+    rows = {
+        row.id: row
+        for row in session.scalars(select(Article).where(Article.id.in_(ids)))
+    }
+    return [rows[article_id] for article_id in ids if article_id in rows][
+        :_MAX_EVIDENCE
     ]
-    if not lines:
-        return "Noch nichts hinterlegt. Behaupte also nichts über den Mandanten."
-    return "\n".join(lines)
 
 
 def _evidence_block(session: Session, angle: Angle) -> str:
@@ -428,15 +525,12 @@ def _evidence_block(session: Session, angle: Angle) -> str:
     here are the headline and the snippet the feed itself syndicated, and the
     snippet is cut at :data:`_MAX_SNIPPET_CHARS`.
     """
-    ids = list(angle.article_ids or [])[:_MAX_EVIDENCE]
     lines: list[str] = []
-    if ids:
-        rows = session.scalars(select(Article).where(Article.id.in_(ids))).all()
-        for article in rows:
-            lines.append(f"- ({article.source}) {article.title}")
-            snippet = (article.summary_text or "").strip()
-            if snippet:
-                lines.append(f"  Feed-Anriss: {snippet[:_MAX_SNIPPET_CHARS]}")
+    for article in _evidence_articles(session, angle):
+        lines.append(f"- ({article.source}) {article.title}")
+        snippet = (article.summary_text or "").strip()
+        if snippet:
+            lines.append(f"  Feed-Anriss: {snippet[:_MAX_SNIPPET_CHARS]}")
     # Built first, then asked about: an impulse can name ids that no longer
     # resolve, and the header below promises that what follows is what is known.
     # Promising it over an empty list is how a model concludes it may fill one.
@@ -615,6 +709,23 @@ class Checkable:
     overclaim: str
     #: Everything that was provable, already rendered.
     evidence: str
+    #: What the writer was told about the mandate itself, already rendered. The
+    #: checker's first question is whether a claim about the mandate is backed,
+    #: and for a spokesperson's name, a headcount or a founding year the answer
+    #: is only in here. Without it a profile-backed quote and a fabricated one
+    #: look exactly alike, which is the one comparison this check exists for.
+    profile_facts: str = ""
+
+    @property
+    def readable(self) -> tuple[str, str]:
+        """Title and body as they will be stored, which is what a checker reads.
+
+        Both storage paths put title and body through :func:`newspulse.prose.plain`,
+        and a verdict quoting a sentence that the house-style rewrite has since
+        changed sends the reader looking for words that are not on the page. Both
+        checkers take these, so neither can quote something the other cannot see.
+        """
+        return prose.plain(self.title), prose.plain(self.body)
 
 
 @dataclass(frozen=True, slots=True)
@@ -658,22 +769,16 @@ def crosscheck(
     if generate is None:
         generate = gemini.reviewer()
 
-    # The checker reads the text as it will be stored, not as it came back: both
-    # storage paths put title and body through prose.plain(), and a checker quoting
-    # a sentence that the house-style rewrite has since changed sends the reader
-    # looking for words that are not on the page.
-    title = prose.plain(item.title)
-    body = prose.plain(item.body)
+    # The text as it will be stored, not as it came back. See Checkable.readable.
+    title, body = item.readable
 
-    template = Template(
-        resources.files("newspulse").joinpath(_CROSSCHECK_RESOURCE).read_text("utf-8")
-    )
-    prompt = template.substitute(
+    prompt = _template(_CROSSCHECK_RESOURCE).substitute(
         client=client.name,
         kind=item.kind,
         thesis=item.thesis or "nicht ausformuliert",
         overclaim=item.overclaim or "nicht ausformuliert",
         evidence=item.evidence,
+        profile_facts=item.profile_facts.strip() or _NO_FACTS,
         title_label=item.title_label,
         title=title,
         body=body,
@@ -723,11 +828,16 @@ def check(
     the caller had a line earlier.
     """
     review, reviewed_by = crosscheck(client, item, generate=generate)
+    # The same strings the crosscheck read, and the same ones store() will write.
+    # A breach quotes the sentence it objects to and that quote is stored verbatim,
+    # so a guide check reading the raw reply produces an objection whose quoted
+    # half is not on the page whenever the house-style rewrite touched it.
+    title, body = item.readable
     try:
         verdict = guide.check_guide(
             client,
-            title=item.title,
-            body=item.body,
+            title=title,
+            body=body,
             kind=item.kind,
             generate=guide_generate if guide_generate is not None else generate,
         )
@@ -755,9 +865,27 @@ def check(
 
 
 def checkable(
-    session: Session, fmt: FormatDef, angle: Angle, draft: AssetDraft
+    session: Session,
+    fmt: FormatDef,
+    angle: Angle,
+    draft: AssetDraft,
+    *,
+    facts: dict[str, ClientFact] | None = None,
 ) -> Checkable:
-    """The finished draft, packed for :func:`check` with what backs it."""
+    """The finished draft, packed for :func:`check` with everything that backs it.
+
+    "Everything" is both halves. The stories under the impulse say whether a
+    claim about the coverage is provable; the profile says whether a claim about
+    the mandate is. The formats that quote a named person are written *from* the
+    profile, so a checker given only the headlines has to treat a correctly
+    attributed quote and an invented one identically, and it is told to call the
+    invented one the worst mistake there is.
+
+    ``facts`` is the mandate's profile when the caller already holds it, which
+    :func:`write` does.
+    """
+    if facts is None:
+        facts = profile.stored(session, angle.client_id)
     return Checkable(
         kind=f"ein Text im Format {fmt.name}",
         title_label=fmt.title_label,
@@ -766,6 +894,7 @@ def checkable(
         thesis=angle.thesis,
         overclaim=angle.overclaim,
         evidence=_evidence_block(session, angle),
+        profile_facts=_fact_lines(facts),
     )
 
 
@@ -789,7 +918,13 @@ def _apply_checks(row: Asset, checked: Checked | None) -> None:
             concerns = f"{concerns}\nZuerst ändern: {checked.review.fix}".strip()
         row.review = concerns
         row.reviewed_by = checked.reviewed_by
-        row.review_ok = checked.review.send
+        # The checker's own flag is not trusted against its own findings, exactly
+        # as guide.check_guide does not trust it against its breaches. A verdict
+        # that lists an objection and still says send would render this row as
+        # clean, and the objection would sit on it unread. That includes the one
+        # finding the checker never made: the mechanical dash concern, which is
+        # added after the model has already answered.
+        row.review_ok = checked.review.send and not concerns
 
     if checked is None or checked.guide is None:
         # A mandate with no guide leaves a note and no reviewer, so the page can
@@ -831,7 +966,10 @@ def store(
     # formats. See newspulse.prose.
     row.title = prose.plain(draft.title)
     row.body = prose.plain(draft.body)
-    row.speaker = draft.speaker.strip()
+    # The attribution too: it is printed under the text, and a profile field
+    # somebody typed with a dash would otherwise be the one line on the page the
+    # house rule never reached.
+    row.speaker = prose.plain(draft.speaker).strip()
     row.generated_at = dt.datetime.now(dt.UTC)
     # The model's words, freshly. Whatever a human had done to the previous draft
     # was done to a different text.

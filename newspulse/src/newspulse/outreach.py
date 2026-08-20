@@ -257,6 +257,11 @@ def crosscheck(
         thesis=angle.thesis,
         overclaim=angle.overclaim,
         evidence=_evidence_block(session, client, target),
+        # Exactly what the drafting prompt was told about the mandate, no more.
+        # The letter is written without the deep-dive profile, so handing the
+        # checker that profile would let a claim the writer could not have made
+        # from anywhere read as backed.
+        profile_facts=_client_profile(client),
     )
     return assets.crosscheck(client, item, generate=generate)
 

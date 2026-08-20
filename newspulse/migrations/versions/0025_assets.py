@@ -85,9 +85,24 @@ def upgrade() -> None:
     op.create_index("ix_assets_angle_id", "assets", ["angle_id"])
     op.create_index("ix_assets_kind", "assets", ["kind"])
     op.create_index("ix_assets_generated_at", "assets", ["generated_at"])
+    # One unreleased draft per format per impulse. ``store()`` reads the draft it
+    # would replace and then inserts, and the daily run writes from a background
+    # worker: two interleaved writes otherwise leave two drafts of the same
+    # release on one impulse and the page renders both. Partial on purpose, so
+    # the released rows beside them stay untouched: those are the record of what
+    # actually went out, and there can be several.
+    op.create_index(
+        "ux_assets_angle_kind_unreleased",
+        "assets",
+        ["angle_id", "kind"],
+        unique=True,
+        sqlite_where=sa.text("released_at IS NULL"),
+        postgresql_where=sa.text("released_at IS NULL"),
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("ux_assets_angle_kind_unreleased", table_name="assets")
     op.drop_index("ix_assets_generated_at", table_name="assets")
     op.drop_index("ix_assets_kind", table_name="assets")
     op.drop_index("ix_assets_angle_id", table_name="assets")

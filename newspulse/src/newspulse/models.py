@@ -847,6 +847,24 @@ class Asset(Base):
     """
 
     __tablename__ = "assets"
+    __table_args__ = (
+        # One unreleased draft per format per impulse, enforced rather than
+        # assumed. newspulse.assets.store() looks for the draft it replaces and
+        # then inserts, and the daily run writes formats from a background
+        # worker: two writes that interleave between the read and the insert
+        # leave two drafts of the same release on one impulse, and the page
+        # renders both with no way to tell which one anybody meant. Partial, so
+        # the released rows beside them stay untouched: those are the record of
+        # what went out, and there can be several.
+        Index(
+            "ux_assets_angle_kind_unreleased",
+            "angle_id",
+            "kind",
+            unique=True,
+            sqlite_where=text("released_at IS NULL"),
+            postgresql_where=text("released_at IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     client_id: Mapped[int] = mapped_column(
