@@ -491,6 +491,10 @@ class BlockView:
     is_orphan: bool
     changed_at: dt.datetime | None
     changed_by: str
+    #: Whether ``changed_by`` is the sentinel rather than a person's name, so the
+    #: template knows which of the two to put through the translation lookup.
+    #: See :func:`_author_is_sentinel`.
+    changed_by_is_sentinel: bool
     #: The brain version this text has been in force since, or None if the block
     #: has never been changed and is simply what the repository ships.
     version: int | None
@@ -503,8 +507,25 @@ class BlockChange:
     version: int
     changed_at: dt.datetime
     changed_by: str
+    changed_by_is_sentinel: bool
+    #: The wording this change put in force, or "" for a revert whose shipped
+    #: default no longer exists — the one case where there is nothing to show and
+    #: the template says so rather than rendering an empty box.
     text: str
     is_revert: bool
+
+
+def _author_is_sentinel(name: str) -> bool:
+    """Whether an author is the no-named-user fallback rather than a person.
+
+    The panel used to render every author through the translation lookup, which
+    works for "mensch" — that is why the entry exists — and is wrong for
+    everything else. ``NEWSPULSE_AUTH_USER`` is a value an operator chooses, and
+    one that happened to collide with a German UI key would show the author of a
+    change as an unrelated English word: a user named "Vorgabe" appearing in the
+    history as "Shipped". Only the sentinel is chrome.
+    """
+    return name == brain._ANONYMOUS_EDITOR
 
 
 def _brain_blocks(session: Session) -> list[BlockView]:
@@ -515,6 +536,7 @@ def _brain_blocks(session: Session) -> list[BlockView]:
     views: list[BlockView] = []
     for key in [*sorted(shipped), *brain.orphaned(overrides)]:
         change = changes.get(key)
+        author = change.edited_by if change is not None else ""
         views.append(
             BlockView(
                 key=key,
@@ -522,7 +544,8 @@ def _brain_blocks(session: Session) -> list[BlockView]:
                 is_override=key in overrides,
                 is_orphan=key not in shipped,
                 changed_at=change.edited_at if change is not None else None,
-                changed_by=change.edited_by if change is not None else "",
+                changed_by=author,
+                changed_by_is_sentinel=_author_is_sentinel(author),
                 version=change.version if change is not None else None,
             )
         )
@@ -534,7 +557,15 @@ def _brain_history(session: Session, key: str) -> list[BlockChange]:
 
     A revert carries no text of its own — it is the absence of an override — so
     it renders the shipped wording it restored. A date alone would say a change
-    happened and nothing about what the house believed afterwards.
+    happened and nothing about what the house believed afterwards, which is the
+    only question anyone opens a history to answer.
+
+    Two honest limits. The shipped text is today's, not the one that shipped on
+    the day of the revert: the file's wording at that moment is not stored
+    anywhere this can read, and git holds the lineage. And for an orphan there is
+    no shipped text at all, which used to render as an empty ``<pre>`` — a
+    version, a date and an author with nothing readable beside them. That case is
+    now empty on purpose and the template names it.
     """
     shipped_text = brain.shipped().get(key, "")
     return [
@@ -542,6 +573,7 @@ def _brain_history(session: Session, key: str) -> list[BlockChange]:
             version=row.version,
             changed_at=row.edited_at,
             changed_by=row.edited_by,
+            changed_by_is_sentinel=_author_is_sentinel(row.edited_by),
             text=row.text if row.text is not None else shipped_text,
             is_revert=row.text is None,
         )

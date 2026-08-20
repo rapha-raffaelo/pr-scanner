@@ -1225,6 +1225,54 @@ def test_a_refused_edit_reads_in_english_on_an_english_page(client):
     assert brain.EMPTY_BLOCK_MESSAGE not in _panel(response.text)
 
 
+def test_a_configured_user_name_is_shown_as_typed_and_not_run_through_the_lookup(
+    factory, client
+):
+    """The author is a value, not chrome. The panel translated every author to
+    make the "mensch" sentinel read as "human" in English, which also meant a
+    ``NEWSPULSE_AUTH_USER`` colliding with a German UI key would render the
+    person who made a change as an unrelated English word."""
+    with factory() as session:
+        brain.edit(session, A_BLOCK, "Ein Satz.", edited_by="Vorgabe")
+
+    client.cookies.set(i18n.COOKIE_NAME, "en")
+    body = _panel(client.get("/settings").text)
+
+    assert "Vorgabe" in body
+    # "Shipped" is what t("Vorgabe") returns, and it is still the tag on every
+    # other block — so the assertion that bites is that the author line is not it.
+    assert f"· {i18n.translate('Vorgabe', 'en')} ·" not in body
+    assert "· Vorgabe ·" in body
+
+
+def test_a_revert_with_no_shipped_wording_left_says_so_rather_than_showing_nothing(
+    factory, client
+):
+    """AC 4 wants previous texts readable, not just their dates.
+
+    Reachable exactly once: a block that was edited, reverted and edited again,
+    and only then renamed away in the repository. The revert in the middle has no
+    text of its own and no shipped default left to stand in for it, which used to
+    render as a version, a date, an author and an empty box.
+    """
+    with factory() as session:
+        for version_number, text in ((1, "Erst."), (2, None), (3, "Wieder da.")):
+            session.add(
+                BrainOverride(
+                    key="alter_name", text=text, edited_at=FIXED_CLOCK,
+                    edited_by="lucas", version=version_number,
+                )
+            )
+        session.commit()
+
+    body = _panel(client.get("/settings/brain/alter_name").text)
+
+    assert "Erst." in body
+    assert "Wieder da." in body
+    assert "der ausgelieferte Wortlaut existiert nicht mehr" in body
+    assert "<pre class=\"brainblock__text\"></pre>" not in body
+
+
 def test_the_recorded_author_is_translated_rather_than_shown_as_a_german_noun():
     """`edited_by` is rendered through the same lookup as the chrome around it,
     so the fallback author does not sit in German in an English panel.

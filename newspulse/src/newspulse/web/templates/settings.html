@@ -692,7 +692,11 @@
             {% endif %}
             <span class="brainblock__when">
               {% if b.changed_at %}
-                {{ t("Zuletzt geändert") }} {{ b.changed_at | de_datetime }} · {{ t(b.changed_by) }} · {{ t("Fassung") }} {{ b.version }}
+                {# Only the sentinel goes through the lookup. A configured
+                   NEWSPULSE_AUTH_USER is a name somebody chose, and one that
+                   collided with a German UI key would render the author as an
+                   unrelated English word. #}
+                {{ t("Zuletzt geändert") }} {{ b.changed_at | de_datetime }} · {{ t(b.changed_by) if b.changed_by_is_sentinel else b.changed_by }} · {{ t("Fassung") }} {{ b.version }}
               {% else %}
                 {{ t("Noch nie geändert") }}
               {% endif %}
@@ -735,10 +739,18 @@
                     <div class="brainhist__head">
                       <span class="brainhist__version">{{ t("Fassung") }} {{ change.version }}</span>
                       <span class="brainhist__when">{{ change.changed_at | de_datetime }}</span>
-                      <span class="brainhist__who">{{ t(change.changed_by) }}</span>
+                      <span class="brainhist__who">{{ t(change.changed_by) if change.changed_by_is_sentinel else change.changed_by }}</span>
                       {% if change.is_revert %}<span class="tag tag--shipped">{{ t("Auf die Vorgabe zurückgesetzt") }}</span>{% endif %}
                     </div>
-                    <pre class="brainblock__text">{{ change.text }}</pre>
+                    {% if change.text %}
+                      <pre class="brainblock__text">{{ change.text }}</pre>
+                    {% else %}
+                      {# A revert on an orphan: the block was renamed away, so the
+                         wording this change restored is not in the repository any
+                         more. Said outright, because an empty box under a version
+                         and a date reads as a bug rather than as an answer. #}
+                      <p class="fieldhint">{{ t("Auf die Vorgabe zurückgesetzt — der ausgelieferte Wortlaut existiert nicht mehr.") }}</p>
+                    {% endif %}
                   </li>
                 {% endfor %}
               </ol>
