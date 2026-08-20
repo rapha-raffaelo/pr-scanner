@@ -1265,6 +1265,11 @@ def _drafted(
     that drops is a story missing from a list nobody counted; a format that fails
     is a button somebody pressed and is standing in front of, so the refusal
     carries the reason it refused.
+
+    Only a bad answer is retried, not a backend that could not answer. A
+    :class:`newspulse.analyzer.BackendError` means the provider is unreachable or
+    timed out, ``invoke_with_fallback`` has already tried the other one by then,
+    and a third attempt spends another timeout to learn the same thing.
     """
     fault = ""
     for attempt in range(1, _MAX_ATTEMPTS + 1):
