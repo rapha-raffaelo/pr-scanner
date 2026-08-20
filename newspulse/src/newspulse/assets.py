@@ -1156,8 +1156,8 @@ FORMATS: tuple[FormatDef, ...] = (
             "Eine Dateline als Anfang des ersten Absatzes: Ort, Datum.",
             "Ein Lead, der in einem Satz sagt, was passiert ist.",
             "Ein Fließtext, der ihn belegt.",
-            "Genau ein Zitat in Anführungszeichen, im selben Absatz zugeschrieben "
-            "an die oben genannte Person.",
+            "Genau ein Zitat in Anführungszeichen, im selben Satz zugeschrieben "
+            'an die oben genannte Person ("…", sagt <Name>, <Funktion>.).',
             f'Eine Boilerplate als letzter Absatz, beginnend mit "{_BOILERPLATE} …".',
             f"Mindestens {_MIN_RELEASE_PARAGRAPHS} Absätze, getrennt durch Leerzeilen.",
         ),

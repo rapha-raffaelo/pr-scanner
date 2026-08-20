@@ -1123,6 +1123,47 @@ def test_a_release_with_a_second_quote_from_an_invented_person_is_rejected():
     assert any("zugeschrieben" in fault for fault in faults)
 
 
+def test_a_split_german_quote_is_one_quote_and_not_two():
+    """"„…“, sagt Prot, „…“" is the most ordinary quote construction in a German
+    release and one quote from one person. Counted as two, a correct release was
+    refused for carrying "2 Zitate", retried with a complaint it could only answer
+    by writing unnatural German, and then refused for good: two paid calls, no
+    text, and nothing wrong with what the model wrote."""
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    body = "\n\n".join(
+        (
+            f"Berlin, {assets.today()}. Alpha AG erweitert ihr Angebot für Banken.",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
+            "„Verfügbarkeit ist ein eigener Risikoparameter“, sagt Alexandra Prot, "
+            "„und die Banken tragen das Risiko selbst.“",
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
+        )
+    )
+
+    assert assets.validate(fmt, _draft_of(fmt, body=body), _given()) == []
+
+
+def test_a_quote_is_attributed_by_its_own_clause_and_not_by_its_paragraph():
+    """The spokesperson named in the next sentence attributes nothing. Scoped to
+    the paragraph, "…, sagt Finanzvorstand Thomas Lang. Alexandra Prot war nicht
+    erreichbar." cleared a quote put in an invented CFO's mouth, which is the one
+    artefact this module exists to prevent."""
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    body = "\n\n".join(
+        (
+            f"Berlin, {assets.today()}. Alpha AG erweitert ihr Angebot für Banken.",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
+            '"Wir werden der führende Anbieter sein", sagt Finanzvorstand Thomas '
+            f"Lang. {_SPEAKER} war nicht erreichbar.",
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
+        )
+    )
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert faults == [f"Das Zitat ist nicht {_SPEAKER} zugeschrieben."]
+
+
 def test_a_surname_hiding_inside_an_ordinary_word_does_not_count_as_an_attribution():
     """Matched on a word boundary, not as a substring. Half the surnames a German
     profile holds live inside everyday words, and a substring match clears a quote
@@ -1248,6 +1289,27 @@ def test_a_qa_that_avoids_the_nogos_is_rejected():
     assert faults == ["Keine Frage rührt an die No-Gos des Guides. Genau die werden gestellt."]
 
 
+def test_a_nogo_reassured_about_in_an_answer_is_not_a_question_about_it():
+    """The acceptance is a *question* drawn from the No-Gos. Matched against the
+    whole body, a Q&A that never asks the uncomfortable question and only
+    reassures about it in an answer passed, which is precisely the "abgemilderte
+    Fassung" the prompt forbids."""
+    fmt = assets.definition(AssetKind.QA)
+    body = (
+        "## Zum Geschäft\nWas ändert sich für Banken?\n"
+        "Wir machen keine Heilversprechen, das ist unsere Linie.\n\n"
+        "## Zur Position\nWarum jetzt?\nWeil die Verwahrung wandert.\n\n"
+        "## Wo es unangenehm wird\n[heikel] Ist das teuer?\nNein."
+    )
+    given = _given(nogos=("No-Gos: Keine Heilversprechen.",))
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), given)
+
+    assert faults == [
+        "Keine Frage rührt an die No-Gos des Guides. Genau die werden gestellt."
+    ]
+
+
 def test_a_qa_with_nothing_marked_as_uncomfortable_is_rejected():
     fmt = assets.definition(AssetKind.QA)
     draft = _draft_of(fmt, body=_qa_body().replace("[heikel] ", ""))
@@ -1346,6 +1408,30 @@ def test_a_talking_point_without_a_bridge_is_rejected():
 
     assert faults == [
         "Ohne Brücke zurück zur These: 1 von 3 Punkten. "
+        'Unter jedem Punkt braucht es eine Zeile "Brücke: …".'
+    ]
+
+
+def test_three_bridges_under_one_point_do_not_cover_the_points_below_it():
+    """Counted as two totals, a pile of bridges under point one validated a set
+    whose points two and three had none. That is the artefact the format exists to
+    prevent: a consultant in a green room with two points and no way back to the
+    thesis."""
+    fmt = assets.definition(AssetKind.TALKING_POINTS)
+    body = (
+        "1. Punkt eins ist ein ganzer Satz.\n"
+        "Brücke: Zurück zur These A.\n"
+        "Brücke: Zurück zur These B.\n"
+        "Brücke: Zurück zur These C.\n"
+        "2. Punkt zwei ist ein ganzer Satz.\n"
+        "3. Punkt drei ist ein ganzer Satz.\n\n"
+        "Nicht sagen\nDass die Kette unzuverlässig sei."
+    )
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert faults == [
+        "Ohne Brücke zurück zur These: 2 von 3 Punkten. "
         'Unter jedem Punkt braucht es eine Zeile "Brücke: …".'
     ]
 
@@ -1516,6 +1602,32 @@ def test_a_briefing_that_never_names_the_outlet_is_rejected():
     faults = assets.validate(fmt, draft, _given())
 
     assert faults == [f"Das Medium ({_OUTLET}) kommt im Briefing nicht vor."]
+
+
+def test_a_briefing_may_name_only_the_headlines_it_was_handed(session):
+    """"Names the journalist's recent headlines" is half of what this format is
+    for, and its failure mode is invention rather than omission: a briefing
+    crediting a piece the journalist did not write is read out loud in the first
+    minute of the interview. The list the prompt carried is what it is held to."""
+    client, angle = _mandate(session, author=_BYLINE)
+    fmt = assets.definition(AssetKind.INTERVIEW_BRIEFING)
+    target = assets.recipient(session, client, angle)
+    headlines = assets._headlines(session, target)
+    body = _briefing_body().replace(
+        f"{_HEADLINE} (0)", "Faber schrieb zuletzt über Bitcoin-ETFs und die EZB"
+    )
+
+    faults = assets.validate(
+        fmt,
+        _draft_of(fmt, body=body),
+        _given(recipient=target, headlines=headlines),
+    )
+
+    assert headlines, "the fixture's byline has coverage on file"
+    assert faults == [
+        "Keine der belegten Schlagzeilen steht im Briefing. Unter "
+        '"Was zuletzt erschien" gehören genau diese und keine anderen.'
+    ]
 
 
 def test_a_briefing_missing_one_of_its_sections_is_rejected():

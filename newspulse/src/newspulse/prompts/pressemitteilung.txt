@@ -37,8 +37,9 @@ Was diese Meldung leisten muss:
   ist der Sitz des Mandanten von oben, ein Komma, das heutige Datum und ein
   Punkt: "<Sitz>, $today." Danach in einem Satz, was passiert ist. Wer, was,
   warum jetzt.
-- Das Zitat steht in Anführungszeichen und im selben Absatz wie seine
-  Zuschreibung, damit erkennbar bleibt, wer spricht. Es sagt etwas, das der
+- Das Zitat steht in Anführungszeichen und im selben Satz wie seine
+  Zuschreibung ("...", sagt <Name>, <Funktion>.), damit erkennbar bleibt, wer
+  spricht. Ein Name im nächsten Satz schreibt nichts zu. Es sagt etwas, das der
   Fließtext nicht schon gesagt hat. Ein Zitat, das die Meldung wiederholt, wird
   von jeder Redaktion gestrichen. Zugeschrieben wird es der oben genannten
   Person, mit ihrer Funktion, und niemandem sonst.

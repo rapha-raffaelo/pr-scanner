@@ -36,7 +36,8 @@ Was diese Talking Points leisten müssen:
 - Zu jedem Punkt gehört die Brücke zurück zur These. Sie steht in der Zeile
   darunter, beginnt mit "Brücke: " und sagt, wie man von diesem Punkt wieder zur
   Position des Mandanten kommt. Das ist der eigentliche Zweck dieses Formats.
-  Genauso viele Brücken wie Punkte, keine ohne.
+  Unter jedem Punkt eine, bevor der nächste Punkt anfängt. Keine ohne, und
+  mehrere unter einem Punkt ersetzen die fehlende unter dem nächsten nicht.
 - Der Abschnitt am Ende heißt "Nicht sagen", ist verbindlich und enthält vor
   allem die pauschale Lesart oben, in der Formulierung, in der sie einem im
   Gespräch herausrutscht.
