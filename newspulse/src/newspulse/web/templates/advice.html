@@ -85,6 +85,10 @@
   .reply__text { font-size: var(--t-footnote); line-height: 1.6; color: var(--ink-2); white-space: pre-wrap; }
 </style>
 
+{# Both cards on this page — the position and the letter — stamp themselves from
+   the shared partial, which the Today column imports too. #}
+{% import "partials/brain_stamp.html" as provenance %}
+
 <div class="client-profile">
   <h1>{{ t("Impulse") }}</h1>
   <p class="panel-hint">
@@ -184,6 +188,7 @@
         {% if angle.overclaim %}
           <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
         {% endif %}
+        {{ provenance.brain_stamp(angle.brain_version, t) }}
 
         {# The lead of this page promises that every claim names the coverage it
            rests on. This card — the *detailed* view of a draft, reached from the
@@ -349,6 +354,19 @@
                 {% else %}
                   <span class="crosscheck__clean">{{ t("keine Einwände") }}</span>
                 {% endif %}
+                {# Shown only when the check read a different set of standards
+                   from the ones the letter was written under, which happens when
+                   a block is edited in the seconds between the two model calls.
+                   Silent otherwise: one stamp per card is the normal case, and a
+                   second identical number beside it would be noise that teaches
+                   the reader to skip both. #}
+                {% if msg.review_brain_version is not none
+                      and msg.review_brain_version != msg.brain_version %}
+                  <span class="crosscheck__stamp">
+                    {{ t("gegengelesen unter") }}
+                    <a href="/settings/brain/version/{{ msg.review_brain_version }}">{{ t("Fassung") }} {{ msg.review_brain_version }}</a>
+                  </span>
+                {% endif %}
               </div>
             {% else %}
               <p class="crosscheck crosscheck--none">
@@ -359,6 +377,10 @@
             <p class="letter__caveat">
               {{ t("Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.") }}
             </p>
+            {# The letter's own stamp, not the impulse's. A message is written
+               days after the position it comes from, and the house may have
+               changed its mind in between. #}
+            {{ provenance.brain_stamp(msg.brain_version, t) }}
 
             {# The state strip: the human act at the end of the pipeline, made a
                record. Exactly one badge names where the letter stands; "ohne

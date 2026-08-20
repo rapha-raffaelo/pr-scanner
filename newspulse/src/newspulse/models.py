@@ -566,6 +566,59 @@ class Setting(Base):
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class BrainOverride(Base):
+    """One recorded change to what the house believes, block by block.
+
+    The repository ships the blocks (``newspulse/blocks/*.txt``) and they stay
+    the default underneath, so a fresh install thinks correctly on day one and
+    git keeps the lineage. This table is what the agency writes on top of them,
+    because what good PR looks like is the agency's judgement and not the
+    developer's, and a consultant should not need a deployment to change a
+    sentence about tone.
+
+    Append-only: a row is an *event*, not the current state. The override in
+    force for a block is its newest row, and a revert is a row of its own rather
+    than the deletion of one — "we went back to the shipped wording in September"
+    is a decision somebody made, and a letter written the week before was written
+    under a different standard. Deleting the row would make the revert look like
+    it never happened, which is exactly the history this table exists to keep.
+
+    ``text`` is NULL on precisely those revert rows. NULL and ``""`` are
+    different answers: the empty string is refused at write time (see
+    :func:`newspulse.brain.edit`), because a prompt composing an empty standard
+    drops it in silence rather than complaining.
+    """
+
+    __tablename__ = "brain_overrides"
+    __table_args__ = (
+        # One version per recorded change, enforced rather than assumed: BRN-03
+        # stamps generated texts with a version and reads the standards back out
+        # of this table, so two rows sharing a number would make that lookup
+        # ambiguous in the one conversation where it matters.
+        UniqueConstraint("version", name="uq_brain_overrides_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    #: The block's stable key — the same one a prompt's ``{{brain:…}}`` names.
+    #: Deliberately not a foreign key to anything: the blocks are files, and an
+    #: override whose file was renamed away has to stay findable (the settings
+    #: panel shows it as orphaned) rather than vanish with it.
+    key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    #: The overriding text, or NULL for "back to the shipped default".
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edited_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: Who changed it. One shared Basic-auth credential is the only identity this
+    #: tool has, so this is that user name or ``"mensch"`` — never a name nobody
+    #: supplied.
+    edited_by: Mapped[str] = mapped_column(String(80), nullable=False, default="mensch")
+    #: The portfolio-wide brain version this change produced, counting every
+    #: recorded change across every block. One number for the whole house, so a
+    #: text can say which standards it was written under with a single integer.
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class Advisory(Base):
     """One generated set of suggested PR actions for a client.
 
@@ -595,6 +648,14 @@ class Advisory(Base):
         default=list,
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
+    )
+    #: The standards this brief was written under, on the same terms as
+    #: :attr:`Angle.brain_version`. Stamped even though the advisor has no page
+    #: of its own any more: it composes the same blocks and stores what a model
+    #: wrote, and a stamp that is only on the convenient generators is a stamp
+    #: nobody can trust the absence of.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
     )
 
 
@@ -746,6 +807,20 @@ class Angle(Base):
         default=list,
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
+    )
+    #: Which standards this draft was written under: the portfolio-wide brain
+    #: version (:func:`newspulse.brain.version`) as it stood when the *prompt* was
+    #: composed, not when the row was saved. A consultant editing a standard while
+    #: a sweep is running must not retroactively change what a finished text
+    #: claims to have been written under.
+    #:
+    #: NULL means "unknown", which is a different answer from ``0``. Zero is a
+    #: true statement — the standards have never been changed on this install —
+    #: and a row written before this column existed cannot make it. So the column
+    #: is nullable with no server default, and the interface says "unbekannt"
+    #: rather than claiming standards that were never recorded.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
     )
 
 
@@ -961,6 +1036,22 @@ class Outreach(Base):
     reviewed_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     #: The checker's own send/hold flag. True unless it objected.
     review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: The standards this letter was written under, on the same terms as
+    #: :attr:`Angle.brain_version`: captured with the prompt, NULL for a letter
+    #: from before there was anything to stamp. Its own column rather than a read
+    #: through ``angle_id`` — a letter is written days after the impulse it comes
+    #: from, and the house may have changed its mind in between.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    #: The standards the *cross-check* was composed under, which is not always the
+    #: letter's. :func:`newspulse.outreach.crosscheck` builds its own brain prompt
+    #: seconds after the letter, and an edit landing between the two model calls
+    #: would otherwise file the checker's text under a version it never read.
+    #: NULL for an unchecked letter and for every row from before the column.
+    review_brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
 
     # --- The ledger: the human act, and what came back --------------------------
     #: The contact book entry this went to, resolved once at release rather than
@@ -1149,6 +1240,7 @@ __all__ = [
     "Analysis",
     "Advisory",
     "Angle",
+    "BrainOverride",
     "ClientFact",
     "Contact",
     "OUTCOME_BY_MAILBOX",

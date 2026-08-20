@@ -518,9 +518,19 @@ def authorize_url(state: str, *, login_hint: str = "") -> str:
     """Where to send the operator for consent.
 
     ``access_type=offline`` is what makes Google issue a refresh token at all,
-    and ``prompt=consent`` is what makes it issue one *again* after a disconnect
-    — without it the second connection comes back with an access token alone and
-    dies an hour later.
+    and ``consent`` in the prompt is what makes it issue one *again* after a
+    disconnect — without it the second connection comes back with an access
+    token alone and dies an hour later.
+
+    ``select_account`` is in the prompt alongside it because ``login_hint`` on
+    its own does not do the job. Google documents it as a hint, and it behaves
+    like one: with a Google session already live in the browser, the consent
+    screen opens on *that* account and the hint is ignored. This is a shared
+    machine in an agency with several Google profiles signed in, so the account
+    that would silently win is whichever one was last used — measured, after the
+    hint alone left the consent screen on a work address that had nothing to do
+    with this mailbox. Asking every time costs one click and removes the entire
+    class of "whose outbox did that letter leave from".
 
     ``login_hint`` is the address the person is signed in to RauteOS with, so
     Google opens on that account instead of whichever one the browser happens to
@@ -538,7 +548,7 @@ def authorize_url(state: str, *, login_hint: str = "") -> str:
         "response_type": "code",
         "scope": " ".join(SCOPES),
         "access_type": "offline",
-        "prompt": "consent",
+        "prompt": "consent select_account",
         "state": state,
     }
     if login_hint:

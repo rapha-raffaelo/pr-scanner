@@ -251,3 +251,41 @@ def test_neither_mechanism_still_refuses_to_boot_publicly(monkeypatch):
     monkeypatch.setattr(config, "GMAIL_CLIENT_SECRET", "")
     with pytest.raises(SystemExit):
         auth.require_auth_for_public_bind("0.0.0.0")
+
+
+# --- One mailbox, several spellings -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "raphaelmankopf@gmail.com",
+        "raphael.mankopf@gmail.com",      # Gmail ignores dots
+        "RaphaelMankopf@Gmail.com",       # and case
+        "raphaelmankopf+rauteos@gmail.com",  # and anything after a plus
+        "raphaelmankopf@googlemail.com",  # the other domain for the same inbox
+    ],
+)
+def test_every_spelling_of_one_gmail_address_is_the_same_person(configured, spelling):
+    """Google returns whichever spelling the account was registered with, which
+    is not necessarily the one somebody typed into the allow-list. An exact
+    string comparison would lock out a person whose address is, to Google,
+    identical to the one on the list."""
+    assert google_auth.is_allowed(spelling)
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        "raphael.mankopf@arrakis.finance",  # dots may separate real mailboxes
+        "raphaelmankopf@example.com",
+        "raphaelmankopf@gmail.com.evil.test",
+        "",
+        "   ",
+    ],
+)
+def test_folding_stops_at_gmail(configured, other):
+    """Outside Gmail a dot or a plus can genuinely separate two mailboxes, so
+    folding them would let one address stand in for another — the allow-list
+    would then admit people it was never given."""
+    assert not google_auth.is_allowed(other)

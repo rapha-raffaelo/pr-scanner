@@ -23,7 +23,7 @@ from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import outreach
+from newspulse import brain, outreach
 from newspulse.models import (
     SILENT_AFTER_DAYS,
     Angle,
@@ -396,7 +396,8 @@ def test_a_release_landing_in_stores_read_write_window_is_not_overwritten(
     stale_read = types.SimpleNamespace(first=lambda: released)
     monkeypatch.setattr(session, "scalars", lambda *a, **k: stale_read)
     redraft = PersonalMessage(
-        subject="Neuer Betreff", message="Der neue Versuch.", hook="weil"
+        subject="Neuer Betreff", message="Der neue Versuch.", hook="weil",
+        brain_version=brain.version(session),
     )
     stored = outreach.store(session, client, angle, redraft, _TARGET)
     monkeypatch.undo()

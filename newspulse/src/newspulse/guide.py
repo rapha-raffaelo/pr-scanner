@@ -38,7 +38,7 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config
+from . import brain, config
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Client, GuideSource
 
@@ -159,7 +159,7 @@ def delete_source(session: Session, client_id: int, source_id: int) -> None:
 
 def _prompt_template() -> Template:
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text("utf-8")
-    return Template(text)
+    return Template(brain.compose(text))
 
 
 def distill(

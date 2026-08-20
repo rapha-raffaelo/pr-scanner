@@ -338,6 +338,49 @@
     background: var(--surface); color: var(--accent); cursor: pointer; margin-left: auto;
   }
   .panel .feedgroup__all:hover { border-color: var(--accent); }
+  /* --- The brain -------------------------------------------------------- */
+  /* One card per block, and the text shown in full rather than behind a
+     disclosure: a standard nobody reads is a standard nobody notices has
+     drifted, which is the condition this whole layer was built out of. */
+  .brainblock { border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.75rem; }
+  .brainblock:first-of-type { border-top: 0; }
+  .brainblock__head { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+  .brainblock__key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                     font-size: var(--t-footnote); font-weight: 700; color: var(--ink); }
+  .brainblock__when { font-size: var(--t-caption); color: var(--muted); }
+  /* Its own class rather than `.brainblock__head .rowlink`: the shared control
+     is declared once in app.css, and a page-local rule whose subject is a shared
+     class is how two definitions start drifting (see tests/test_styles.py). */
+  .brainblock__edit { margin-left: auto; }
+  .tag--shipped { background: #eef0f3; color: var(--muted); text-transform: none; }
+  .tag--override { background: #e0f2fe; color: #0369a1; text-transform: none; }
+  /* An orphan is not an error, but it is the one state where a live edit is
+     invisible, so it reads louder than the other two. */
+  .tag--orphan { background: var(--alert-bg); color: #b91c1c; text-transform: none; }
+  /* Capped and scrollable: eight blocks at full height is a page nobody scrolls
+     to the bottom of, and the whole text stays reachable inside its own box. */
+  .brainblock__text {
+    margin: 0.5rem 0 0; padding: 0.6rem 0.75rem; max-height: 15rem; overflow: auto;
+    background: var(--fill); border-radius: var(--radius);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--t-footnote); line-height: 1.5; white-space: pre-wrap;
+  }
+  .brainblock__form textarea {
+    width: 100%; margin: 0.35rem 0 0.5rem; padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--t-footnote); line-height: 1.5; resize: vertical;
+  }
+  .brainblock__revert { margin-top: 0.35rem; }
+  .brainblock__subhead { font-size: var(--t-caption); font-weight: 700;
+                         text-transform: uppercase; letter-spacing: 0.04em;
+                         color: var(--muted); margin: 1rem 0 0.35rem; }
+  .brain__version { font-size: var(--t-caption); font-weight: 400; color: var(--muted); }
+  .brainhist { list-style: none; margin: 0; padding: 0; }
+  .brainhist__one { margin-bottom: 0.9rem; }
+  .brainhist__head { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap;
+                     font-size: var(--t-caption); color: var(--muted); }
+  .brainhist__version { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
   /* --- The mailbox connection -------------------------------------------
      The status line reads like the mailbar in the locked mock: a dot, then the
      account in the operator's own words. Green only when a mailbox actually
@@ -649,6 +692,135 @@
         <button type="submit">{{ t("Speichern") }}</button>
       </form>
     </section>
+
+    <!-- ── Brain: the standards every prompt composes from ── -->
+    {# Blocks are separate forms, not one textarea holding everything. The point
+       of the layer is that a change to tonality is a different act from a change
+       to what counts as evidence, and one box would make them the same act. #}
+    <section class="panel panel--wide" id="brain" aria-label="{{ t('Maßstäbe') }}">
+      <h2>{{ t("Maßstäbe") }} <span class="brain__version">{{ t("Fassung") }} {{ brain_version }}</span></h2>
+      <p class="panel-hint">
+        {{ t("Was das Haus für gut hält. Jeder Text, den das Werkzeug schreibt, setzt sich hieraus zusammen: Ändert sich ein Block, ändert sich jeder Prompt, der ihn einbindet.") }}
+      </p>
+      {# Through the lookup, not rendered bare: the refusal is a German sentence
+         the tool wrote, and a red box of German on an otherwise English panel is
+         the mixed-language failure test_no_german_chrome_survives_on_an_english_page
+         exists to catch. The value is brain.EMPTY_BLOCK_MESSAGE, which has an
+         _EN entry; anything untranslated falls through as its German original. #}
+      {% if brain_error %}<div class="notice notice--error">{{ t(brain_error) }}</div>{% endif %}
+      {% for b in brain_blocks %}
+        <article class="brainblock" id="brain-{{ b.key }}">
+          <div class="brainblock__head">
+            <span class="brainblock__key">{{ b.key }}</span>
+            {% if b.is_orphan %}
+              <span class="tag tag--orphan">{{ t("Verwaist") }}</span>
+            {% elif b.is_override %}
+              <span class="tag tag--override">{{ t("Überschrieben") }}</span>
+            {% else %}
+              <span class="tag tag--shipped">{{ t("Vorgabe") }}</span>
+            {% endif %}
+            <span class="brainblock__when">
+              {% if b.changed_at %}
+                {# Only the sentinel goes through the lookup. A configured
+                   NEWSPULSE_AUTH_USER is a name somebody chose, and one that
+                   collided with a German UI key would render the author as an
+                   unrelated English word. #}
+                {{ t("Zuletzt geändert") }} {{ b.changed_at | de_datetime }} · {{ t(b.changed_by) if b.changed_by_is_sentinel else b.changed_by }} · {{ t("Fassung") }} {{ b.version }}
+              {% else %}
+                {{ t("Noch nie geändert") }}
+              {% endif %}
+            </span>
+            {% if brain_open == b.key %}
+              <a class="rowlink brainblock__edit" href="/settings#brain-{{ b.key }}">{{ t("Schließen") }}</a>
+            {% else %}
+              <a class="rowlink brainblock__edit" href="/settings/brain/{{ b.key }}#brain-{{ b.key }}">{{ t("Bearbeiten") }}</a>
+            {% endif %}
+          </div>
+
+          {% if b.is_orphan %}
+            <p class="fieldhint">
+              {{ t("Überschrieben, aber nicht mehr ausgeliefert: Der Block wurde umbenannt oder entfernt. Die Überschreibung gilt weiter, wo ein Prompt sie einbindet — Zurücksetzen entfernt sie.") }}
+            </p>
+          {% endif %}
+
+          {% if brain_open == b.key %}
+            <form method="post" action="/settings/brain/{{ b.key }}" class="brainblock__form">
+              <label for="brain-text-{{ b.key }}">{{ t("Wortlaut") }}</label>
+              <textarea id="brain-text-{{ b.key }}" name="text" rows="14" spellcheck="true">{{ b.text }}</textarea>
+              <button type="submit">{{ t("Speichern") }}</button>
+            </form>
+            {% if b.is_override %}
+              {# A sibling form, never nested: the revert is its own act and its
+                 own recorded change, not a second button on the save. #}
+              <form method="post" action="/settings/brain/{{ b.key }}/revert" class="brainblock__revert">
+                <button type="submit" class="linkbtn linkbtn--danger">{{ t("Auf Vorgabe zurücksetzen") }}</button>
+              </form>
+            {% endif %}
+
+            {# Reached from a stamp on a generated text. The number is
+               portfolio-wide and resolves to one change, so the page has to say
+               which part of the answer it is giving: this block as it stood
+               then, every other block as it stands now. Without the line the
+               reader would take the whole panel for the standards of that
+               version, which is a stronger claim than the tool can make. #}
+            {% if brain_from_change is defined and brain_from_change is not none %}
+              <p class="panel-hint">
+                {{ t("Von einem Text hierher gekommen:") }}
+                <strong>{{ t("Fassung") }} {{ brain_from_change.version }}</strong>
+                {# A revert is a change like any other and reads nothing like one:
+                   the text was written under the *shipped* wording, because
+                   somebody had just put it back. Saying "the change marked below"
+                   and stopping would send the reader looking for a wording that
+                   this version is precisely the removal of. #}
+                {% if brain_from_change.text is none %}
+                  {{ t("ist die unten markierte Rücksetzung: der Text entstand unter der ausgelieferten Vorgabe dieses Blocks.") }}
+                {% else %}
+                  {{ t("ist die unten markierte Änderung an diesem Block.") }}
+                {% endif %}
+                {{ t("Die Fassung zählt alle Änderungen am ganzen Haus — die übrigen Blöcke stehen in ihrem heutigen Wortlaut, nicht in dem von damals.") }}
+              </p>
+            {% endif %}
+            <h3 class="brainblock__subhead">{{ t("Verlauf") }}</h3>
+            {% if brain_history %}
+              {# The wording and not only the date: "Fassung 6, 3. September" says
+                 a change happened and nothing about what the house believed
+                 afterwards, which is the only question a history is opened for. #}
+              <ol class="brainhist">
+                {% for change in brain_history %}
+                  {# The version alone identifies the entry: it is unique across
+                     the whole table, and keeping the key out of the id keeps it
+                     matchable by the redirect, which has to percent-encode the
+                     key to put it in a Location header and cannot encode it
+                     here. #}
+                  <li class="brainhist__one" id="brain-v{{ change.version }}">
+                    <div class="brainhist__head">
+                      <span class="brainhist__version">{{ t("Fassung") }} {{ change.version }}</span>
+                      <span class="brainhist__when">{{ change.changed_at | de_datetime }}</span>
+                      <span class="brainhist__who">{{ t(change.changed_by) if change.changed_by_is_sentinel else change.changed_by }}</span>
+                      {% if change.is_revert %}<span class="tag tag--shipped">{{ t("Auf die Vorgabe zurückgesetzt") }}</span>{% endif %}
+                    </div>
+                    {% if change.text %}
+                      <pre class="brainblock__text">{{ change.text }}</pre>
+                    {% else %}
+                      {# A revert on an orphan: the block was renamed away, so the
+                         wording this change restored is not in the repository any
+                         more. Said outright, because an empty box under a version
+                         and a date reads as a bug rather than as an answer. #}
+                      <p class="fieldhint">{{ t("Auf die Vorgabe zurückgesetzt — der ausgelieferte Wortlaut existiert nicht mehr.") }}</p>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ol>
+            {% else %}
+              <p class="panel-hint">{{ t("Noch keine Änderung aufgezeichnet. Der Block ist der ausgelieferte Wortlaut.") }}</p>
+            {% endif %}
+          {% else %}
+            <pre class="brainblock__text">{{ b.text }}</pre>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </section>
+    <!-- ── /Brain ── -->
 
     <!-- ── Backup provider (read-only: configured by env var, not by the UI) ── -->
     <section class="panel" aria-label="{{ t('KI-Ausweichmodell') }}">

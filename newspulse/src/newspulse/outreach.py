@@ -62,7 +62,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
-from . import config, contacts, gemini, guide, prose
+from . import brain, config, contacts, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import (
     OUTCOME_BY_MAILBOX,
@@ -77,7 +77,7 @@ from .models import (
     visible_coverage,
 )
 from .pitch import PitchTarget
-from .schemas import MessageReview, PersonalMessage
+from .schemas import MessageReview, PersonalMessage, without_provenance
 
 if TYPE_CHECKING:
     # Only for the two signatures below. The ledger records *that* a letter went
@@ -110,7 +110,7 @@ _MAX_OWN_COVERAGE = 6
 
 def _prompt_template() -> Template:
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text("utf-8")
-    return Template(text)
+    return Template(brain.compose(text))
 
 
 def _client_profile(client: Client) -> str:
@@ -205,14 +205,16 @@ def _parse(raw: str) -> PersonalMessage:
 
     Same trust boundary as everywhere else in this codebase: the reply is text
     until the schema says otherwise. A fence is unwrapped because wrapping JSON in
-    ```json is a habit rather than an error.
+    ```json is a habit rather than an error. The stamp is taken out of the reply
+    first: provenance is the tool's to state and not the model's. See
+    :func:`newspulse.schemas.without_provenance`.
     """
     try:
         payload = json.loads(strip_code_fence(raw))
     except json.JSONDecodeError as exc:
         raise ParseError(f"outreach was not valid JSON: {exc}") from exc
     try:
-        message = PersonalMessage.model_validate(payload)
+        message = PersonalMessage.model_validate(without_provenance(payload))
     except Exception as exc:  # noqa: BLE001 — pydantic raises its own type
         raise ParseError(f"outreach did not match the schema: {exc}") from exc
     if not message.message.strip():
@@ -236,7 +238,13 @@ def draft(
     answering "no" to a direct request is not honesty here, it is a broken button.
     A backend failure still raises, because "the draft failed" and "here is your
     draft" must never look alike.
+
+    The letter carries the brain version it was written under, captured here with
+    the prompt rather than read again by :func:`store`: the model call takes
+    seconds, the storing happens after it, and a standard edited in between
+    belongs to the next letter.
     """
+    written_under = brain.version(session)
     prompt = _prompt_template().substitute(
         client_profile=_client_profile(client),
         comms_guide=guide.for_prompt(client),
@@ -248,7 +256,8 @@ def draft(
         recipient_work=_recipient_work(target),
         own_coverage=_own_coverage_block(session, client.id),
     )
-    return _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
+    message = _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
+    return message.model_copy(update={"brain_version": written_under})
 
 
 _CROSSCHECK_RESOURCE = "prompts/crosscheck.txt"
@@ -280,6 +289,12 @@ def crosscheck(
     call; by default it is :func:`newspulse.gemini.generate`, which is deliberately
     *not* the fallback-wrapped invoker the drafting side uses — falling back to
     Claude here would quietly turn the cross-check into a self-check.
+
+    The review carries its own brain version and not the letter's. This composes a
+    second prompt out of the same blocks, seconds after :func:`draft` composed the
+    first, and an edit landing between the two model calls belongs to the check
+    and not to the letter. Filing both under one number would make the row say
+    something about the checker's text that is not true of it.
     """
     if generate is None:
         if not config.review_configured():
@@ -297,8 +312,13 @@ def crosscheck(
                 **kwargs,
             )
 
+    written_under = brain.version(session)
     template = Template(
-        resources.files("newspulse").joinpath(_CROSSCHECK_RESOURCE).read_text("utf-8")
+        brain.compose(
+            resources.files("newspulse")
+            .joinpath(_CROSSCHECK_RESOURCE)
+            .read_text("utf-8")
+        )
     )
     prompt = template.substitute(
         client=client.name,
@@ -312,10 +332,11 @@ def crosscheck(
     )
     raw = generate(prompt)
     try:
-        payload = json.loads(strip_code_fence(raw))
+        payload = without_provenance(json.loads(strip_code_fence(raw)))
         review = MessageReview.model_validate(payload)
     except Exception as exc:  # noqa: BLE001 — pydantic and json raise their own
         raise ParseError(f"crosscheck did not match the schema: {exc}") from exc
+    review = review.model_copy(update={"brain_version": written_under})
 
     # One thing the checker cannot be trusted to catch, because it is mechanical:
     # the house rule on dashes. Checked here rather than believed.
@@ -324,7 +345,7 @@ def crosscheck(
             update={
                 "concerns": [
                     *review.concerns,
-                    "Gedankenstrich im Text — verrät maschinelles Schreiben.",
+                    "Gedankenstrich im Text: verrät maschinelles Schreiben.",
                 ][:5]
             }
         )
@@ -350,6 +371,16 @@ def _message_fields(
         "review": review_text,
         "reviewed_by": reviewed_by if review else "",
         "review_ok": review.send if review else True,
+        # Which standards the text beside it was written under. Stamped here
+        # rather than on one of store()'s two paths, so a redraft that lands as
+        # a new row carries its provenance as surely as one that updates in
+        # place. The review's stamp is cleared with the review, for the same
+        # reason the verdict is: it described a wording nobody can read now.
+        "brain_version": brain.stamp(message.brain_version, what="this letter"),
+        "review_brain_version": (
+            brain.stamp(review.brain_version, what="this cross-check")
+            if review else None
+        ),
         "generated_at": dt.datetime.now(dt.UTC),
     }
 
