@@ -1026,6 +1026,28 @@ def test_every_german_string_in_the_brain_panel_has_an_english_entry():
     assert not missing, f"no English for: {missing}"
 
 
+def test_the_german_the_panel_renders_as_a_value_is_translated_too():
+    """The hole the test above cannot see.
+
+    It scans for ``t('…')`` call sites, so it is blind to a German sentence that
+    reaches the page as a variable — which is exactly how the refusal for an empty
+    block arrives. It shipped as a bare ``{{ brain_error }}`` and rendered German
+    inside an otherwise English panel.
+    """
+    assert brain.EMPTY_BLOCK_MESSAGE in i18n.known_keys()
+    assert i18n.translate(brain.EMPTY_BLOCK_MESSAGE, "en") != brain.EMPTY_BLOCK_MESSAGE
+
+
+def test_a_refused_edit_reads_in_english_on_an_english_page(client):
+    """The whole point of the entry above, driven through the route."""
+    client.cookies.set(i18n.COOKIE_NAME, "en")
+    response = client.post(f"/settings/brain/{A_BLOCK}", data={"text": "   "})
+
+    assert response.status_code == 200
+    assert i18n.translate(brain.EMPTY_BLOCK_MESSAGE, "en") in _panel(response.text)
+    assert brain.EMPTY_BLOCK_MESSAGE not in _panel(response.text)
+
+
 def test_the_recorded_author_is_translated_rather_than_shown_as_a_german_noun():
     """`edited_by` is rendered through the same lookup as the chrome around it,
     so the fallback author does not sit in German in an English panel."""

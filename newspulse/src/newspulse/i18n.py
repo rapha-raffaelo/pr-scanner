@@ -778,6 +778,18 @@ _EN: dict[str, str] = {
     "Verlauf": "History",
     "Noch keine Änderung aufgezeichnet. Der Block ist der ausgelieferte Wortlaut.":
         "No change recorded yet. The block is the shipped wording.",
+    # Why an empty edit is refused. It reaches the page as a value rather than as
+    # chrome — the route hands `brain.EMPTY_BLOCK_MESSAGE` to the template — and
+    # is translated anyway, because a German sentence in a red box on an
+    # otherwise English panel is the mixed-language failure the suite forbids.
+    "Ein Block darf nicht leer sein: ein Prompt, der einen leeren Maßstab "
+    "einsetzt, lässt ihn stillschweigend weg.":
+        "A block must not be empty: a prompt that inserts an empty standard "
+        "silently drops it.",
+    # A revert to a block the repository no longer ships: the row says a wording
+    # was restored, and there is no longer a wording to show for it.
+    "Auf die Vorgabe zurückgesetzt — der ausgelieferte Wortlaut existiert nicht mehr.":
+        "Restored the shipped wording — the shipped wording no longer exists.",
     # Who a change is recorded as when the installation has no named user. Same
     # word ClientFact.filled_by uses, and translated for the same reason: it is a
     # value the interface renders, not a stored German noun the reader must parse.

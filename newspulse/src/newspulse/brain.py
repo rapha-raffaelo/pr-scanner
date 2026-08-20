@@ -115,7 +115,24 @@ _VERSION_KEY = "brain_version"
 #: honest answer is that a person here made the change — the same word
 #: ``ClientFact.filled_by`` uses for a fact a consultant typed himself. Inventing
 #: a name nobody supplied would be worse than admitting there is none.
+#:
+#: The same literal is written out in two other places, and changing it here
+#: alone would leave the three disagreeing: ``BrainOverride.edited_by``'s ORM
+#: default in ``models.py`` (which cannot import this constant — ``brain``
+#: imports ``models``), and the ``server_default`` in
+#: ``migrations/versions/0018_brain_overrides.py``, which is frozen history and
+#: must keep saying "mensch" whatever this becomes.
 _ANONYMOUS_EDITOR = "mensch"
+
+#: Why an empty block is refused, in the words the panel shows. A module
+#: constant rather than a literal inside :func:`edit` because it is interface
+#: text: the route hands it to the template, so it goes through the same
+#: translation lookup as the chrome around it and has an ``i18n._EN`` entry like
+#: any other German string the tool renders.
+EMPTY_BLOCK_MESSAGE = (
+    "Ein Block darf nicht leer sein: ein Prompt, der einen leeren "
+    "Maßstab einsetzt, lässt ihn stillschweigend weg."
+)
 
 
 class UnknownBlock(LookupError):
@@ -441,20 +458,23 @@ def edit(
     composing an empty standard drops it in silence and goes on producing text
     that looks fine, which is the failure this whole layer exists to prevent, so
     the refusal is at the point of the edit rather than at the point of the
-    render. Raises :class:`UnknownBlock` for a key that neither ships nor already
-    has an override, so a mistyped URL cannot conjure a block no prompt reads.
+    render. Raises :class:`UnknownBlock` for a key that neither ships nor has an
+    override *in force*, so a mistyped URL cannot conjure a block no prompt reads.
+
+    "In force" and not "has ever had a row", which is the same question
+    :func:`stored` answers and the same one the settings routes' 404 asks. An
+    orphan that was reverted still has rows — a revert is recorded, not deleted —
+    and admitting it here would let a POST from a tab held open across that revert
+    resurrect an override for a block the repository no longer ships, while the
+    GET for the same URL answers 404.
     """
     cleaned = _normalise(text)
     if not cleaned:
-        raise ValueError(
-            "Ein Block darf nicht leer sein: ein Prompt, der einen leeren "
-            "Maßstab einsetzt, lässt ihn stillschweigend weg."
-        )
-    in_force = latest(session)
-    if key not in shipped() and key not in in_force:
-        raise UnknownBlock(key, sorted(shipped()))
-    row = in_force.get(key)
+        raise ValueError(EMPTY_BLOCK_MESSAGE)
+    row = latest(session).get(key)
     override = row.text if row is not None else None
+    if key not in shipped() and override is None:
+        raise UnknownBlock(key, sorted(shipped()))
     if cleaned == (override if override is not None else shipped().get(key)):
         return None
     return _record(session, key, cleaned, edited_by=edited_by, now=now)

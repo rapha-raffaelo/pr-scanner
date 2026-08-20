@@ -673,7 +673,12 @@
       <p class="panel-hint">
         {{ t("Was das Haus für gut hält. Jeder Text, den das Werkzeug schreibt, setzt sich hieraus zusammen: Ändert sich ein Block, ändert sich jeder Prompt, der ihn einbindet.") }}
       </p>
-      {% if brain_error %}<div class="notice notice--error">{{ brain_error }}</div>{% endif %}
+      {# Through the lookup, not rendered bare: the refusal is a German sentence
+         the tool wrote, and a red box of German on an otherwise English panel is
+         the mixed-language failure test_no_german_chrome_survives_on_an_english_page
+         exists to catch. The value is brain.EMPTY_BLOCK_MESSAGE, which has an
+         _EN entry; anything untranslated falls through as its German original. #}
+      {% if brain_error %}<div class="notice notice--error">{{ t(brain_error) }}</div>{% endif %}
       {% for b in brain_blocks %}
         <article class="brainblock" id="brain-{{ b.key }}">
           <div class="brainblock__head">
