@@ -263,8 +263,9 @@ def create_app() -> FastAPI:
     # Imported here (not at module top) to avoid a circular import: the route
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
-        advisory, archive, assistant, client, contacts, guide_routes, language,
-        profile as profile_routes, rivals_view, runstatus, settings, today, triage,
+        advisory, archive, assets_view, assistant, client, contacts, guide_routes,
+        language, profile as profile_routes, rivals_view, runstatus, settings,
+        today, triage,
     )
 
     app.include_router(today.router)
@@ -272,6 +273,11 @@ def create_app() -> FastAPI:
     app.include_router(archive.router)
     app.include_router(settings.router)
     app.include_router(advisory.router)
+    # The package on an impulse: the six formats, written, edited and released.
+    # Its own module because everything on it acts on a stored text, while the
+    # impulse page itself only renders one; the page reads the strip from
+    # ``assets_view.package``.
+    app.include_router(assets_view.router)
     app.include_router(assistant.router)
     app.include_router(language.router)
     app.include_router(triage.router)

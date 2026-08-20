@@ -28,6 +28,55 @@
   .handover__why { font-size: var(--t-small); color: var(--muted); margin-bottom: var(--s3); max-width: 68ch; }
   .handover__act { font-size: var(--t-small); color: var(--muted); }
   .handover__act a { color: var(--accent); font-weight: 600; }
+
+  /* The package (DEC-1). Page-local because no other template renders it: a
+     class two pages share belongs in app.css, and one page's own layout does
+     not. Every name here is prefixed so it cannot collide with the system's. */
+  .pack { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--line); }
+  .pack__head { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
+  .pack__t { font-size: var(--t-small); font-weight: 600; }
+  .pack__st { font-size: var(--t-micro); color: var(--muted); }
+  .pack__acts { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
+  .fmttabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: var(--s3); overflow-x: auto; }
+  .fmttab { font: inherit; font-size: var(--t-small); font-weight: 500; background: none; border: 0;
+            cursor: pointer; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent;
+            white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; }
+  .fmttab:hover { color: var(--ink); }
+  .fmttab.is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+  .fmttab__n { color: var(--muted); font-weight: 400; }
+  /* Four states, drawn apart: nothing written, a draft, a checked text, a
+     released one — plus the one modifier that overrides the rest, an objection
+     nobody has answered. A checked text and an unread one must never look alike. */
+  .fmt-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--faint); }
+  .fmt-dot--ungeschrieben { background: transparent; border: 1px dashed var(--faint); }
+  .fmt-dot--entwurf { background: var(--faint); }
+  .fmt-dot--geprueft, .fmt-dot--freigegeben { background: var(--good); }
+  .fmt-dot--freigegeben { box-shadow: 0 0 0 2px rgba(36, 138, 61, 0.22); }
+  .fmt-dot--einwand { background: var(--warn); border: 0; box-shadow: none; }
+  .fmtpane { display: none; }
+  .fmtpane.is-on { display: block; }
+  .fmtpane__bar { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s2); }
+  .fmtpane__when { font-size: var(--t-micro); color: var(--muted); }
+  .fmtpane__acts { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
+  .fmtsheet { background: var(--fill-2); border: 1px solid var(--line); border-radius: 8px;
+              padding: var(--s4); max-width: 72ch; }
+  .fmtsheet__title { font-size: var(--t-body); font-weight: 700; line-height: 1.3; margin-bottom: var(--s2); }
+  .fmtsheet__body { font-size: var(--t-footnote); line-height: 1.7; white-space: pre-wrap; }
+  .fmtpane__empty { max-width: 72ch; }
+  .fmtpane__what { font-size: var(--t-small); color: var(--muted); margin-bottom: var(--s3); }
+  .fmtedit { margin-top: var(--s3); max-width: 72ch; }
+  .fmtedit > summary { cursor: pointer; font-size: var(--t-micro); color: var(--accent); font-weight: 600; }
+  .fmtedit label { display: block; margin-top: var(--s3); }
+  .fmtedit label span { display: block; font-size: var(--t-micro); color: var(--muted); margin-bottom: 3px; }
+  .fmtedit input, .fmtedit textarea { width: 100%; font: inherit; font-size: var(--t-footnote);
+                                      line-height: 1.6; padding: 8px 10px; border: 1px solid var(--line-strong);
+                                      border-radius: 6px; background: var(--card); color: var(--ink); }
+  .fmtedit textarea { resize: vertical; }
+  /* Spacing only, and selected by element rather than by .btn: the button's own
+     look belongs to the system in app.css, and a page-local rule naming that
+     class would be a second definition that wins on this page alone. */
+  .fmtedit form > button { margin-top: var(--s3); }
+  .fmtedit .panel-hint { display: block; margin-top: var(--s2); }
 </style>
 
 <div class="client-profile">
@@ -133,13 +182,205 @@
           <p class="impulse__caveat">{{ t("Entwurf aus Schlagzeilen und Feed-Anrissen, nicht aus den vollständigen Artikeln. Vor dem Versand prüfen.") }}</p>
         </details>
 
-        {# The position is not the deliverable — the message is. This used to be a
-           second panel called "Empfehlungen", and nobody could say how it differed
-           from the one above it. It differed by being unsendable: it described
-           work instead of doing it. One button on the position itself, and the
-           mandate's own coverage does its work inside the text. #}
+        {# DEC-1, "ein Anlass, ein Paket": the formats are a strip on the impulse
+           rather than a folder somewhere else, because that is how a communication
+           occasion is actually handled. Every format is a tab whatever its state,
+           so the six that do not exist yet are as visible as the one that does —
+           a strip that listed only what was written would hide the work. #}
+        {% set pack = packages.get(angle.id) %}
         {% set written = messages.get(angle.id, []) %}
         {% set targets = pitch_targets.get(angle.id) or [] %}
+        {# Disabled while any text is being written, because the lock behind the
+           button is process-wide: a live button would take the click and refuse
+           it. The notice below is narrower — it belongs to the impulse whose
+           package is actually running. #}
+        {% set busy = asset_busy %}
+        {% set running = asset_progress and asset_progress.angle_id == angle.id %}
+        <div class="pack" id="pack-{{ angle.id }}">
+          <div class="pack__head">
+            <span class="pack__t">{{ t("Das Paket zu diesem Anlass") }}</span>
+            <span class="pack__st">
+              {% if pack.written %}
+                {{ pack.written }} {{ t("von") }} {{ pack.total }} {{ t("Formaten geschrieben") }}{% if pack.released %} <span class="dot">·</span> {{ pack.released }} {{ t("freigegeben") }}{% endif %}
+              {% else %}
+                {{ t("noch nichts geschrieben") }}
+              {% endif %}
+            </span>
+            <span class="pack__acts">
+              {% if pack.written %}
+                {# Takes the texts and nothing around them: every sheet is marked
+                   as a part, the checks and the buttons beside them are not. #}
+                <button type="button" class="linkbtn" data-copy-group="pack-{{ angle.id }}">{{ t("Alles kopieren") }}</button>
+              {% endif %}
+              {% if pack.missing %}
+                <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/assets">
+                  <button type="submit" class="btn"{% if busy %} disabled{% endif %}>{{ t("Fehlende schreiben") }}</button>
+                </form>
+              {% endif %}
+            </span>
+          </div>
+
+          {# The page reports what the worker is doing and swaps itself when it is
+             done, the same poller the impulse and the letter use: six formats in
+             sequence is minutes, and a page that sat there finished would look
+             broken. #}
+          {% if running %}
+            <div class="notice notice--ok"
+                 hx-get="/client/{{ client.id }}/advice"
+                 hx-trigger="every 3s"
+                 hx-select="#positioning"
+                 hx-target="#positioning"
+                 hx-swap="outerHTML">
+              <span class="spinner" aria-hidden="true"></span>
+              {{ t("Wird geschrieben") }}: {{ t(asset_progress.label) }}
+              {% if asset_progress.total > 1 %}({{ asset_progress.done + 1 }} {{ t("von") }} {{ asset_progress.total }}){% endif %}
+            </div>
+          {% endif %}
+          {% if asset_notes.get(angle.id) %}
+            <p class="sect__empty sect__refusal">{{ asset_notes[angle.id] }}</p>
+          {% endif %}
+
+          <div class="fmttabs" role="tablist" aria-label="{{ t('Formate') }}">
+            {% for slot in pack.slots %}
+              <button type="button" class="fmttab{% if loop.first %} is-on{% endif %}"
+                      role="tab" aria-selected="{{ 'true' if loop.first else 'false' }}"
+                      data-pane="pane-{{ angle.id }}-{{ slot.key }}">
+                <span class="fmt-dot fmt-dot--{{ slot.state }}{% if slot.objected %} fmt-dot--einwand{% endif %}"
+                      aria-hidden="true"></span>{{ t(slot.fmt.name) }}
+              </button>
+            {% endfor %}
+            {# The letter is the seventh format of the package. It keeps its own
+               table and its own recipient, so the strip counts it rather than
+               owning it. #}
+            <button type="button" class="fmttab" role="tab" aria-selected="false"
+                    data-pane="pane-{{ angle.id }}-anschreiben">
+              <span class="fmt-dot fmt-dot--{{ 'entwurf' if written else 'ungeschrieben' }}" aria-hidden="true"></span>{{ t("Anschreiben") }}
+              {% if written %}<span class="fmttab__n">{{ written | length }}</span>{% endif %}
+            </button>
+          </div>
+
+          {% for slot in pack.slots %}
+            <div class="fmtpane{% if loop.first %} is-on{% endif %}"
+                 id="pane-{{ angle.id }}-{{ slot.key }}" role="tabpanel">
+              {% if slot.asset %}
+                {% set asset = slot.asset %}
+                <div class="fmtpane__bar">
+                  <span class="fmtpane__when">
+                    {{ t(slot.state_label) }}
+                    <span class="dot">·</span> {{ t("geschrieben") }} {{ asset.generated_at | de_datetime }}
+                    {% if asset.edited_at %}<span class="dot">·</span> {{ t("von Hand geändert") }} {{ asset.edited_at | de_datetime }}{% endif %}
+                    {% if asset.released_at %}<span class="dot">·</span> {{ t("freigegeben") }} {{ asset.released_at | de_datetime }}{% if asset.released_by %} ({{ asset.released_by }}){% endif %}{% endif %}
+                    {% if asset.speaker %}<span class="dot">·</span> {{ t("zugeschrieben") }}: {{ asset.speaker }}{% endif %}
+                  </span>
+                  <span class="fmtpane__acts">
+                    <button type="button" class="impulse__copy" data-copy-from="asset-text-{{ asset.id }}">{{ t("Kopieren") }}</button>
+                    {% if not asset.released %}
+                      <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/rewrite">
+                        <button type="submit" class="linkbtn"{% if busy %} disabled{% endif %}>{{ t("Neu schreiben") }}</button>
+                      </form>
+                      {% if slot.needs_recheck %}
+                        <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/recheck">
+                          <button type="submit" class="btn btn--ghost btn--sm"{% if busy %} disabled{% endif %}>{{ t("Gegenlesen lassen") }}</button>
+                        </form>
+                      {% elif slot.releasable %}
+                        <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/release">
+                          <button type="submit" class="btn btn--sm">{{ t("Freigeben") }}</button>
+                        </form>
+                      {% endif %}
+                    {% endif %}
+                  </span>
+                </div>
+
+                {# The text itself, and only the text: the copy button takes this
+                   element, so the checks and the attribution stay outside it. #}
+                <div class="fmtsheet" id="asset-text-{{ asset.id }}" data-copy-part>{% if asset.title %}<div class="fmtsheet__title">{{ asset.title }}</div>{% endif %}<div class="fmtsheet__body">{{ asset.body }}</div></div>
+
+                {# Both verdicts, and the state neither of them is. A text nothing
+                   has read must never draw like a text nothing objected to. #}
+                {% if asset.reviewed_by %}
+                  <div class="crosscheck{% if not asset.review_ok %} crosscheck--hold{% endif %}">
+                    <span class="impulse__label">
+                      {% if asset.review_ok %}{{ t("Gegengelesen von") }}{% else %}{{ t("Zweitmodell rät ab") }} —{{ t("gelesen von") }}{% endif %}
+                      {{ asset.reviewed_by }}
+                    </span>
+                    {% if asset.review %}
+                      <ul>{% for line in asset.review.split("\n") if line.strip() %}<li>{{ line }}</li>{% endfor %}</ul>
+                    {% else %}
+                      <span class="crosscheck__clean">{{ t("keine Einwände") }}</span>
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <p class="crosscheck crosscheck--none">
+                    {{ t("Nicht gegengelesen — es ist kein Zweitmodell hinterlegt.") }}
+                    <a href="/settings">{{ t("Einstellungen") }} →</a>
+                  </p>
+                {% endif %}
+                {% if asset.guide_reviewed_by %}
+                  <div class="crosscheck{% if not asset.guide_review_ok %} crosscheck--hold{% endif %}">
+                    <span class="impulse__label">{{ t("Guide-Prüfung") }} · {{ asset.guide_reviewed_by }}</span>
+                    {% if asset.guide_review %}
+                      <ul>{% for line in asset.guide_review.split("\n") if line.strip() %}<li>{{ line }}</li>{% endfor %}</ul>
+                    {% else %}
+                      <span class="crosscheck__clean">{{ t("keine Einwände") }}</span>
+                    {% endif %}
+                  </div>
+                {% elif asset.guide_review %}
+                  <p class="crosscheck crosscheck--none">{{ asset.guide_review }}</p>
+                {% endif %}
+
+                {% if slot.hint %}
+                  <p class="crosscheck crosscheck--hold">{{ t(slot.hint) }}</p>
+                {% endif %}
+                {% if slot.note %}
+                  <p class="sect__empty sect__refusal">{{ slot.note }}</p>
+                {% endif %}
+
+                {# Editing is why this surface exists and not a card with a copy
+                   button: a pitch is read once, a press release is worked on. #}
+                {% if not asset.released %}
+                  <details class="fmtedit">
+                    <summary>{{ t("Bearbeiten") }}</summary>
+                    <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/edit">
+                      <label>
+                        <span>{{ t(slot.fmt.title_label) }}</span>
+                        <input type="text" name="title" value="{{ asset.title }}">
+                      </label>
+                      <label>
+                        <span>{{ t("Text") }}</span>
+                        <textarea name="body" rows="16">{{ asset.body }}</textarea>
+                      </label>
+                      <button type="submit" class="btn btn--ghost">{{ t("Änderung speichern") }}</button>
+                      <span class="panel-hint">{{ t("Die Änderung wird gespeichert und als von Hand bearbeitet vermerkt. Danach liest das Zweitmodell den Text noch einmal, bevor er freigegeben werden kann.") }}</span>
+                    </form>
+                  </details>
+                {% endif %}
+              {% else %}
+                <div class="fmtpane__empty">
+                  <p class="fmtpane__what">{{ t(slot.fmt.description) }}</p>
+                  {% if slot.readiness.ok %}
+                    <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/assets">
+                      <input type="hidden" name="kind" value="{{ slot.key }}">
+                      <button type="submit" class="btn btn--big"{% if busy %} disabled{% endif %}>{{ t("Schreiben") }}</button>
+                    </form>
+                  {% else %}
+                    {# DEC-2 on screen: nothing is written and the refusal names the
+                       field to go and fill, with the page that holds it. #}
+                    <p class="sect__empty sect__refusal">
+                      <strong>{{ t("Noch nicht schreibbar.") }}</strong> {{ slot.readiness.reason }}
+                      {% if slot.remedy %}
+                        <a href="/client/{{ client.id }}/{{ slot.remedy.path }}">{{ t(slot.remedy.label) }} →</a>
+                      {% endif %}
+                    </p>
+                  {% endif %}
+                  {% if slot.note %}
+                    <p class="sect__empty sect__refusal">{{ slot.note }}</p>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+
+          <div class="fmtpane" id="pane-{{ angle.id }}-anschreiben" role="tabpanel">
         <div class="makemsg">
           <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/message"
                 class="makemsg__form">
@@ -209,7 +450,7 @@
             </div>
             {# Subject and body inside the copy target, the reasoning outside it:
                the hook is for the consultant and must never reach an inbox. #}
-            <div class="letter__body" id="letter-text-{{ msg.id }}">{% if msg.subject %}<div class="letter__subject">{{ t("Betreff") }}: {{ msg.subject }}</div>{% endif %}{{ msg.message }}</div>
+            <div class="letter__body" id="letter-text-{{ msg.id }}" data-copy-part>{% if msg.subject %}<div class="letter__subject">{{ t("Betreff") }}: {{ msg.subject }}</div>{% endif %}{{ msg.message }}</div>
             {% if msg.hook %}
               <div class="letter__hook"><span class="impulse__label">{{ t("Warum diese:r") }}</span> {{ msg.hook }}</div>
             {% endif %}
@@ -312,6 +553,8 @@
             </p>
           </div>
         {% endif %}
+          </div>{# /pane-anschreiben #}
+        </div>{# /pack #}
       </article>
     {% else %}
       {# Three reasons for an empty section, and they need different answers: the
@@ -418,35 +661,72 @@
   });
 })();
 
+// The package strip: one occasion, one panel at a time. Delegated from the
+// document rather than bound per button, because the poller swaps #positioning
+// out from under these elements every three seconds while a text is being
+// written, and listeners bound to the old markup go with it.
 (function () {
-  document.querySelectorAll("[data-copy-from]").forEach(function (button) {
-    button.addEventListener("click", function () {
-      var source = document.getElementById(button.dataset.copyFrom);
-      if (!source) return;
-      var text = source.textContent.trim();
-      var done = function () {
-        var previous = button.textContent;
-        button.textContent = "✓";
-        button.classList.add("impulse__copy--done");
-        setTimeout(function () {
-          button.textContent = previous;
-          button.classList.remove("impulse__copy--done");
-        }, 1400);
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, function () {});
-        return;
-      }
-      var area = document.createElement("textarea");
-      area.value = text;
-      area.setAttribute("readonly", "");
-      area.style.position = "fixed";
-      area.style.opacity = "0";
-      document.body.appendChild(area);
-      area.select();
-      try { document.execCommand("copy"); done(); } catch (e) {}
-      document.body.removeChild(area);
+  document.addEventListener("click", function (event) {
+    var tab = event.target.closest && event.target.closest(".fmttab");
+    if (!tab) return;
+    tab.parentElement.querySelectorAll(".fmttab").forEach(function (other) {
+      var pane = document.getElementById(other.dataset.pane);
+      var on = other === tab;
+      other.classList.toggle("is-on", on);
+      other.setAttribute("aria-selected", on ? "true" : "false");
+      if (pane) pane.classList.toggle("is-on", on);
     });
+  });
+})();
+
+(function () {
+  var flash = function (button) {
+    var previous = button.textContent;
+    button.textContent = "✓";
+    button.classList.add("impulse__copy--done");
+    setTimeout(function () {
+      button.textContent = previous;
+      button.classList.remove("impulse__copy--done");
+    }, 1400);
+  };
+
+  var put = function (text, button) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { flash(button); }, function () {});
+      return;
+    }
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    try { document.execCommand("copy"); flash(button); } catch (e) {}
+    document.body.removeChild(area);
+  };
+
+  document.addEventListener("click", function (event) {
+    if (!event.target.closest) return;
+    // One text: the element the button points at, never the reasoning around it,
+    // which must not land in a client's inbox.
+    var one = event.target.closest("[data-copy-from]");
+    if (one) {
+      var source = document.getElementById(one.dataset.copyFrom);
+      if (source) put(source.textContent.trim(), one);
+      return;
+    }
+    // The whole package: every sheet in it, in the order of the strip. Only the
+    // parts marked as text, so no button label or verdict travels with them.
+    var all = event.target.closest("[data-copy-group]");
+    if (!all) return;
+    var group = document.getElementById(all.dataset.copyGroup);
+    if (!group) return;
+    var parts = [];
+    group.querySelectorAll("[data-copy-part]").forEach(function (part) {
+      parts.push(part.textContent.trim());
+    });
+    if (parts.length) put(parts.join("\n\n\n"), all);
   });
 })();
 </script>

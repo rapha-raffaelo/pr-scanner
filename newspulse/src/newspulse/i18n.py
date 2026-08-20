@@ -398,6 +398,50 @@ _EN: dict[str, str] = {
     "Interview-Briefing": "Interview briefing",
     "Wer fragt, was er zuletzt schrieb, und was gesagt werden soll.":
         "Who is asking, what they wrote lately, and what to get said.",
+    # --- The package on an impulse (DEC-1) -----------------------------------
+    # One occasion, one package: the formats are a strip on the impulse, each
+    # carrying the state it is in. The four state names are the load-bearing ones
+    # here — "Entwurf" and "Geprüft" are the difference between a text a model
+    # wrote and a text something has read, and a reader shown the German for one
+    # and the English for the other would have to guess which is which.
+    "Das Paket zu diesem Anlass": "Everything for this occasion",
+    "Formate": "Formats",
+    "Formaten geschrieben": "formats written",
+    "noch nichts geschrieben": "nothing written yet",
+    "Alles kopieren": "Copy all",
+    "Fehlende schreiben": "Write the missing ones",
+    "Wird geschrieben": "Writing",
+    "Anschreiben": "Letter",
+    "Nicht geschrieben": "Not written",
+    "Entwurf": "Draft",
+    "Geprüft": "Checked",
+    "Freigegeben": "Released",
+    "Schreiben": "Write",
+    "Neu schreiben": "Write again",
+    "Gegenlesen lassen": "Have it read",
+    "Freigeben": "Release",
+    "Bearbeiten": "Edit",
+    "Text": "Text",
+    "Titel": "Title",
+    "Schlagzeile": "Headline",
+    "Änderung speichern": "Save the change",
+    "Die Änderung wird gespeichert und als von Hand bearbeitet vermerkt. Danach "
+    "liest das Zweitmodell den Text noch einmal, bevor er freigegeben werden kann.":
+        "The change is stored and recorded as a human edit. The second model then "
+        "reads the text again before it can be released.",
+    "Der Text wurde nach der Prüfung von Hand geändert. Vor der Freigabe muss "
+    "ihn das Zweitmodell noch einmal lesen.":
+        "The text was edited by hand after it was checked. The second model has "
+        "to read it again before it can be released.",
+    "Noch nicht schreibbar.": "Not writable yet.",
+    "Profil ergänzen": "Fill in the profile",
+    "Guide hinterlegen": "Add the guide",
+    "Guide-Prüfung": "Guide check",
+    "geschrieben": "written",
+    "von Hand geändert": "edited by hand",
+    "zugeschrieben": "attributed to",
+    "freigegeben": "released",
+    "von": "of",
     "Gegengelesen von": "Second read by",
     "Zweitmodell rät ab": "Second model advises against",
     "gelesen von": "read by",

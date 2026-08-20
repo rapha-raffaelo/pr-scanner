@@ -31,6 +31,7 @@ from ..runlock import guard as _run_guard
 from .. import themework
 from ...models import Angle, Article, Client, TopicHit
 from ..app import get_db, templates
+from . import assets_view
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -111,6 +112,18 @@ def advice_view(
             "pitch_targets": targets,
             # The messages already written off each impulse, keyed the same way.
             "messages": messages,
+            # DEC-1: one occasion, one package. Every format for each impulse with
+            # the state it is in — unwritten, draft, checked, released — built from
+            # the registry crossed with what is stored, so a seventh format appears
+            # in the strip without this route learning its name. The recipients and
+            # the letters are handed over rather than fetched again: the briefing's
+            # readiness rests on the same lookup the pitch list already ran.
+            "packages": assets_view.package(session, client, drafts, targets, messages),
+            "asset_progress": assets_view.progress_for(client_id),
+            "asset_busy": assets_view.busy(),
+            "asset_notes": {
+                a.id: assets_view.package_note(a.id) for a in drafts
+            },
             # And, per message, the recipient's own headlines — the ones the
             # letter claims to have read. A pitch that says "Sie haben über X
             # geschrieben" has to be checkable where it is read, not two scrolls
