@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from string import Template
 
 import pytest
 
@@ -78,6 +79,27 @@ def test_unknown_block_raises_rather_than_returning_empty():
     assert "alpha" in str(excinfo.value)
 
 
+def test_unknown_block_is_not_a_keyerror_a_render_handler_could_swallow():
+    """`Template.substitute` raises KeyError for a missing placeholder, so a
+    caller that wraps a render in `except KeyError` would catch an unresolved
+    block too and compose without the standard: the exact silence this raises
+    to prevent. `except LookupError` still catches it deliberately."""
+    with pytest.raises(brain.UnknownBlock) as excinfo:
+        brain.block("nonexistent", FIXTURE_BLOCKS)
+    assert not isinstance(excinfo.value, KeyError)
+    assert isinstance(excinfo.value, LookupError)
+
+
+def test_shipped_blocks_cannot_be_mutated_through_the_cache():
+    """`shipped()` is cached, so it hands out one object for the process. BRN-02
+    layers database overrides in front of it, and `merged = shipped();
+    merged.update(rows)` would make one client's edits every client's standards
+    until restart."""
+    with pytest.raises(TypeError):
+        brain.shipped()["alpha"] = "injected"  # type: ignore[index]
+    assert "alpha" not in brain.blocks()
+
+
 def test_compose_expands_an_include_from_the_given_source():
     composed = brain.compose("Vorher\n\n{{brain:alpha}}\n\nNachher\n", FIXTURE_BLOCKS)
     assert FIXTURE_BLOCKS["alpha"] in composed
@@ -110,6 +132,17 @@ def test_compose_leaves_template_placeholders_untouched():
     assert "$client_profile" in composed and "$days" in composed
 
 
+def test_compose_escapes_a_dollar_sign_inside_block_text():
+    """Composition runs before the caller's `Template.substitute`. A `$` a
+    consultant types into a block from BRN-02's settings screen would otherwise
+    become a live placeholder and raise from `substitute` at render time, in a
+    call site that has no idea a block was involved."""
+    composed = brain.compose("$client_profile\n{{brain:preis}}", {"preis": "ab $500"})
+    assert Template(composed).substitute(client_profile="ACME").strip() == (
+        "ACME\nab $500"
+    )
+
+
 def test_compose_is_pure_for_the_same_text_and_source():
     text = "#blocks: alpha\n{{brain:alpha}}"
     assert brain.compose(text, FIXTURE_BLOCKS) == brain.compose(text, FIXTURE_BLOCKS)
@@ -119,6 +152,16 @@ def test_declared_and_included_read_the_two_markers_apart():
     text = "#blocks: alpha, beta\n\n{{brain:alpha}}"
     assert brain.declared(text) == ("alpha", "beta")
     assert brain.included(text) == ("alpha",)
+
+
+def test_declared_reads_every_header_and_not_only_the_first():
+    """`compose` strips every `#blocks:` line. If `declared` read only the first,
+    a second header would vanish from the rendered prompt while the keys it names
+    went unreported, and the test below that holds the declaration to the
+    includes would be comparing against half a declaration."""
+    text = "#blocks: alpha\n\nAufgabe.\n\n#blocks: beta\n"
+    assert brain.declared(text) == ("alpha", "beta")
+    assert "#blocks" not in brain.compose(text, FIXTURE_BLOCKS)
 
 
 def test_has_declaration_separates_an_empty_list_from_a_missing_header():
@@ -294,6 +337,11 @@ def test_prompt_renders_to_its_golden_file(path: Path):
     if os.environ.get("NEWSPULSE_REGOLD"):
         golden.parent.mkdir(parents=True, exist_ok=True)
         golden.write_text(composed, "utf-8")
+        # Not falling through to the assert below: it would compare the file to
+        # what it was just handed and pass by construction. If the variable ever
+        # leaks into a CI environment, a green run has to mean the goldens were
+        # checked, not rewritten.
+        pytest.skip("golden regenerated; re-run without NEWSPULSE_REGOLD to verify")
     assert golden.exists(), (
         f"no golden file for {path.name}; run NEWSPULSE_REGOLD=1 pytest tests/test_brain.py"
     )

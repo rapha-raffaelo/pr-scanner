@@ -9,7 +9,7 @@ all four right, and missing one meant the tool held two standards at once and
 reported both as correct.
 
 So a block is a named piece of what the house believes, stored as one text file
-under ``brain/``, and a prompt *includes* it rather than restating it::
+under ``blocks/``, and a prompt *includes* it rather than restating it::
 
     #blocks: evidence, refusal
 
@@ -33,7 +33,7 @@ DEC-1's override chain hangs on: BRN-02 adds a database layer in front of
 :func:`shipped` without any caller learning that it happened.
 
 One rule deliberately stayed out of here. ``prose.plain()`` strips dashes from
-generated text in code, and it stays in code. The block :file:`house_style.txt`
+generated text in code, and it stays in code. The block :file:`blocks/house_style.txt`
 *asks* the model not to use them, because asking is worth something, but a rule
 that must hold on the output cannot be a sentence a model is asked to follow: it
 complies for two paragraphs and then relapses. The ask and the enforcement are
@@ -47,9 +47,16 @@ import re
 from collections.abc import Mapping
 from functools import lru_cache
 from importlib import resources
+from types import MappingProxyType
 
-#: Where the shipped blocks live, as package data beside ``prompts/``.
-_BLOCK_DIR = "brain"
+#: Where the shipped blocks live, as package data beside ``prompts/``. Named
+#: ``blocks`` and not ``brain`` on purpose: a data directory next to
+#: ``brain.py`` with the same stem resolves today only because CPython's
+#: FileFinder prefers the module over a namespace-package portion, and anything
+#: that reverses that preference — an ``__init__.py`` added here by a later
+#: story, a packaging tool that walks directories first — would shadow this
+#: module and break every prompt render at import.
+_BLOCK_DIR = "blocks"
 _BLOCK_SUFFIX = ".txt"
 
 #: ``{{brain:key}}``. Keys are lowercase snake_case so a typo is a miss rather
@@ -65,12 +72,19 @@ _DECLARATION = re.compile(r"(?m)^[ \t]*#blocks:[ \t]*(?P<keys>[^\n]*)\n?")
 _VERSION_DIGITS = 12
 
 
-class UnknownBlock(KeyError):
+class UnknownBlock(LookupError):
     """A prompt asked for a block that does not exist.
 
     Loud on purpose, and at render rather than at send. The quiet alternative is
     a prompt that composes without the standard it declared and produces text
     that looks fine, which is the failure this whole layer exists to prevent.
+
+    ``LookupError`` rather than ``KeyError`` for the same reason. Prompt
+    rendering runs ``Template.substitute``, which raises ``KeyError`` for a
+    missing placeholder, so a caller that one day wraps a render in
+    ``except KeyError`` would swallow an unresolved block exactly as quietly as
+    this class exists to prevent. ``except LookupError`` still catches it for
+    anyone who means to.
     """
 
     def __init__(self, key: str, known: list[str]) -> None:
@@ -90,6 +104,11 @@ def shipped() -> Mapping[str, str]:
     changes with a deployment. BRN-02 puts the database overrides in front of
     this; the shipped text stays the default underneath, so a fresh install
     thinks correctly on day one.
+
+    Read-only, because the cache hands out the same object every time. The
+    caller BRN-02 is about to write is ``merged = shipped(); merged.update(rows)``
+    and one client's overrides would become every client's standards for the life
+    of the process. Copy it first: ``dict(shipped())``, or use :func:`blocks`.
     """
     root = resources.files("newspulse").joinpath(_BLOCK_DIR)
     found = {
@@ -97,7 +116,7 @@ def shipped() -> Mapping[str, str]:
         for entry in sorted(root.iterdir(), key=lambda item: item.name)
         if entry.name.endswith(_BLOCK_SUFFIX)
     }
-    return dict(found)
+    return MappingProxyType(found)
 
 
 def blocks(source: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -120,11 +139,19 @@ def declared(text: str) -> tuple[str, ...]:
     An empty tuple means the prompt declares no standards, which is a legitimate
     thing for a prompt to say and a different thing from having no header at all;
     :func:`has_declaration` tells those two apart.
+
+    Every header, not just the first, because :func:`compose` strips every one.
+    Reading only the first would let a second header be removed from the rendered
+    prompt while the keys it names went unreported, and the test that holds the
+    declaration to the includes would be comparing against half the declaration.
     """
-    match = _DECLARATION.search(text)
-    if match is None:
-        return ()
-    return tuple(key.strip() for key in match.group("keys").split(",") if key.strip())
+    keys = [
+        key.strip()
+        for match in _DECLARATION.finditer(text)
+        for key in match.group("keys").split(",")
+        if key.strip()
+    ]
+    return tuple(dict.fromkeys(keys))
 
 
 def has_declaration(text: str) -> bool:
@@ -144,11 +171,18 @@ def compose(text: str, source: Mapping[str, str] | None = None) -> str:
     nothing here reads the clock or the database. Raises :class:`UnknownBlock`
     for a key that does not resolve, rather than leaving the marker in place or
     quietly dropping it.
+
+    Block text is escaped for ``string.Template``, which runs after this. A
+    ``$`` in the prompt itself is the caller's placeholder and stays untouched; a
+    ``$`` inside a block is a character a consultant typed, and once BRN-02 makes
+    block text editable someone will type a price. Unescaped it would raise a
+    ``KeyError`` from ``substitute`` in a call site that has no idea a block was
+    involved.
     """
     available = shipped() if source is None else source
 
     def _expand(match: re.Match[str]) -> str:
-        return block(match.group(1), available)
+        return block(match.group(1), available).replace("$", "$$")
 
     return _INCLUDE.sub(_expand, _DECLARATION.sub("", text)).strip() + "\n"
 
@@ -158,9 +192,15 @@ def version(source: Mapping[str, str] | None = None) -> str:
 
     A digest of the resolved block set rather than a counter, because with the
     blocks in files there is nothing to count: the content *is* the version, and
-    two checkouts of the same commit should stamp their texts identically. BRN-02
-    introduces the incrementing counter once an edit in the tool is an event with
-    an author and a time, which is a thing a hash cannot represent.
+    two checkouts of the same commit should stamp their texts identically.
+
+    Nothing in ``src/`` calls this yet, and that is deliberate rather than
+    forgotten: BRN-03 stamps generated text with the standards it was written
+    under, and BRN-02 replaces the digest with an incrementing counter once an
+    edit in the tool is an event with an author and a time, which is a thing a
+    hash cannot represent. That is a return-type change, and it is the reason
+    this returns a string rather than an int today. If both stories are dropped,
+    delete this function and its tests with them.
     """
     resolved = shipped() if source is None else source
     digest = hashlib.sha256()
