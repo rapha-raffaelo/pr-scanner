@@ -734,11 +734,21 @@
                then, every other block as it stands now. Without the line the
                reader would take the whole panel for the standards of that
                version, which is a stronger claim than the tool can make. #}
-            {% if brain_from_version is defined and brain_from_version is not none %}
+            {% if brain_from_change is defined and brain_from_change is not none %}
               <p class="panel-hint">
                 {{ t("Von einem Text hierher gekommen:") }}
-                <strong>{{ t("Fassung") }} {{ brain_from_version }}</strong>
-                {{ t("ist die unten markierte Änderung an diesem Block. Die Fassung zählt alle Änderungen am ganzen Haus — die übrigen Blöcke stehen in ihrem heutigen Wortlaut, nicht in dem von damals.") }}
+                <strong>{{ t("Fassung") }} {{ brain_from_change.version }}</strong>
+                {# A revert is a change like any other and reads nothing like one:
+                   the text was written under the *shipped* wording, because
+                   somebody had just put it back. Saying "the change marked below"
+                   and stopping would send the reader looking for a wording that
+                   this version is precisely the removal of. #}
+                {% if brain_from_change.text is none %}
+                  {{ t("ist die unten markierte Rücksetzung: der Text entstand unter der ausgelieferten Vorgabe dieses Blocks.") }}
+                {% else %}
+                  {{ t("ist die unten markierte Änderung an diesem Block.") }}
+                {% endif %}
+                {{ t("Die Fassung zählt alle Änderungen am ganzen Haus — die übrigen Blöcke stehen in ihrem heutigen Wortlaut, nicht in dem von damals.") }}
               </p>
             {% endif %}
             <h3 class="brainblock__subhead">{{ t("Verlauf") }}</h3>

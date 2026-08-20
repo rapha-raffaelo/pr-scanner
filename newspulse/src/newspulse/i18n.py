@@ -812,12 +812,18 @@ _EN: dict[str, str] = {
     # believe it was showing "the standards at version N" would be a better lie
     # than no link at all.
     "Von einem Text hierher gekommen:": "Followed here from a text:",
-    "ist die unten markierte Änderung an diesem Block. Die Fassung zählt alle "
-    "Änderungen am ganzen Haus — die übrigen Blöcke stehen in ihrem heutigen "
-    "Wortlaut, nicht in dem von damals.":
-        "is the change marked below, on this block. The version counts every "
-        "change across the whole house, so the other blocks are shown as they "
-        "read today and not as they read then.",
+    "ist die unten markierte Änderung an diesem Block.":
+        "is the change marked below, on this block.",
+    # A revert is a change too, and a text stamped with one was written under the
+    # shipped wording rather than under an override. Same sentence otherwise.
+    "ist die unten markierte Rücksetzung: der Text entstand unter der "
+    "ausgelieferten Vorgabe dieses Blocks.":
+        "is the reset marked below: the text was written under this block's "
+        "shipped default.",
+    "Die Fassung zählt alle Änderungen am ganzen Haus — die übrigen Blöcke "
+    "stehen in ihrem heutigen Wortlaut, nicht in dem von damals.":
+        "The version counts every change across the whole house, so the other "
+        "blocks are shown as they read today and not as they read then.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

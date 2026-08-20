@@ -54,6 +54,7 @@ from newspulse.models import (
     Outreach,
 )
 from newspulse.pitch import PitchTarget
+from newspulse.schemas import AngleDraft, PersonalMessage
 from newspulse.web.app import create_app, get_db
 
 PROMPTS = Path(brain.__file__).parent / "prompts"
@@ -1696,6 +1697,50 @@ def test_an_edit_between_writing_a_letter_and_storing_it_does_not_move_the_stamp
     assert brain.version(session) == 1
 
 
+def test_a_letter_with_no_stamp_is_refused_rather_than_filed_as_pre_migration(
+    session,
+):
+    """NULL is a claim, not a blank: the card reads it as "written before the
+    standards were recorded". Only the migration may make that claim, so a
+    persister handed a text that never went through a generator refuses it
+    instead of minting a fresh one — and, on a re-write, instead of replacing a
+    correct version with it."""
+    client = _a_mandate(session)
+    angle = Angle(
+        client_id=client.id,
+        generated_at=dt.datetime.now(dt.UTC),
+        subject="Betreff",
+        message="Zwei Absätze Positionierung.",
+        context="Kontext.",
+    )
+    session.add(angle)
+    session.commit()
+    written = outreach.draft(
+        session, client, angle, None, invoke=lambda *a, **k: _letter_reply()
+    )
+    assert outreach.store(session, client, angle, written, None).brain_version == 0
+
+    hand_built = PersonalMessage(subject="Betreff", message="Von Hand gebaut.")
+
+    with pytest.raises(brain.Unstamped):
+        outreach.store(session, client, angle, hand_built, None)
+    assert session.scalars(select(Outreach)).one().message != "Von Hand gebaut."
+
+
+def test_the_stamp_survives_a_round_trip_through_the_schema():
+    """The discard that keeps the model out of this field belongs to model output
+    and to nothing else. On the field it fired on every validation, so a draft
+    that was ever serialised and read back — a queue payload, a cached draft, an
+    API echo — came back claiming to predate the recorded standards."""
+    stamped = AngleDraft(
+        worth_sending=True, subject="s", message="m", context="c", thesis="t",
+        brain_version=5,
+    )
+
+    assert stamped.model_dump()["brain_version"] == 5
+    assert AngleDraft.model_validate(stamped.model_dump()).brain_version == 5
+
+
 def test_rewriting_a_letter_replaces_the_stamp_with_the_text(session):
     """One row per recipient, so the stamp has to move with the wording in it —
     otherwise the row would name the standards behind a letter nobody can read
@@ -1882,6 +1927,41 @@ def test_a_version_belonging_to_a_block_that_no_longer_ships_falls_back(
 
     assert resp.status_code == 303
     assert resp.headers["location"] == "/settings#brain"
+
+
+#: A version past what a signed 64-bit column holds. The driver raises
+#: ``OverflowError`` on binding a number this size rather than matching no rows,
+#: so it is the one bad version that used to reach the database as an exception
+#: instead of as a query.
+_WIDER_THAN_THE_COLUMN = 10**20
+
+
+def test_a_version_wider_than_the_column_falls_back_like_any_other_unknown(client):
+    """Every other absurd version — zero, negative, unknown, orphaned — already
+    redirected to the block list. This one crashed the resolver with a 500, which
+    is the same dead link the fallback exists to prevent, only louder."""
+    resp = client.get(
+        f"/settings/brain/version/{_WIDER_THAN_THE_COLUMN}", follow_redirects=False
+    )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/settings#brain"
+
+
+def test_a_fassung_wider_than_the_column_leaves_the_block_page_standing(
+    factory, client
+):
+    """``?fassung=`` is hand-typeable and reaches the same resolver. A number
+    nobody could have been sent here by must cost the arrival note, not the page."""
+    with factory() as open_session:
+        brain.edit(open_session, A_BLOCK, "Eins.")
+
+    resp = client.get(
+        f"/settings/brain/{A_BLOCK}", params={"fassung": _WIDER_THAN_THE_COLUMN}
+    )
+
+    assert resp.status_code == 200
+    assert "Von einem Text hierher gekommen:" not in _panel(resp.text)
 
 
 def _a_stored_draft(session, *, brain_version: int | None) -> Client:

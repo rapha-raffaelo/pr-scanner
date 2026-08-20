@@ -72,6 +72,7 @@ from ...models import (
     DEFAULT_COUNTRY,
     SCORE_MAX,
     SCORE_MIN,
+    BrainOverride,
     Category,
     Client,
     Run,
@@ -950,22 +951,29 @@ def brain_block_view(
         session,
         brain_open=key,
         brain_history=_brain_history(session, key),
-        brain_from_version=_arrived_from_version(session, key, fassung),
+        brain_from_change=_arrived_from_version(session, key, fassung),
     )
 
 
-def _arrived_from_version(session: Session, key: str, wanted: int | None) -> int | None:
-    """The version the reader followed here, if this page can vouch for it.
+def _arrived_from_version(
+    session: Session, key: str, wanted: int | None
+) -> BrainOverride | None:
+    """The change the reader followed here, if this page can vouch for it.
 
     A hand-typed ``?fassung=`` must not put a sentence on the page that the
     history below it does not support — "Fassung 3 is the change marked below"
     is false if version 3 was a change to another block, and version 0 was never
     a change at all. Only a version this block actually produced is echoed.
+
+    The row and not the number, because a revert is a change too and the sentence
+    reads differently for one: a text stamped with a revert was written under the
+    *shipped* wording, because somebody had just put it back. The template asks
+    ``.text`` which change it is looking at.
     """
     if wanted is None:
         return None
     change = brain.change_at(session, wanted)
-    return wanted if change is not None and change.key == key else None
+    return change if change is not None and change.key == key else None
 
 
 @router.get("/settings/brain/version/{wanted}")
