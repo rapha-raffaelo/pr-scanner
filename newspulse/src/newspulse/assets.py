@@ -323,6 +323,26 @@ class Given:
 Validator = Callable[[AssetDraft, Given], list[str]]
 
 
+#: The months as a dateline prints them. Written out rather than left to
+#: ``strftime("%B")``, which answers in whatever locale the process happens to
+#: have been started under and would date a German release "20. August 2026" on
+#: one machine and "20. August 2026" nowhere on the next.
+_DE_MONTHS = (
+    "Januar",
+    "Februar",
+    "März",
+    "April",
+    "Mai",
+    "Juni",
+    "Juli",
+    "August",
+    "September",
+    "Oktober",
+    "November",
+    "Dezember",
+)
+
+
 #: A German dateline: place, comma, date. "Berlin, 20. August 2026" and
 #: "Berlin, 20.08.2026" both count, because both are what a desk sees.
 _DATELINE = re.compile(
@@ -724,9 +744,16 @@ FORMATS: tuple[FormatDef, ...] = (
         name="Pressemitteilung",
         description="Die offizielle Meldung des Mandanten, zitierfähig und datiert.",
         prompt="prompts/pressemitteilung.txt",
+        # The seat is a requirement because the dateline is: the validator demands
+        # a place and a date at the top of the first paragraph, the date arrives as
+        # a slot, and the only honest source for the city is the profile field that
+        # holds it. Without it the prompt asks for a dateline it supplies nothing
+        # for, while forbidding invention two blocks above, and the release is
+        # refused twice into a Malformed instead of once with a field to fill.
         requires=(
             Requirement(Source.PROFIL, "ceo"),
             Requirement(Source.PROFIL, "geschaeftsfeld"),
+            Requirement(Source.PROFIL, "sitz"),
         ),
         structure=(
             "Eine Schlagzeile, die die Nachricht enthält und nicht bewirbt.",
@@ -1160,6 +1187,22 @@ def _recipient_block(session: Session, target: PitchTarget | None) -> str:
     return "WER FRAGT\n" + "\n".join(lines)
 
 
+def today(*, day: dt.date | None = None) -> str:
+    """Today, written the way a dateline writes it: "20. August 2026".
+
+    A slot rather than an example in the prompt file. The release's dateline is a
+    hard part of its contract, its date is the one input no profile field holds,
+    and :func:`_refusal_block` forbids inventing a date in the same prompt. Left
+    to an illustrative "Berlin, 20. August 2026" the model copies the example and
+    every release the tool ever writes carries the day this line was typed.
+
+    In the mandate's own zone rather than UTC, because a release written at one in
+    the morning is dated the day the desk receives it.
+    """
+    date = day or dt.datetime.now(config.local_zone()).date()
+    return f"{date.day}. {_DE_MONTHS[date.month - 1]} {date.year}"
+
+
 def _refusal_block(fmt: FormatDef) -> str:
     """The prompt's half of DEC-2.
 
@@ -1199,6 +1242,7 @@ def prompt_for(
     target = _resolved(session, fmt, client, angle, target)
     return fmt.template().substitute(
         recipient=_recipient_block(session, target),
+        today=today(),
         format_name=fmt.name,
         structure="\n".join(f"- {line}" for line in fmt.structure),
         refusal=_refusal_block(fmt),
@@ -1790,6 +1834,7 @@ __all__ = [
     "recipient",
     "requirements_met",
     "store",
+    "today",
     "validate",
     "write",
 ]

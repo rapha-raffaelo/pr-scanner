@@ -33,9 +33,10 @@ Was diese Meldung leisten muss:
 
 - Die Schlagzeile enthält die Nachricht. Sie bewirbt sie nicht, sie kündigt sie
   nicht an, und sie stellt keine Frage.
-- Der erste Absatz beginnt mit der Dateline und enthält den Lead: "Berlin,
-  20. August 2026. " und dann in einem Satz, was passiert ist. Wer, was, warum
-  jetzt.
+- Der erste Absatz beginnt mit der Dateline und enthält den Lead. Die Dateline
+  ist der Sitz des Mandanten von oben, ein Komma, das heutige Datum und ein
+  Punkt: "<Sitz>, $today." Danach in einem Satz, was passiert ist. Wer, was,
+  warum jetzt.
 - Das Zitat steht in Anführungszeichen und im selben Absatz wie seine
   Zuschreibung, damit erkennbar bleibt, wer spricht. Es sagt etwas, das der
   Fließtext nicht schon gesagt hat. Ein Zitat, das die Meldung wiederholt, wird
@@ -48,7 +49,8 @@ Was diese Meldung leisten muss:
   Doppelpunkt oder zwei Sätze.
 - Kein Werbeton, keine Superlative, keine Floskeln ("führend", "innovativ",
   "wegweisend"). Eine Meldung berichtet, sie preist nicht an.
-- Deutsch. Die Dateline nennt den Sitz des Mandanten und das heutige Datum.
+- Deutsch. Der Sitz steht oben unter den belegten Angaben; das Datum ist der
+  $today und steht nirgends sonst. Beides wird übernommen, nicht ersetzt.
 - Die pauschale Lesart oben ist die Falle. Behauptet die Meldung sie am Ende
   doch, hast du die Position verfehlt.
 
@@ -56,8 +58,8 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
 {
   "title": "Die Schlagzeile. Eine Zeile, höchstens 90 Zeichen.",
-  "body": "Die vollständige Mitteilung, mindestens vier Absätze, getrennt durch
-           \n\n: Dateline und Lead, Fließtext, Zitat mit Zuschreibung, zuletzt
-           die Boilerplate, die mit 'Über' beginnt.",
+  "body": "Die vollständige Mitteilung, Absätze getrennt durch \n\n: Dateline
+           und Lead, Fließtext, Zitat mit Zuschreibung, zuletzt die Boilerplate,
+           die mit 'Über' beginnt. Die Mindestzahl steht oben in der Struktur.",
   "speaker": "Name und Funktion der zitierten Person, exakt wie oben angegeben."
 }

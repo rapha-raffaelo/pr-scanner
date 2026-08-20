@@ -124,6 +124,9 @@ def _mandate(
 _FULL_PROFILE = {
     "ceo": _SPEAKER,
     "geschaeftsfeld": "Verwahrung digitaler Vermögenswerte für Banken.",
+    # The release's dateline needs a city, and the only honest source for one is
+    # this field. Left out, every release test would be testing the refusal.
+    "sitz": "Berlin",
 }
 
 
@@ -306,15 +309,15 @@ def test_a_seventh_format_needs_only_a_definition_and_a_prompt(session):
 
 
 def test_requirements_met_names_exactly_the_missing_fields(session):
-    """A press release needs a spokesperson and a fact. With neither on file both
-    are reported, and nothing else is."""
+    """A press release needs a spokesperson, a fact and a seat to date it from.
+    With none on file all three are reported, and nothing else is."""
     client, angle = _mandate(session, facts={})
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
 
     readiness = assets.requirements_met(session, fmt, client, angle)
 
     assert not readiness.ok
-    assert [req.key for req in readiness.missing] == ["ceo", "geschaeftsfeld"]
+    assert [req.key for req in readiness.missing] == ["ceo", "geschaeftsfeld", "sitz"]
 
 
 def test_requirements_met_is_satisfied_by_a_filled_profile(session):
@@ -490,6 +493,46 @@ def test_an_impulse_whose_stories_are_gone_says_so_rather_than_promising_them(
 
     assert "auf keine Berichterstattung berufen" in prompt
     assert "Schlagzeilen und Feed-Anrisse" not in prompt
+
+
+def test_the_release_prompt_carries_todays_date_rather_than_an_example(session):
+    """The dateline is a hard part of the release's contract and its date is the
+    one input no profile field holds. Left as an illustrative "20. August 2026"
+    the model copies the example and every release the tool writes is stamped with
+    the day the prompt file was typed."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+
+    prompt = assets.prompt_for(session, fmt, client, angle)
+
+    assert assets.today() in prompt
+    assert "Berlin" in prompt, "the seat is required, so it is in the prompt"
+
+
+def test_todays_date_is_written_the_way_a_dateline_writes_it():
+    """German month name, not the process locale's: strftime("%B") answers in
+    whatever language the machine was started under."""
+    assert assets.today(day=dt.date(2026, 3, 9)) == "9. März 2026"
+
+
+def test_a_release_needs_the_seat_its_dateline_is_written_from(session):
+    """The validator demands a place at the top of the first paragraph and the
+    refusal block forbids inventing one. Without the field on file the release is
+    unwritable, so it refuses once naming the field rather than twice naming the
+    structure."""
+    client, angle = _mandate(session, facts={"ceo": _SPEAKER, "geschaeftsfeld": "X."})
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    calls: list[str] = []
+
+    with pytest.raises(assets.RequirementsMissing) as caught:
+        assets.write(
+            session, fmt, client, angle,
+            invoke=lambda prompt, **k: calls.append(prompt) or _drafted(fmt),
+        )
+
+    assert calls == []
+    assert [req.key for req in caught.value.missing] == ["sitz"]
+    assert "Sitz" in str(caught.value)
 
 
 def test_the_guide_reaches_the_writing_prompt(session):
@@ -1124,7 +1167,8 @@ def test_no_release_is_written_at_all_without_a_named_spokesperson(session):
     "this is not known" has to mean the same thing as never having been asked.
     """
     client, angle = _mandate(
-        session, facts={"ceo": "   ", "geschaeftsfeld": "Verwahrung."}
+        session,
+        facts={"ceo": "   ", "geschaeftsfeld": "Verwahrung.", "sitz": "Berlin"},
     )
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
     calls: list[str] = []
