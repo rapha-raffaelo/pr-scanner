@@ -50,7 +50,7 @@ from string import Template
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, guide
+from . import brain, config, guide
 from .analyzer import (
     AnalyzerError,
     BackendError,
@@ -96,7 +96,7 @@ class CoverageRef:
 
 def _prompt_template() -> Template:
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text("utf-8")
-    return Template(text)
+    return Template(brain.compose(text))
 
 
 def _client_profile(client: Client) -> str:

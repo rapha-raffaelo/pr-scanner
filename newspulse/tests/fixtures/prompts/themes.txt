@@ -1,5 +1,3 @@
-#blocks: press_relevance
-
 Du benennst die Marktthemen, zu denen sich ein Unternehmen öffentlich äußern
 kann, die Debatten seines Feldes, nicht seine eigene Geschichte.
 
@@ -12,7 +10,11 @@ $extra
 Wozu die Themen dienen: Ein Nachrichtensuchlauf sucht damit nach Meldungen, zu
 denen sich das Unternehmen positionieren kann.
 
-{{brain:press_relevance}}
+WORÜBER DIE PRESSE ÜBERHAUPT SCHREIBT
+
+Was die Fach- und Wirtschaftspresse ohnehin nicht schreibt, ist kein Thema. Ein
+Begriff oder Anlass, der nur beim Mandanten selbst vorkommt, findet nur die
+eigene Berichterstattung zurück: daraus entsteht Eigenwerbung, kein Impuls.
 
 Hier heißt das: Ein Thema taugt nur, wenn die Fach- und Wirtschaftspresse darüber
 schreibt, OHNE dieses Unternehmen zu erwähnen. Der Firmenname, Produktnamen,

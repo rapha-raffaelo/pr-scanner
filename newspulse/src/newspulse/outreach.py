@@ -37,7 +37,7 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config, gemini, guide, prose
+from . import brain, config, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Analysis, Angle, Article, Client, Outreach, visible_coverage
 from .pitch import PitchTarget
@@ -57,7 +57,7 @@ _MAX_OWN_COVERAGE = 6
 
 def _prompt_template() -> Template:
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text("utf-8")
-    return Template(text)
+    return Template(brain.compose(text))
 
 
 def _client_profile(client: Client) -> str:
@@ -245,7 +245,11 @@ def crosscheck(
             )
 
     template = Template(
-        resources.files("newspulse").joinpath(_CROSSCHECK_RESOURCE).read_text("utf-8")
+        brain.compose(
+            resources.files("newspulse")
+            .joinpath(_CROSSCHECK_RESOURCE)
+            .read_text("utf-8")
+        )
     )
     prompt = template.substitute(
         client=client.name,
@@ -271,7 +275,7 @@ def crosscheck(
             update={
                 "concerns": [
                     *review.concerns,
-                    "Gedankenstrich im Text — verrät maschinelles Schreiben.",
+                    "Gedankenstrich im Text: verrät maschinelles Schreiben.",
                 ][:5]
             }
         )
