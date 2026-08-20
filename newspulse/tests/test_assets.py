@@ -1066,8 +1066,15 @@ def test_a_release_with_no_quote_at_all_is_rejected():
 
 def test_no_release_is_written_at_all_without_a_named_spokesperson(session):
     """The empty-spokesperson case, end to end: not a release with a gap in it,
-    not a release quoting the company. No release, no model call, no row."""
-    client, angle = _mandate(session, facts={"geschaeftsfeld": "Verwahrung."})
+    not a release quoting the company. No release, no model call, no row.
+
+    The field is submitted blank rather than left out, which is how a consultant
+    actually produces this state: he deletes a wrong machine-filled name, and
+    "this is not known" has to mean the same thing as never having been asked.
+    """
+    client, angle = _mandate(
+        session, facts={"ceo": "   ", "geschaeftsfeld": "Verwahrung."}
+    )
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
     calls: list[str] = []
 

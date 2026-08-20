@@ -1635,6 +1635,13 @@ def store(
     the same release are two attempts, not two releases. A *released* asset is
     never replaced, because its text is the record of what actually went out; a
     re-write becomes a new row beside it.
+
+    Deliberately not the place the structural contract is enforced. :func:`write`
+    has already refused anything that missed it, and the other text that arrives
+    here is one a human edited. A consultant who deletes the boilerplate because
+    this release is not going out with one has made an editorial decision, and a
+    tool that answered it by refusing to save his work would be wrong twice: about
+    the text, and about who is accountable for it.
     """
     row = _replaceable(session, angle.id, fmt.key) or Asset(
         client_id=client.id, angle_id=angle.id, kind=fmt.key
