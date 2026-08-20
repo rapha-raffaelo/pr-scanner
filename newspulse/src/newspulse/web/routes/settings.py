@@ -907,7 +907,12 @@ def edit_brain_block_route(
     rather than redirecting to a page that says nothing about what happened. The
     box comes back holding the wording still in force, because the only edit this
     refuses is an empty one and there is nothing in it worth echoing.
+
+    Guarded by ``_require_block`` like the other two verbs, rather than leaning on
+    ``brain.edit`` to raise: one function deciding what exists is what keeps a GET
+    and a POST for the same URL from giving different answers.
     """
+    _require_block(session, key)
     try:
         brain.edit(session, key, text)
     except brain.UnknownBlock:

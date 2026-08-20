@@ -999,6 +999,48 @@ def test_an_orphaned_override_can_be_reverted_away(factory, client):
         assert brain.stored(session) == {}
 
 
+def test_a_reverted_orphan_stays_gone_on_both_verbs(factory, client):
+    """The URL is the same after a revert; the two verbs must answer the same.
+
+    A revert is recorded rather than deleted, so a reverted orphan still has rows
+    in the table. Admitting it as an editable key would let a POST from a tab held
+    open across the revert put a live override back on a block the repository no
+    longer ships — while the GET for that same URL answers 404.
+    """
+    with factory() as session:
+        session.add(
+            BrainOverride(
+                key="alter_name", text="Gilt noch.", edited_at=FIXED_CLOCK,
+                edited_by="lucas", version=1,
+            )
+        )
+        session.commit()
+    client.post("/settings/brain/alter_name/revert")
+
+    assert client.get("/settings/brain/alter_name").status_code == 404
+    assert client.post(
+        "/settings/brain/alter_name", data={"text": "Wieder da."}
+    ).status_code == 404
+    with factory() as session:
+        assert brain.stored(session) == {}
+        assert brain.orphaned(brain.stored(session)) == ()
+
+
+def test_editing_a_reverted_orphan_directly_is_refused(session):
+    """The same rule under the route, since ``brain.edit`` is the public seam."""
+    session.add(
+        BrainOverride(
+            key="alter_name", text="Gilt noch.", edited_at=FIXED_CLOCK,
+            edited_by="lucas", version=1,
+        )
+    )
+    session.commit()
+    brain.revert(session, "alter_name")
+
+    with pytest.raises(brain.UnknownBlock):
+        brain.edit(session, "alter_name", "Wieder da.")
+
+
 @pytest.mark.parametrize("method", ["get", "post"])
 def test_a_block_key_that_exists_nowhere_is_a_404(client, method: str):
     """The key comes from the URL. Without this a typo renders an editor for a
