@@ -48,6 +48,11 @@ MAX_TARGETS = 6
 # the coverage map uses for its gap list, for the same reason.
 _MIN_FIELD_ARTICLES = 2
 
+# How many of one byline's headlines an interview briefing carries. Enough to see
+# what the person is working on, short enough to be read in the twenty minutes
+# before the interview, which is the only moment a briefing is ever read.
+MAX_RECENT_HEADLINES = 5
+
 
 @dataclass(frozen=True, slots=True)
 class PitchTarget:
@@ -268,4 +273,71 @@ def targets_for(
     return targets
 
 
-__all__ = ["LOOKBACK_DAYS", "MAX_TARGETS", "PitchTarget", "targets_for"]
+def _spellings(name: str) -> list[str]:
+    """The ways a feed writes one byline, folded: "Marie Faber", "Faber, Marie".
+
+    Only the swap, never a partial match. A surname alone would pull in every
+    namesake in the table, and the whole point of the headline list is that a
+    briefing may read it out loud.
+    """
+    folded = name.casefold()
+    surname, comma, forename = folded.partition(",")
+    if comma and forename.strip():
+        return [folded, f"{forename.strip()} {surname.strip()}"]
+    parts = folded.split()
+    if len(parts) < 2:
+        return [folded]
+    return [folded, f"{parts[-1]}, {' '.join(parts[:-1])}"]
+
+
+def recent_headlines(
+    session: Session,
+    journalist: str,
+    outlet: str = "",
+    *,
+    now: dt.datetime | None = None,
+    limit: int = MAX_RECENT_HEADLINES,
+) -> list[str]:
+    """What this byline published lately, newest first. Headlines and nothing else.
+
+    :func:`targets_for` carries one headline per target because a pitch list needs
+    one line of proof per row. An interview briefing needs the other thing the same
+    material can answer: what the person asking the questions has been working on.
+    Same source, same window, same rule about bodies, so the two cannot disagree
+    about what a journalist wrote.
+
+    ``outlet`` narrows the match when it is known, because two people share a name
+    more often than one person writes for two mastheads in a quarter, and a
+    briefing that credits a stranger's article is worse than one that credits none.
+
+    Both spellings of the byline count. Feeds carry "Marie Faber" and "Faber,
+    Marie" for the same person, sometimes in the same week, and matching only the
+    one :func:`targets_for` happened to name leaves a briefing saying nothing is
+    on file about a journalist whose last three pieces are in the table.
+    """
+    name = (journalist or "").strip()
+    if not name:
+        return []
+    reference = now or dt.datetime.now(dt.UTC)
+    query = (
+        select(Article.title)
+        .where(
+            func.lower(Article.author).in_(_spellings(name)),
+            Article.published_at >= reference - dt.timedelta(days=LOOKBACK_DAYS),
+        )
+        .order_by(Article.published_at.desc())
+        .limit(limit)
+    )
+    if outlet:
+        query = query.where(Article.source == outlet)
+    return [title for title in session.scalars(query).all() if title]
+
+
+__all__ = [
+    "LOOKBACK_DAYS",
+    "MAX_RECENT_HEADLINES",
+    "MAX_TARGETS",
+    "PitchTarget",
+    "recent_headlines",
+    "targets_for",
+]

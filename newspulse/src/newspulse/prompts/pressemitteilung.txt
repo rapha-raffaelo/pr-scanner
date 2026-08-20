@@ -33,17 +33,25 @@ Was diese Meldung leisten muss:
 
 - Die Schlagzeile enthält die Nachricht. Sie bewirbt sie nicht, sie kündigt sie
   nicht an, und sie stellt keine Frage.
-- Der Lead beantwortet in einem Satz, was passiert ist. Wer, was, warum jetzt.
-- Das Zitat sagt etwas, das der Fließtext nicht schon gesagt hat. Ein Zitat, das
-  die Meldung wiederholt, wird von jeder Redaktion gestrichen. Es wird der oben
-  genannten Person zugeschrieben, mit ihrer Funktion, und niemandem sonst.
-- Die Boilerplate ist knapp und besteht aus belegten Angaben von oben.
+- Der erste Absatz beginnt mit der Dateline und enthält den Lead. Die Dateline
+  ist der Sitz des Mandanten von oben, ein Komma, das heutige Datum und ein
+  Punkt: "<Sitz>, $today." Danach in einem Satz, was passiert ist. Wer, was,
+  warum jetzt.
+- Das Zitat steht in Anführungszeichen und im selben Satz wie seine
+  Zuschreibung ("...", sagt <Name>, <Funktion>.), damit erkennbar bleibt, wer
+  spricht. Ein Name im nächsten Satz schreibt nichts zu. Es sagt etwas, das der
+  Fließtext nicht schon gesagt hat. Ein Zitat, das die Meldung wiederholt, wird
+  von jeder Redaktion gestrichen. Zugeschrieben wird es der oben genannten
+  Person, mit ihrer Funktion, und niemandem sonst.
+- Der letzte Absatz ist die Boilerplate und beginnt mit dem Wort "Über". Sie ist
+  knapp und besteht aus belegten Angaben von oben.
 - Keine Gedankenstriche. Kein "—", kein "–". Sie sind das verlässlichste
   Erkennungszeichen maschinell geschriebener Texte. Nimm ein Komma, einen
   Doppelpunkt oder zwei Sätze.
 - Kein Werbeton, keine Superlative, keine Floskeln ("führend", "innovativ",
   "wegweisend"). Eine Meldung berichtet, sie preist nicht an.
-- Deutsch. Die Dateline nennt den Sitz des Mandanten und das heutige Datum.
+- Deutsch. Der Sitz steht oben unter den belegten Angaben; das Datum ist der
+  $today und steht nirgends sonst. Beides wird übernommen, nicht ersetzt.
 - Die pauschale Lesart oben ist die Falle. Behauptet die Meldung sie am Ende
   doch, hast du die Position verfehlt.
 
@@ -51,7 +59,8 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
 {
   "title": "Die Schlagzeile. Eine Zeile, höchstens 90 Zeichen.",
-  "body": "Die vollständige Mitteilung: Dateline, Lead, Fließtext, Zitat,
-           Boilerplate. Absätze getrennt durch \n\n.",
+  "body": "Die vollständige Mitteilung, Absätze getrennt durch \n\n: Dateline
+           und Lead, Fließtext, Zitat mit Zuschreibung, zuletzt die Boilerplate,
+           die mit 'Über' beginnt. Die Mindestzahl steht oben in der Struktur.",
   "speaker": "Name und Funktion der zitierten Person, exakt wie oben angegeben."
 }

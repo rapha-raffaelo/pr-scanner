@@ -368,6 +368,36 @@ _EN: dict[str, str] = {
         "Turns it into a finished letter for a trade desk of your choosing. The "
         "tool knows no names for this field yet.",
     "Personalisierte Nachrichten": "Personalised messages",
+    # --- The six formats (newspulse.assets.FORMATS) --------------------------
+    # Name and description per format, exactly as the definition holds them, so
+    # the registry stays the one place a format is described and the English
+    # reader is not shown a German card. Three of the names are the same word in
+    # both languages and are listed anyway: an entry that reads as a no-op is a
+    # decision, a missing one is indistinguishable from an oversight.
+    #
+    # Here rather than with the story that puts the format cards on the page,
+    # because the guard that keeps this honest is a test over ``assets.FORMATS``:
+    # it fails the moment a seventh format is defined without an English name.
+    # Landing the guard with the registry means the surface story inherits six
+    # translated formats instead of discovering six German ones.
+    "Pressemitteilung": "Press release",
+    "Die offizielle Meldung des Mandanten, zitierfähig und datiert.":
+        "The client's official announcement, quotable and dated.",
+    "Statement": "Statement",
+    "Drei bis fünf zitierfähige Sätze einer namentlichen Person.":
+        "Three to five quotable sentences from a named person.",
+    "Q&A": "Q&A",
+    "Die Fragen, die kommen, samt der unangenehmen.":
+        "The questions that will come, the uncomfortable ones included.",
+    "Talking Points": "Talking points",
+    "Was gesagt wird, was nicht, und der Weg zurück zur These.":
+        "What to say, what not to, and the way back to the thesis.",
+    "Gastbeitrag": "Guest article",
+    "Ein argumentierter Text in der ersten Person, ohne Nachrichtenaufhänger.":
+        "An argued piece in the first person, with no news hook.",
+    "Interview-Briefing": "Interview briefing",
+    "Wer fragt, was er zuletzt schrieb, und was gesagt werden soll.":
+        "Who is asking, what they wrote lately, and what to get said.",
     "Gegengelesen von": "Second read by",
     "Zweitmodell rät ab": "Second model advises against",
     "gelesen von": "read by",

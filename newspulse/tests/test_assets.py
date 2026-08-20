@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import assets, guide, profile, prose
+from newspulse import assets, guide, i18n, profile, prose
 from newspulse.analyzer import ParseError
 from newspulse.models import (
     Angle,
@@ -32,6 +32,8 @@ from newspulse.models import (
     CheckState,
     Client,
 )
+from newspulse.pitch import PitchTarget
+from newspulse.schemas import AssetDraft
 
 
 @pytest.fixture
@@ -50,6 +52,11 @@ def session(factory):
 
 _HEADLINE = "Verwahrung im Wandel: Banken bauen eigene Depots"
 _SNIPPET = "Laut Marktbeobachtern verlagert sich die Verwahrung zurück zu Banken."
+_OUTLET = "Börsen-Zeitung"
+_SPEAKER = "Alexandra Prot, Geschäftsführerin"
+
+
+_BYLINE = "Marie Faber"
 
 
 def _mandate(
@@ -58,11 +65,17 @@ def _mandate(
     facts: dict[str, str] | None = None,
     comms_guide: str = "",
     articles: int = 2,
+    author: str | None = None,
 ) -> tuple[Client, Angle]:
     """A mandate with an impulse, and exactly the profile the test needs.
 
     ``facts`` defaults to a filled profile because most tests are about something
     other than the refusal; the refusal tests pass an empty one deliberately.
+
+    ``author`` puts a byline on the impulse's stories, which is what makes
+    ``pitch.targets_for`` able to name a recipient. Off by default, because most
+    feeds carry no byline and the formats that do not need one must not quietly
+    depend on the fixture having one.
     """
     client = Client(
         name="Alpha AG",
@@ -81,7 +94,8 @@ def _mandate(
         article = Article(
             title=f"{_HEADLINE} ({i})",
             url=f"https://ex.de/field-{i}",
-            source="Börsen-Zeitung",
+            source=_OUTLET,
+            author=author,
             published_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=2),
             fetched_at=dt.datetime.now(dt.UTC),
             summary_text=_SNIPPET,
@@ -108,17 +122,125 @@ def _mandate(
 
 
 _FULL_PROFILE = {
-    "ceo": "Alexandra Prot, Geschäftsführerin",
+    "ceo": _SPEAKER,
     "geschaeftsfeld": "Verwahrung digitaler Vermögenswerte für Banken.",
+    # The release's dateline needs a city, and the only honest source for one is
+    # this field. Left out, every release test would be testing the refusal.
+    "sitz": "Berlin",
 }
 
 
-def _drafted(**over) -> str:
+# --- Fixture model output, one shape per format --------------------------------
+#
+# Six builders rather than one payload, because as of FMT-02 there is no such
+# thing as "a draft": there is a release, which owes a dateline and an attributed
+# quote, and a set of talking points, which owes bridges and a "Nicht sagen". A
+# shared fixture could only satisfy all six by satisfying none of their contracts,
+# and then every test in this file would be driving output the writer refuses.
+#
+# Each builder takes the one part its tests vary and holds the rest of the
+# contract fixed, so a test about the house style or the crosscheck says what it
+# is about and does not restate a press release to get there.
+
+
+def _release_body(*, lead: str = "Alpha AG erweitert ihr Angebot für Banken.") -> str:
+    """A release datelined the way the writer was told to dateline it.
+
+    Place and date rather than a fixed string: the validator holds the dateline
+    to the seat the profile carries and to today, so a fixture stamped with the
+    day it was typed would refuse every release the moment the day turned over.
+    """
+    return "\n\n".join(
+        (
+            f"Berlin, {assets.today()}. {lead}",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
+            f'"Verfügbarkeit ist ein eigener Risikoparameter", sagt {_SPEAKER}.',
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
+        )
+    )
+
+
+def _statement_body(*, opening: str = "Die Verwahrung wandert zu den Banken.") -> str:
+    return (
+        f"{opening} Wir halten diese Entwicklung für richtig. "
+        "Verfügbarkeit ist dabei ein eigener Risikoparameter, kein Detail."
+        f"\n\n{_SPEAKER}"
+    )
+
+
+def _qa_body(*, touchy: str = "Ist Ihr Angebot am Ende einfach günstig?") -> str:
+    return (
+        "## Zum Geschäft\n"
+        "Was ändert sich für Banken?\n"
+        "Sie verwahren wieder selbst und tragen das Risiko dafür.\n\n"
+        "## Zur Position\n"
+        "Warum jetzt?\n"
+        "Weil die Verfügbarkeit der Kette zum Risikoparameter geworden ist.\n\n"
+        "## Wo es unangenehm wird\n"
+        f"[heikel] {touchy}\n"
+        "Nein. Wir sprechen über Risiko, nicht über den Preis."
+    )
+
+
+def _talking_points_body(*, points: int = 3, bridges: int | None = None) -> str:
+    bridges = points if bridges is None else bridges
+    lines = []
+    for i in range(1, points + 1):
+        lines.append(f"{i}. Verfügbarkeit ist ein eigener Risikoparameter ({i}).")
+        if i <= bridges:
+            lines.append("Brücke: Zurück zur These, dass Liveness ein Risiko ist.")
+    return (
+        "\n".join(lines)
+        + "\n\nNicht sagen\nDass die Kette unzuverlässig sei und Liquidität abwandere."
+    )
+
+
+def _gastbeitrag_body(*, opening: str = "Ich halte die Debatte für verkürzt.") -> str:
+    """A guest article of about the length one actually is.
+
+    Repeated to land in the middle of the accepted band rather than just inside
+    it: a fixture that only barely passes turns any edit to the sentence into a
+    failure about the length, which is not what the test that reads it is about.
+    """
+    argument = (
+        "Wir sehen in der Verwahrung eine Verschiebung, die weniger mit Technik "
+        "zu tun hat als mit Haftung. Wer verwahrt, trägt das Risiko, und dieses "
+        "Risiko lässt sich nicht auslagern, indem man es einer Kette überlässt. "
+    )
+    return f"{opening} " + argument * 16
+
+
+def _briefing_body(*, outlet: str = _OUTLET, journalist: str = _BYLINE) -> str:
+    return (
+        f"Wer fragt\n{journalist}, {outlet}.\n\n"
+        f"Was zuletzt erschien\n{_HEADLINE} (0)\n\n"
+        "Womit zu rechnen ist\nFragen nach der Haftung bei Ausfällen.\n\n"
+        "Was gesagt werden soll\nVerfügbarkeit ist ein eigener Risikoparameter.\n\n"
+        "Wo es unangenehm wird\nDie Frage nach dem Preis."
+    )
+
+
+_BODIES = {
+    AssetKind.PRESSEMITTEILUNG: _release_body,
+    AssetKind.STATEMENT: _statement_body,
+    AssetKind.QA: _qa_body,
+    AssetKind.TALKING_POINTS: _talking_points_body,
+    AssetKind.GASTBEITRAG: _gastbeitrag_body,
+    AssetKind.INTERVIEW_BRIEFING: _briefing_body,
+}
+
+
+def _drafted(fmt=None, **over) -> str:
+    """One model reply, carrying the structure ``fmt`` declares.
+
+    ``fmt`` may be a definition or a kind. Without one the reply is a press
+    release, which is what a test that does not care is testing against.
+    """
+    kind = getattr(fmt, "kind", fmt) or AssetKind.PRESSEMITTEILUNG
     payload = {
         "title": "Alpha AG baut Verwahrung für Banken aus",
-        "body": "Berlin, 20. August 2026. Alpha AG erweitert ihr Angebot.\n\n"
-        "Der Schritt folgt auf die Verlagerung der Verwahrung.",
-        "speaker": "Alexandra Prot, Geschäftsführerin",
+        "body": _BODIES[AssetKind(kind)](),
+        "speaker": _SPEAKER,
     }
     payload.update(over)
     return json.dumps(payload)
@@ -193,15 +315,15 @@ def test_a_seventh_format_needs_only_a_definition_and_a_prompt(session):
 
 
 def test_requirements_met_names_exactly_the_missing_fields(session):
-    """A press release needs a spokesperson and a fact. With neither on file both
-    are reported, and nothing else is."""
+    """A press release needs a spokesperson, a fact and a seat to date it from.
+    With none on file all three are reported, and nothing else is."""
     client, angle = _mandate(session, facts={})
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
 
     readiness = assets.requirements_met(session, fmt, client, angle)
 
     assert not readiness.ok
-    assert [req.key for req in readiness.missing] == ["ceo", "geschaeftsfeld"]
+    assert [req.key for req in readiness.missing] == ["ceo", "geschaeftsfeld", "sitz"]
 
 
 def test_requirements_met_is_satisfied_by_a_filled_profile(session):
@@ -258,7 +380,7 @@ def test_a_missing_requirement_writes_nothing_and_names_the_field(session):
     with pytest.raises(assets.RequirementsMissing) as caught:
         assets.write(
             session, fmt, client, angle,
-            invoke=lambda prompt, **k: calls.append(prompt) or _drafted(),
+            invoke=lambda prompt, **k: calls.append(prompt) or _drafted(fmt),
         )
 
     assert calls == [], "the model was asked despite a missing requirement"
@@ -276,7 +398,7 @@ def test_a_guest_article_needs_the_person_it_appears_under(session):
     fmt = assets.definition(AssetKind.GASTBEITRAG)
 
     with pytest.raises(assets.RequirementsMissing) as caught:
-        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     assert "ceo" in [req.key for req in caught.value.missing]
 
@@ -288,7 +410,7 @@ def test_a_client_without_a_guide_gets_no_qa(session):
     fmt = assets.definition(AssetKind.QA)
 
     with pytest.raises(assets.RequirementsMissing) as caught:
-        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     assert "Kommunikations-Guide" in str(caught.value)
 
@@ -379,6 +501,46 @@ def test_an_impulse_whose_stories_are_gone_says_so_rather_than_promising_them(
     assert "Schlagzeilen und Feed-Anrisse" not in prompt
 
 
+def test_the_release_prompt_carries_todays_date_rather_than_an_example(session):
+    """The dateline is a hard part of the release's contract and its date is the
+    one input no profile field holds. Left as an illustrative "20. August 2026"
+    the model copies the example and every release the tool writes is stamped with
+    the day the prompt file was typed."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+
+    prompt = assets.prompt_for(session, fmt, client, angle)
+
+    assert assets.today() in prompt
+    assert "Berlin" in prompt, "the seat is required, so it is in the prompt"
+
+
+def test_todays_date_is_written_the_way_a_dateline_writes_it():
+    """German month name, not the process locale's: strftime("%B") answers in
+    whatever language the machine was started under."""
+    assert assets.today(day=dt.date(2026, 3, 9)) == "9. März 2026"
+
+
+def test_a_release_needs_the_seat_its_dateline_is_written_from(session):
+    """The validator demands a place at the top of the first paragraph and the
+    refusal block forbids inventing one. Without the field on file the release is
+    unwritable, so it refuses once naming the field rather than twice naming the
+    structure."""
+    client, angle = _mandate(session, facts={"ceo": _SPEAKER, "geschaeftsfeld": "X."})
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    calls: list[str] = []
+
+    with pytest.raises(assets.RequirementsMissing) as caught:
+        assets.write(
+            session, fmt, client, angle,
+            invoke=lambda prompt, **k: calls.append(prompt) or _drafted(fmt),
+        )
+
+    assert calls == []
+    assert [req.key for req in caught.value.missing] == ["sitz"]
+    assert "Sitz" in str(caught.value)
+
+
 def test_the_guide_reaches_the_writing_prompt(session):
     client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
     fmt = assets.definition(AssetKind.QA)
@@ -397,7 +559,7 @@ def test_a_stored_asset_carries_the_angle_it_came_from(session):
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
 
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     stored = assets.store(session, fmt, client, angle, draft)
 
     assert stored.angle_id == angle.id
@@ -412,9 +574,9 @@ def test_prose_plain_is_applied_to_the_title_and_the_body(session):
     draft = assets.write(
         session, fmt, client, angle,
         invoke=lambda *a, **k: _drafted(
+            fmt,
             title="Verwahrung — die Begründung verschiebt sich",
-            body="Berlin, 20. August 2026. Die Anprobe ist gewandert — und wird "
-            "dort bezahlt.\n\nZweiter Absatz.",
+            body=_release_body(lead="Die Anprobe ist gewandert — und wird dort bezahlt."),
         ),
     )
 
@@ -422,7 +584,7 @@ def test_prose_plain_is_applied_to_the_title_and_the_body(session):
 
     assert not prose.has_dash(stored.title)
     assert not prose.has_dash(stored.body)
-    assert stored.body.count("\n\n") == 1, "the paragraphs survive"
+    assert stored.body.count("\n\n") == 3, "the paragraphs survive"
 
 
 def test_the_attribution_is_the_profiles_and_not_the_models(session):
@@ -434,7 +596,7 @@ def test_the_attribution_is_the_profiles_and_not_the_models(session):
 
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(speaker="Alexander Prot, CEO"),
+        invoke=lambda *a, **k: _drafted(fmt, speaker="Alexander Prot, CEO"),
     )
     stored = assets.store(session, fmt, client, angle, draft)
 
@@ -450,7 +612,7 @@ def test_a_format_that_quotes_nobody_stores_no_attribution(session):
 
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(speaker="Dr. Erfunden, Sprecher"),
+        invoke=lambda *a, **k: _drafted(fmt, speaker="Dr. Erfunden, Sprecher"),
     )
     stored = assets.store(session, fmt, client, angle, draft)
 
@@ -460,18 +622,18 @@ def test_a_format_that_quotes_nobody_stores_no_attribution(session):
 def test_rewriting_a_format_replaces_the_draft_it_supersedes(session):
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
-    first = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    first = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     assets.store(session, fmt, client, angle, first)
 
     second = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Berlin, 20. August 2026. Neu."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_release_body(lead="Neu ist der zweite Anlauf.")),
     )
     assets.store(session, fmt, client, angle, second)
 
     rows = assets.for_angle(session, angle.id)
     assert len(rows) == 1
-    assert "Neu." in rows[0].body
+    assert "Neu ist" in rows[0].body
 
 
 def test_a_released_asset_is_never_overwritten_by_a_rewrite(session):
@@ -479,7 +641,7 @@ def test_a_released_asset_is_never_overwritten_by_a_rewrite(session):
     beside it, not a change to it."""
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
-    first = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    first = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     released = assets.store(session, fmt, client, angle, first)
     released.released_at = dt.datetime.now(dt.UTC)
     released.released_by = "mensch"
@@ -487,13 +649,13 @@ def test_a_released_asset_is_never_overwritten_by_a_rewrite(session):
 
     second = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Berlin, 20. August 2026. Neu."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_release_body(lead="Neu ist der zweite Anlauf.")),
     )
     assets.store(session, fmt, client, angle, second)
 
     rows = assets.for_angle(session, angle.id)
     assert len(rows) == 2
-    assert session.get(Asset, released.id).body.endswith("Verlagerung der Verwahrung.")
+    assert "Neu ist" not in session.get(Asset, released.id).body
 
 
 def test_a_reply_without_text_is_a_parse_error_rather_than_an_empty_asset(session):
@@ -503,14 +665,14 @@ def test_a_reply_without_text_is_a_parse_error_rather_than_an_empty_asset(sessio
 
     with pytest.raises(ParseError):
         assets.write(
-            session, fmt, client, angle, invoke=lambda *a, **k: _drafted(body="   ")
+            session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt, body="   ")
         )
 
 
 def test_the_texts_for_several_impulses_come_back_keyed_by_impulse(session):
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     assets.store(session, fmt, client, angle, draft)
 
     grouped = assets.by_angle(session, [angle.id, angle.id + 99])
@@ -526,7 +688,7 @@ def test_an_asset_with_neither_check_recorded_is_unchecked_not_clean(session):
     """The one state the page must never draw as a clean bill of health."""
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     stored = assets.store(session, fmt, client, angle, draft)
 
@@ -538,7 +700,7 @@ def test_an_asset_with_neither_check_recorded_is_unchecked_not_clean(session):
 def test_both_checks_run_over_a_format_and_are_stored_with_it(session):
     client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     seen: list[str] = []
 
     checked = assets.check(
@@ -559,7 +721,7 @@ def test_the_crosscheck_sees_the_text_and_what_it_may_claim(session):
     """It can only judge invention if it knows what was provable."""
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     seen: list[str] = []
 
     assets.crosscheck(
@@ -581,7 +743,7 @@ def test_the_crosscheck_is_shown_the_profile_the_format_was_written_from(session
     one, and that comparison is the whole reason this check runs."""
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     seen: list[str] = []
 
     assets.crosscheck(
@@ -602,7 +764,7 @@ def test_both_checkers_read_the_text_the_reader_will_see(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Die Verwahrung wandert — zurück."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Die Verwahrung wandert — zurück.")),
     )
     seen: list[str] = []
 
@@ -625,7 +787,7 @@ def test_an_asset_carrying_an_objection_never_renders_as_checked(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Eins — zwei.")),
     )
 
     checked = assets.check(
@@ -644,7 +806,7 @@ def test_a_guide_breach_is_stored_with_both_halves_quoted(session):
     """An objection nobody can check in ten seconds gets clicked away."""
     client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     checked = assets.check(
         client,
@@ -672,7 +834,7 @@ def test_a_mandate_without_a_guide_is_told_the_check_could_not_run(session):
     """"Nothing objected" and "nothing to object with" must not read alike."""
     client, angle = _mandate(session, comms_guide="")
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     guide_calls: list[str] = []
 
     checked = assets.check(
@@ -730,7 +892,7 @@ def test_a_dash_is_caught_even_if_the_checker_misses_it(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Eins — zwei.")),
     )
 
     review, _ = assets.crosscheck(
@@ -750,7 +912,7 @@ def test_the_checker_reads_the_text_that_will_be_stored(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Eins — zwei.")),
     )
     seen: list[str] = []
 
@@ -772,7 +934,7 @@ def test_the_mechanical_finding_survives_a_full_concern_list(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(
         session, fmt, client, angle,
-        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+        invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Eins — zwei.")),
     )
 
     review, _ = assets.crosscheck(
@@ -790,7 +952,7 @@ def test_more_concerns_than_the_cap_are_truncated_rather_than_rejected(session):
     that produces no verdict at all."""
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     review, _ = assets.crosscheck(
         client,
@@ -808,7 +970,7 @@ def test_rewriting_clears_the_verdicts_of_the_text_they_replace(session):
     """A verdict must never stand over a text it never read."""
     client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     checked = assets.check(
         client,
         assets.checkable(session, fmt, angle, draft),
@@ -818,7 +980,7 @@ def test_rewriting_clears_the_verdicts_of_the_text_they_replace(session):
     assets.store(session, fmt, client, angle, draft, checked)
 
     again = assets.write(
-        session, fmt, client, angle, invoke=lambda *a, **k: _drafted(body="Neu.")
+        session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt, body=_statement_body(opening="Neu ist der zweite Anlauf."))
     )
     stored = assets.store(session, fmt, client, angle, again)
 
@@ -837,8 +999,802 @@ def test_without_a_second_model_the_check_refuses_rather_than_passes(
 
     client, angle = _mandate(session)
     fmt = assets.definition(AssetKind.STATEMENT)
-    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     monkeypatch.setattr(config, "review_configured", lambda: False)
 
     with pytest.raises(RuntimeError, match="Zweitmodell"):
         assets.crosscheck(client, assets.checkable(session, fmt, angle, draft))
+
+
+# --- The structural contract, format by format ----------------------------------
+#
+# The validators are exercised directly here rather than through ``write``: what
+# is being pinned is what each format owes, and routing every case through a model
+# call and a database would say the same thing five times more slowly. The three
+# behaviours around them that are *not* per-format — the retry, the refusal, the
+# nothing-is-stored — go through ``write`` once each, further down.
+
+
+_NOGO_GUIDE = 'No-Go: das Wort günstig. Register: nüchtern, nie "wir freuen uns".'
+
+_TARGET = PitchTarget(
+    outlet=_OUTLET,
+    journalist=_BYLINE,
+    reason="hat die Meldung geschrieben",
+    evidence=(_HEADLINE,),
+    about_client=0,
+)
+
+
+def _draft_of(fmt, **over) -> AssetDraft:
+    """The fixture reply for ``fmt`` as the validator sees it."""
+    return AssetDraft.model_validate(json.loads(_drafted(fmt, **over)))
+
+
+def _given(**over) -> assets.Given:
+    fields = {
+        "speaker": _SPEAKER,
+        "nogos": (_NOGO_GUIDE.split(".")[0] + ".",),
+        "recipient": _TARGET,
+        "headlines": (f"{_HEADLINE} (0)",),
+    }
+    fields.update(over)
+    return assets.Given(**fields)
+
+
+def test_every_format_holds_its_output_to_a_contract():
+    """"Each format is only as good as the shape it is held to." A definition
+    without a validator states its structure in the prompt and hopes."""
+    for fmt in assets.FORMATS:
+        assert fmt.validator is not None, f"{fmt.key} asserts no structure"
+        assert fmt.structure, f"{fmt.key} declares no structure"
+
+
+@pytest.mark.parametrize("kind", list(AssetKind))
+def test_each_format_accepts_output_that_carries_its_declared_structure(kind):
+    """The other half of every rejection test below: a text that does carry the
+    shape passes, so the validators cannot be satisfying themselves by refusing
+    everything."""
+    fmt = assets.definition(kind)
+
+    assert assets.validate(fmt, _draft_of(fmt), _given()) == []
+
+
+# --- Pressemitteilung ----------------------------------------------------------
+
+
+def test_a_release_without_a_dateline_or_a_boilerplate_is_rejected():
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    draft = _draft_of(
+        fmt,
+        body="Alpha AG erweitert ihr Angebot.\n\nDas ist gut.\n\n"
+        f'"Ein Zitat mit genug Text darin", sagt {_SPEAKER}.',
+    )
+
+    faults = assets.validate(fmt, draft, _given())
+
+    assert any("Dateline" in fault for fault in faults)
+    assert any("Boilerplate" in fault for fault in faults)
+
+
+def test_a_release_without_a_headline_is_rejected():
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+
+    faults = assets.validate(fmt, _draft_of(fmt, title="  "), _given())
+
+    assert any("Schlagzeile" in fault for fault in faults)
+
+
+def test_a_release_quote_attributed_to_anyone_else_is_rejected():
+    """The acceptance this whole feature is built around: a quote may carry the
+    name the profile holds and no other. Checked in the paragraph the quote is in,
+    because the spokesperson is named in half of these boilerplates and "the name
+    appears somewhere below" would clear an invented CFO two paragraphs up."""
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    body = _release_body().replace(f"sagt {_SPEAKER}", "sagt Dr. Erfunden, Finanzchef")
+    body += f"\n\nÜber die Alpha AG: Geführt von {_SPEAKER}."
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert faults == [f"Das Zitat ist nicht {_SPEAKER} zugeschrieben."]
+
+
+def test_a_release_with_a_second_quote_from_an_invented_person_is_rejected():
+    """One correct attribution does not clear the other two. "Genau ein Zitat" is
+    the declared contract, and a release that puts words in the mouths of two
+    invented executives is what gets printed if only one of them is checked."""
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    body = "\n\n".join(
+        (
+            "Berlin, 20. August 2026. Alpha AG erweitert ihr Angebot für Banken.",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
+            f'"Verfügbarkeit ist ein eigener Risikoparameter", sagt {_SPEAKER}.',
+            '"Der Schritt zahlt sich schon im laufenden Jahr aus", sagt '
+            "Dr. Erfunden, Finanzchef.",
+            '"Wir sehen enorme Nachfrage aus dem Mittelstand", sagt '
+            "Herr Niemand, Vertriebsleiter.",
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
+        )
+    )
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert any("3 Zitate" in fault for fault in faults)
+    assert any("zugeschrieben" in fault for fault in faults)
+
+
+def test_a_split_german_quote_is_one_quote_and_not_two():
+    """"„…“, sagt Prot, „…“" is the most ordinary quote construction in a German
+    release and one quote from one person. Counted as two, a correct release was
+    refused for carrying "2 Zitate", retried with a complaint it could only answer
+    by writing unnatural German, and then refused for good: two paid calls, no
+    text, and nothing wrong with what the model wrote."""
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    body = "\n\n".join(
+        (
+            f"Berlin, {assets.today()}. Alpha AG erweitert ihr Angebot für Banken.",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
+            "„Verfügbarkeit ist ein eigener Risikoparameter“, sagt Alexandra Prot, "
+            "„und die Banken tragen das Risiko selbst.“",
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
+        )
+    )
+
+    assert assets.validate(fmt, _draft_of(fmt, body=body), _given()) == []
+
+
+def test_a_quote_is_attributed_by_its_own_clause_and_not_by_its_paragraph():
+    """The spokesperson named in the next sentence attributes nothing. Scoped to
+    the paragraph, "…, sagt Finanzvorstand Thomas Lang. Alexandra Prot war nicht
+    erreichbar." cleared a quote put in an invented CFO's mouth, which is the one
+    artefact this module exists to prevent."""
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    body = "\n\n".join(
+        (
+            f"Berlin, {assets.today()}. Alpha AG erweitert ihr Angebot für Banken.",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
+            '"Wir werden der führende Anbieter sein", sagt Finanzvorstand Thomas '
+            f"Lang. {_SPEAKER} war nicht erreichbar.",
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
+        )
+    )
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert faults == [f"Das Zitat ist nicht {_SPEAKER} zugeschrieben."]
+
+
+def test_a_surname_hiding_inside_an_ordinary_word_does_not_count_as_an_attribution():
+    """Matched on a word boundary, not as a substring. Half the surnames a German
+    profile holds live inside everyday words, and a substring match clears a quote
+    attributed to an invented CFO as long as the paragraph says "langfristig"."""
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    speaker = "Michael Lang, Geschäftsführer"
+    body = "\n\n".join(
+        (
+            "Berlin, 20. August 2026. Alpha AG erweitert ihr Angebot für Banken.",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
+            '"Verfügbarkeit ist ein eigener Risikoparameter", sagt Dr. Erfunden, '
+            "Finanzchef, und denkt dabei langfristig.",
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
+        )
+    )
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given(speaker=speaker))
+
+    assert faults == [f"Das Zitat ist nicht {speaker} zugeschrieben."]
+
+
+def test_a_surname_in_the_genitive_still_counts_as_an_attribution():
+    """"Langs Einschätzung" names the same person, and a refusal here costs two
+    paid calls and delivers no text."""
+    assert assets._names("Das ist Langs Einschätzung.", "Michael Lang")
+
+
+def test_a_release_with_no_quote_at_all_is_rejected():
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    body = "\n\n".join(
+        (
+            "Berlin, 20. August 2026. Alpha AG erweitert ihr Angebot.",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung.",
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte.",
+        )
+    )
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert any("kein Zitat" in fault for fault in faults)
+
+
+def test_no_release_is_written_at_all_without_a_named_spokesperson(session):
+    """The empty-spokesperson case, end to end: not a release with a gap in it,
+    not a release quoting the company. No release, no model call, no row.
+
+    The field is submitted blank rather than left out, which is how a consultant
+    actually produces this state: he deletes a wrong machine-filled name, and
+    "this is not known" has to mean the same thing as never having been asked.
+    """
+    client, angle = _mandate(
+        session,
+        facts={"ceo": "   ", "geschaeftsfeld": "Verwahrung.", "sitz": "Berlin"},
+    )
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    calls: list[str] = []
+
+    with pytest.raises(assets.RequirementsMissing) as caught:
+        assets.write(
+            session, fmt, client, angle,
+            invoke=lambda prompt, **k: calls.append(prompt) or _drafted(fmt),
+        )
+
+    assert calls == []
+    assert [req.key for req in caught.value.missing] == ["ceo"]
+    assert session.scalars(select(Asset)).all() == []
+
+
+# --- Statement -----------------------------------------------------------------
+
+
+def test_a_statement_beyond_five_sentences_is_rejected():
+    """A desk prints a statement whole or picks two sentences out of it. Past five
+    it is the desk choosing which two, and nobody in the mandate finds out until
+    it is printed."""
+    fmt = assets.definition(AssetKind.STATEMENT)
+    body = " ".join(f"Satz Nummer {i} steht hier." for i in range(7))
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=f"{body}\n\n{_SPEAKER}"), _given())
+
+    assert faults == [
+        f"Das Statement hat 7 Sätze, verlangt sind "
+        f"{assets._MIN_STATEMENT_SENTENCES} bis {assets._MAX_STATEMENT_SENTENCES}."
+    ]
+
+
+def test_a_statement_without_the_attribution_under_it_is_rejected():
+    fmt = assets.definition(AssetKind.STATEMENT)
+    body = _statement_body().replace(f"\n\n{_SPEAKER}", "")
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert any(_SPEAKER in fault for fault in faults)
+
+
+def test_a_statement_that_clears_its_throat_first_is_rejected():
+    """"Wir haben mit Interesse zur Kenntnis genommen" is the sound of a text with
+    nothing to say, and it is the first sentence a desk cuts."""
+    fmt = assets.definition(AssetKind.STATEMENT)
+    draft = _draft_of(
+        fmt,
+        body=_statement_body(
+            opening="Wir haben mit Interesse zur Kenntnis genommen, was geschah."
+        ),
+    )
+
+    faults = assets.validate(fmt, draft, _given())
+
+    assert any("Vorlauf" in fault for fault in faults)
+
+
+# --- Q&A -----------------------------------------------------------------------
+
+
+def test_a_qa_that_avoids_the_nogos_is_rejected():
+    """Its value is the questions nobody wants asked. One that asks around them is
+    decoration, and decoration is what gets clicked away in the actual moment."""
+    fmt = assets.definition(AssetKind.QA)
+    draft = _draft_of(fmt, body=_qa_body(touchy="Wie läuft das Geschäft?"))
+
+    faults = assets.validate(fmt, draft, _given())
+
+    assert faults == ["Keine Frage rührt an die No-Gos des Guides. Genau die werden gestellt."]
+
+
+def test_a_nogo_reassured_about_in_an_answer_is_not_a_question_about_it():
+    """The acceptance is a *question* drawn from the No-Gos. Matched against the
+    whole body, a Q&A that never asks the uncomfortable question and only
+    reassures about it in an answer passed, which is precisely the "abgemilderte
+    Fassung" the prompt forbids."""
+    fmt = assets.definition(AssetKind.QA)
+    body = (
+        "## Zum Geschäft\nWas ändert sich für Banken?\n"
+        "Wir machen keine Heilversprechen, das ist unsere Linie.\n\n"
+        "## Zur Position\nWarum jetzt?\nWeil die Verwahrung wandert.\n\n"
+        "## Wo es unangenehm wird\n[heikel] Ist das teuer?\nNein."
+    )
+    given = _given(nogos=("No-Gos: Keine Heilversprechen.",))
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), given)
+
+    assert faults == [
+        "Keine Frage rührt an die No-Gos des Guides. Genau die werden gestellt."
+    ]
+
+
+def test_a_qa_with_nothing_marked_as_uncomfortable_is_rejected():
+    fmt = assets.definition(AssetKind.QA)
+    draft = _draft_of(fmt, body=_qa_body().replace("[heikel] ", ""))
+
+    faults = assets.validate(fmt, draft, _given())
+
+    assert any("unangenehm" in fault for fault in faults)
+
+
+def test_a_qa_with_ungrouped_questions_is_rejected():
+    fmt = assets.definition(AssetKind.QA)
+    draft = _draft_of(fmt, body=_qa_body().replace("## ", ""))
+
+    faults = assets.validate(fmt, draft, _given())
+
+    assert any("gruppiert" in fault for fault in faults)
+
+
+def test_the_nogo_terms_are_the_words_that_name_the_subject():
+    """Matched on the No-Go's nouns, not on its grammar: a check that accepted
+    "das" as touching a No-Go would clear every Q&A ever written."""
+    terms = assets.nogo_terms(("No-Go: das Wort günstig.",))
+
+    assert terms == ["günstig"]
+
+
+def test_the_nogos_are_read_out_of_the_guide_the_consultant_wrote(session):
+    """Out of the guide rather than a field of their own, because that is where a
+    consultant writes them and a second field is the one nobody fills. The block
+    ends where the next labelled section starts."""
+    client, _ = _mandate(session, comms_guide=_NOGO_GUIDE)
+
+    assert assets.nogos(client) == ("No-Go: das Wort günstig.",)
+
+
+def test_every_nogo_in_the_block_counts_not_only_the_one_carrying_the_label(session):
+    """A consultant writes three No-Gos as three sentences after one label.
+    Keeping only the first refuses a Q&A that asks about the second or the third,
+    which is a Q&A doing exactly what it was asked to do."""
+    client, _ = _mandate(
+        session,
+        comms_guide=(
+            "Positionierung: Verwahrung mit Haftung.\n"
+            "No-Gos: Keine Heilversprechen. Nie über Preise sprechen. "
+            "Keine Vergleiche mit Wettbewerbern.\n"
+            "Tonalität: nüchtern."
+        ),
+    )
+
+    terms = assets.nogo_terms(assets.nogos(client))
+
+    assert "heilversprechen" in terms
+    assert "preise" in terms
+    assert "wettbewerbern" in terms
+    assert "verwahrung" not in terms, "the block began at the No-Go label"
+    assert "nüchtern" not in terms, "the block ended at the next label"
+
+
+def test_a_bulleted_nogo_list_under_its_own_heading_is_read_whole(session):
+    """``guide.distill`` separates short points with "·" and a consultant editing
+    the field by hand writes one per line. Both are the same three No-Gos."""
+    client, _ = _mandate(
+        session,
+        comms_guide=(
+            "No-Gos:\n· Keine Heilversprechen\n· Nie über Preise sprechen\n"
+            "Tonalität: nüchtern."
+        ),
+    )
+
+    terms = assets.nogo_terms(assets.nogos(client))
+
+    assert "heilversprechen" in terms
+    assert "preise" in terms
+
+
+# --- Talking Points ------------------------------------------------------------
+
+
+def test_more_talking_points_than_the_bound_are_rejected():
+    """Past the bound a consultant in a green room is reading a document instead
+    of remembering three things."""
+    fmt = assets.definition(AssetKind.TALKING_POINTS)
+    body = _talking_points_body(points=assets.MAX_TALKING_POINTS + 1)
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert any(str(assets.MAX_TALKING_POINTS) in fault for fault in faults)
+
+
+def test_a_talking_point_without_a_bridge_is_rejected():
+    """The bridge is the format. Points without one are a list of opinions."""
+    fmt = assets.definition(AssetKind.TALKING_POINTS)
+    body = _talking_points_body(points=3, bridges=2)
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert faults == [
+        "Ohne Brücke zurück zur These: 1 von 3 Punkten. "
+        'Unter jedem Punkt braucht es eine Zeile "Brücke: …".'
+    ]
+
+
+def test_three_bridges_under_one_point_do_not_cover_the_points_below_it():
+    """Counted as two totals, a pile of bridges under point one validated a set
+    whose points two and three had none. That is the artefact the format exists to
+    prevent: a consultant in a green room with two points and no way back to the
+    thesis."""
+    fmt = assets.definition(AssetKind.TALKING_POINTS)
+    body = (
+        "1. Punkt eins ist ein ganzer Satz.\n"
+        "Brücke: Zurück zur These A.\n"
+        "Brücke: Zurück zur These B.\n"
+        "Brücke: Zurück zur These C.\n"
+        "2. Punkt zwei ist ein ganzer Satz.\n"
+        "3. Punkt drei ist ein ganzer Satz.\n\n"
+        "Nicht sagen\nDass die Kette unzuverlässig sei."
+    )
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert faults == [
+        "Ohne Brücke zurück zur These: 2 von 3 Punkten. "
+        'Unter jedem Punkt braucht es eine Zeile "Brücke: …".'
+    ]
+
+
+def test_the_not_thesis_has_to_be_an_explicit_nicht_sagen_section():
+    fmt = assets.definition(AssetKind.TALKING_POINTS)
+    body = _talking_points_body().split("\n\nNicht sagen")[0]
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert any("Nicht sagen" in fault for fault in faults)
+
+
+def test_what_must_not_be_said_is_not_counted_against_the_bound():
+    """The "Nicht sagen" section is a numbered list as often as not, and counting
+    it against the cap would refuse four good points for having three things to
+    avoid."""
+    fmt = assets.definition(AssetKind.TALKING_POINTS)
+    body = _talking_points_body(points=assets.MAX_TALKING_POINTS)
+    body += "\n1. Nicht: die Kette sei unzuverlässig.\n2. Nicht: Liquidität wandert ab."
+
+    assert assets.validate(fmt, _draft_of(fmt, body=body), _given()) == []
+
+
+# --- Gastbeitrag ---------------------------------------------------------------
+
+
+def test_a_guest_article_with_a_dateline_is_rejected():
+    """It would then be a press release with a byline on it, which is the one
+    thing an op-ed desk will not print."""
+    fmt = assets.definition(AssetKind.GASTBEITRAG)
+    body = f"Berlin, 20. August 2026. {_gastbeitrag_body()}"
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert any("Dateline" in fault for fault in faults)
+
+
+def test_a_guest_article_that_opens_with_a_news_hook_is_rejected():
+    fmt = assets.definition(AssetKind.GASTBEITRAG)
+    draft = _draft_of(
+        fmt,
+        body=_gastbeitrag_body(opening="Vergangene Woche wurde bekannt, dass es kippt."),
+    )
+
+    faults = assets.validate(fmt, draft, _given())
+
+    assert any("Nachrichtenaufhänger" in fault for fault in faults)
+
+
+def test_an_op_ed_opening_about_recent_years_is_not_a_news_hook():
+    """"In den vergangenen Jahren habe ich …" is how half of these begin. A miss
+    here costs two paid calls and delivers no text, so the openers have to be as
+    narrow as the news hooks they name."""
+    fmt = assets.definition(AssetKind.GASTBEITRAG)
+    draft = _draft_of(
+        fmt,
+        body=_gastbeitrag_body(
+            opening="In den vergangenen Jahren habe ich eine Verschiebung beobachtet."
+        ),
+    )
+
+    assert assets.validate(fmt, draft, _given()) == []
+
+
+def test_a_third_person_text_about_what_others_think_is_still_third_person():
+    """"Nach Meinung vieler Beobachter" is not a first person. It satisfied the
+    check while "mein\\w*" was the pattern, which is the institutional-text-with-a-
+    byline this exists to catch."""
+    fmt = assets.definition(AssetKind.GASTBEITRAG)
+    body = _gastbeitrag_body(
+        opening="Nach Meinung vieler Beobachter verschiebt sich die Debatte."
+    ).replace("Wir ", "Man ")
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert any("erste" in fault.casefold() for fault in faults)
+
+
+def test_a_guest_article_in_the_third_person_is_rejected():
+    """Without a first person it is a company text with somebody's name under it,
+    which is what every agency guest article turns into."""
+    fmt = assets.definition(AssetKind.GASTBEITRAG)
+    body = _gastbeitrag_body().replace("Ich ", "Man ").replace("Wir ", "Man ")
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert any("erste" in fault.casefold() for fault in faults)
+
+
+def test_a_guest_article_far_off_the_commissioned_length_is_rejected():
+    fmt = assets.definition(AssetKind.GASTBEITRAG)
+
+    faults = assets.validate(
+        fmt, _draft_of(fmt, body="Ich halte die Debatte für verkürzt."), _given()
+    )
+
+    assert any(str(assets.GASTBEITRAG_CHARS) in fault for fault in faults)
+
+
+# --- Interview-Briefing --------------------------------------------------------
+
+
+def test_the_briefing_recipient_is_the_one_pitch_already_names(session):
+    """Same list the letter is addressed with, so a briefing and a pitch cannot
+    disagree about who covers this field."""
+    client, angle = _mandate(session, author=_BYLINE)
+
+    target = assets.recipient(session, client, angle)
+
+    assert target is not None
+    assert (target.outlet, target.journalist) == (_OUTLET, _BYLINE)
+
+
+def test_the_briefing_prompt_carries_the_outlet_and_that_bylines_headlines(session):
+    """Who is asking and what they wrote lately, off the same coverage pitch.py
+    assembles. A briefing naming a piece the journalist did not write is read out
+    loud in the first minute of the interview."""
+    client, angle = _mandate(session, author=_BYLINE)
+    fmt = assets.definition(AssetKind.INTERVIEW_BRIEFING)
+
+    prompt = assets.prompt_for(session, fmt, client, angle)
+    block = prompt.split("WER FRAGT")[1].split("KOMMUNIKATIONS-GUIDE")[0]
+
+    assert _OUTLET in block
+    assert _BYLINE in block
+    assert f"{_HEADLINE} (0)" in block
+
+
+def test_a_briefing_for_a_desk_with_no_byline_says_so_rather_than_inventing_one(
+    session,
+):
+    """Most feeds carry no byline. The honest version of that is a sentence, not a
+    plausible name."""
+    client, angle = _mandate(session)
+    target = PitchTarget(
+        outlet=_OUTLET, journalist=None, reason="", evidence=(), about_client=0
+    )
+
+    block = assets._recipient_block(target, assets._headlines(session, target))
+
+    assert _OUTLET in block
+    assert "Erfinde" in block
+
+
+def test_no_briefing_is_written_when_the_coverage_names_no_medium(session):
+    """The outlet is a requirement like the release's spokesperson is: a briefing
+    for an invented masthead is worse than none."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.INTERVIEW_BRIEFING)
+    calls: list[str] = []
+
+    with pytest.raises(assets.RequirementsMissing) as caught:
+        assets.write(
+            session, fmt, client, angle,
+            invoke=lambda prompt, **k: calls.append(prompt) or _drafted(fmt),
+        )
+
+    assert calls == []
+    assert [req.key for req in caught.value.missing] == ["outlet"]
+    assert "Medium" in str(caught.value)
+
+
+def test_a_briefing_that_never_names_the_outlet_is_rejected():
+    fmt = assets.definition(AssetKind.INTERVIEW_BRIEFING)
+    draft = _draft_of(fmt, body=_briefing_body(outlet="einer Fachredaktion"))
+
+    faults = assets.validate(fmt, draft, _given())
+
+    assert faults == [f"Das Medium ({_OUTLET}) kommt im Briefing nicht vor."]
+
+
+def test_a_briefing_may_name_only_the_headlines_it_was_handed(session):
+    """"Names the journalist's recent headlines" is half of what this format is
+    for, and its failure mode is invention rather than omission: a briefing
+    crediting a piece the journalist did not write is read out loud in the first
+    minute of the interview. The list the prompt carried is what it is held to."""
+    client, angle = _mandate(session, author=_BYLINE)
+    fmt = assets.definition(AssetKind.INTERVIEW_BRIEFING)
+    target = assets.recipient(session, client, angle)
+    headlines = assets._headlines(session, target)
+    body = _briefing_body().replace(
+        f"{_HEADLINE} (0)", "Faber schrieb zuletzt über Bitcoin-ETFs und die EZB"
+    )
+
+    faults = assets.validate(
+        fmt,
+        _draft_of(fmt, body=body),
+        _given(recipient=target, headlines=headlines),
+    )
+
+    assert headlines, "the fixture's byline has coverage on file"
+    assert faults == [
+        "Keine der belegten Schlagzeilen steht im Briefing. Unter "
+        '"Was zuletzt erschien" gehören genau diese und keine anderen.'
+    ]
+
+
+def test_a_briefing_missing_one_of_its_sections_is_rejected():
+    fmt = assets.definition(AssetKind.INTERVIEW_BRIEFING)
+    body = _briefing_body().split("Wo es unangenehm wird")[0]
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert faults == ["Es fehlen die Abschnitte: Wo es unangenehm wird."]
+
+
+# --- One retry, then a refusal that says why -----------------------------------
+
+
+def test_output_that_misses_the_structure_is_retried_once(session):
+    """The analyzer's budget for a batch, for the same reason: a second failure is
+    evidence about the model rather than about the weather."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    replies = iter([_drafted(fmt, body="Ohne alles."), _drafted(fmt)])
+    seen: list[str] = []
+
+    draft = assets.write(
+        session, fmt, client, angle,
+        invoke=lambda prompt, **k: seen.append(prompt) or next(replies),
+    )
+
+    assert len(seen) == 2, "the miss was not retried"
+    assert draft.body.startswith("Berlin")
+
+
+def test_the_retry_says_what_the_first_attempt_was_missing(session):
+    """Re-asking the identical question the identical way is how the identical
+    answer comes back. The complaint is already a sentence; it travels."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    replies = iter([_drafted(fmt, body="Ohne alles."), _drafted(fmt)])
+    seen: list[str] = []
+
+    assets.write(
+        session, fmt, client, angle,
+        invoke=lambda prompt, **k: seen.append(prompt) or next(replies),
+    )
+
+    assert "DER VORIGE VERSUCH WURDE ABGELEHNT" not in seen[0]
+    assert "Dateline" in seen[1]
+    assert "Boilerplate" in seen[1]
+
+
+def test_a_second_miss_refuses_with_a_reason_and_stores_nothing(session):
+    """The failure this replaces is a release with no quote in it, stored, checked
+    and rendered as a draft somebody has to read to the end to reject."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    reasons: list[str] = []
+    calls: list[str] = []
+
+    with pytest.raises(assets.Malformed) as caught:
+        assets.write(
+            session, fmt, client, angle,
+            invoke=lambda prompt, **k: calls.append(prompt) or _drafted(
+                fmt, body="Ohne alles."
+            ),
+            note=reasons.append,
+        )
+
+    assert len(calls) == 2
+    assert "Pressemitteilung nicht geschrieben" in caught.value.reason
+    assert "Dateline" in caught.value.reason
+    assert reasons == [caught.value.reason], "the reason was not handed over to store"
+    assert session.scalars(select(Asset)).all() == []
+
+
+def test_a_reply_that_never_parses_ends_in_the_same_refusal(session):
+    """Not valid JSON and valid JSON in the wrong shape are one outcome for the
+    reader: nothing was written, and here is why."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.STATEMENT)
+    calls: list[str] = []
+
+    with pytest.raises(assets.Malformed):
+        assets.write(
+            session, fmt, client, angle,
+            invoke=lambda prompt, **k: calls.append(prompt) or "kein JSON",
+        )
+
+    assert len(calls) == 2
+
+
+def test_a_reply_that_never_parses_refuses_in_the_readers_language(session):
+    """The refusal is the one sentence somebody gets back from a button they
+    pressed, and it travels into a German instruction block on the way to the
+    retry. An English parser message quoting a JSON character offset belongs in
+    the log, which is where it stays."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.STATEMENT)
+    seen: list[str] = []
+
+    with pytest.raises(assets.Malformed) as caught:
+        assets.write(
+            session, fmt, client, angle,
+            invoke=lambda prompt, **k: seen.append(prompt) or "kein JSON",
+        )
+
+    assert assets._UNREADABLE in caught.value.reason
+    assert "JSON" not in caught.value.reason
+    assert assets._UNREADABLE in seen[1], "the retry was told what was wrong"
+
+
+def test_a_briefing_that_refuses_looks_its_recipient_up_only_once(session, monkeypatch):
+    """``None`` from the lookup means the coverage named nobody, not that nobody
+    has looked. Read as the second, the readiness check runs the whole pitch list
+    again — several queries and a contact lookup per candidate — on the one path
+    that is about to refuse anyway."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.INTERVIEW_BRIEFING)
+    lookups: list[int] = []
+    real = assets.pitch.targets_for
+    monkeypatch.setattr(
+        assets.pitch,
+        "targets_for",
+        lambda *a, **k: lookups.append(1) or real(*a, **k),
+    )
+
+    with pytest.raises(assets.RequirementsMissing):
+        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
+
+    assert len(lookups) == 1
+
+
+def test_a_refused_requirement_is_handed_to_the_caller_as_a_reason_too(session):
+    """Both refusals reach the same place, so the surface has one field to store
+    and one sentence to show whichever way nothing was written."""
+    client, angle = _mandate(session, facts={})
+    fmt = assets.definition(AssetKind.STATEMENT)
+    reasons: list[str] = []
+
+    with pytest.raises(assets.RequirementsMissing):
+        assets.write(
+            session, fmt, client, angle,
+            invoke=lambda *a, **k: _drafted(fmt),
+            note=reasons.append,
+        )
+
+    assert reasons and "Geschäftsführung" in reasons[0]
+
+
+def test_a_malformed_reply_is_still_a_parse_error_to_an_older_caller(session):
+    """Malformed inherits ParseError on purpose: the retry precedent stays one
+    concept, and a caller that already handles "the model did not answer usably"
+    keeps working."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.STATEMENT)
+
+    with pytest.raises(ParseError):
+        assets.write(
+            session, fmt, client, angle,
+            invoke=lambda *a, **k: _drafted(fmt, body="Ein Satz ohne alles."),
+        )
+
+
+# --- The formats on the page ---------------------------------------------------
+
+
+def test_every_format_name_and_description_has_an_english_entry():
+    """The chrome switches language; a card that stays German in an English UI
+    reads as broken rather than as untranslated."""
+    for fmt in assets.FORMATS:
+        assert i18n.translate(fmt.name, "en"), fmt.name
+        assert i18n.translate(fmt.description, "en") != fmt.description, fmt.key

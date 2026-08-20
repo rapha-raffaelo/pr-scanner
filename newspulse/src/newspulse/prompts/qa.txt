@@ -33,10 +33,14 @@ $structure
 
 Was dieses Q&A leisten muss:
 
-- Mindestens eine Frage kommt aus den No-Gos des Guides. Nicht die abgemilderte
-  Fassung, sondern die Frage, wie ein Journalist sie stellt.
-- Die unangenehmen Fragen werden als solche markiert, damit der Berater sieht,
-  welche Antworten er üben muss.
+- Mindestens eine Frage kommt aus den No-Gos des Guides und benutzt deren Worte.
+  Nicht die abgemilderte Fassung, sondern die Frage, wie ein Journalist sie
+  stellt.
+- Die unangenehmen Fragen beginnen mit [heikel], damit der Berater sieht, welche
+  Antworten er üben muss.
+- Jede Themengruppe bekommt eine Überschrift, die mit "## " beginnt. Jede Frage
+  steht in einer eigenen Zeile und endet mit einem Fragezeichen, die Antwort
+  darunter.
 - Jede Antwort steht für sich. Niemand liest ein Q&A von oben nach unten, wenn
   es gebraucht wird.
 - Eine Antwort weicht nicht aus. Wenn etwas nicht gesagt werden kann, sagt die
@@ -51,8 +55,9 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
 {
   "title": "Worum es geht, eine Zeile.",
-  "body": "Das Q&A. Themengruppen als Überschrift, darunter je Frage und
-           Antwort. Unangenehme Fragen mit vorangestelltem [heikel].
-           Absätze getrennt durch \n\n.",
+  "body": "Das Q&A. Themengruppen als Überschrift '## Thema', darunter je Frage
+           in einer eigenen Zeile mit Fragezeichen und die Antwort darunter.
+           Unangenehme Fragen mit vorangestelltem [heikel]. Absätze getrennt
+           durch \n\n.",
   "speaker": ""
 }

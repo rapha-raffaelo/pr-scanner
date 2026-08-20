@@ -12,6 +12,8 @@ $client_profile
 WAS ÜBER DEN MANDANTEN BELEGT IST
 $profile_facts
 
+$recipient
+
 $comms_guide
 DIE POSITION DES MANDANTEN
 These: $thesis
@@ -32,10 +34,12 @@ $structure
 
 Was dieses Briefing leisten muss:
 
-- Der Abschnitt über den Fragesteller nennt das Medium und, wenn oben Namen und
-  Schlagzeilen belegt sind, woran diese Person zuletzt gearbeitet hat. Ist dort
-  keine Person belegt, steht das genauso da. Ein erfundener Journalist im
-  Briefing ist ein Berater, der jemanden mit dem falschen Namen begrüßt.
+- Der Abschnitt "Wer fragt" nennt das Medium beim Namen und, wenn oben eine
+  Person belegt ist, diese Person. Ist dort keine belegt, steht das genauso da.
+  Ein erfundener Journalist im Briefing ist ein Berater, der jemanden mit dem
+  falschen Namen begrüßt.
+- Der Abschnitt "Was zuletzt erschien" nennt die oben belegten Schlagzeilen
+  dieser Person und keine anderen. Steht dort keine, sagt der Abschnitt das.
 - Die erwarteten Fragen kommen aus den belegten Schlagzeilen und aus dem, was an
   der Position des Mandanten angreifbar ist. Nicht aus Höflichkeit.
 - Die unangenehme Frage steht ausdrücklich drin, samt der Antwort darauf.
@@ -50,8 +54,9 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
 {
   "title": "Medium und Anlass, eine Zeile.",
-  "body": "Das Briefing mit Abschnittsüberschriften: Wer fragt, Was zuletzt
-           erschien, Womit zu rechnen ist, Was gesagt werden soll, Wo es
-           unangenehm wird. Absätze getrennt durch \n\n.",
+  "body": "Das Briefing mit genau diesen fünf Abschnittsüberschriften, wortgleich
+           und in dieser Reihenfolge: Wer fragt, Was zuletzt erschien, Womit zu
+           rechnen ist, Was gesagt werden soll, Wo es unangenehm wird. Absätze
+           getrennt durch \n\n.",
   "speaker": ""
 }
