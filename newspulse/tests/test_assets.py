@@ -255,6 +255,19 @@ def test_a_missing_requirement_writes_nothing_and_names_the_field(session):
     assert session.scalars(select(Asset)).all() == []
 
 
+def test_a_guest_article_needs_the_person_it_appears_under(session):
+    """A Gastbeitrag is printed under a byline. Without a name on file the prompt
+    would ask for one and the only place to find it is the free-text profile
+    block, which is the inference the refusal rule exists to forbid."""
+    client, angle = _mandate(session, facts={})
+    fmt = assets.definition(AssetKind.GASTBEITRAG)
+
+    with pytest.raises(assets.RequirementsMissing) as caught:
+        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+
+    assert "ceo" in [req.key for req in caught.value.missing]
+
+
 def test_a_client_without_a_guide_gets_no_qa(session):
     """The Q&A's value is the questions nobody wants asked, and the guide is where
     those live. Without one there is nothing to build it from."""
@@ -321,6 +334,23 @@ def test_the_prompt_states_the_structure_the_definition_declares(session):
     assert "Nicht sagen" in prompt
 
 
+def test_an_impulse_whose_stories_are_gone_says_so_rather_than_promising_them(
+    session,
+):
+    """The evidence header promises that what follows is everything known. An
+    impulse can name ids that no longer resolve, and printing that promise over an
+    empty list is how a model concludes it may fill one."""
+    client, angle = _mandate(session)
+    angle.article_ids = [999_001, 999_002]
+    session.commit()
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+
+    prompt = assets.prompt_for(session, fmt, client, angle)
+
+    assert "auf keine Berichterstattung berufen" in prompt
+    assert "Schlagzeilen und Feed-Anrisse" not in prompt
+
+
 def test_the_guide_reaches_the_writing_prompt(session):
     client, angle = _mandate(session, comms_guide="No-Go: das Wort günstig.")
     fmt = assets.definition(AssetKind.QA)
@@ -365,6 +395,38 @@ def test_prose_plain_is_applied_to_the_title_and_the_body(session):
     assert not prose.has_dash(stored.title)
     assert not prose.has_dash(stored.body)
     assert stored.body.count("\n\n") == 1, "the paragraphs survive"
+
+
+def test_the_attribution_is_the_profiles_and_not_the_models(session):
+    """The one artefact here that cannot be repaired after it has gone out is a
+    named person's quote. The prompt asks for the name verbatim; what is stored is
+    the profile's, so the guarantee does not rest on the model complying."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+
+    draft = assets.write(
+        session, fmt, client, angle,
+        invoke=lambda *a, **k: _drafted(speaker="Alexander Prot, CEO"),
+    )
+    stored = assets.store(session, fmt, client, angle, draft)
+
+    assert draft.speaker == "Alexandra Prot, Geschäftsführerin"
+    assert stored.speaker == "Alexandra Prot, Geschäftsführerin"
+
+
+def test_a_format_that_quotes_nobody_stores_no_attribution(session):
+    """Talking points name no profile field for attribution, so there is no
+    profile-backed name to store, and the model's answer is not one."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.TALKING_POINTS)
+
+    draft = assets.write(
+        session, fmt, client, angle,
+        invoke=lambda *a, **k: _drafted(speaker="Dr. Erfunden, Sprecher"),
+    )
+    stored = assets.store(session, fmt, client, angle, draft)
+
+    assert stored.speaker == ""
 
 
 def test_rewriting_a_format_replaces_the_draft_it_supersedes(session):
@@ -584,6 +646,68 @@ def test_a_dash_is_caught_even_if_the_checker_misses_it(session):
     )
 
     assert any("Gedankenstrich" in concern for concern in review.concerns)
+
+
+def test_the_checker_reads_the_text_that_will_be_stored(session):
+    """Not the reply as it came back. An objection quoting a sentence the house
+    style has since rewritten sends the reader hunting for words that are not on
+    the page."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.STATEMENT)
+    draft = assets.write(
+        session, fmt, client, angle,
+        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+    )
+    seen: list[str] = []
+
+    assets.crosscheck(
+        client,
+        assets.checkable(session, fmt, angle, draft),
+        generate=lambda prompt, **k: seen.append(prompt) or _review(),
+    )
+
+    assert "Eins, zwei." in seen[0]
+    assert "Eins — zwei." not in seen[0]
+
+
+def test_the_mechanical_finding_survives_a_full_concern_list(session):
+    """The cap drops one of the checker's judgements, never the one finding here
+    that is not a judgement: the model was not trusted with it in the first
+    place."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.STATEMENT)
+    draft = assets.write(
+        session, fmt, client, angle,
+        invoke=lambda *a, **k: _drafted(body="Eins — zwei."),
+    )
+
+    review, _ = assets.crosscheck(
+        client,
+        assets.checkable(session, fmt, angle, draft),
+        generate=lambda *a, **k: _review(concerns=[f"Einwand {i}." for i in range(5)]),
+    )
+
+    assert len(review.concerns) == 5
+    assert "Gedankenstrich" in review.concerns[0]
+
+
+def test_more_concerns_than_the_cap_are_truncated_rather_than_rejected(session):
+    """A checker that finds six things about a bad draft must not be the one call
+    that produces no verdict at all."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.STATEMENT)
+    draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted())
+
+    review, _ = assets.crosscheck(
+        client,
+        assets.checkable(session, fmt, angle, draft),
+        generate=lambda *a, **k: _review(
+            send=False, concerns=[f"Einwand {i}." for i in range(6)]
+        ),
+    )
+
+    assert len(review.concerns) == 5
+    assert review.send is False
 
 
 def test_rewriting_clears_the_verdicts_of_the_text_they_replace(session):
