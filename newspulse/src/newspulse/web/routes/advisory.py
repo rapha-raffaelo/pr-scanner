@@ -31,6 +31,7 @@ from ..runlock import guard as _run_guard
 from .. import themework
 from ...models import Angle, Article, Client, TopicHit
 from ..app import get_db, templates
+from . import assets_view
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -61,6 +62,82 @@ def _backing(
     return out
 
 
+def _impulse_context(
+    session: Session,
+    client: Client,
+    drafts: list[Angle],
+    targets: dict[int, list[pitch.PitchTarget]],
+    messages: dict[int, list],
+) -> dict[str, object]:
+    """The impulses themselves, and everything that hangs off one."""
+    return {
+        "angles": drafts,
+        # The stories each draft rests on, keyed by angle id. The page's own lead
+        # promises that "jede Aussage nennt die Meldungen, auf die sie sich
+        # stützt" — and this card, the detailed view of a draft the Today column
+        # already shows in full, was the one place that named none of them. It
+        # showed strictly less than the overview it is reached from.
+        "sources": {
+            a.id: session.scalars(
+                select(Article).where(Article.id.in_(a.article_ids or [-1]))
+            ).all()
+            for a in drafts
+        },
+        # Who to send each draft to, keyed by angle id. Computed per draft because
+        # the strongest signal is specific to it: the bylines on the very stories
+        # it answers.
+        "pitch_targets": targets,
+        # The messages already written off each impulse, keyed the same way.
+        "messages": messages,
+        # And, per message, the recipient's own headlines — the ones the letter
+        # claims to have read. A pitch that says "Sie haben über X geschrieben"
+        # has to be checkable where it is read, not two scrolls down in the list.
+        "evidence": _backing(messages, targets),
+        "message_error": _last_message_error.get(client.id, ""),
+    }
+
+
+def _radar_context(session: Session, client: Client) -> dict[str, object]:
+    """Why the section is empty when it is: the three answers it owes."""
+    return {
+        # Why the last click came back empty, if it did. Shown instead of the
+        # generic "the radar has collected nothing", which was wrong as often as
+        # it was right. The click's own answer if there was one this session,
+        # otherwise what the last sweep recorded — the usual case, since the sweep
+        # runs at 06:10 and the page is opened at nine.
+        "impulse_refusal": _last_refusal.get(client.id) or client.impulse_note,
+        "impulse_checked_at": client.impulse_checked_at,
+        # The remedy for the commonest refusal, offered where the refusal is read
+        # rather than on a settings screen the reader has never opened.
+        "theme_work": themework.state.get(client.id),
+        # Whether a radar is possible at all, which is a question about the
+        # client's themes — not about whether it has found anything yet. Read off
+        # the hit count, a mandate with twenty-five themes and a radar that has
+        # simply not run yet was told it had no radar.
+        "has_themes": bool(client.keywords or client.alert_topics),
+        # Rendered rather than written into the template, so the sentence and the
+        # window can never disagree.
+        "impulse_days": job.IMPULSE_LOOKBACK.days,
+        "pitch_days": pitch.LOOKBACK_DAYS,
+        # Two different numbers, and conflating them is why a page could say "the
+        # radar collected 2 items and made nothing of them" about a mandate that
+        # had no usable material at all. What the radar found is ``market_seen``;
+        # what an impulse can be built from is ``market_usable`` — inside the
+        # window, and not coverage of the mandate itself, which is what the draft
+        # actually reads.
+        "market_seen": session.scalar(
+            select(func.count())
+            .select_from(TopicHit)
+            .where(TopicHit.client_id == client.id)
+        ) or 0,
+        "market_usable": len(
+            job.market_material(
+                session, client, dt.datetime.now(dt.UTC) - job.IMPULSE_LOOKBACK
+            )
+        ),
+    }
+
+
 @router.get("/client/{client_id}/advice", response_class=HTMLResponse)
 def advice_view(
     request: Request,
@@ -79,71 +156,20 @@ def advice_view(
         request,
         "advice.html",
         {
+            **_impulse_context(session, client, drafts, targets, messages),
+            **_radar_context(session, client),
+            # DEC-1: one occasion, one package. Every format for each impulse with
+            # the state it is in — unwritten, draft, checked, released — built from
+            # the registry crossed with what is stored, so a seventh format appears
+            # in the strip without this route learning its name. The recipients and
+            # the letters are handed over rather than fetched again: the briefing's
+            # readiness rests on the same lookup the pitch list already ran. One
+            # call rather than four, so this route does not have to know that the
+            # strip, the notice, the lock and the note are separate things there.
+            **assets_view.page_context(session, client, drafts, targets, messages),
             "client": client,
             "drafting": _drafting.locked(),
             "writing": _writing.locked(),
-            # Why the last click came back empty, if it did. Shown instead of the
-            # generic "the radar has collected nothing", which was wrong as often
-            # as it was right.
-            # The click's own answer if there was one this session, otherwise
-            # what the last sweep recorded — which is the usual case, since the
-            # sweep runs at 06:10 and the page is opened at nine.
-            "impulse_refusal": _last_refusal.get(client_id) or client.impulse_note,
-            "impulse_checked_at": client.impulse_checked_at,
-            # The remedy for the commonest refusal, offered where the refusal is
-            # read rather than on a settings screen the reader has never opened.
-            "theme_work": themework.state.get(client_id),
-            "angles": drafts,
-            # The stories each draft rests on, keyed by angle id. The page's own
-            # lead promises that "jede Aussage nennt die Meldungen, auf die sie
-            # sich stützt" — and this card, the detailed view of a draft the Today
-            # column already shows in full, was the one place that named none of
-            # them. It showed strictly less than the overview it is reached from.
-            "sources": {
-                a.id: session.scalars(
-                    select(Article).where(Article.id.in_(a.article_ids or [-1]))
-                ).all()
-                for a in drafts
-            },
-            # Who to send each draft to, keyed by angle id. Computed per draft
-            # because the strongest signal is specific to it: the bylines on the
-            # very stories it answers.
-            "pitch_targets": targets,
-            # The messages already written off each impulse, keyed the same way.
-            "messages": messages,
-            # And, per message, the recipient's own headlines — the ones the
-            # letter claims to have read. A pitch that says "Sie haben über X
-            # geschrieben" has to be checkable where it is read, not two scrolls
-            # down in the pitch list.
-            "evidence": _backing(messages, targets),
-            "message_error": _last_message_error.get(client_id, ""),
-            # Whether a radar is possible at all, which is a question about the
-            # client's themes — not about whether it has found anything yet. Read
-            # off the hit count, a mandate with twenty-five themes and a radar that
-            # has simply not run yet was told it had no radar.
-            "has_themes": bool(client.keywords or client.alert_topics),
-            # Rendered rather than written into the template, so the sentence and
-            # the window can never disagree.
-            "impulse_days": job.IMPULSE_LOOKBACK.days,
-            "pitch_days": pitch.LOOKBACK_DAYS,
-            # Two different numbers, and conflating them is why a page could say
-            # "the radar collected 2 items and made nothing of them" about a
-            # mandate that had no usable material at all. What the radar found is
-            # ``market_seen``; what an impulse can be built from is
-            # ``market_usable`` — inside the window, and not coverage of the
-            # mandate itself, which is what the draft actually reads.
-            "market_seen": session.scalar(
-                select(func.count()).select_from(TopicHit).where(
-                    TopicHit.client_id == client_id
-                )
-            ) or 0,
-            "market_usable": len(
-                job.market_material(
-                    session,
-                    client,
-                    dt.datetime.now(dt.UTC) - job.IMPULSE_LOOKBACK,
-                )
-            ),
             "last_run": _fetch_last_run(session),
             "header_date": dt.datetime.now(_local_tz()).date(),
         },
