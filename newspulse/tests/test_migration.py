@@ -85,7 +85,7 @@ def test_a_row_written_before_the_stamp_carries_no_version_rather_than_zero(
 ):
     """AC 2, against the real migration rather than against the ORM.
 
-    The interesting row is one that already exists when ``0019_brain_version``
+    The interesting row is one that already exists when ``0023_brain_version``
     runs, so the database is brought up to the revision *before* it, given a
     draft, and only then upgraded. Backfilling zero would have been the easy
     default and it is a lie: zero means "the standards have never been changed
@@ -96,7 +96,7 @@ def test_a_row_written_before_the_stamp_carries_no_version_rather_than_zero(
     monkeypatch.setattr(config, "DATABASE_PATH", db_path)
     cfg = _alembic_config()
 
-    command.upgrade(cfg, "0018_brain_overrides")
+    command.upgrade(cfg, "0022_brain_overrides")
     engine = create_engine(f"sqlite:///{db_path.as_posix()}")
     try:
         with engine.begin() as conn:

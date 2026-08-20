@@ -120,7 +120,7 @@ _VERSION_KEY = "brain_version"
 #: alone would leave the three disagreeing: ``BrainOverride.edited_by``'s ORM
 #: default in ``models.py`` (which cannot import this constant — ``brain``
 #: imports ``models``), and the ``server_default`` in
-#: ``migrations/versions/0018_brain_overrides.py``, which is frozen history and
+#: ``migrations/versions/0022_brain_overrides.py``, which is frozen history and
 #: must keep saying "mensch" whatever this becomes.
 _ANONYMOUS_EDITOR = "mensch"
 

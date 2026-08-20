@@ -11,8 +11,8 @@ is a true statement â€” the standards have never been changed on this install â€
 backfilling it would make every old row claim standards nobody ever wrote down.
 NULL is the honest answer and the interface renders it as "unbekannt".
 
-Revision ID: 0019_brain_version
-Revises: 0018_brain_overrides
+Revision ID: 0023_brain_version
+Revises: 0022_brain_overrides
 Create Date: 2026-08-20
 """
 from __future__ import annotations
@@ -22,8 +22,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0019_brain_version"
-down_revision: str | None = "0018_brain_overrides"
+revision: str = "0023_brain_version"
+down_revision: str | None = "0022_brain_overrides"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

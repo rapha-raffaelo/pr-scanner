@@ -15,7 +15,7 @@ Named 0018 and not 0026: the story was written against a repository that was
 expected to have twenty-five migrations by now and has seventeen. Numbering it
 0026 would leave a gap that reads as eight lost revisions.
 
-Revision ID: 0018_brain_overrides
+Revision ID: 0022_brain_overrides
 Revises: 0017_client_facts
 Create Date: 2026-08-20
 """
@@ -26,8 +26,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0018_brain_overrides"
-down_revision: str | None = "0017_client_facts"
+revision: str = "0022_brain_overrides"
+down_revision: str | None = "0021_outcome_by"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

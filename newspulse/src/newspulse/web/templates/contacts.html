@@ -6,6 +6,86 @@
 {% block content %}
 {% set t = translator(request) %}
 
+<style>
+  /* Page-local: the two panes of the relationship file, from the locked mock
+     (features/mocks/outreach-contact-history.html). Everything with a shared
+     name — .btn, .notice, .panel, .linkbtn — comes from the system in app.css. */
+  .split { display: grid; grid-template-columns: 262px minmax(0, 1fr); gap: var(--s5); align-items: start; }
+  .book { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .book__head { padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); background: var(--fill-2); }
+  .book__head input { font: inherit; font-size: var(--t-footnote); padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-s); width: 100%; background: var(--card); }
+  .book__new { display: block; padding: 8px var(--s4); border-bottom: 1px solid var(--line); font-size: var(--t-subhead); font-weight: 600; color: var(--tint); }
+  .book__new:hover { background: var(--fill-2); text-decoration: none; }
+  .book__row { display: block; padding: 10px var(--s4); border-bottom: 1px solid var(--line); color: var(--ink); cursor: pointer; }
+  .book__row:last-child { border-bottom: 0; }
+  .book__row:hover { background: var(--fill-2); text-decoration: none; }
+  .book__row.is-on { background: rgba(0, 113, 227, 0.08); box-shadow: inset 3px 0 0 var(--tint); }
+  .book__nm { font-size: var(--t-subhead); font-weight: 600; display: block; }
+  .book__ol { font-size: var(--t-caption); color: var(--muted); }
+  .book__n { float: right; font-size: var(--t-caption2); font-weight: 700; color: var(--faint); }
+  .book__empty { padding: var(--s4); font-size: var(--t-footnote); color: var(--muted); }
+  .file { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s5) var(--s5) var(--s4); }
+  .file__head { display: flex; align-items: flex-start; gap: var(--s4); flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: var(--s4); margin-bottom: var(--s4); }
+  .file__name { font-size: var(--t-title2); font-weight: 700; letter-spacing: -0.02em; }
+  .file__outlet { font-size: var(--t-subhead); color: var(--muted); margin-top: 2px; }
+  .file__meta { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s2); }
+  .file__meta b { color: var(--ink-2); font-weight: 600; }
+  /* No .btn:hover override here any more: app.css now says text-decoration:
+     none for every button and .btn, so an <a class="btn"> is already not
+     underlined. A second, page-local declaration of a shared component is the
+     thing test_styles exists to stop. */
+  .file__acts { margin-left: auto; display: flex; gap: var(--s2); align-items: center; }
+  .tally { display: flex; gap: var(--s5); margin-bottom: var(--s5); flex-wrap: wrap; }
+  .tally div { min-width: 96px; }
+  .tally__n { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+  .tally__l { font-size: var(--t-caption); color: var(--muted); }
+  .tally .good .tally__n { color: var(--good); }
+  .tally .warn .tally__n { color: var(--warn); }
+  .lbl { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: var(--s3); display: block; }
+  .tl { list-style: none; position: relative; padding-left: var(--s5); margin: 0; }
+  .tl:before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 1px; background: var(--line-strong); }
+  .tl li { position: relative; padding: 0 0 var(--s5) 0; }
+  .tl li:last-child { padding-bottom: 0; }
+  .tl__pin { position: absolute; left: calc(var(--s5) * -1); top: 5px; width: 11px; height: 11px; border-radius: 50%; background: var(--card); border: 2px solid var(--faint); }
+  .tl__pin--out { border-color: var(--tint); }
+  .tl__pin--good { border-color: var(--good); background: var(--good); }
+  .tl__pin--warn { border-color: var(--warn); }
+  .tl__when { font-size: var(--t-caption); color: var(--muted); }
+  .tl__what { font-size: var(--t-subhead); margin-top: 2px; }
+  .tl__what b { font-weight: 600; }
+  .tl__cl { display: inline-flex; align-items: center; gap: 5px; font-size: var(--t-footnote); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 1px 9px; margin-left: 6px; vertical-align: 1px; }
+  .tl__cl span { width: 7px; height: 7px; border-radius: 50%; }
+  .tl__quote { font-size: var(--t-footnote); color: var(--muted); margin-top: 4px; font-style: italic; max-width: 66ch; }
+  .tl__sub { font-size: var(--t-footnote); color: var(--muted); margin-top: 3px; max-width: 66ch; }
+  .tl__empty { font-size: var(--t-footnote); color: var(--muted); }
+  /* Where a line came from. Two looks on purpose, because the difference is the
+     one an auditor asks about: a sentence somebody typed carries more weight and
+     less certainty than a timestamp the machine stamped when a button was
+     pressed. Same chip idiom as .reply__src in the sibling mock. */
+  .tl__src { display: inline-block; font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius); padding: 1px 7px; background: var(--card); margin-left: 6px; vertical-align: 1px; }
+  .tl__src--hand { color: var(--ink-2); background: var(--fill-2); border-color: var(--line-strong); }
+  /* The journalist's own words, in the box the locked mock gives a reply
+     (.reply in features/mocks/gmail-send.html): green-tinted, bordered, and set
+     apart from every other line on the page — this is the only text here that
+     somebody outside the agency wrote. */
+  .tl__reply { margin-top: 6px; border: 1px solid rgba(36, 138, 61, 0.30); background: rgba(36, 138, 61, 0.06); border-radius: var(--radius); padding: 8px 11px; max-width: 72ch; }
+  .tl__reply-text { font-size: var(--t-footnote); line-height: 1.6; color: var(--ink-2); white-space: pre-wrap; }
+  /* One rule per OutreachState, because the class is generated from the stored
+     value (b-{{ state }}) — a state with no rule renders as a colourless box
+     with a hairline border, and `border: 1px solid` above makes that look like
+     a mistake rather than a neutral badge. ENTWURF and RAUS cannot reach the
+     timeline today (record_outcome refuses them), but OUT-04's mailbox sync is
+     already anticipated as a writer that stamps released_at outside release(). */
+  .badge { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; border-radius: var(--radius); padding: 2px 8px; border: 1px solid; white-space: nowrap; margin-left: 6px; }
+  .b-entwurf { color: var(--muted); background: var(--fill-2); border-color: var(--line); }
+  .b-raus { color: #0b4f8a; background: rgba(0, 113, 227, 0.10); border-color: rgba(0, 113, 227, 0.28); }
+  .b-antwort { color: #14532d; background: rgba(36, 138, 61, 0.10); border-color: rgba(36, 138, 61, 0.30); }
+  .b-veroeffentlicht { color: #14532d; background: rgba(36, 138, 61, 0.16); border-color: rgba(36, 138, 61, 0.36); }
+  .b-absage { color: var(--warn); background: rgba(178, 80, 0, 0.10); border-color: rgba(178, 80, 0, 0.28); }
+  .note { font-size: var(--t-caption); color: var(--muted); margin-top: var(--s5); padding-top: var(--s3); border-top: 1px dashed var(--line); max-width: 76ch; }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+</style>
+
 <div class="client-profile">
   <h1>{{ t("Kontaktbuch") }}</h1>
   {# The one place in the tool that holds contact details, and they arrive one
@@ -19,94 +99,229 @@
 
 {% if error %}<div class="notice notice--error">{{ error }}</div>{% endif %}
 
+{# The page's own address, in two pieces, because three things have to agree on
+   it: every roster link, the "Abbrechen" link, and the hidden redirect_to a POST
+   comes back through. Written once here — a form that forgot it dropped the open
+   file and the filter on save. #}
+{% set term = "&q=" ~ (search | urlencode) if search else "" %}
+{% set book = "/contacts?q=" ~ (search | urlencode) if search else "/contacts" %}
+{% set here = "/contacts?id=" ~ selected.id ~ term if selected else book %}
+
 {% if came_from_pitch and not editing %}
   <div class="notice notice--ok">
     {{ t("Noch kein Eintrag für") }} <strong>{{ prefill_name }}</strong>{% if prefill_outlet %} ({{ prefill_outlet }}){% endif %} —
-    {{ t("unten ausfüllen und speichern.") }}
+    {# Layout-neutral: since the split the form sits *beside* the roster, and
+       only stacks below it under 900px. #}
+    {{ t("jetzt ausfüllen und speichern.") }}
   </div>
 {% endif %}
 
-<section class="panel panel--wide">
-  <h2>{{ t("Eintrag bearbeiten") if editing else t("Neuer Kontakt") }}</h2>
-  <form method="post" action="/contacts" class="contact-form">
-    {% if editing %}<input type="hidden" name="contact_id" value="{{ editing.id }}">{% endif %}
-    <div class="import-fields">
-      <div>
-        <label for="c-name">{{ t("Name") }}*</label>
-        <input type="text" id="c-name" name="name" required
-               value="{{ editing.name if editing else prefill_name }}">
-      </div>
-      <div>
-        <label for="c-outlet">{{ t("Medium") }}</label>
-        <input type="text" id="c-outlet" name="outlet"
-               value="{{ editing.outlet if editing else prefill_outlet }}">
-      </div>
-      <div>
-        <label for="c-email">{{ t("E-Mail") }}</label>
-        <input type="text" id="c-email" name="email" value="{{ editing.email if editing else '' }}">
-      </div>
-      <div>
-        <label for="c-phone">{{ t("Telefon") }}</label>
-        <input type="text" id="c-phone" name="phone" value="{{ editing.phone if editing else '' }}">
-      </div>
-      <div>
-        <label for="c-beat">{{ t("Themengebiet") }}</label>
-        <input type="text" id="c-beat" name="beat" value="{{ editing.beat if editing else '' }}">
-      </div>
-    </div>
-    <div>
-      <label for="c-notes">{{ t("Notizen") }}</label>
-      <input type="text" id="c-notes" name="notes" value="{{ editing.notes if editing else '' }}">
-    </div>
-    <div class="actions">
-      <button type="submit">{{ t("Speichern") }}</button>
-      {% if editing %}<a class="rowlink" href="/contacts">{{ t("Abbrechen") }}</a>{% endif %}
-    </div>
-  </form>
-</section>
+<div class="split">
 
-<section class="panel panel--wide">
-  <h2>{{ contacts | length }} {{ t("Kontakte") }}</h2>
-  <form method="get" action="/contacts" class="run-form">
-    <div class="filter-field">
-      <label for="q">{{ t("Suche") }}</label>
-      <input type="search" id="q" name="q" value="{{ search }}" placeholder="{{ t('Name, Medium oder Themengebiet') }}">
+  {# --- The roster: every recorded contact, with how often the agency actually
+     went to them. The count is released letters only — drafts reached nobody. #}
+  <div class="book">
+    <div class="book__head">
+      {# The open file survives a filter and the filter survives opening a file:
+         both bits of state travel in the query string, so neither click throws
+         the other away. #}
+      <form method="get" action="/contacts">
+        {% if selected %}<input type="hidden" name="id" value="{{ selected.id }}">{% endif %}
+        <input type="search" name="q" value="{{ search }}"
+               placeholder="{{ t('Name, Medium oder Themengebiet') }}"
+               aria-label="{{ t('Suche') }}">
+      </form>
     </div>
-    <button type="submit">{{ t("Filtern") }}</button>
-  </form>
+    <a class="book__new" href="/contacts">+ {{ t("Neuer Kontakt") }}</a>
+    {% for c in contacts %}
+      <a class="book__row{% if selected and selected.id == c.id %} is-on{% endif %}"
+         href="/contacts?id={{ c.id }}{{ term }}">
+        {% if letter_counts.get(c.id) %}<span class="book__n">{{ letter_counts.get(c.id) }}</span>{% endif %}
+        <span class="book__nm">{{ c.name }}</span>
+        <span class="book__ol">{{ c.outlet or '—' }}</span>
+      </a>
+    {% else %}
+      <p class="book__empty">
+        {{ t("Noch keine Kontakte. Unter jedem Impuls stehen die Journalisten, die zum Thema geschrieben haben — ein Klick auf einen Namen legt hier einen Eintrag an.") }}
+      </p>
+    {% endfor %}
+  </div>
 
-  {% if contacts %}
-    <div class="table-scroll">
-      <table class="data">
-        <thead>
-          <tr>
-            <th>{{ t("Name") }}</th><th>{{ t("Medium") }}</th><th>{{ t("E-Mail") }}</th>
-            <th>{{ t("Telefon") }}</th><th>{{ t("Themengebiet") }}</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for c in contacts %}
-            <tr>
-              <td class="cell-name">{{ c.name }}</td>
-              <td>{{ c.outlet or '—' }}</td>
-              <td>{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% else %}—{% endif %}</td>
-              <td>{{ c.phone or '—' }}</td>
-              <td class="cell-list" title="{{ c.beat }}">{{ c.beat or '—' }}</td>
-              <td class="col-actions">
-                <a class="rowlink" href="/contacts?edit={{ c.id }}">{{ t("Bearbeiten") }}</a>
-                <form method="post" action="/contacts/{{ c.id }}/delete">
-                  <button type="submit" class="linkbtn linkbtn--danger">{{ t("Löschen") }}</button>
-                </form>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <p class="panel-hint">
-      {{ t("Noch keine Kontakte. Unter jedem Impuls stehen die Journalisten, die zum Thema geschrieben haben — ein Klick auf einen Namen legt hier einen Eintrag an.") }}
-    </p>
-  {% endif %}
-</section>
+  {# --- The right pane: the form while adding or editing, otherwise the file. #}
+  <div>
+    {% if editing or not selected %}
+      <section class="panel panel--wide" style="margin: 0">
+        <h2>{{ t("Eintrag bearbeiten") if editing else t("Neuer Kontakt") }}</h2>
+        <form method="post" action="/contacts" class="contact-form">
+          {% if editing %}<input type="hidden" name="contact_id" value="{{ editing.id }}">{% endif %}
+          {# Where saving returns to. Without it a save closed the file the reader
+             had open and dropped the roster filter, because the bare fallback is
+             /contacts — harmless before the split, when form and roster were the
+             same view. #}
+          <input type="hidden" name="redirect_to" value="{{ here }}">
+          <div class="import-fields">
+            <div>
+              <label for="c-name">{{ t("Name") }}*</label>
+              <input type="text" id="c-name" name="name" required
+                     value="{{ editing.name if editing else prefill_name }}">
+            </div>
+            <div>
+              <label for="c-outlet">{{ t("Medium") }}</label>
+              <input type="text" id="c-outlet" name="outlet"
+                     value="{{ editing.outlet if editing else prefill_outlet }}">
+            </div>
+            <div>
+              <label for="c-email">{{ t("E-Mail") }}</label>
+              <input type="text" id="c-email" name="email" value="{{ editing.email if editing else '' }}">
+            </div>
+            <div>
+              <label for="c-phone">{{ t("Telefon") }}</label>
+              <input type="text" id="c-phone" name="phone" value="{{ editing.phone if editing else '' }}">
+            </div>
+            <div>
+              <label for="c-beat">{{ t("Themengebiet") }}</label>
+              <input type="text" id="c-beat" name="beat" value="{{ editing.beat if editing else '' }}">
+            </div>
+          </div>
+          <div>
+            <label for="c-notes">{{ t("Notizen") }}</label>
+            <input type="text" id="c-notes" name="notes" value="{{ editing.notes if editing else '' }}">
+          </div>
+          <div class="actions">
+            <button type="submit">{{ t("Speichern") }}</button>
+            {% if editing %}
+              <a class="rowlink" href="{{ here }}">{{ t("Abbrechen") }}</a>
+            {% endif %}
+          </div>
+        </form>
+      </section>
+    {% else %}
+      <div class="file">
+        <div class="file__head">
+          <div>
+            <div class="file__name">{{ selected.name }}</div>
+            <div class="file__outlet">{{ selected.outlet or '—' }}{% if selected.beat %} · {{ selected.beat }}{% endif %}</div>
+            {% if selected.email or selected.phone or last_written_days is not none %}
+              <div class="file__meta">
+                {%- if selected.email %}<a href="mailto:{{ selected.email }}">{{ selected.email }}</a>{% endif -%}
+                {%- if selected.email and selected.phone %} · {% endif -%}
+                {{- selected.phone -}}
+                {%- if last_written_days is not none -%}
+                  {%- if selected.email or selected.phone %} · {% endif -%}
+                  <b>
+                    {%- if last_written_days == 0 %}{{ t("zuletzt angeschrieben heute") }}
+                    {%- elif last_written_days == 1 %}{{ t("zuletzt angeschrieben gestern") }}
+                    {%- else %}{{ t("zuletzt angeschrieben vor %(days)s Tagen") | format(days=last_written_days) }}
+                    {%- endif -%}
+                  </b>
+                {%- endif %}
+              </div>
+            {% endif %}
+            {% if selected.notes %}<div class="file__meta">{{ selected.notes }}</div>{% endif %}
+          </div>
+          <div class="file__acts">
+            <a class="btn btn--ghost" href="/contacts?id={{ selected.id }}&edit={{ selected.id }}{{ term }}">{{ t("Bearbeiten") }}</a>
+            <form method="post" action="/contacts/{{ selected.id }}/delete">
+              {# Back to the book, filter intact — but not to this file's ``?id=``:
+                 there is nothing left to open. #}
+              <input type="hidden" name="redirect_to" value="{{ book }}">
+              <button type="submit" class="linkbtn linkbtn--danger">{{ t("Löschen") }}</button>
+            </form>
+          </div>
+        </div>
+
+        {# The four numbers, counted off the very rows the timeline shows —
+           computed in outreach.tally so they can never disagree with it. #}
+        <div class="tally">
+          <div><div class="tally__n">{{ tallies.anschreiben }}</div><div class="tally__l">{{ t("Anschreiben") }}</div></div>
+          <div class="good"><div class="tally__n">{{ tallies.antworten }}</div><div class="tally__l">{{ t("Antworten") }}</div></div>
+          <div class="good"><div class="tally__n">{{ tallies.veroeffentlicht }}</div><div class="tally__l">{{ t("Veröffentlicht") }}</div></div>
+          <div class="warn"><div class="tally__n">{{ tallies.still }}</div><div class="tally__l">{{ t("ohne Reaktion") }}</div></div>
+        </div>
+
+        <span class="lbl">{{ t("Verlauf") }}</span>
+        {% if timeline %}
+          {# One flat list, strictly newest first. The two kinds of line carry
+             different timestamps — a reply typed yesterday belongs above a letter
+             released last week, whichever letter it answers — so the order is
+             decided in outreach.timeline() and simply walked here. #}
+          <ul class="tl">
+            {% for event in timeline %}
+              {% set letter = event.letter %}
+              {% if event.kind == "outcome" %}
+                {# What came back: the one entry on this page a person typed,
+                   marked as such and wearing the badge, so it never reads like
+                   something the system asserted. #}
+                <li>
+                  <span class="tl__pin {% if letter.state == 'veroeffentlicht' %}tl__pin--good{% elif letter.state == 'absage' %}tl__pin--warn{% else %}tl__pin--out{% endif %}"></span>
+                  <div class="tl__when">{{ event.at | de_date }}
+                    <span class="tl__src tl__src--hand">{{ t("von Hand eingetragen") }}</span></div>
+                  <div class="tl__what"><b>{{ t(state_labels[letter.state]) }}</b>
+                    {# The dot repeats the mandate's colour and the name beside it
+                       carries the same fact in words, so the chip never depends on
+                       the colour being seen. The title says which is which. #}
+                    <span class="tl__cl" title="{{ t('Mandant') }}: {{ event.mandate }}"><span style="background: {{ event.mandate | brand_colour }}"></span>{{ event.mandate }}</span>
+                    <span class="badge b-{{ letter.state }}">{{ t(state_labels[letter.state]) }}</span></div>
+                  {% if letter.outcome_note %}<div class="tl__sub">{{ letter.outcome_note }}</div>{% endif %}
+                </li>
+              {% elif event.kind == "reply" %}
+                {# What came back, in the journalist's own words, read out of the
+                   mailbox by the daily sync. Marked as coming from there rather
+                   than from a person at this agency: it is the only text on this
+                   page written by somebody who never agreed to be in RauteOS,
+                   and the clock time stays on it because "wann kam die Antwort"
+                   is a different question from "an welchem Tag". #}
+                <li>
+                  <span class="tl__pin tl__pin--good"></span>
+                  <div class="tl__when">{{ event.at | de_datetime }}
+                    <span class="tl__src">{{ t("aus dem Postfach gelesen") }}</span></div>
+                  <div class="tl__what"><b>{{ t("Antwort von %(who)s") | format(who=event.reply.sender) }}</b>
+                    <span class="tl__cl" title="{{ t('Mandant') }}: {{ event.mandate }}"><span style="background: {{ event.mandate | brand_colour }}"></span>{{ event.mandate }}</span></div>
+                  <div class="tl__reply"><div class="tl__reply-text">{{ event.reply.body }}</div></div>
+                </li>
+              {% else %}
+                {# The release: nobody typed this one. The system stamped it the
+                   moment the button was pressed, and the chip says so — while the
+                   trail line still names the person who let the letter go. #}
+                <li>
+                  <span class="tl__pin tl__pin--out"></span>
+                  <div class="tl__when">
+                    {{ event.at | de_date }} ·
+                    {% if letter.released_by == "mensch" %}{{ t("freigegeben von Mensch") }}{% else %}{{ t("freigegeben von %(who)s") | format(who=letter.released_by) }}{% endif %}
+                    <span class="tl__src">{{ t("bei der Freigabe festgehalten") }}</span>
+                  </div>
+                  <div class="tl__what"><b>{{ t("Anschreiben verschickt") }}</b>
+                    <span class="tl__cl" title="{{ t('Mandant') }}: {{ event.mandate }}"><span style="background: {{ event.mandate | brand_colour }}"></span>{{ event.mandate }}</span></div>
+                  {% if letter.subject %}<div class="tl__quote">„{{ letter.subject }}“</div>{% endif %}
+                </li>
+              {% endif %}
+            {% endfor %}
+          </ul>
+          {% if history_capped %}
+            {# The tallies are counted off the rows above, so a shortened list has
+               to say it is one — otherwise four numbers get quoted as the whole
+               relationship. #}
+            <p class="tl__empty">
+              {{ t("Es werden die letzten %(n)s Anschreiben gezeigt; ältere stehen nicht auf dieser Seite.") | format(n=history_limit) }}
+            </p>
+          {% endif %}
+        {% else %}
+          {# Never a blank pane: an empty file says so. #}
+          <p class="tl__empty">
+            {{ t("Noch kein Anschreiben freigegeben. Sobald eines an diesen Kontakt rausgeht, steht es hier.") }}
+          </p>
+        {% endif %}
+
+        {# The note has to be true, and since dem Postfach-Anschluss the old one
+           was not: RauteOS does send, and it does read replies. What it still
+           does not do is look at anything else in the mailbox, and that is the
+           sentence worth keeping on the page. #}
+        <p class="note">
+          {{ t("Der Verlauf entsteht aus drei Quellen, und jede Zeile sagt, aus welcher: aus der Freigabe eines Anschreibens, aus dem, was Sie selbst festhalten, und aus den Antworten der Journalistinnen und Journalisten. Aus dem Postfach liest RauteOS dabei nur die Verläufe, die es selbst begonnen hat — alles andere wird nicht abgefragt.") }}
+        </p>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
 {% endblock %}

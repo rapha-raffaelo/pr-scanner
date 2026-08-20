@@ -119,6 +119,26 @@ def brain_composes_the_shipped_blocks(monkeypatch):
     from newspulse import brain
 
     monkeypatch.setattr(brain, "_override_source", dict)
+def no_real_mailbox(tmp_path, monkeypatch):
+    """Keep the daily sweep away from a mailbox somebody actually connected.
+
+    ``job.run`` reads the replies to released letters, and whether a mailbox is
+    connected is answered by a token file beside ``config.DATABASE_PATH`` — which
+    defaults to the working directory. On a machine where the app has been run
+    for real, every test that drives a sweep would then reach Google. Pointing
+    the database at a tmp directory means the sync finds no connection and does
+    nothing, which is also the state it has to work in.
+
+    The tests that *are* about the mailbox set the same attribute themselves and
+    win, because pytest sets up autouse fixtures of a scope before the ones the
+    test asked for by name, and the later ``monkeypatch.setattr`` is the one that
+    stands. Both point inside the same per-test ``tmp_path``, so the token file
+    is the same file either way — the ordering decides which database name sits
+    beside it, not whether the two fixtures agree.
+    """
+    from newspulse import config
+
+    monkeypatch.setattr(config, "DATABASE_PATH", tmp_path / "newspulse.db")
 
 
 @pytest.fixture(autouse=True)
