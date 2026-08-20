@@ -434,9 +434,25 @@ def _surname(name: str) -> str:
 
 
 def _names(text: str, person: str) -> bool:
-    """Whether ``text`` refers to this person at all."""
+    """Whether ``text`` refers to this person at all.
+
+    On a word boundary, never as a bare substring. This is the check the release's
+    attribution rests on, and German surnames are ordinary words or live inside
+    them: Lang in "langfristig", Klein in "kleinen", Reich in "Bereich", Berg in
+    "Bergbau". A substring match clears a quote attributed to an invented CFO as
+    long as the paragraph happens to use one of those, which is exactly the
+    artefact this module exists to prevent.
+
+    The genitive ``s`` is allowed because "Langs Einschätzung" names the same
+    person, and the cost of a wrong refusal here is two paid calls and no text.
+    Lookarounds rather than ``\\b`` so a stored value that ends in punctuation
+    still anchors: ``\\b`` before a non-word character never matches at all.
+    """
     surname = _surname(person)
-    return bool(surname) and surname.casefold() in (text or "").casefold()
+    if not surname:
+        return False
+    pattern = rf"(?<!\w){re.escape(surname)}(?:s|'s|’s)?(?!\w)"
+    return bool(re.search(pattern, text or "", re.IGNORECASE))
 
 
 def nogo_terms(nogos: tuple[str, ...]) -> list[str]:

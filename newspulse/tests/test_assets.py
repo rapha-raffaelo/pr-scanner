@@ -1049,6 +1049,33 @@ def test_a_release_quote_attributed_to_anyone_else_is_rejected():
     assert faults == [f"Das Zitat ist nicht {_SPEAKER} zugeschrieben."]
 
 
+def test_a_surname_hiding_inside_an_ordinary_word_does_not_count_as_an_attribution():
+    """Matched on a word boundary, not as a substring. Half the surnames a German
+    profile holds live inside everyday words, and a substring match clears a quote
+    attributed to an invented CFO as long as the paragraph says "langfristig"."""
+    fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
+    speaker = "Michael Lang, Geschäftsführer"
+    body = "\n\n".join(
+        (
+            "Berlin, 20. August 2026. Alpha AG erweitert ihr Angebot für Banken.",
+            "Der Schritt folgt auf die Verlagerung der Verwahrung zu den Banken.",
+            '"Verfügbarkeit ist ein eigener Risikoparameter", sagt Dr. Erfunden, '
+            "Finanzchef, und denkt dabei langfristig.",
+            "Über die Alpha AG: Sie verwahrt digitale Vermögenswerte für Banken.",
+        )
+    )
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given(speaker=speaker))
+
+    assert faults == [f"Das Zitat ist nicht {speaker} zugeschrieben."]
+
+
+def test_a_surname_in_the_genitive_still_counts_as_an_attribution():
+    """"Langs Einschätzung" names the same person, and a refusal here costs two
+    paid calls and delivers no text."""
+    assert assets._names("Das ist Langs Einschätzung.", "Michael Lang")
+
+
 def test_a_release_with_no_quote_at_all_is_rejected():
     fmt = assets.definition(AssetKind.PRESSEMITTEILUNG)
     body = "\n\n".join(
