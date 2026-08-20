@@ -374,6 +374,12 @@ _EN: dict[str, str] = {
     # reader is not shown a German card. Three of the names are the same word in
     # both languages and are listed anyway: an entry that reads as a no-op is a
     # decision, a missing one is indistinguishable from an oversight.
+    #
+    # Here rather than with the story that puts the format cards on the page,
+    # because the guard that keeps this honest is a test over ``assets.FORMATS``:
+    # it fails the moment a seventh format is defined without an English name.
+    # Landing the guard with the registry means the surface story inherits six
+    # translated formats instead of discovering six German ones.
     "Pressemitteilung": "Press release",
     "Die offizielle Meldung des Mandanten, zitierfähig und datiert.":
         "The client's official announcement, quotable and dated.",

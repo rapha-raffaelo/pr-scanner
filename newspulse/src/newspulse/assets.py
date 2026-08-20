@@ -148,6 +148,13 @@ _BRIEFING_SECTIONS = (
     "Wo es unangenehm wird",
 )
 
+#: What a reply nobody could read is called, to the model on the retry and to the
+#: consultant in the refusal. :class:`newspulse.analyzer.ParseError` says its piece
+#: in English and quotes a JSON character offset, which is the right thing in a log
+#: line and the wrong thing in the one sentence a person gets back from a button
+#: they pressed, and the wrong thing again inside a German instruction block.
+_UNREADABLE = "Die Antwort des Modells war nicht lesbar."
+
 #: The one objection this module raises itself. Worded against what the reader will
 #: actually see: the dash was in the reply, prose.plain() has already replaced it,
 #: and what is left is a sentence worth re-reading rather than a dash to hunt for.
@@ -983,22 +990,41 @@ def recipient(
     return targets[0] if targets else None
 
 
+class _Unresolved:
+    """Nobody has looked the recipient up yet.
+
+    A sentinel rather than ``None``, because the two mean opposite things and the
+    difference is a database round trip on the path that is about to refuse.
+    ``None`` is an answer: :func:`recipient` ran and the coverage named nobody. Read
+    as "not looked up yet" it sends the readiness check back through
+    :func:`newspulse.pitch.targets_for` — several queries and a contact lookup per
+    candidate — to be told the same thing a second time.
+    """
+
+
+_UNRESOLVED = _Unresolved()
+
+#: What a caller may hand in for the recipient: one, none, or nothing yet.
+Recipient = PitchTarget | None | _Unresolved
+
+
 def _resolved(
     session: Session,
     fmt: FormatDef,
     client: Client,
     angle: Angle | None,
-    target: PitchTarget | None,
+    target: Recipient,
 ) -> PitchTarget | None:
     """The passed recipient, or the one the coverage names, for a format that needs one.
 
     Resolved lazily and once: :func:`write` looks it up before the requirement
-    check and hands the same object to the prompt and the validator, so the
-    briefing is written for exactly the recipient it was cleared for.
+    check and hands the same object to the readiness check, the prompt and the
+    validator, so the briefing is written for exactly the recipient it was cleared
+    for and the lookup happens one time.
     """
-    if target is not None or not fmt.needs_recipient:
+    if not isinstance(target, _Unresolved):
         return target
-    return recipient(session, client, angle)
+    return recipient(session, client, angle) if fmt.needs_recipient else None
 
 
 def requirements_met(
@@ -1008,7 +1034,7 @@ def requirements_met(
     angle: Angle | None = None,
     *,
     facts: dict[str, ClientFact] | None = None,
-    target: PitchTarget | None = None,
+    target: Recipient = _UNRESOLVED,
 ) -> Readiness:
     """What this format is still missing for this mandate.
 
@@ -1018,13 +1044,17 @@ def requirements_met(
 
     ``facts`` is the mandate's profile when the caller already holds it. Writing
     one format reads the profile three times otherwise, and FMT-03 writes six in
-    a row off one impulse. ``target`` is the same courtesy for the recipient.
+    a row off one impulse. ``target`` is the same courtesy for the recipient: hand
+    in one that has already been looked up, including the ``None`` that means the
+    coverage named nobody, and no lookup runs here.
     """
     if facts is None:
         facts = profile.stored(session, client.id)
-    target = _resolved(session, fmt, client, angle, target)
+    resolved = _resolved(session, fmt, client, angle, target)
     missing = tuple(
-        req for req in fmt.requires if not _satisfied(req, facts, client, angle, target)
+        req
+        for req in fmt.requires
+        if not _satisfied(req, facts, client, angle, resolved)
     )
     return Readiness(missing)
 
@@ -1280,7 +1310,7 @@ def prompt_for(
     angle: Angle,
     *,
     facts: dict[str, ClientFact] | None = None,
-    target: PitchTarget | None = None,
+    target: Recipient = _UNRESOLVED,
 ) -> str:
     """Render one format's prompt. Every format gets the same blocks.
 
@@ -1290,9 +1320,9 @@ def prompt_for(
     """
     if facts is None:
         facts = profile.stored(session, client.id)
-    target = _resolved(session, fmt, client, angle, target)
+    resolved = _resolved(session, fmt, client, angle, target)
     return fmt.template().substitute(
-        recipient=_recipient_block(session, target),
+        recipient=_recipient_block(session, resolved),
         today=today(),
         format_name=fmt.name,
         structure="\n".join(f"- {line}" for line in fmt.structure),
@@ -1428,7 +1458,11 @@ def _drafted(
             raw = invoke(prompt + _correction(fault), timeout=config.ANALYZER_TIMEOUT)
             draft = _attributed(_parse(raw), fmt, facts)
         except ParseError as exc:
-            fault = str(exc)
+            # The parser's own message keeps its offsets and its English, in the
+            # log, where they are what somebody debugging this needs. What travels
+            # onwards into the retry and the refusal is a sentence.
+            _log.warning("%s for %r: unreadable reply: %s", fmt.key, label, exc)
+            fault = _UNREADABLE
         else:
             faults = validate(fmt, draft, given)
             if not faults:
@@ -1481,7 +1515,7 @@ def write(
     row, without a subprocess.
     """
     facts = profile.stored(session, client.id)
-    target = _resolved(session, fmt, client, angle, None)
+    target = _resolved(session, fmt, client, angle, _UNRESOLVED)
     readiness = requirements_met(session, fmt, client, angle, facts=facts, target=target)
     if not readiness.ok:
         _log.info("%s refused for %r: %s", fmt.key, client.name, readiness.reason)

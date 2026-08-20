@@ -1598,6 +1598,47 @@ def test_a_reply_that_never_parses_ends_in_the_same_refusal(session):
     assert len(calls) == 2
 
 
+def test_a_reply_that_never_parses_refuses_in_the_readers_language(session):
+    """The refusal is the one sentence somebody gets back from a button they
+    pressed, and it travels into a German instruction block on the way to the
+    retry. An English parser message quoting a JSON character offset belongs in
+    the log, which is where it stays."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.STATEMENT)
+    seen: list[str] = []
+
+    with pytest.raises(assets.Malformed) as caught:
+        assets.write(
+            session, fmt, client, angle,
+            invoke=lambda prompt, **k: seen.append(prompt) or "kein JSON",
+        )
+
+    assert assets._UNREADABLE in caught.value.reason
+    assert "JSON" not in caught.value.reason
+    assert assets._UNREADABLE in seen[1], "the retry was told what was wrong"
+
+
+def test_a_briefing_that_refuses_looks_its_recipient_up_only_once(session, monkeypatch):
+    """``None`` from the lookup means the coverage named nobody, not that nobody
+    has looked. Read as the second, the readiness check runs the whole pitch list
+    again — several queries and a contact lookup per candidate — on the one path
+    that is about to refuse anyway."""
+    client, angle = _mandate(session)
+    fmt = assets.definition(AssetKind.INTERVIEW_BRIEFING)
+    lookups: list[int] = []
+    real = assets.pitch.targets_for
+    monkeypatch.setattr(
+        assets.pitch,
+        "targets_for",
+        lambda *a, **k: lookups.append(1) or real(*a, **k),
+    )
+
+    with pytest.raises(assets.RequirementsMissing):
+        assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
+
+    assert len(lookups) == 1
+
+
 def test_a_refused_requirement_is_handed_to_the_caller_as_a_reason_too(session):
     """Both refusals reach the same place, so the surface has one field to store
     and one sentence to show whichever way nothing was written."""
