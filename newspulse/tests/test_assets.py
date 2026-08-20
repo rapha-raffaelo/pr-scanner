@@ -1389,6 +1389,35 @@ def test_a_guest_article_that_opens_with_a_news_hook_is_rejected():
     assert any("Nachrichtenaufhänger" in fault for fault in faults)
 
 
+def test_an_op_ed_opening_about_recent_years_is_not_a_news_hook():
+    """"In den vergangenen Jahren habe ich …" is how half of these begin. A miss
+    here costs two paid calls and delivers no text, so the openers have to be as
+    narrow as the news hooks they name."""
+    fmt = assets.definition(AssetKind.GASTBEITRAG)
+    draft = _draft_of(
+        fmt,
+        body=_gastbeitrag_body(
+            opening="In den vergangenen Jahren habe ich eine Verschiebung beobachtet."
+        ),
+    )
+
+    assert assets.validate(fmt, draft, _given()) == []
+
+
+def test_a_third_person_text_about_what_others_think_is_still_third_person():
+    """"Nach Meinung vieler Beobachter" is not a first person. It satisfied the
+    check while "mein\\w*" was the pattern, which is the institutional-text-with-a-
+    byline this exists to catch."""
+    fmt = assets.definition(AssetKind.GASTBEITRAG)
+    body = _gastbeitrag_body(
+        opening="Nach Meinung vieler Beobachter verschiebt sich die Debatte."
+    ).replace("Wir ", "Man ")
+
+    faults = assets.validate(fmt, _draft_of(fmt, body=body), _given())
+
+    assert any("erste" in fault.casefold() for fault in faults)
+
+
 def test_a_guest_article_in_the_third_person_is_rejected():
     """Without a first person it is a company text with somebody's name under it,
     which is what every agency guest article turns into."""

@@ -360,16 +360,28 @@ _POINT = re.compile(r"^\s*\d+[.)]\s+\S")
 #: First person, singular or plural. A guest article without one of these is an
 #: institutional text with somebody's name under it, which is the failure mode
 #: every agency guest article has.
+#:
+#: The possessives are spelled out to their real inflections rather than left as
+#: ``mein\w*``: that matched "Meinung", "meinte" and "meinen", so "Nach Meinung
+#: vieler Beobachter …" satisfied the first-person check with no first person in
+#: it, which is precisely the text this is here to catch.
 _FIRST_PERSON = re.compile(
-    r"\b(ich|mir|mich|mein\w*|wir|uns|unser\w*)\b", re.IGNORECASE
+    r"\b(ich|mir|mich|mein(e|es|em|en|er)?|wir|uns|unser(e|es|em|en|er)?)\b",
+    re.IGNORECASE,
 )
 
 #: Openings that make a text a news story rather than an argument. Checked only
 #: against a guest article's first sentence: "am Montag" in the middle of a
 #: paragraph is a date, at the top it is a news hook the op-ed page did not ask for.
+#:
+#: Every entry names a specific moment. The bare "vergangenen" used to be here and
+#: rejected "In den vergangenen Jahren habe ich eine Verschiebung beobachtet",
+#: which is an ordinary op-ed opening; a miss here costs two paid calls and
+#: delivers no text, so the entries have to be as narrow as what they catch.
 _NEWS_LEAD_OPENERS = (
     "vergangene woche",
-    "vergangenen",
+    "vergangenen woche",
+    "am vergangenen",
     "in dieser woche",
     "diese woche",
     "am montag",
