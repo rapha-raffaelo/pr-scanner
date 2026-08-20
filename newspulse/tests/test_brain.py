@@ -1406,6 +1406,11 @@ def _brief_reply() -> str:
     return json.dumps({"situation": "Ruhige Woche.", "suggestions": []})
 
 
+def _never_called(*_args, **_kwargs) -> str:
+    """An ``invoke`` for the paths that must not reach a model at all."""
+    raise AssertionError("no prompt should have been composed here")
+
+
 def _store_an_angle(session) -> Angle:
     """Drive ``angles`` the way the sweep does: suggest, then store."""
     client = _a_mandate(session)
@@ -1532,6 +1537,27 @@ def test_a_generator_on_untouched_standards_stamps_zero_rather_than_nothing(
     row = run(session)
 
     assert row.brain_version == 0
+
+
+def test_a_brief_on_a_quiet_window_is_stamped_like_any_other_row(session):
+    """The advisor's one path that composes no prompt still writes a row.
+
+    NULL is spoken for: every other part of this change reads it as "stored
+    before the standards were recorded", and the page says so in words. A brief
+    written this morning is in no position to claim that, and the standards that
+    governed the install at the moment it was made are known — so it carries them
+    like every other row, and the two states stay distinguishable.
+    """
+    brain.edit(session, A_BLOCK, "Erst.")
+    mandate = _a_mandate(session)
+
+    brief, coverage = advisor.advise(
+        session, mandate, invoke=_never_called
+    )
+    stored = advisor.store(session, mandate, brief, coverage)
+
+    assert coverage == []
+    assert stored.brain_version == 1
 
 
 def test_an_edit_while_the_model_is_writing_does_not_move_an_angle_stamp(session):

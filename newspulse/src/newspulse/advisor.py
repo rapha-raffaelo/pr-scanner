@@ -223,13 +223,23 @@ def advise(
     here rather than read again by :func:`store`, so a standard edited while the
     model was writing belongs to the next brief and not to this one.
     """
+    written_under = brain.version(session)
     coverage = recent_coverage(session, client.id, days=days)
     if not coverage:
-        # No prompt was composed and no standard governed anything, so there is
-        # nothing to stamp: this brief is a sentence this module wrote itself.
-        return AdvisoryBrief(situation="Keine Berichterstattung im Zeitraum."), []
+        # Stamped too, though no prompt was composed and this sentence is one the
+        # module wrote itself. What the stamp records is which standards were in
+        # force when the row was made, and they were these. Leaving it NULL would
+        # store the one value the whole change reserves for "written before the
+        # standards were recorded" — and the page says exactly that in words, so
+        # a brief made this morning would render a false claim about its own age.
+        return (
+            AdvisoryBrief(
+                situation="Keine Berichterstattung im Zeitraum.",
+                brain_version=written_under,
+            ),
+            [],
+        )
 
-    written_under = brain.version(session)
     prompt = _prompt_template().substitute(
         client_profile=_client_profile(client),
         comms_guide=guide.for_prompt(client),
