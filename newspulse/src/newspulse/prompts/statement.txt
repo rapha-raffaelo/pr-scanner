@@ -36,7 +36,8 @@ Was dieses Statement leisten muss:
 - Jeder Satz muss allein zitierfähig sein. Eine Redaktion nimmt einen davon
   heraus, und dieser eine muss dann noch stimmen und noch etwas sagen.
 - Es spricht in der ersten Person der oben genannten Person. Diese Person und
-  keine andere steht unter dem Text.
+  keine andere steht unter dem Text: die Zuschreibung ist die letzte Zeile, sie
+  steht allein, und sie nennt Name und Funktion.
 - Es bezieht Position. Ein Statement, das sich nach beiden Seiten absichert, ist
   keine Stellungnahme, sondern ihr Ausbleiben in Satzform.
 - Keine Gedankenstriche. Kein "—", kein "–". Nimm ein Komma, einen Doppelpunkt
@@ -50,7 +51,7 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
 {
   "title": "Worum es geht, eine Zeile, für den Berater. Nicht Teil des Zitats.",
-  "body": "Die drei bis fünf Sätze, darunter die Zuschreibung mit Name und
-           Funktion.",
+  "body": "Die drei bis fünf Sätze, danach \n\n und als letzte Zeile die
+           Zuschreibung mit Name und Funktion, sonst nichts.",
   "speaker": "Name und Funktion der zitierten Person, exakt wie oben angegeben."
 }

@@ -33,11 +33,16 @@ Was diese Meldung leisten muss:
 
 - Die Schlagzeile enthält die Nachricht. Sie bewirbt sie nicht, sie kündigt sie
   nicht an, und sie stellt keine Frage.
-- Der Lead beantwortet in einem Satz, was passiert ist. Wer, was, warum jetzt.
-- Das Zitat sagt etwas, das der Fließtext nicht schon gesagt hat. Ein Zitat, das
-  die Meldung wiederholt, wird von jeder Redaktion gestrichen. Es wird der oben
-  genannten Person zugeschrieben, mit ihrer Funktion, und niemandem sonst.
-- Die Boilerplate ist knapp und besteht aus belegten Angaben von oben.
+- Der erste Absatz beginnt mit der Dateline und enthält den Lead: "Berlin,
+  20. August 2026. " und dann in einem Satz, was passiert ist. Wer, was, warum
+  jetzt.
+- Das Zitat steht in Anführungszeichen und im selben Absatz wie seine
+  Zuschreibung, damit erkennbar bleibt, wer spricht. Es sagt etwas, das der
+  Fließtext nicht schon gesagt hat. Ein Zitat, das die Meldung wiederholt, wird
+  von jeder Redaktion gestrichen. Zugeschrieben wird es der oben genannten
+  Person, mit ihrer Funktion, und niemandem sonst.
+- Der letzte Absatz ist die Boilerplate und beginnt mit dem Wort "Über". Sie ist
+  knapp und besteht aus belegten Angaben von oben.
 - Keine Gedankenstriche. Kein "—", kein "–". Sie sind das verlässlichste
   Erkennungszeichen maschinell geschriebener Texte. Nimm ein Komma, einen
   Doppelpunkt oder zwei Sätze.
@@ -51,7 +56,8 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
 {
   "title": "Die Schlagzeile. Eine Zeile, höchstens 90 Zeichen.",
-  "body": "Die vollständige Mitteilung: Dateline, Lead, Fließtext, Zitat,
-           Boilerplate. Absätze getrennt durch \n\n.",
+  "body": "Die vollständige Mitteilung, mindestens vier Absätze, getrennt durch
+           \n\n: Dateline und Lead, Fließtext, Zitat mit Zuschreibung, zuletzt
+           die Boilerplate, die mit 'Über' beginnt.",
   "speaker": "Name und Funktion der zitierten Person, exakt wie oben angegeben."
 }

@@ -31,13 +31,15 @@ $structure
 
 Was diese Talking Points leisten müssen:
 
-- Jeder Punkt ist ein Satz, den man so sagen kann. Kein Stichwort, kein Thema,
-  keine Überschrift: der fertige Satz.
-- Zu jedem Punkt gehört die Brücke zurück zur These. Sie steht daneben und sagt,
-  wie man von diesem Punkt wieder zur Position des Mandanten kommt. Das ist der
-  eigentliche Zweck dieses Formats.
-- Der Abschnitt "Nicht sagen" ist verbindlich und enthält vor allem die pauschale
-  Lesart oben, in der Formulierung, in der sie einem im Gespräch herausrutscht.
+- Jeder Punkt ist ein Satz, den man so sagen kann, und er ist nummeriert ("1. ").
+  Kein Stichwort, kein Thema, keine Überschrift: der fertige Satz.
+- Zu jedem Punkt gehört die Brücke zurück zur These. Sie steht in der Zeile
+  darunter, beginnt mit "Brücke: " und sagt, wie man von diesem Punkt wieder zur
+  Position des Mandanten kommt. Das ist der eigentliche Zweck dieses Formats.
+  Genauso viele Brücken wie Punkte, keine ohne.
+- Der Abschnitt am Ende heißt "Nicht sagen", ist verbindlich und enthält vor
+  allem die pauschale Lesart oben, in der Formulierung, in der sie einem im
+  Gespräch herausrutscht.
 - Keine Zahl und kein Name, die oben nicht belegt sind. Im Gespräch wird eine
   falsche Zahl nachgeschlagen, während man noch redet.
 - Keine Gedankenstriche. Kein "—", kein "–".
@@ -48,8 +50,8 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
 {
   "title": "Das Thema, eine Zeile.",
-  "body": "Die Punkte, nummeriert, zu jedem darunter eine Zeile 'Brücke: ...'.
-           Danach ein Abschnitt 'Nicht sagen' mit den Sätzen, die nicht fallen
-           dürfen. Absätze getrennt durch \n\n.",
+  "body": "Die Punkte, nummeriert ('1. ...'), zu jedem in der Zeile darunter
+           'Brücke: ...'. Danach die Überschrift 'Nicht sagen' und darunter die
+           Sätze, die nicht fallen dürfen. Absätze getrennt durch \n\n.",
   "speaker": ""
 }

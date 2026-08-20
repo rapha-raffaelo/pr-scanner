@@ -31,6 +31,16 @@ returns nothing and records why, and a fabricated quote attributed to a named CE
 is the single worst artefact this feature could produce. A thinly filled profile
 therefore blocks formats, which is uncomfortable and correct.
 
+**Nothing is stored that does not carry its own shape.** Each format declares
+what its output must contain and a validator that says whether it does, run on
+the model's answer before storage. This is where the PR craft is held: a press
+release without an attributed quote, a set of talking points with nine points and
+no bridges, a guest article that opens with a dateline. Each is a text a
+consultant has to read to the end to discover is unusable, and each is
+mechanically detectable in a millisecond. A miss buys one retry carrying the
+complaint, the analyzer's budget for a batch, and then a refusal that names what
+was missing rather than a stored draft nobody can send.
+
 Every finished text then passes both checks in :func:`check` before anyone reads
 it: a second model on the text itself, and the client's own guide as a separate
 verdict. An asset with neither recorded renders as unchecked, never as clean.
@@ -41,6 +51,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -51,9 +62,10 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config, gemini, guide, profile, prose
+from . import config, gemini, guide, pitch, profile, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Angle, Article, Asset, AssetKind, Client, ClientFact
+from .pitch import PitchTarget
 from .schemas import MAX_CONCERNS, AssetDraft, GuideVerdict, MessageReview
 
 _log = logging.getLogger(__name__)
@@ -80,6 +92,55 @@ GASTBEITRAG_CHARS = 4000
 
 #: What a guest article needs under it before it may argue anything.
 _MIN_GASTBEITRAG_EVIDENCE = 2
+
+#: How far a guest article may miss that target before it is a different text. An
+#: op-ed page holds what it holds: at half the length it is a column, at half again
+#: it is an essay, and neither is what was commissioned.
+_GASTBEITRAG_TOLERANCE = 0.4
+_MIN_GASTBEITRAG_CHARS = int(GASTBEITRAG_CHARS * (1 - _GASTBEITRAG_TOLERANCE))
+_MAX_GASTBEITRAG_CHARS = int(GASTBEITRAG_CHARS * (1 + _GASTBEITRAG_TOLERANCE))
+
+#: A statement is what a desk prints whole. Under three sentences it says nothing
+#: worth attributing; over five a subeditor picks two and the mandate finds out
+#: afterwards which ones.
+_MIN_STATEMENT_SENTENCES = 3
+_MAX_STATEMENT_SENTENCES = 5
+
+#: Lead, body and boilerplate are three things, so a release is at least three
+#: paragraphs. Fewer means they have been run together, and a desk that cannot see
+#: where the boilerplate starts prints it as part of the news.
+_MIN_RELEASE_PARAGRAPHS = 3
+
+#: A Q&A below this is a talking point with a question mark. Three is the floor at
+#: which grouping the questions means anything at all.
+_MIN_QA_QUESTIONS = 3
+
+#: One retry, then refuse: two attempts in total, the same budget
+#: :mod:`newspulse.analyzer` gives a batch. A model that missed the structure twice
+#: is not going to find it on a third pass, and each attempt is a paid call a
+#: person is waiting through.
+_MAX_ATTEMPTS = 2
+
+#: The markers the prompts ask for and the validators look for. Constants rather
+#: than literals in two files, because the halves have to say exactly the same
+#: thing: a validator hunting for a word the prompt never asked for rejects every
+#: draft, twice, and then refuses in a way that looks like the model's fault.
+_BRIDGE = "Brücke:"
+_DO_NOT_SAY = "Nicht sagen"
+_TOUCHY = "[heikel]"
+_BOILERPLATE = "Über"
+_GROUP = "##"
+
+#: The sections an interview briefing owes, in the order it owes them. Named once:
+#: they are the structure the definition declares, the headings the prompt asks
+#: for, and what the validator counts.
+_BRIEFING_SECTIONS = (
+    "Wer fragt",
+    "Was zuletzt erschien",
+    "Womit zu rechnen ist",
+    "Was gesagt werden soll",
+    "Wo es unangenehm wird",
+)
 
 #: The one objection this module raises itself. Worded against what the reader will
 #: actually see: the dash was in the reply, prose.plain() has already replaced it,
@@ -112,14 +173,16 @@ def _template(resource: str) -> Template:
 class Source(StrEnum):
     """Where a required input is read from.
 
-    Three, because a mandate's facts live in three places that mean different
-    things: the deep-dive profile a human filled, the mandate record itself, and
-    the impulse this text argues.
+    Four, because a mandate's facts live in four places that mean different
+    things: the deep-dive profile a human filled, the mandate record itself, the
+    impulse this text argues, and, for the one format that is written *at*
+    somebody, the recipient :mod:`newspulse.pitch` can name from the coverage.
     """
 
     PROFIL = "profil"
     MANDAT = "mandat"
     IMPULS = "impuls"
+    EMPFAENGER = "empfaenger"
 
 
 #: Labels for the non-profile requirements. The profile's own come from
@@ -132,11 +195,19 @@ _ANGLE_LABELS = {
     "statements": "Ableitbare Aussagen",
     "article_ids": "Belegte Meldungen",
 }
+_RECIPIENT_LABELS = {"outlet": "Ein belegtes Medium für das Gespräch"}
 
 _WHERE = {
     Source.PROFIL: "im Profil",
     Source.MANDAT: "beim Mandanten",
     Source.IMPULS: "am Impuls",
+    Source.EMPFAENGER: "in der Berichterstattung zum Themenfeld",
+}
+
+_LABELS_BY_SOURCE = {
+    Source.MANDAT: _MANDATE_LABELS,
+    Source.IMPULS: _ANGLE_LABELS,
+    Source.EMPFAENGER: _RECIPIENT_LABELS,
 }
 
 
@@ -145,8 +216,7 @@ def _label_for(source: Source, key: str) -> str | None:
     if source is Source.PROFIL:
         field = profile.FIELDS_BY_KEY.get(key)
         return field.label if field else None
-    table = _MANDATE_LABELS if source is Source.MANDAT else _ANGLE_LABELS
-    return table.get(key)
+    return _LABELS_BY_SOURCE[source].get(key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +277,334 @@ class Readiness:
         return f"Es fehlen: {', '.join(named[:-1])} und {named[-1]}."
 
 
+# --- The structural contract ---------------------------------------------------
+#
+# What each format owes, checked on the model's answer before it is stored. The
+# prompt states the same contract and mostly gets it right; "mostly" is the reason
+# this exists. A press release whose quote is attributed to nobody, a set of
+# talking points with nine points and no bridges, a guest article that opens with
+# a dateline: each of those is a text a consultant has to read to the end before
+# discovering it is unusable, and each is mechanically detectable in a millisecond.
+#
+# What these check and what they deliberately do not: everything here is a shape,
+# never a judgement. Whether the lead is any good, whether the quote says anything
+# the body did not, whether the argument develops, that is what the crosscheck is
+# for and it runs on a second model for a reason. A validator that starts weighing
+# quality would refuse texts on taste, twice, and then refuse them for good.
+
+
+@dataclass(frozen=True, slots=True)
+class Given:
+    """What the writer was handed, as a validator needs to see it.
+
+    A validator may only hold the text against what the writing prompt actually
+    carried. That is not a style rule: the spokesperson's name comes from the
+    profile field the format named, so "is this quote attributed to the person the
+    profile names" is answerable, and "is this quote real" is not.
+    """
+
+    #: The profile's spokesperson, for the formats that quote one.
+    speaker: str = ""
+    #: The sentences of the mandate's guide that name something it never says.
+    #: A Q&A that avoids them is decoration, so they are checkable input.
+    nogos: tuple[str, ...] = ()
+    #: Who is asking, for the one format written at somebody.
+    recipient: PitchTarget | None = None
+
+
+#: A format's structural check: the finished draft in, everything it fails to
+#: carry out, as sentences a consultant can read.
+Validator = Callable[[AssetDraft, Given], list[str]]
+
+
+#: A German dateline: place, comma, date. "Berlin, 20. August 2026" and
+#: "Berlin, 20.08.2026" both count, because both are what a desk sees.
+_DATELINE = re.compile(
+    r"^\s*[^\n,]{2,40},\s*(?:\d{1,2}\.\s*[A-Za-zÄÖÜäöü]+|\d{1,2}\.\d{1,2}\.)\s*\d{4}"
+)
+
+#: A quotation of at least a clause. The length floor is what keeps a quoted
+#: product name or a scare-quoted adjective from passing as the release's quote.
+_QUOTE = re.compile(r"[\"„»“]([^\"„»“”«]{20,}?)[\"“«”]", re.S)
+
+#: A numbered talking point. The number is the format: a consultant scanning this
+#: in a green room counts them, and an unnumbered list is prose.
+_POINT = re.compile(r"^\s*\d+[.)]\s+\S")
+
+#: First person, singular or plural. A guest article without one of these is an
+#: institutional text with somebody's name under it, which is the failure mode
+#: every agency guest article has.
+_FIRST_PERSON = re.compile(
+    r"\b(ich|mir|mich|mein\w*|wir|uns|unser\w*)\b", re.IGNORECASE
+)
+
+#: Openings that make a text a news story rather than an argument. Checked only
+#: against a guest article's first sentence: "am Montag" in the middle of a
+#: paragraph is a date, at the top it is a news hook the op-ed page did not ask for.
+_NEWS_LEAD_OPENERS = (
+    "vergangene woche",
+    "vergangenen",
+    "in dieser woche",
+    "diese woche",
+    "am montag",
+    "am dienstag",
+    "am mittwoch",
+    "am donnerstag",
+    "am freitag",
+    "wie bekannt wurde",
+    "wie diese woche bekannt",
+    "hat heute",
+    "gab heute bekannt",
+    "gab bekannt",
+    "kürzlich hat",
+)
+
+#: What a statement must not open with. A statement begins with the statement;
+#: everything here is the sound of a text clearing its throat, and a desk cuts it
+#: along with the first sentence that followed it.
+_PREAMBLE_OPENERS = (
+    "sehr geehrte",
+    "liebe ",
+    "guten tag",
+    "wir haben mit interesse",
+    "mit interesse haben wir",
+    "zunächst einmal",
+    "vorab",
+)
+
+#: How long a word out of a No-Go has to be before it counts as naming that No-Go's
+#: subject. Below this it is grammar, and matching on grammar would clear every
+#: text ever written.
+_MIN_NOGO_TERM = 6
+
+#: Long enough to pass the floor above and still say nothing about a subject.
+#: Their only effect is to make the No-Go check pass, so the list is kept short and
+#: the bias is deliberate: a wrongly refused Q&A costs a text, a wrongly accepted
+#: one costs a second read.
+_NOGO_NOISE = frozenset(
+    {
+        "werden",
+        "wurden",
+        "sollte",
+        "sollten",
+        "sollen",
+        "müssen",
+        "niemals",
+        "immer",
+        "andere",
+        "anderen",
+        "welche",
+        "unsere",
+        "unserem",
+        "unseren",
+        "keinen",
+        "keine",
+        "nicht",
+    }
+)
+
+#: How many terms out of the guide's No-Gos the Q&A check considers. A guide runs
+#: to a few hundred words; past a dozen terms the check stops being "does this ask
+#: the uncomfortable question" and starts matching on incidental vocabulary.
+_MAX_NOGO_TERMS = 12
+
+
+def _paragraphs(text: str) -> list[str]:
+    return [block.strip() for block in re.split(r"\n\s*\n", text or "") if block.strip()]
+
+
+def _lines(text: str) -> list[str]:
+    return [line.strip() for line in (text or "").splitlines() if line.strip()]
+
+
+def _sentences(text: str) -> list[str]:
+    """The text's sentences, counted the way a subeditor counts them."""
+    return [part for part in re.split(r"(?<=[.!?])\s+", (text or "").strip()) if part]
+
+
+def _surname(name: str) -> str:
+    """The last word of the personal name, which is what a text refers back to.
+
+    A profile holds "Alexandra Prot, Geschäftsführerin"; a body says "sagt Prot".
+    Matching on the whole stored value would fail on the second mention of every
+    correctly attributed quote there is.
+    """
+    personal = (name or "").split(",")[0].strip()
+    return personal.split()[-1] if personal.split() else ""
+
+
+def _names(text: str, person: str) -> bool:
+    """Whether ``text`` refers to this person at all."""
+    surname = _surname(person)
+    return bool(surname) and surname.casefold() in (text or "").casefold()
+
+
+def nogo_terms(nogos: tuple[str, ...]) -> list[str]:
+    """The words out of a mandate's No-Gos that name what they are about."""
+    terms: list[str] = []
+    for line in nogos:
+        for word in re.findall(r"[\wÄÖÜäöüß]+", line):
+            folded = word.casefold()
+            if len(folded) >= _MIN_NOGO_TERM and folded not in _NOGO_NOISE:
+                terms.append(folded)
+    return list(dict.fromkeys(terms))[:_MAX_NOGO_TERMS]
+
+
+def _release_contract(draft: AssetDraft, given: Given) -> list[str]:
+    """Headline, dateline, lead, body, one attributed quote, boilerplate.
+
+    The quote's attribution is checked inside the paragraph that carries the
+    quote rather than anywhere in the text. The mandate's spokesperson is named in
+    the boilerplate of half these releases, so "the name appears somewhere" would
+    clear a quote attributed to an invented CFO two paragraphs above it. That is
+    the artefact this whole feature is built to prevent.
+    """
+    faults: list[str] = []
+    paragraphs = _paragraphs(draft.body)
+    if not draft.title.strip():
+        faults.append("Die Schlagzeile fehlt.")
+    if not paragraphs or not _DATELINE.search(paragraphs[0]):
+        faults.append("Die Dateline (Ort, Datum) fehlt am Anfang.")
+    if len(paragraphs) < _MIN_RELEASE_PARAGRAPHS:
+        faults.append(
+            f"Der Text hat {len(paragraphs)} Absätze. Lead, Fließtext und "
+            f"Boilerplate sind mindestens {_MIN_RELEASE_PARAGRAPHS}."
+        )
+    quoting = [block for block in paragraphs if _QUOTE.search(block)]
+    if not quoting:
+        faults.append("Es steht kein Zitat in der Meldung.")
+    elif not any(_names(block, given.speaker) for block in quoting):
+        faults.append(
+            f"Das Zitat ist nicht {given.speaker or 'der im Profil genannten Person'} "
+            "zugeschrieben."
+        )
+    if not paragraphs or not paragraphs[-1].startswith(_BOILERPLATE):
+        faults.append(f'Die Boilerplate fehlt: kein Absatz beginnt mit "{_BOILERPLATE}".')
+    return faults
+
+
+def _statement_contract(draft: AssetDraft, given: Given) -> list[str]:
+    """Three to five sentences, the attribution under them, nothing in front."""
+    faults: list[str] = []
+    lines = _lines(draft.body)
+    attribution = lines[-1] if lines else ""
+    spoken = " ".join(lines[:-1]) if len(lines) > 1 else ""
+    if not _names(attribution, given.speaker):
+        faults.append(
+            f"Unter dem Statement steht keine Zuschreibung an "
+            f"{given.speaker or 'die im Profil genannte Person'}."
+        )
+        # Without an attribution line the whole body is the statement, and
+        # counting its sentences against the last line would report a number the
+        # reader cannot find in the text.
+        spoken = draft.body
+    count = len(_sentences(spoken))
+    if not _MIN_STATEMENT_SENTENCES <= count <= _MAX_STATEMENT_SENTENCES:
+        faults.append(
+            f"Das Statement hat {count} Sätze, verlangt sind "
+            f"{_MIN_STATEMENT_SENTENCES} bis {_MAX_STATEMENT_SENTENCES}."
+        )
+    if spoken.strip().casefold().startswith(_PREAMBLE_OPENERS):
+        faults.append("Das Statement beginnt mit einem Vorlauf statt mit der Aussage.")
+    return faults
+
+
+def _qa_contract(draft: AssetDraft, given: Given) -> list[str]:
+    """Questions, grouped, the uncomfortable ones marked and actually asked."""
+    faults: list[str] = []
+    lines = _lines(draft.body)
+    questions = [line for line in lines if line.endswith("?")]
+    if len(questions) < _MIN_QA_QUESTIONS:
+        faults.append(
+            f"Das Q&A stellt {len(questions)} Fragen, mindestens "
+            f"{_MIN_QA_QUESTIONS} sind verlangt."
+        )
+    if not any(line.startswith(_GROUP) for line in lines):
+        faults.append(
+            f'Die Fragen sind nicht gruppiert: keine Überschrift beginnt mit "{_GROUP}".'
+        )
+    if _TOUCHY not in draft.body:
+        faults.append(f'Keine Frage ist als unangenehm markiert ("{_TOUCHY}").')
+    terms = nogo_terms(given.nogos)
+    if terms and not any(term in draft.body.casefold() for term in terms):
+        faults.append(
+            "Keine Frage rührt an die No-Gos des Guides. Genau die werden gestellt."
+        )
+    return faults
+
+
+def _talking_points_contract(draft: AssetDraft, given: Given) -> list[str]:
+    """A bounded number of points, a bridge under each, and what not to say.
+
+    The points are counted before the "Nicht sagen" heading only. What must not be
+    said is often a numbered list too, and counting those against the cap would
+    refuse a perfectly good set of four points for having three things to avoid.
+    """
+    faults: list[str] = []
+    head, marker, tail = draft.body.partition(_DO_NOT_SAY)
+    points = [line for line in _lines(head) if _POINT.match(line)]
+    bridges = [line for line in _lines(head) if line.startswith(_BRIDGE)]
+    if not points:
+        faults.append("Der Text enthält keine nummerierten Punkte.")
+    elif len(points) > MAX_TALKING_POINTS:
+        faults.append(
+            f"{len(points)} Punkte. Talking Points sind höchstens "
+            f"{MAX_TALKING_POINTS}, sonst liest sie im Gespräch niemand mehr."
+        )
+    if len(bridges) < len(points):
+        faults.append(
+            f"{len(points)} Punkte, aber {len(bridges)} Brücken zurück zur These. "
+            f'Jeder Punkt braucht eine Zeile "{_BRIDGE} …".'
+        )
+    if not marker or not tail.strip():
+        faults.append(f'Der Abschnitt "{_DO_NOT_SAY}" fehlt.')
+    return faults
+
+
+def _gastbeitrag_contract(draft: AssetDraft, given: Given) -> list[str]:
+    """Argued, first person, roughly an op-ed page, and not a release in disguise."""
+    faults: list[str] = []
+    paragraphs = _paragraphs(draft.body)
+    opening = paragraphs[0] if paragraphs else ""
+    if _DATELINE.search(opening):
+        faults.append("Der Beitrag trägt eine Dateline. Er ist dann eine Mitteilung.")
+    first_sentence = (_sentences(opening) or [""])[0].casefold()
+    hook = next((o for o in _NEWS_LEAD_OPENERS if o in first_sentence), "")
+    if hook:
+        faults.append(
+            f'Der Beitrag beginnt mit einem Nachrichtenaufhänger ("{hook}") '
+            "statt mit der These."
+        )
+    if not _FIRST_PERSON.search(draft.body):
+        faults.append("Der Beitrag steht nicht in der ersten Person.")
+    length = len(draft.body)
+    if not _MIN_GASTBEITRAG_CHARS <= length <= _MAX_GASTBEITRAG_CHARS:
+        faults.append(
+            f"{length} Zeichen. Verlangt sind rund {GASTBEITRAG_CHARS}, "
+            f"vertretbar {_MIN_GASTBEITRAG_CHARS} bis {_MAX_GASTBEITRAG_CHARS}."
+        )
+    return faults
+
+
+def _briefing_contract(draft: AssetDraft, given: Given) -> list[str]:
+    """Who is asking, what they wrote, what they will ask, what to say anyway."""
+    faults: list[str] = []
+    body = draft.body.casefold()
+    target = given.recipient
+    outlet = (target.outlet if target else "") or ""
+    if outlet and outlet.casefold() not in body:
+        faults.append(f"Das Medium ({outlet}) kommt im Briefing nicht vor.")
+    journalist = (target.journalist if target else "") or ""
+    if journalist and not _names(draft.body, journalist):
+        faults.append(f"Der Fragesteller ({journalist}) kommt im Briefing nicht vor.")
+    absent = [
+        section for section in _BRIEFING_SECTIONS if section.casefold() not in body
+    ]
+    if absent:
+        faults.append(f"Es fehlen die Abschnitte: {', '.join(absent)}.")
+    return faults
+
+
 @dataclass(frozen=True, slots=True)
 class FormatDef:
     """One format, entirely as data.
@@ -239,6 +637,15 @@ class FormatDef:
     #: Which profile field names the person a quote may be attributed to. Empty
     #: for the formats that quote nobody.
     speaker_key: str = ""
+    #: The machine-checkable half of ``structure``, run on the model's answer
+    #: before anything is stored. ``None`` means the contract is stated in the
+    #: prompt and taken on trust, which is what a seventh format starts as.
+    validator: Validator | None = None
+
+    @property
+    def needs_recipient(self) -> bool:
+        """Whether this format is written at somebody. Only the briefing is."""
+        return any(req.source is Source.EMPFAENGER for req in self.requires)
 
     @property
     def key(self) -> str:
@@ -267,14 +674,17 @@ FORMATS: tuple[FormatDef, ...] = (
         ),
         structure=(
             "Eine Schlagzeile, die die Nachricht enthält und nicht bewirbt.",
-            "Eine Dateline: Ort, Datum.",
+            "Eine Dateline als Anfang des ersten Absatzes: Ort, Datum.",
             "Ein Lead, der in einem Satz sagt, was passiert ist.",
             "Ein Fließtext, der ihn belegt.",
-            "Genau ein Zitat, zugeschrieben an die oben genannte Person.",
-            "Eine Boilerplate über den Mandanten am Ende.",
+            "Genau ein Zitat in Anführungszeichen, im selben Absatz zugeschrieben "
+            "an die oben genannte Person.",
+            f'Eine Boilerplate als letzter Absatz, beginnend mit "{_BOILERPLATE} …".',
+            f"Mindestens {_MIN_RELEASE_PARAGRAPHS} Absätze, getrennt durch Leerzeilen.",
         ),
         title_label="Schlagzeile",
         speaker_key="ceo",
+        validator=_release_contract,
     ),
     FormatDef(
         kind=AssetKind.STATEMENT,
@@ -283,11 +693,13 @@ FORMATS: tuple[FormatDef, ...] = (
         prompt="prompts/statement.txt",
         requires=(Requirement(Source.PROFIL, "ceo"),),
         structure=(
-            "Drei bis fünf Sätze, so zitierfähig, wie sie gedruckt würden.",
-            "Die Zuschreibung darunter: Name und Funktion.",
+            f"{_MIN_STATEMENT_SENTENCES} bis {_MAX_STATEMENT_SENTENCES} Sätze, "
+            "so zitierfähig, wie sie gedruckt würden.",
+            "Die Zuschreibung als letzte Zeile, allein: Name und Funktion.",
             "Kein Vorlauf, keine Einordnung, keine Anrede.",
         ),
         speaker_key="ceo",
+        validator=_statement_contract,
     ),
     FormatDef(
         kind=AssetKind.QA,
@@ -296,10 +708,16 @@ FORMATS: tuple[FormatDef, ...] = (
         prompt="prompts/qa.txt",
         requires=(Requirement(Source.MANDAT, "comms_guide"),),
         structure=(
-            "Fragen und Antworten, nach Themen gruppiert.",
-            "Die unangenehmen Fragen ausdrücklich als solche markiert.",
+            f'Fragen und Antworten, nach Themen gruppiert; jede Gruppe als "{_GROUP} '
+            'Thema"-Überschrift.',
+            f"Mindestens {_MIN_QA_QUESTIONS} Fragen, jede als eigene Zeile mit "
+            "Fragezeichen.",
+            f'Die unangenehmen Fragen mit vorangestelltem "{_TOUCHY}" markiert.',
+            "Mindestens eine Frage zu einem No-Go aus dem Guide, in den Worten des "
+            "Guides.",
             "Jede Antwort für sich sprechbar, ohne die vorherige.",
         ),
+        validator=_qa_contract,
     ),
     FormatDef(
         kind=AssetKind.TALKING_POINTS,
@@ -311,10 +729,11 @@ FORMATS: tuple[FormatDef, ...] = (
             Requirement(Source.IMPULS, "overclaim"),
         ),
         structure=(
-            f"Höchstens {MAX_TALKING_POINTS} Punkte.",
-            "Zu jedem Punkt eine Brücke zurück zur These.",
-            'Ein eigener Abschnitt "Nicht sagen".',
+            f"Höchstens {MAX_TALKING_POINTS} Punkte, nummeriert.",
+            f'Unter jedem Punkt eine Zeile "{_BRIDGE} …": die Brücke zurück zur These.',
+            f'Ein eigener Abschnitt "{_DO_NOT_SAY}" am Ende.',
         ),
+        validator=_talking_points_contract,
     ),
     FormatDef(
         kind=AssetKind.GASTBEITRAG,
@@ -333,24 +752,36 @@ FORMATS: tuple[FormatDef, ...] = (
             ),
         ),
         structure=(
-            f"Rund {GASTBEITRAG_CHARS} Zeichen.",
+            f"Rund {GASTBEITRAG_CHARS} Zeichen, nicht unter "
+            f"{_MIN_GASTBEITRAG_CHARS} und nicht über {_MAX_GASTBEITRAG_CHARS}.",
             "Erste Person, ein Argument, das sich entwickelt.",
             "Kein Nachrichtenaufhänger, keine Dateline, kein Zitat von sich selbst.",
         ),
         speaker_key="ceo",
+        validator=_gastbeitrag_contract,
     ),
     FormatDef(
         kind=AssetKind.INTERVIEW_BRIEFING,
         name="Interview-Briefing",
         description="Wer fragt, was er zuletzt schrieb, und was gesagt werden soll.",
         prompt="prompts/interview_briefing.txt",
-        requires=(Requirement(Source.IMPULS, "article_ids"),),
-        structure=(
-            "Wer fragt, und was diese Person zuletzt geschrieben hat.",
-            "Was sie voraussichtlich fragen wird.",
-            "Was der Mandant gesagt haben will, egal was gefragt wird.",
-            "Wo es unangenehm wird.",
+        # The outlet is a requirement like the release's spokesperson is. A
+        # briefing for an unnamed medium is a page of talking points with the
+        # wrong title, and the one thing it must never do is invent the masthead.
+        # What can name one honestly is newspulse.pitch, off the same coverage the
+        # letter is aimed with.
+        requires=(
+            Requirement(Source.IMPULS, "article_ids"),
+            Requirement(Source.EMPFAENGER, "outlet"),
         ),
+        structure=tuple(
+            f'Ein Abschnitt "{section}".' for section in _BRIEFING_SECTIONS
+        )
+        + (
+            "Das Medium beim Namen, und die Person, wenn oben eine belegt ist.",
+            "Keine erfundenen Beiträge: nur die oben belegten Schlagzeilen.",
+        ),
+        validator=_briefing_contract,
     ),
 )
 
@@ -411,6 +842,63 @@ class RequirementsMissing(RuntimeError):
         return self.readiness.missing
 
 
+class Malformed(ParseError):
+    """The model answered twice without carrying the format's structure.
+
+    A :class:`newspulse.analyzer.ParseError` by inheritance, so a caller that
+    already handles "the model did not answer usably" keeps working and the
+    retry precedent stays one concept. What it adds is :attr:`reason`: a sentence
+    in the consultant's language saying what the text was missing, because unlike
+    a dropped analysis batch this refusal has somebody standing in front of it who
+    pressed a button and is owed an answer better than nothing happening.
+    """
+
+    def __init__(self, fmt: FormatDef, fault: str) -> None:
+        self.fmt = fmt
+        self.fault = fault
+        self.reason = (
+            f"{fmt.name} nicht geschrieben. Auch der zweite Versuch trug die "
+            f"verlangte Struktur nicht: {fault}"
+        )
+        super().__init__(self.reason)
+
+
+def recipient(
+    session: Session, client: Client, angle: Angle | None
+) -> PitchTarget | None:
+    """Who the one format that is written at somebody is written at.
+
+    The best-evidenced target :mod:`newspulse.pitch` can name for this impulse:
+    the byline on the stories the impulse rests on, then the field's regulars,
+    then the outlets covering it. Deliberately the same list the letter is
+    addressed with, so an interview briefing and a pitch cannot disagree about
+    who covers this mandate's field.
+
+    ``None`` when the coverage names nobody, which is a refusal for the briefing
+    rather than an invitation to invent a masthead.
+    """
+    targets = pitch.targets_for(session, client, angle)
+    return targets[0] if targets else None
+
+
+def _resolved(
+    session: Session,
+    fmt: FormatDef,
+    client: Client,
+    angle: Angle | None,
+    target: PitchTarget | None,
+) -> PitchTarget | None:
+    """The passed recipient, or the one the coverage names, for a format that needs one.
+
+    Resolved lazily and once: :func:`write` looks it up before the requirement
+    check and hands the same object to the prompt and the validator, so the
+    briefing is written for exactly the recipient it was cleared for.
+    """
+    if target is not None or not fmt.needs_recipient:
+        return target
+    return recipient(session, client, angle)
+
+
 def requirements_met(
     session: Session,
     fmt: FormatDef,
@@ -418,6 +906,7 @@ def requirements_met(
     angle: Angle | None = None,
     *,
     facts: dict[str, ClientFact] | None = None,
+    target: PitchTarget | None = None,
 ) -> Readiness:
     """What this format is still missing for this mandate.
 
@@ -427,12 +916,13 @@ def requirements_met(
 
     ``facts`` is the mandate's profile when the caller already holds it. Writing
     one format reads the profile three times otherwise, and FMT-03 writes six in
-    a row off one impulse.
+    a row off one impulse. ``target`` is the same courtesy for the recipient.
     """
     if facts is None:
         facts = profile.stored(session, client.id)
+    target = _resolved(session, fmt, client, angle, target)
     missing = tuple(
-        req for req in fmt.requires if not _satisfied(req, facts, client, angle)
+        req for req in fmt.requires if not _satisfied(req, facts, client, angle, target)
     )
     return Readiness(missing)
 
@@ -442,11 +932,16 @@ def _satisfied(
     facts: dict[str, ClientFact],
     client: Client,
     angle: Angle | None,
+    target: PitchTarget | None = None,
 ) -> bool:
     if req.source is Source.PROFIL:
         fact = facts.get(req.key)
         return bool(fact and fact.value.strip())
-    holder = client if req.source is Source.MANDAT else angle
+    holder: object | None = {
+        Source.MANDAT: client,
+        Source.IMPULS: angle,
+        Source.EMPFAENGER: target,
+    }[req.source]
     if holder is None:
         return False
     value = getattr(holder, req.key, None)
@@ -554,6 +1049,61 @@ def _speaker(fmt: FormatDef, facts: dict[str, ClientFact]) -> str:
     return fact.value.strip() if fact else ""
 
 
+def nogos(client: Client) -> tuple[str, ...]:
+    """The sentences of the mandate's guide that name something it never says.
+
+    Read out of the guide rather than out of a field of their own, because that is
+    where the consultant writes them and a second field would be the one nobody
+    fills. Sentence by sentence: a guide is a paragraph of prose as often as it is
+    a list, and the No-Go is one sentence in it.
+    """
+    text = (getattr(client, "comms_guide", "") or "").strip()
+    return tuple(
+        sentence.strip()
+        for sentence in _sentences(text)
+        if "no-go" in sentence.casefold()
+    )
+
+
+def _recipient_block(session: Session, target: PitchTarget | None) -> str:
+    """Who is asking, and what they published lately.
+
+    The headlines come from :func:`newspulse.pitch.recent_headlines`, off the same
+    coverage the pitch list is built from. A briefing that names a piece the
+    journalist did not write is worse than one that names none: it is read out
+    loud in the first minute of the interview.
+    """
+    if target is None:
+        return (
+            "WER FRAGT\n"
+            "Kein Medium belegt. Erfinde weder Redaktion noch Namen."
+        )
+    lines = [f"Medium: {target.outlet}"]
+    if target.journalist:
+        lines.append(f"Journalist/in: {target.journalist}")
+        headlines = pitch.recent_headlines(session, target.journalist, target.outlet)
+        if headlines:
+            lines.append("Zuletzt von dieser Person, nur diese Schlagzeilen belegt:")
+            lines.extend(f"- {headline}" for headline in headlines)
+        else:
+            lines.append(
+                "Keine Schlagzeilen dieser Person belegt. Sag im Briefing, dass "
+                "nichts vorliegt, statt etwas zu vermuten."
+            )
+    else:
+        lines.append(
+            "Kein Name belegt, nur die Redaktion. Erfinde keine:n Journalist:in."
+        )
+    if target.about_client:
+        lines.append(
+            f"Hat in den letzten Monaten {target.about_client}× über den Mandanten "
+            "geschrieben."
+        )
+    else:
+        lines.append("Hat über diesen Mandanten noch nie geschrieben.")
+    return "WER FRAGT\n" + "\n".join(lines)
+
+
 def _refusal_block(fmt: FormatDef) -> str:
     """The prompt's half of DEC-2.
 
@@ -580,6 +1130,7 @@ def prompt_for(
     angle: Angle,
     *,
     facts: dict[str, ClientFact] | None = None,
+    target: PitchTarget | None = None,
 ) -> str:
     """Render one format's prompt. Every format gets the same blocks.
 
@@ -589,7 +1140,9 @@ def prompt_for(
     """
     if facts is None:
         facts = profile.stored(session, client.id)
+    target = _resolved(session, fmt, client, angle, target)
     return fmt.template().substitute(
+        recipient=_recipient_block(session, target),
         format_name=fmt.name,
         structure="\n".join(f"- {line}" for line in fmt.structure),
         refusal=_refusal_block(fmt),
@@ -652,6 +1205,93 @@ def _attributed(
     return draft.model_copy(update={"speaker": named})
 
 
+def validate(fmt: FormatDef, draft: AssetDraft, given: Given) -> list[str]:
+    """What this draft fails to carry of the structure its format declared.
+
+    Empty is the good answer. A format with no validator has its contract stated
+    in the prompt and taken on trust, which is what a seventh format starts as and
+    what none of the six is.
+    """
+    if fmt.validator is None:
+        return []
+    return fmt.validator(draft, given)
+
+
+def _correction(fault: str) -> str:
+    """What the second attempt is told about the first one.
+
+    The analyzer retries a batch with the identical prompt, and for a
+    classification that is right: the failure there is a mangled envelope. Here
+    the failure is a text that missed its shape, and re-asking the same question
+    the same way is how the same shape comes back. So the complaint travels: it is
+    already a sentence, it already names what is missing, and it costs nothing.
+    """
+    if not fault:
+        return ""
+    return (
+        "\n\nDER VORIGE VERSUCH WURDE ABGELEHNT\n"
+        f"{fault}\n"
+        "Schreibe den Text neu, vollständig, mit genau der oben verlangten "
+        "Struktur. Erfinde nichts dazu, um eine Lücke zu füllen."
+    )
+
+
+def _given(
+    fmt: FormatDef,
+    client: Client,
+    facts: dict[str, ClientFact],
+    target: PitchTarget | None,
+) -> Given:
+    """Everything the validators may hold the finished text against."""
+    return Given(
+        speaker=_speaker(fmt, facts), nogos=nogos(client), recipient=target
+    )
+
+
+def _drafted(
+    fmt: FormatDef,
+    prompt: str,
+    given: Given,
+    facts: dict[str, ClientFact],
+    *,
+    invoke: Callable[..., str],
+    label: str,
+) -> AssetDraft:
+    """Two attempts at a draft that carries the format's structure, then a refusal.
+
+    One retry, then give up, which is the analyzer's rule for a batch and for the
+    same reason: the second failure is evidence about the model rather than about
+    the weather. What is different here is that giving up is not silent. A batch
+    that drops is a story missing from a list nobody counted; a format that fails
+    is a button somebody pressed and is standing in front of, so the refusal
+    carries the reason it refused.
+    """
+    fault = ""
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            raw = invoke(prompt + _correction(fault), timeout=config.ANALYZER_TIMEOUT)
+            draft = _attributed(_parse(raw), fmt, facts)
+        except ParseError as exc:
+            fault = str(exc)
+        else:
+            faults = validate(fmt, draft, given)
+            if not faults:
+                return draft
+            fault = " ".join(faults)
+        if attempt < _MAX_ATTEMPTS:
+            _log.warning(
+                "%s for %r missed its structure (attempt %d/%d): %s; retrying",
+                fmt.key, label, attempt, _MAX_ATTEMPTS, fault,
+            )
+            continue
+        _log.error(
+            "%s for %r gave up after %d attempts: %s; nothing stored",
+            fmt.key, label, _MAX_ATTEMPTS, fault,
+        )
+        raise Malformed(fmt, fault)
+    raise AssertionError("unreachable")  # pragma: no cover - keeps the checker honest
+
+
 def write(
     session: Session,
     fmt: FormatDef,
@@ -659,31 +1299,58 @@ def write(
     angle: Angle,
     *,
     invoke: Callable[..., str] = invoke_with_fallback,
+    note: Callable[[str], None] | None = None,
 ) -> AssetDraft:
     """Write ``fmt`` for this mandate off this impulse.
 
     Raises :class:`RequirementsMissing` before spending a model call when the
     format's declared inputs are not on file. That is DEC-2: nothing is written
-    and the reason names the field.
+    and the reason names the field. Raises :class:`Malformed` when the model
+    answered twice without carrying the structure the format declares, rather than
+    handing back a text that is missing its quote or its boilerplate.
 
     Note what is *not* here: no branch on which format this is. The definition
-    carries the requirements, the structure and the prompt, so this function is
-    the same code for the first format and for the seventh.
+    carries the requirements, the structure, the prompt and the validator, so this
+    function is the same code for the first format and for the seventh.
 
     The returned draft's ``speaker`` is the profile's, not the model's. See
     :func:`_attributed`.
+
+    ``note`` receives the reason whenever nothing is written, the way
+    :func:`newspulse.angles.suggest` reports its silence. A refusal the reader can
+    read is a result; a silent one is indistinguishable from a broken button, and
+    this one has a person waiting in front of it.
 
     ``invoke`` is injectable so the tests drive the whole path, prompt to stored
     row, without a subprocess.
     """
     facts = profile.stored(session, client.id)
-    readiness = requirements_met(session, fmt, client, angle, facts=facts)
+    target = _resolved(session, fmt, client, angle, None)
+    readiness = requirements_met(session, fmt, client, angle, facts=facts, target=target)
     if not readiness.ok:
         _log.info("%s refused for %r: %s", fmt.key, client.name, readiness.reason)
-        raise RequirementsMissing(fmt, readiness)
-    prompt = prompt_for(session, fmt, client, angle, facts=facts)
-    draft = _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
-    return _attributed(draft, fmt, facts)
+        refused = RequirementsMissing(fmt, readiness)
+        _tell(note, str(refused))
+        raise refused
+    prompt = prompt_for(session, fmt, client, angle, facts=facts, target=target)
+    try:
+        return _drafted(
+            fmt,
+            prompt,
+            _given(fmt, client, facts, target),
+            facts,
+            invoke=invoke,
+            label=client.name,
+        )
+    except Malformed as exc:
+        _tell(note, str(exc))
+        raise
+
+
+def _tell(note: Callable[[str], None] | None, reason: str) -> None:
+    """Hand the refusal to whoever is storing reasons, if anyone is."""
+    if note is not None:
+        note(reason)
 
 
 # --- The checks, shared by every format ----------------------------------------
@@ -1030,22 +1697,31 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Asset]]:
 
 __all__ = [
     "FORMATS",
+    "GASTBEITRAG_CHARS",
+    "MAX_TALKING_POINTS",
     "REGISTRY",
     "Checkable",
     "Checked",
     "FormatDef",
+    "Given",
+    "Malformed",
     "Readiness",
     "Requirement",
     "RequirementsMissing",
     "Source",
+    "Validator",
     "by_angle",
     "check",
     "checkable",
     "crosscheck",
     "definition",
     "for_angle",
+    "nogo_terms",
+    "nogos",
     "prompt_for",
+    "recipient",
     "requirements_met",
     "store",
+    "validate",
     "write",
 ]
