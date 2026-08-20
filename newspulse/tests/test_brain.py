@@ -1473,44 +1473,74 @@ GENERATORS = [
 ]
 
 
-#: What a module-level persister is called. Four names rather than ``store``
-#: alone: the rule is meant to catch the *next* generator, whose author has no
-#: reason to know which verb this suite happens to look for, and a tripwire that
-#: a synonym walks past is a tripwire that reports "all stamped" while a table
-#: fills with unstamped rows.
-_PERSISTS = re.compile(r"(?m)^def (?:store|save|persist|record)\(")
+#: What a module-level persister is called. A verb list and not ``store`` alone:
+#: the rule is meant to catch the *next* generator, whose author has no reason to
+#: know which verb this suite happens to look for, and a tripwire that a synonym
+#: walks past is a tripwire that reports "all stamped" while a table fills with
+#: unstamped rows. ``settle`` is on the list because it was exactly that hole:
+#: ``themes.settle`` composes the blocks and writes what the model proposed, and
+#: the first version of this rule never saw it.
+_PERSISTS = re.compile(
+    r"(?m)^def (?:store|save|persist|record|settle|apply|commit|write)\("
+)
 
-#: Modules that compose the blocks and persist a text, and are still not
-#: generators of the kind the stamp is about. One entry, and it is a decision
-#: rather than an accident of naming: ``guide.distill`` returns its proposal
-#: without storing anything, and ``guide.save`` writes what a consultant read,
-#: edited and submitted through a form. What lands in ``Client.comms_guide`` is
-#: therefore a person's text on a mutable settings field, not a model's text in
-#: an artefact row — there is nothing to date it against and nobody to answer
-#: for it but the person who saved it. If the guide ever becomes something the
-#: tool stores on the model's word, this entry is what has to be taken out.
-_NOT_ARTEFACT_GENERATORS = {"guide"}
+#: A call that builds something — ``Angle(...)``, ``json.dumps(...)``, ``str(x)``.
+#: Only the capitalised, unqualified ones are candidates for a row, and which of
+#: those *is* a row is settled by looking the name up in the module rather than by
+#: matching it: ``analyzer`` builds ``Analysis(...)`` and means the pydantic
+#: return object, while ``job`` builds ``Analysis(...)`` and means the table. A
+#: rule that went by the name alone would call the analyzer a persister on a name
+#: collision and be believed.
+_BUILDS = re.compile(r"(?<![\w.])([A-Z]\w*)\(")
+
+#: Modules that compose the blocks and write what came back, and are still not
+#: generators of the kind the stamp is about. Each is a decision, and each has to
+#: argue for itself:
+#:
+#: ``guide`` — ``guide.distill`` returns its proposal without storing anything,
+#: and ``guide.save`` writes what a consultant read, edited and submitted through
+#: a form. What lands in ``Client.comms_guide`` is a person's text on a mutable
+#: settings field, not a model's text in an artefact row: nothing to date it
+#: against and nobody to answer for it but the person who saved it.
+#:
+#: ``themes`` — ``themes.settle`` proposes search terms with a model and then
+#: *measures* them, keeping only the ones the press actually writes, and puts the
+#: survivors in ``Client.keywords``. The output is configuration for the radar,
+#: not prose anyone sends; there is no row per generation and no text to read
+#: back, so there is nowhere for a version to live and nothing it would explain.
+#: The ``Setting`` rows it builds are its own retry bookkeeping.
+#:
+#: If either becomes something the tool stores on the model's word as a text,
+#: its entry here is what has to come out.
+_NOT_ARTEFACT_GENERATORS = {"guide", "themes"}
 
 
 def _generating_modules() -> set[str]:
     """Every module that composes a brain prompt *and* stores what came back.
 
     The shape, deliberately, rather than a hand-kept list: a module that calls
-    ``brain.compose`` has standards governing its prompt, and one with a
-    module-level persister (:data:`_PERSISTS`) writes the answer into a table
-    where it outlives the request. Both together is a generator, and its rows
-    have to say what they were written under.
+    ``brain.compose`` has standards governing its prompt, and one that either has
+    a module-level persister (:data:`_PERSISTS`) or constructs a mapped row
+    writes the answer somewhere it outlives the request. Both together is a
+    generator, and its rows have to say what they were written under.
+
+    Two rules and not one, because each catches what the other misses. The verb
+    list misses a module that writes through a differently-named function; the
+    row test misses a module that hands its row to a helper to build. A generator
+    has to slip past both to go unnoticed.
 
     Walked over the whole package, subpackages included, so a generator that
     lands under ``web/routes/`` or ``schedule/`` is not invisible for having been
     put in a folder. The exclusions are named in :data:`_NOT_ARTEFACT_GENERATORS`
     and each one has to argue for itself.
 
-    One honest limit remains: a generator that inlines the write into its caller,
-    or stores through a helper in another module, has no persister of its own for
-    this to find. The rule catches the shape all three generators in this tree
-    share, which is what the next one will be written against; it is a tripwire,
-    not a proof.
+    One honest limit remains, and it is ``analyzer``: it composes the blocks, and
+    the rows carrying its model-written summaries are built and committed by
+    ``job``, so it has neither a persister nor a row construction of its own for
+    this to find. That is a deliberate omission rather than an oversight — an
+    ``Analysis`` is a per-article judgement produced by the thousand on a sweep,
+    not one of the texts a consultant sends — but it is the shape that would let a
+    future generator through, so it is written down rather than left implied.
     """
     return _modules_that_compose_and_persist() - _NOT_ARTEFACT_GENERATORS
 
@@ -1521,9 +1551,28 @@ def _modules_that_compose_and_persist() -> set[str]:
     found = set()
     for path in sorted(package.rglob("*.py")):
         source = path.read_text("utf-8")
-        if "brain.compose(" in source and _PERSISTS.search(source):
+        if "brain.compose(" not in source:
+            continue
+        if _PERSISTS.search(source) or _builds_a_row(path.stem, source):
             found.add(path.stem)
     return found
+
+
+def _builds_a_row(module_name: str, source: str) -> bool:
+    """Whether the module constructs a class that is mapped to a table.
+
+    Resolved through the module's own namespace, which is the only place that
+    knows whether the ``Analysis(`` on line 286 is the table or the schema of the
+    same name. Only modules that already passed the ``brain.compose`` filter are
+    imported, so this never reaches ``migrations/env.py``, which does work at
+    import time.
+    """
+    module = importlib.import_module(f"newspulse.{module_name}")
+    return any(
+        isinstance(built := getattr(module, name, None), type)
+        and hasattr(built, "__mapper__")
+        for name in set(_BUILDS.findall(source))
+    )
 
 
 def test_the_generator_list_names_every_generator_in_the_codebase():
