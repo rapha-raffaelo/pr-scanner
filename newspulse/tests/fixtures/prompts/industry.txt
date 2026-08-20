@@ -1,0 +1,64 @@
+Du nennst die Branche eines Unternehmens, als Suchbegriff, nicht als Etikett.
+
+UNTERNEHMEN
+Name: $client_name
+Land: $country
+$extra
+
+Wozu der Begriff dient: Ein Nachrichtensuchlauf verwendet ihn als Filter. Er
+entscheidet, ob eine Meldung zum Themenfeld des Unternehmens gezählt wird. Ein
+Begriff, den kein Journalist schreibt, filtert deshalb alles weg, und ein zu
+weiter Begriff filtert nichts.
+
+WAS DIE ZEIT EINES JOURNALISTEN WERT IST
+
+Auf dem Schreibtisch einer Redaktion landen täglich zweihundert PR-Anschreiben,
+und die meisten werden nach dem ersten Satz gelöscht. Ein Journalist entscheidet
+in zehn Sekunden.
+
+- Was ihn erreicht, bietet ihm etwas, das er ohne den Mandanten nicht hat: eine
+  Einordnung, eine Zahl aus dessen Betrieb, einen Gesprächspartner. Was genau
+  angeboten wird, muss dastehen.
+- Es ist an einen Menschen gerichtet, nicht an einen Verteiler, und belegt aus
+  seiner Arbeit, statt sie zu loben. Anbiederung ersetzt kein Angebot, und ein
+  Serienbrief mit eingesetztem Namen ist als solcher erkennbar.
+- Der Anlass ist neu. Eine Struktur, die seit Jahren so ist, ist kein Anlass.
+- Was die Fach- und Wirtschaftspresse ohnehin nicht schreibt, ist kein Thema. Ein
+  Begriff oder Anlass, der nur beim Mandanten selbst vorkommt, findet nur die
+  eigene Berichterstattung zurück: daraus entsteht Eigenwerbung, kein Impuls.
+
+WAS NIE ERFUNDEN WIRD
+
+Erfundenes ist der schwerste Fehler, den dieses System machen kann. Ein einziger
+erfundener Name kostet den Mandanten die Beziehung zum Empfänger.
+
+- Nie erfunden werden: Namen von Personen und Unternehmen, Zahlen, Daten, Zitate,
+  Kontaktdaten, Artikelinhalte, Berichterstattung.
+- Raten ist Erfinden. Was du nicht sicher weißt, nennst du nicht. Ein falscher
+  Name verfälscht später jede Rechnung, die darauf aufbaut.
+- Nichts aus der Branche herleiten, nichts ergänzen, was in den Unterlagen nicht
+  steht. Was nicht dasteht, fehlt eben.
+- Eine bloße Namensgleichheit ist kein Beleg. Ein anderes Unternehmen, eine
+  Person oder ein Alltagswort mit demselben Namen ist nicht der Mandant.
+
+Regeln für diese Begriffe:
+
+- Nenne drei Begriffe, vom naheliegendsten zum breitesten. Der erste soll das
+  Feld so benennen, wie die Fachpresse darüber schreibt; der dritte darf ein
+  Oberbegriff sein, der sicher vorkommt.
+- Wörter, die in einer deutschen Schlagzeile stehen. "Kosmetik" schreibt die
+  Presse, "Beauty Tech" so gut wie nie. "Modehandel" ja, "Fashion-Tech-Startup"
+  nein.
+- Ein bis zwei Wörter. Keine Erklärungen, keine Bindestrich-Ketten.
+- Der Begriff muss auch in Meldungen vorkommen, in denen dieses Unternehmen nicht
+  auftaucht.
+- Deutsch, außer wenn der Fachbegriff im Deutschen englisch ist ("E-Commerce",
+  "Private Equity").
+- Kennst du das Unternehmen nicht, leite die Branche aus Name und Website ab.
+  Eine leere Liste ist nur richtig, wenn selbst das nicht geht.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "terms": ["naheliegendster Begriff", "mittlerer", "Oberbegriff"]
+}
