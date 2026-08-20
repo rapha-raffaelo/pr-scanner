@@ -110,6 +110,11 @@ def brain_composes_the_shipped_blocks(monkeypatch):
     So the override source is pinned to "nothing overridden" here, which is the
     state every test that is not about the brain assumes. The tests that *are*
     about it install a source over the top of this one (``test_brain.py``).
+
+    That leaves ``brain._stored_overrides`` — the only source a running
+    installation ever uses — pinned away everywhere, so ``test_brain.py`` has a
+    ``live_override_source`` fixture that opts back out of this one, narrowly,
+    for the handful of tests that exercise it against a fixture database.
     """
     from newspulse import brain
 
