@@ -1724,10 +1724,57 @@ def test_a_stamped_version_resolves_to_the_wording_it_names(factory, client):
     resp = client.get("/settings/brain/version/1", follow_redirects=False)
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == f"/settings/brain/{A_BLOCK}#brain-{A_BLOCK}-v1"
+    assert resp.headers["location"] == (
+        f"/settings/brain/{A_BLOCK}?fassung=1#brain-{A_BLOCK}-v1"
+    )
     body = _panel(client.get(resp.headers["location"].split("#")[0]).text)
     assert "Die Fassung, die gesucht wird." in body
     assert f'id="brain-{A_BLOCK}-v1"' in body
+
+
+def test_the_page_a_stamp_lands_on_says_what_that_version_covers(factory, client):
+    """AC 3 without overclaiming it.
+
+    The stamp is one portfolio-wide number and it resolves to the single change
+    that produced it, so this page shows *this* block as it stood then and every
+    other block as it stands now. A reader who came here to answer "what was this
+    letter written under" would otherwise read the whole panel as that answer.
+    """
+    with factory() as open_session:
+        brain.edit(open_session, A_BLOCK, "Die Fassung, die gesucht wird.")
+        brain.edit(open_session, "house_style", "Eine spätere Änderung.")
+
+    body = _panel(client.get(f"/settings/brain/{A_BLOCK}", params={"fassung": 1}).text)
+
+    assert "Von einem Text hierher gekommen:" in body
+    assert "nicht in dem von damals" in body
+
+
+def test_a_version_that_belongs_to_another_block_is_not_echoed_as_this_one(
+    factory, client
+):
+    """``?fassung=`` is typeable, and the sentence it prints is a claim about the
+    history below it. Version 2 changed a different block, so this page has
+    nothing to point at and says nothing."""
+    with factory() as open_session:
+        brain.edit(open_session, A_BLOCK, "Die erste Änderung.")
+        brain.edit(open_session, "house_style", "Die zweite, woanders.")
+
+    body = _panel(client.get(f"/settings/brain/{A_BLOCK}", params={"fassung": 2}).text)
+
+    assert "Von einem Text hierher gekommen:" not in body
+
+
+def test_an_ordinary_block_page_carries_no_arrival_note(factory, client):
+    """The note is for a reader who followed a stamp. Opened from the panel, the
+    page is the standards as they are, and a sentence about a version nobody
+    named would be noise."""
+    with factory() as open_session:
+        brain.edit(open_session, A_BLOCK, "Die einzige Änderung.")
+
+    body = _panel(client.get(f"/settings/brain/{A_BLOCK}").text)
+
+    assert "Von einem Text hierher gekommen:" not in body
 
 
 def test_a_version_no_change_produced_lands_on_the_standards_rather_than_a_404(client):

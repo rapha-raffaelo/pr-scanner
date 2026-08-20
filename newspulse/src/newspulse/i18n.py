@@ -802,6 +802,19 @@ _EN: dict[str, str] = {
     "unbekannt": "unknown",
     "vor der Aufzeichnung der Maßstäbe entstanden":
         "written before the standards were recorded",
+    # What the reader is looking at after following a stamp. The version counts
+    # changes across the whole house and resolves to the single change that
+    # produced it, so this page answers the question for one block and shows the
+    # others as they are today. Said outright, because a page that let the reader
+    # believe it was showing "the standards at version N" would be a better lie
+    # than no link at all.
+    "Von einem Text hierher gekommen:": "Followed here from a text:",
+    "ist die unten markierte Änderung an diesem Block. Die Fassung zählt alle "
+    "Änderungen am ganzen Haus — die übrigen Blöcke stehen in ihrem heutigen "
+    "Wortlaut, nicht in dem von damals.":
+        "is the change marked below, on this block. The version counts every "
+        "change across the whole house, so the other blocks are shown as they "
+        "read today and not as they read then.",
 }
 
 _TABLES = {"de": {}, "en": _EN}
