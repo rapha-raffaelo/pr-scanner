@@ -1473,25 +1473,55 @@ GENERATORS = [
 ]
 
 
+#: What a module-level persister is called. Four names rather than ``store``
+#: alone: the rule is meant to catch the *next* generator, whose author has no
+#: reason to know which verb this suite happens to look for, and a tripwire that
+#: a synonym walks past is a tripwire that reports "all stamped" while a table
+#: fills with unstamped rows.
+_PERSISTS = re.compile(r"(?m)^def (?:store|save|persist|record)\(")
+
+#: Modules that compose the blocks and persist a text, and are still not
+#: generators of the kind the stamp is about. One entry, and it is a decision
+#: rather than an accident of naming: ``guide.distill`` returns its proposal
+#: without storing anything, and ``guide.save`` writes what a consultant read,
+#: edited and submitted through a form. What lands in ``Client.comms_guide`` is
+#: therefore a person's text on a mutable settings field, not a model's text in
+#: an artefact row — there is nothing to date it against and nobody to answer
+#: for it but the person who saved it. If the guide ever becomes something the
+#: tool stores on the model's word, this entry is what has to be taken out.
+_NOT_ARTEFACT_GENERATORS = {"guide"}
+
+
 def _generating_modules() -> set[str]:
     """Every module that composes a brain prompt *and* stores what came back.
 
     The shape, deliberately, rather than a hand-kept list: a module that calls
     ``brain.compose`` has standards governing its prompt, and one with a
-    module-level ``store()`` writes the answer into a table where it outlives the
-    request. Both together is a generator, and its rows have to say what they
-    were written under.
+    module-level persister (:data:`_PERSISTS`) writes the answer into a table
+    where it outlives the request. Both together is a generator, and its rows
+    have to say what they were written under.
 
-    Two honest limits. A generator that names its persister something else, or
-    inlines the write into its caller, is invisible here — and so is one that
-    stores through a helper in another module. The rule catches the shape all
-    three generators in this tree share, which is what the next one will be
-    written against; it is a tripwire, not a proof.
+    Walked over the whole package, subpackages included, so a generator that
+    lands under ``web/routes/`` or ``schedule/`` is not invisible for having been
+    put in a folder. The exclusions are named in :data:`_NOT_ARTEFACT_GENERATORS`
+    and each one has to argue for itself.
+
+    One honest limit remains: a generator that inlines the write into its caller,
+    or stores through a helper in another module, has no persister of its own for
+    this to find. The rule catches the shape all three generators in this tree
+    share, which is what the next one will be written against; it is a tripwire,
+    not a proof.
     """
+    return _modules_that_compose_and_persist() - _NOT_ARTEFACT_GENERATORS
+
+
+def _modules_that_compose_and_persist() -> set[str]:
+    """The shape alone, before the exclusions are taken off it."""
+    package = Path(brain.__file__).parent
     found = set()
-    for path in sorted(Path(brain.__file__).parent.glob("*.py")):
+    for path in sorted(package.rglob("*.py")):
         source = path.read_text("utf-8")
-        if "brain.compose(" in source and re.search(r"(?m)^def store\(", source):
+        if "brain.compose(" in source and _PERSISTS.search(source):
             found.add(path.stem)
     return found
 
@@ -1506,6 +1536,16 @@ def test_the_generator_list_names_every_generator_in_the_codebase():
     the artefact quietly shipping unstamped.
     """
     assert _generating_modules() == {module for module, _ in GENERATORS}
+
+
+def test_every_excluded_module_is_one_the_rule_would_otherwise_have_caught():
+    """An exclusion has to be doing work, or it is a hole with a comment on it.
+
+    A name left here after the module it excused was renamed or rewritten would
+    silently subtract nothing today and the wrong thing tomorrow — the case where
+    a real generator is named ``guide`` again and never gets looked at.
+    """
+    assert _NOT_ARTEFACT_GENERATORS <= _modules_that_compose_and_persist()
 
 
 @pytest.mark.parametrize(("module_name", "run"), GENERATORS)
