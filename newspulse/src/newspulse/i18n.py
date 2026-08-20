@@ -420,7 +420,10 @@ _EN: dict[str, str] = {
     "Neu schreiben": "Write again",
     "Gegenlesen lassen": "Have it read",
     "Freigeben": "Release",
-    "Bearbeiten": "Edit",
+    # "Bearbeiten" is not repeated here: the contact book already carries it
+    # further down this dict, and a second entry for the same German string is a
+    # key Python silently drops — the next person to reword one of them would
+    # reword the one that loses.
     "Text": "Text",
     "Titel": "Title",
     "Schlagzeile": "Headline",
@@ -433,6 +436,12 @@ _EN: dict[str, str] = {
     "ihn das Zweitmodell noch einmal lesen.":
         "The text was edited by hand after it was checked. The second model has "
         "to read it again before it can be released.",
+    "Es wird gerade ein anderer Text geschrieben — die Knöpfe sind so lange aus.":
+        "Another text is being written right now — the buttons are off until "
+        "it is done.",
+    "Zu diesem Anlass gibt es eine These und noch keinen Text. Sieben Formate stehen bereit.":
+        "This occasion has a thesis and no text yet. Seven formats are ready.",
+    "Paket schreiben": "Write the package",
     "Noch nicht schreibbar.": "Not writable yet.",
     "Profil ergänzen": "Fill in the profile",
     "Guide hinterlegen": "Add the guide",

@@ -31,14 +31,27 @@
 
   /* The package (DEC-1). Page-local because no other template renders it: a
      class two pages share belongs in app.css, and one page's own layout does
-     not. Every name here is prefixed so it cannot collide with the system's. */
+     not. Every name here is prefixed so it cannot collide with the system's.
+
+     Sizes come off the scale app.css actually defines, which the mock uses too.
+     The rules above this block ask for --t-small and --t-micro, which are on no
+     :root anywhere — an undefined custom property makes the declaration invalid
+     at computed-value time, so those font sizes silently inherit. That is older
+     than this package and is left where it is rather than fixed by halves; the
+     package itself does not join in. */
   .pack { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--line); }
   .pack__head { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
-  .pack__t { font-size: var(--t-small); font-weight: 600; }
-  .pack__st { font-size: var(--t-micro); color: var(--muted); }
+  .pack__t { font-size: var(--t-subhead); font-weight: 600; }
+  .pack__st { font-size: var(--t-caption); color: var(--muted); }
   .pack__acts { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
+  .pack__off { font-size: var(--t-caption); color: var(--muted); margin-bottom: var(--s2); }
+  /* The mock's empty state: an occasion with a thesis and no text is an
+     invitation, not an empty tab strip. */
+  .pack__empty { text-align: center; padding: var(--s5) 0; }
+  .pack__empty p { font-size: var(--t-subhead); color: var(--muted); margin-bottom: var(--s3); max-width: 54ch;
+                   margin-left: auto; margin-right: auto; }
   .fmttabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: var(--s3); overflow-x: auto; }
-  .fmttab { font: inherit; font-size: var(--t-small); font-weight: 500; background: none; border: 0;
+  .fmttab { font: inherit; font-size: var(--t-subhead); font-weight: 500; background: none; border: 0;
             cursor: pointer; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent;
             white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; }
   .fmttab:hover { color: var(--ink); }
@@ -56,18 +69,18 @@
   .fmtpane { display: none; }
   .fmtpane.is-on { display: block; }
   .fmtpane__bar { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s2); }
-  .fmtpane__when { font-size: var(--t-micro); color: var(--muted); }
+  .fmtpane__when { font-size: var(--t-caption); color: var(--muted); }
   .fmtpane__acts { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
   .fmtsheet { background: var(--fill-2); border: 1px solid var(--line); border-radius: 8px;
               padding: var(--s4); max-width: 72ch; }
   .fmtsheet__title { font-size: var(--t-body); font-weight: 700; line-height: 1.3; margin-bottom: var(--s2); }
   .fmtsheet__body { font-size: var(--t-footnote); line-height: 1.7; white-space: pre-wrap; }
   .fmtpane__empty { max-width: 72ch; }
-  .fmtpane__what { font-size: var(--t-small); color: var(--muted); margin-bottom: var(--s3); }
+  .fmtpane__what { font-size: var(--t-subhead); color: var(--muted); margin-bottom: var(--s3); }
   .fmtedit { margin-top: var(--s3); max-width: 72ch; }
-  .fmtedit > summary { cursor: pointer; font-size: var(--t-micro); color: var(--accent); font-weight: 600; }
+  .fmtedit > summary { cursor: pointer; font-size: var(--t-caption); color: var(--accent); font-weight: 600; }
   .fmtedit label { display: block; margin-top: var(--s3); }
-  .fmtedit label span { display: block; font-size: var(--t-micro); color: var(--muted); margin-bottom: 3px; }
+  .fmtedit label span { display: block; font-size: var(--t-caption); color: var(--muted); margin-bottom: 3px; }
   .fmtedit input, .fmtedit textarea { width: 100%; font: inherit; font-size: var(--t-footnote);
                                       line-height: 1.6; padding: 8px 10px; border: 1px solid var(--line-strong);
                                       border-radius: 6px; background: var(--card); color: var(--ink); }
@@ -221,29 +234,63 @@
           </div>
 
           {# The page reports what the worker is doing and swaps itself when it is
-             done, the same poller the impulse and the letter use: six formats in
-             sequence is minutes, and a page that sat there finished would look
-             broken. #}
+             done: six formats in sequence is minutes, and a page that sat there
+             finished would look broken.
+
+             Two things narrower than the pollers above it, because this region
+             holds editable state and they do not. The target is this one package
+             rather than the whole #positioning section, so no other impulse's tab
+             strip or open edit form is replaced by a run it has nothing to do
+             with. And the poll pauses while an edit panel is open on *this*
+             package, because the swap would take the textarea and everything
+             typed into it with it. Editing in place is why this surface exists,
+             so it wins over the refresh; the spinner keeps saying what is
+             happening, and closing the panel resumes the poll. #}
           {% if running %}
             <div class="notice notice--ok"
                  hx-get="/client/{{ client.id }}/advice"
-                 hx-trigger="every 3s"
-                 hx-select="#positioning"
-                 hx-target="#positioning"
+                 hx-trigger="every 3s [!npEditing({{ angle.id }})]"
+                 hx-select="#pack-{{ angle.id }}"
+                 hx-target="#pack-{{ angle.id }}"
                  hx-swap="outerHTML">
               <span class="spinner" aria-hidden="true"></span>
               {{ t("Wird geschrieben") }}: {{ t(asset_progress.label) }}
               {% if asset_progress.total > 1 %}({{ asset_progress.done + 1 }} {{ t("von") }} {{ asset_progress.total }}){% endif %}
             </div>
+          {% elif busy %}
+            {# The lock is process-wide and the notice above is not, so without
+               this line a reader on a different impulse sees dead buttons and no
+               reason for them. #}
+            <p class="pack__off">{{ t("Es wird gerade ein anderer Text geschrieben — die Knöpfe sind so lange aus.") }}</p>
           {% endif %}
           {% if asset_notes.get(angle.id) %}
             <p class="sect__empty sect__refusal">{{ asset_notes[angle.id] }}</p>
           {% endif %}
 
-          <div class="fmttabs" role="tablist" aria-label="{{ t('Formate') }}">
+          {% if not pack.written %}
+            {# The mock's empty package: an occasion that has a thesis and no text
+               is an invitation, and a full strip of seven empty tabs is not one.
+               The strip is still below it, so a single format can be picked. #}
+            <div class="pack__empty">
+              <p>{{ t("Zu diesem Anlass gibt es eine These und noch keinen Text. Sieben Formate stehen bereit.") }}</p>
+              {% if pack.missing %}
+                <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/assets">
+                  <button type="submit" class="btn btn--big"{% if busy %} disabled{% endif %}>{{ t("Paket schreiben") }}</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {# The strip. "+ Format" from the mock has no counterpart on purpose:
+             every format the registry knows is already a tab, and adding one is a
+             FormatDef and a prompt file rather than something a button can open. #}
+          <div class="fmttabs" id="fmttabs-{{ angle.id }}" role="tablist" aria-label="{{ t('Formate') }}">
             {% for slot in pack.slots %}
               <button type="button" class="fmttab{% if loop.first %} is-on{% endif %}"
-                      role="tab" aria-selected="{{ 'true' if loop.first else 'false' }}"
+                      role="tab" id="tab-{{ angle.id }}-{{ slot.key }}"
+                      aria-selected="{{ 'true' if loop.first else 'false' }}"
+                      aria-controls="pane-{{ angle.id }}-{{ slot.key }}"
+                      tabindex="{{ '0' if loop.first else '-1' }}"
                       data-pane="pane-{{ angle.id }}-{{ slot.key }}">
                 <span class="fmt-dot fmt-dot--{{ slot.state }}{% if slot.objected %} fmt-dot--einwand{% endif %}"
                       aria-hidden="true"></span>{{ t(slot.fmt.name) }}
@@ -252,7 +299,9 @@
             {# The letter is the seventh format of the package. It keeps its own
                table and its own recipient, so the strip counts it rather than
                owning it. #}
-            <button type="button" class="fmttab" role="tab" aria-selected="false"
+            <button type="button" class="fmttab" role="tab"
+                    id="tab-{{ angle.id }}-anschreiben" aria-selected="false"
+                    aria-controls="pane-{{ angle.id }}-anschreiben" tabindex="-1"
                     data-pane="pane-{{ angle.id }}-anschreiben">
               <span class="fmt-dot fmt-dot--{{ 'entwurf' if written else 'ungeschrieben' }}" aria-hidden="true"></span>{{ t("Anschreiben") }}
               {% if written %}<span class="fmttab__n">{{ written | length }}</span>{% endif %}
@@ -261,7 +310,8 @@
 
           {% for slot in pack.slots %}
             <div class="fmtpane{% if loop.first %} is-on{% endif %}"
-                 id="pane-{{ angle.id }}-{{ slot.key }}" role="tabpanel">
+                 id="pane-{{ angle.id }}-{{ slot.key }}" role="tabpanel"
+                 aria-labelledby="tab-{{ angle.id }}-{{ slot.key }}" tabindex="0">
               {% if slot.asset %}
                 {% set asset = slot.asset %}
                 <div class="fmtpane__bar">
@@ -278,11 +328,17 @@
                       <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/rewrite">
                         <button type="submit" class="linkbtn"{% if busy %} disabled{% endif %}>{{ t("Neu schreiben") }}</button>
                       </form>
-                      {% if slot.needs_recheck %}
+                      {# Offered for any unread text, not only an edited one: a
+                         draft whose crosscheck was down when it was written is
+                         unread through no fault of the reader's, and the only way
+                         back used to be "Neu schreiben" — a second full model call
+                         that throws away a text there was nothing wrong with. #}
+                      {% if slot.recheckable %}
                         <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/recheck">
                           <button type="submit" class="btn btn--ghost btn--sm"{% if busy %} disabled{% endif %}>{{ t("Gegenlesen lassen") }}</button>
                         </form>
-                      {% elif slot.releasable %}
+                      {% endif %}
+                      {% if slot.releasable %}
                         <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/release">
                           <button type="submit" class="btn btn--sm">{{ t("Freigeben") }}</button>
                         </form>
@@ -309,6 +365,13 @@
                       <span class="crosscheck__clean">{{ t("keine Einwände") }}</span>
                     {% endif %}
                   </div>
+                {% elif asset.review %}
+                  {# A check that ran and could not answer, which is not the same
+                     thing as no second model being configured — and saying the
+                     wrong one of the two sends the reader to a settings page that
+                     is already filled in. The sentence stored on the row says
+                     which, and that whoever releases now releases unread. #}
+                  <p class="crosscheck crosscheck--hold">{{ asset.review }}</p>
                 {% else %}
                   <p class="crosscheck crosscheck--none">
                     {{ t("Nicht gegengelesen — es ist kein Zweitmodell hinterlegt.") }}
@@ -380,7 +443,8 @@
             </div>
           {% endfor %}
 
-          <div class="fmtpane" id="pane-{{ angle.id }}-anschreiben" role="tabpanel">
+          <div class="fmtpane" id="pane-{{ angle.id }}-anschreiben" role="tabpanel"
+               aria-labelledby="tab-{{ angle.id }}-anschreiben" tabindex="0">
         <div class="makemsg">
           <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/message"
                 class="makemsg__form">
@@ -661,20 +725,74 @@
   });
 })();
 
+// Whether somebody is editing a text in this package right now. Read by the
+// progress poller's trigger: the swap would replace the textarea and take
+// everything typed into it, and editing in place is the reason this surface
+// exists rather than a card with a copy button.
+window.npEditing = function (angleId) {
+  var pack = document.getElementById("pack-" + angleId);
+  return !!(pack && pack.querySelector("details.fmtedit[open]"));
+};
+
 // The package strip: one occasion, one panel at a time. Delegated from the
-// document rather than bound per button, because the poller swaps #positioning
+// document rather than bound per button, because the poller swaps the package
 // out from under these elements every three seconds while a text is being
 // written, and listeners bound to the old markup go with it.
+//
+// The full tab pattern, not half of it. The markup announces role="tablist" to a
+// screen reader, and an announced tablist that does not move under the arrow keys
+// is worse than plain buttons: the reader has been told how it works and it does
+// not work that way. So: one tab in the tab order at a time, arrows and Home/End
+// between them, and aria-selected following the selection.
 (function () {
-  document.addEventListener("click", function (event) {
-    var tab = event.target.closest && event.target.closest(".fmttab");
-    if (!tab) return;
-    tab.parentElement.querySelectorAll(".fmttab").forEach(function (other) {
+  // Which pane each strip is showing, remembered across the poller's swaps —
+  // the fresh markup always marks the first tab, so without this a run of six
+  // formats would snap the reader back to the first tab every three seconds.
+  var showing = {};
+
+  var select = function (tab, focus) {
+    var strip = tab.parentElement;
+    if (strip.id) showing[strip.id] = tab.dataset.pane;
+    strip.querySelectorAll(".fmttab").forEach(function (other) {
       var pane = document.getElementById(other.dataset.pane);
       var on = other === tab;
       other.classList.toggle("is-on", on);
       other.setAttribute("aria-selected", on ? "true" : "false");
+      other.tabIndex = on ? 0 : -1;
       if (pane) pane.classList.toggle("is-on", on);
+    });
+    if (focus) tab.focus();
+  };
+
+  document.addEventListener("click", function (event) {
+    var tab = event.target.closest && event.target.closest(".fmttab");
+    if (tab) select(tab, false);
+  });
+
+  var STEPS = { ArrowRight: 1, ArrowLeft: -1, Home: 0, End: 0 };
+  document.addEventListener("keydown", function (event) {
+    var tab = event.target.closest && event.target.closest(".fmttab");
+    if (!tab || !(event.key in STEPS)) return;
+    var tabs = Array.prototype.slice.call(
+      tab.parentElement.querySelectorAll(".fmttab")
+    );
+    var at = tabs.indexOf(tab);
+    var next =
+      event.key === "Home" ? 0
+      : event.key === "End" ? tabs.length - 1
+      : (at + STEPS[event.key] + tabs.length) % tabs.length;
+    event.preventDefault();
+    select(tabs[next], true);
+  });
+
+  // The poller replaces one package with fresh markup. Put the reader back on
+  // the tab they were reading rather than on the first one.
+  document.body.addEventListener("htmx:afterSwap", function () {
+    Object.keys(showing).forEach(function (stripId) {
+      var strip = document.getElementById(stripId);
+      if (!strip) return;
+      var tab = strip.querySelector('[data-pane="' + showing[stripId] + '"]');
+      if (tab) select(tab, false);
     });
   });
 })();
@@ -706,6 +824,21 @@
     document.body.removeChild(area);
   };
 
+  // What the consultant pastes into Word, not the DOM's idea of the text.
+  // textContent is a plain concatenation of text nodes and puts nothing at an
+  // element boundary, so a headline and its first paragraph came out welded
+  // together: "19 Monate bis zum NetzanschlussDie Debatte über…". The blocks a
+  // sheet is drawn in are the paragraphs it is read in, so they are joined by the
+  // break they are drawn with. A target holding one run of text is unchanged.
+  var readable = function (node) {
+    var parts = [];
+    Array.prototype.forEach.call(node.childNodes, function (child) {
+      var text = (child.textContent || "").trim();
+      if (text) parts.push(text);
+    });
+    return parts.join("\n\n");
+  };
+
   document.addEventListener("click", function (event) {
     if (!event.target.closest) return;
     // One text: the element the button points at, never the reasoning around it,
@@ -713,7 +846,7 @@
     var one = event.target.closest("[data-copy-from]");
     if (one) {
       var source = document.getElementById(one.dataset.copyFrom);
-      if (source) put(source.textContent.trim(), one);
+      if (source) put(readable(source), one);
       return;
     }
     // The whole package: every sheet in it, in the order of the strip. Only the
@@ -724,7 +857,8 @@
     if (!group) return;
     var parts = [];
     group.querySelectorAll("[data-copy-part]").forEach(function (part) {
-      parts.push(part.textContent.trim());
+      var text = readable(part);
+      if (text) parts.push(text);
     });
     if (parts.length) put(parts.join("\n\n\n"), all);
   });

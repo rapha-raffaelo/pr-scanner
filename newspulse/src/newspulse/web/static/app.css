@@ -815,6 +815,11 @@ a:hover { text-decoration: underline; }
 /* Deliberately larger than the buttons around it: it is the one action on this
    page that produces something sendable. */
 .btn--big { font-size: var(--t-body); padding: 11px 20px; border-radius: var(--radius); }
+/* And the other end of the same scale, at the size DEC-1's mock draws it: the
+   actions that sit in a row beside a line of metadata rather than under a text.
+   It was used on the impulse page before it existed anywhere, so those buttons
+   rendered full size and the action row did not match the mock it was built to. */
+.btn--sm { font-size: var(--t-caption); padding: 5px 12px; }
 
 .letter {
   margin-top: 12px; border: 1px solid var(--line); border-left: 3px solid #059669;
