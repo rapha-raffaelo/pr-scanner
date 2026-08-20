@@ -170,7 +170,10 @@ class FormatDef:
     definition and a text file rather than a seventh code path.
     """
 
-    kind: AssetKind
+    #: The stored key. An :class:`AssetKind` for the six that exist, but typed
+    #: loosely on purpose: this registry, not the enum, is what decides which
+    #: formats there are, and a seventh must not need a schema change.
+    kind: AssetKind | str
     #: The German name, as the consultant says it.
     name: str
     #: One line for the surface: what this format is for.
@@ -188,6 +191,17 @@ class FormatDef:
     #: Which profile field names the person a quote may be attributed to. Empty
     #: for the formats that quote nobody.
     speaker_key: str = ""
+
+    @property
+    def key(self) -> str:
+        """The kind as it is stored and looked up.
+
+        Normalised to a plain string in one place, so a definition written with
+        an :class:`AssetKind` and one written with a bare key are stored, found
+        and compared identically. Without it the two would work everywhere except
+        the one place somebody wrote the other kind.
+        """
+        return str(self.kind)
 
     def template(self) -> Template:
         text = resources.files("newspulse").joinpath(self.prompt).read_text("utf-8")
@@ -287,12 +301,17 @@ FORMATS: tuple[FormatDef, ...] = (
     ),
 )
 
-REGISTRY: dict[AssetKind, FormatDef] = {fmt.kind: fmt for fmt in FORMATS}
+REGISTRY: dict[str, FormatDef] = {fmt.key: fmt for fmt in FORMATS}
 
 
 def definition(kind: AssetKind | str) -> FormatDef:
-    """The definition for one format key. Raises ``KeyError`` for an unknown one."""
-    return REGISTRY[AssetKind(kind)]
+    """The definition for one stored kind. Raises ``KeyError`` for an unknown one.
+
+    Loud on an unknown kind by design: a stored text whose format nothing can
+    describe is a text nothing can check, and rendering it as though it were fine
+    is the failure worth avoiding.
+    """
+    return REGISTRY[str(kind)]
 
 
 class RequirementsMissing(RuntimeError):
@@ -498,9 +517,7 @@ def write(
     """
     readiness = requirements_met(session, fmt, client, angle)
     if not readiness.ok:
-        _log.info(
-            "%s refused for %r: %s", fmt.kind.value, client.name, readiness.reason
-        )
+        _log.info("%s refused for %r: %s", fmt.key, client.name, readiness.reason)
         raise RequirementsMissing(fmt, readiness)
     prompt = prompt_for(session, fmt, client, angle)
     return _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
@@ -708,8 +725,8 @@ def store(
     never replaced, because its text is the record of what actually went out; a
     re-write becomes a new row beside it.
     """
-    row = _replaceable(session, angle.id, fmt.kind) or Asset(
-        client_id=client.id, angle_id=angle.id, kind=fmt.kind
+    row = _replaceable(session, angle.id, fmt.key) or Asset(
+        client_id=client.id, angle_id=angle.id, kind=fmt.key
     )
     # House style, enforced rather than requested: the prompts ask for no dashes
     # and the model relapses by the third paragraph. One call site for all seven
@@ -727,7 +744,7 @@ def store(
     return row
 
 
-def _replaceable(session: Session, angle_id: int, kind: AssetKind) -> Asset | None:
+def _replaceable(session: Session, angle_id: int, kind: str) -> Asset | None:
     """The draft this write would replace, if there is one that may be replaced."""
     return session.scalars(
         select(Asset)

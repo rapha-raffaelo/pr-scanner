@@ -117,9 +117,12 @@ class RunStatus(StrEnum):
 class AssetKind(StrEnum):
     """The formats an impulse can become, beside the letter.
 
-    A closed set, with a DB-level CHECK behind it: ``kind`` decides which
-    structural contract a row is held to and which prompt wrote it, so a row
-    carrying a kind no definition knows would be a text nothing can check.
+    Named here so the six are spelled once rather than quoted in five modules and
+    three templates. What this is *not* is the authority on which formats exist:
+    that is the registry in :mod:`newspulse.assets`, and ``assets.kind`` is a
+    plain string column for exactly that reason. A CHECK constraint here would
+    make a seventh format a schema migration, when the whole point of holding a
+    format as data is that a seventh is a definition and a prompt file.
 
     The letter is deliberately not in here. It has a recipient and its own
     ledger, and it stays in :class:`Outreach`.
@@ -836,8 +839,11 @@ class Asset(Base):
     the position it argues and the coverage under that position. A stored text
     whose impulse is unknown cannot be checked by anyone.
 
-    ``kind`` is closed rather than free text because it selects the format
-    definition, and a row nothing can define is a row nothing can validate.
+    ``kind`` names the format definition this row was written against. It is a
+    string rather than a DB enum on purpose: the registry in
+    :mod:`newspulse.assets` decides which formats exist, and a CHECK constraint
+    here would turn every new format into a schema migration. A kind the registry
+    does not know fails loudly at the lookup, which is where it should.
     """
 
     __tablename__ = "assets"
@@ -849,14 +855,7 @@ class Asset(Base):
     angle_id: Mapped[int] = mapped_column(
         ForeignKey("angles.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    kind: Mapped[AssetKind] = mapped_column(
-        SAEnum(
-            AssetKind,
-            values_callable=lambda enum: [m.value for m in enum],
-            create_constraint=True,
-        ),
-        nullable=False,
-    )
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     # Indexed for the same reason as the letter's: a day's texts are asked for
     # on every render of the Today column.
     generated_at: Mapped[dt.datetime] = mapped_column(

@@ -7,9 +7,12 @@ with most columns empty and every query guessing which shape it was reading. The
 letter keeps its table and its ledger; the two are read together where both
 belong.
 
-``kind`` is a closed enum with a CHECK behind it, like ``analyses.category``: the
-kind selects the format definition that says what the text must contain, so a row
-carrying a kind nothing defines would be a text nothing can validate.
+``kind`` is a plain string and deliberately not an enum with a CHECK, which is
+the one place this table differs from ``analyses.category``. A format is held as
+data in ``newspulse.assets``, and the whole value of that is that a seventh
+format is a definition and a prompt file. A CHECK here would make it a schema
+migration as well. The registry is the authority, and a kind it does not know
+fails at the lookup rather than at the insert.
 
 Six review columns rather than two, for the reason ``0016_outreach_review`` gave
 and one more. "Checked and clean" and "never checked" must not look alike, which
@@ -37,19 +40,6 @@ down_revision: str | None = "0017_client_facts"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-#: Kept literal rather than imported from ``newspulse.models``: a migration
-#: describes the schema at one moment in time, and adding a seventh format later
-#: must not silently rewrite what this revision did.
-_KINDS = (
-    "pressemitteilung",
-    "statement",
-    "qa",
-    "talking_points",
-    "gastbeitrag",
-    "interview_briefing",
-)
-
-
 def upgrade() -> None:
     op.create_table(
         "assets",
@@ -66,11 +56,7 @@ def upgrade() -> None:
             sa.ForeignKey("angles.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column(
-            "kind",
-            sa.Enum(*_KINDS, name="assetkind", create_constraint=True),
-            nullable=False,
-        ),
+        sa.Column("kind", sa.String(length=40), nullable=False),
         sa.Column("generated_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("title", sa.Text(), nullable=False, server_default=""),
         sa.Column("body", sa.Text(), nullable=False),
@@ -97,11 +83,13 @@ def upgrade() -> None:
     )
     op.create_index("ix_assets_client_id", "assets", ["client_id"])
     op.create_index("ix_assets_angle_id", "assets", ["angle_id"])
+    op.create_index("ix_assets_kind", "assets", ["kind"])
     op.create_index("ix_assets_generated_at", "assets", ["generated_at"])
 
 
 def downgrade() -> None:
     op.drop_index("ix_assets_generated_at", table_name="assets")
+    op.drop_index("ix_assets_kind", table_name="assets")
     op.drop_index("ix_assets_angle_id", table_name="assets")
     op.drop_index("ix_assets_client_id", table_name="assets")
     op.drop_table("assets")
