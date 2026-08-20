@@ -281,6 +281,10 @@ def test_the_market_material_can_produce_a_draft_on_day_one(session, monkeypatch
             thesis="Der Markt konsolidiert.",
             overclaim="Zentrale Boersen verschwinden.",
             evidence=[0],
+            # Stamped, as the real generator stamps it: ``store`` refuses a draft
+            # with no version rather than writing a NULL, which the interface
+            # renders as "older than the recorded standards".
+            brain_version=0,
         )
         return draft, numbered
 

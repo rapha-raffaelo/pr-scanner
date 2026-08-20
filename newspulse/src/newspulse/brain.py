@@ -176,6 +176,44 @@ class BlockCycle(RecursionError):
         )
 
 
+class Unstamped(ValueError):
+    """A generated text reached storage without the version it was written under.
+
+    NULL in the ``brain_version`` column is not a blank. It is a claim with words
+    on it: the interface renders it as "unbekannt (vor der Aufzeichnung der
+    Maßstäbe entstanden)", meaning this row is older than the day the tool began
+    recording its standards. Only the migration may make that claim, and it makes
+    it once, about rows that really are older.
+
+    So a persister handed a text with no stamp refuses it rather than writing a
+    fresh one. The stamp is set by the generator when it composes the prompt, and
+    a text arriving here without one did not come from a generator — a re-save
+    route, a repair script, a new artefact writer whose author did not know about
+    this column. Each of those is a bug in the caller, and each would otherwise
+    land silently as a row that lies about its own age.
+    """
+
+    def __init__(self, what: str) -> None:
+        super().__init__(
+            f"{what} carries no brain version and cannot be stored: the stamp is "
+            "captured by the generator when it composes the prompt, and a NULL "
+            "here would claim the text predates the recorded standards"
+        )
+
+
+def stamp(carried: int | None, *, what: str) -> int:
+    """The version a text carries, or :class:`Unstamped` if it carries none.
+
+    One line at the top of every persister, so the three of them cannot drift on
+    the question of what an absent stamp means. ``what`` names the text in the
+    error, because the caller that broke this is the one to fix and "an angle"
+    and "a letter" reach different code.
+    """
+    if carried is None:
+        raise Unstamped(what)
+    return carried
+
+
 @lru_cache(maxsize=1)
 def shipped() -> Mapping[str, str]:
     """The blocks as the repository ships them, keyed by filename stem.
@@ -448,6 +486,15 @@ def history(session: Session, key: str) -> list[BrainOverride]:
     )
 
 
+#: The largest integer the version column can hold. A signed 64-bit integer is
+#: what SQLite and Postgres both store, and a number past it is not "a version
+#: with no row" to the driver — binding it raises ``OverflowError`` before any
+#: query runs. This module answers to hand-typed URLs (a stamp's ``/version/{n}``
+#: and a block page's ``?fassung=``), so the bound is enforced here rather than
+#: left to every caller to remember.
+_LARGEST_STORABLE_VERSION = 2**63 - 1
+
+
 def change_at(session: Session, wanted: int) -> BrainOverride | None:
     """The change that produced version ``wanted``, or ``None`` if there is none.
 
@@ -457,11 +504,24 @@ def change_at(session: Session, wanted: int) -> BrainOverride | None:
 
     ``None`` is a normal answer, not a failure. Version 0 is every fresh install
     — nothing has been changed, so no row produced it — and a version whose row
-    was lost with a restored dump reads the same way. Both mean "there is no
-    single change to point at", which the caller answers with the block list.
+    was lost with a restored dump reads the same way. A number no version could
+    ever be — negative, or past what the column holds — is the same answer and
+    not an error: it arrives from a URL somebody typed, and the honest response
+    to "there is no such version" does not depend on *how* absurd the number was.
+    All of them mean "there is no single change to point at", which the caller
+    answers with the block list.
+
+    Ordered rather than trusting ``uq_brain_overrides_version`` to make ``first``
+    unambiguous. The constraint holds today; a dump restored without it would
+    make the resolver return an arbitrary one of two rows on one read and the
+    other on the next, which is the kind of thing nobody thinks to check.
     """
+    if not 0 <= wanted <= _LARGEST_STORABLE_VERSION:
+        return None
     return session.scalars(
-        select(BrainOverride).where(BrainOverride.version == wanted)
+        select(BrainOverride)
+        .where(BrainOverride.version == wanted)
+        .order_by(BrainOverride.id)
     ).first()
 
 

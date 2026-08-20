@@ -59,7 +59,7 @@ from .analyzer import (
     strip_code_fence,
 )
 from .models import Advisory, Analysis, Article, Client, visible_coverage
-from .schemas import AdvisoryBrief
+from .schemas import AdvisoryBrief, without_provenance
 
 _log = logging.getLogger(__name__)
 
@@ -191,13 +191,17 @@ def _parse(raw: str) -> AdvisoryBrief:
     :mod:`newspulse.angles` and unlike the batch analyzer, this is a single call
     with no retry behind it, so a ```json wrapper would otherwise cost the whole
     brief at the moment someone asked for it.
+
+    The stamp is taken out of the reply before validation: provenance is the
+    tool's to state and not the model's. See
+    :func:`newspulse.schemas.without_provenance`.
     """
     try:
         payload = json.loads(strip_code_fence(raw))
     except json.JSONDecodeError as exc:
         raise ParseError(f"advisory was not valid JSON: {exc}") from exc
     try:
-        return AdvisoryBrief.model_validate(payload)
+        return AdvisoryBrief.model_validate(without_provenance(payload))
     except Exception as exc:  # noqa: BLE001 — pydantic raises its own type
         raise ParseError(f"advisory did not match the schema: {exc}") from exc
 
@@ -232,13 +236,10 @@ def advise(
         # store the one value the whole change reserves for "written before the
         # standards were recorded" — and the page says exactly that in words, so
         # a brief made this morning would render a false claim about its own age.
-        #
-        # Set with ``model_copy`` and not in the constructor: the field discards
-        # anything handed to it through validation, which is what keeps a model
-        # from stamping its own text (see ``schemas._never_from_the_model``).
         return (
-            AdvisoryBrief(situation="Keine Berichterstattung im Zeitraum.").model_copy(
-                update={"brain_version": written_under}
+            AdvisoryBrief(
+                situation="Keine Berichterstattung im Zeitraum.",
+                brain_version=written_under,
             ),
             [],
         )
@@ -281,6 +282,9 @@ def store(
 
     The brain version comes off the brief: :func:`advise` captured it with the
     prompt, and reading it again here would date the row to when it was saved.
+    Raises :class:`newspulse.brain.Unstamped` for a brief that carries none —
+    :func:`advise` stamps both of its paths, so an unstamped one came from
+    somewhere else and a NULL would file it as older than the recorded standards.
     """
     advisory = Advisory(
         client_id=client.id,
@@ -288,7 +292,7 @@ def store(
         article_count=len(coverage),
         situation=brief.situation,
         suggestions=[s.model_dump(mode="json") for s in brief.suggestions],
-        brain_version=brief.brain_version,
+        brain_version=brain.stamp(brief.brain_version, what="this brief"),
     )
     session.add(advisory)
     session.commit()

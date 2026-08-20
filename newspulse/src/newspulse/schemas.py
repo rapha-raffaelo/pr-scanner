@@ -16,9 +16,8 @@ Two kinds of object live here and it is worth keeping them distinct:
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .models import SCORE_MAX as _SCORE_MAX
 from .models import SCORE_MIN as _SCORE_MIN
@@ -151,28 +150,39 @@ class ActionSuggestion(BaseModel):
 # stamp a caller has to remember to pass is a stamp that will be missing from
 # whichever call site was added last. The cost of putting a system-owned field on
 # a schema that parses model output is that the model can now reach it, and
-# ``_BrainVersion`` below is what takes that back.
+# :func:`without_provenance` below is what takes that back.
 
 
-def _never_from_the_model(_supplied: object) -> None:
-    """Discard whatever was in the reply here. Provenance is not the model's to state.
+def without_provenance(payload: object) -> object:
+    """The model's reply with the stamp field taken out of it, before validation.
 
-    Two failures, one answer. A model that volunteers ``"brain_version": 3`` would
-    otherwise be validated straight into the field and the row would carry a
-    number nothing recorded; a model that volunteers ``"brain_version": "v2"``
-    would fail validation and cost the whole draft — a text a consultant is
-    waiting for, lost over a field the model had no business filling.
+    Provenance is not the model's to state. A reply that volunteers
+    ``"brain_version": 3`` would otherwise be validated straight into the field
+    and the row would carry a number nothing recorded; one that volunteers
+    ``"brain_version": "v2"`` would fail validation outright and cost the whole
+    draft — a text a consultant is waiting for, lost over a field the model had
+    no business filling. Dropping the key answers both.
 
-    Dropped before validation rather than after, so neither reaches the field.
-    The generator writes the real version with ``model_copy``, which does not
-    re-validate, so this runs on model output and on nothing else.
+    Applied by each generator's ``_parse`` to the decoded reply, and there alone,
+    which is the difference between this and a validator on the field. A
+    validator fires on *every* validation, so a draft that ever went through
+    ``model_validate(draft.model_dump())`` — a queue payload, a cached draft, an
+    API echo — would come back with its stamp silently reset to ``None``, and
+    ``None`` is the one value that means "written before the standards were
+    recorded". The discard belongs to model output, so it lives on the path model
+    output takes.
+
+    Non-mapping payloads pass through untouched: a reply that decoded to a list
+    is the schema's failure to report, not this function's to pre-empt.
     """
-    return None
+    if isinstance(payload, dict):
+        return {key: value for key, value in payload.items() if key != _STAMP_FIELD}
+    return payload
 
 
-#: The stamp as it sits on a reply schema: parsed as nothing, set by the
-#: generator afterwards.
-_BrainVersion = Annotated[int | None, BeforeValidator(_never_from_the_model)]
+#: The field :func:`without_provenance` takes out. Named once so the three
+#: ``_parse`` functions and the three schemas cannot drift apart on the spelling.
+_STAMP_FIELD = "brain_version"
 
 
 class AdvisoryBrief(BaseModel):
@@ -181,7 +191,7 @@ class AdvisoryBrief(BaseModel):
     situation: str
     suggestions: list[ActionSuggestion] = Field(default_factory=list)
     #: See "Provenance" above. Set by :func:`newspulse.advisor.advise`.
-    brain_version: _BrainVersion = None
+    brain_version: int | None = None
 
 
 # --- Angle: a positioning message the consultant can send on ---------------------
@@ -225,7 +235,7 @@ class AngleDraft(BaseModel):
     # can be traced back to the coverage that triggered it.
     evidence: list[int] = Field(default_factory=list)
     #: See "Provenance" above. Set by :func:`newspulse.angles.suggest`.
-    brain_version: _BrainVersion = None
+    brain_version: int | None = None
 
 
 # --- Outreach: the impulse, written at one recipient -----------------------------
@@ -250,7 +260,7 @@ class PersonalMessage(BaseModel):
     message: str
     hook: str = ""
     #: See "Provenance" above. Set by :func:`newspulse.outreach.draft`.
-    brain_version: _BrainVersion = None
+    brain_version: int | None = None
 
 
 class MessageReview(BaseModel):

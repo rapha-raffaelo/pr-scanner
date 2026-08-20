@@ -41,7 +41,7 @@ from . import brain, config, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Analysis, Angle, Article, Client, Outreach, visible_coverage
 from .pitch import PitchTarget
-from .schemas import MessageReview, PersonalMessage
+from .schemas import MessageReview, PersonalMessage, without_provenance
 
 _log = logging.getLogger(__name__)
 
@@ -152,14 +152,16 @@ def _parse(raw: str) -> PersonalMessage:
 
     Same trust boundary as everywhere else in this codebase: the reply is text
     until the schema says otherwise. A fence is unwrapped because wrapping JSON in
-    ```json is a habit rather than an error.
+    ```json is a habit rather than an error. The stamp is taken out of the reply
+    first: provenance is the tool's to state and not the model's. See
+    :func:`newspulse.schemas.without_provenance`.
     """
     try:
         payload = json.loads(strip_code_fence(raw))
     except json.JSONDecodeError as exc:
         raise ParseError(f"outreach was not valid JSON: {exc}") from exc
     try:
-        message = PersonalMessage.model_validate(payload)
+        message = PersonalMessage.model_validate(without_provenance(payload))
     except Exception as exc:  # noqa: BLE001 — pydantic raises its own type
         raise ParseError(f"outreach did not match the schema: {exc}") from exc
     if not message.message.strip():
@@ -304,7 +306,14 @@ def store(
     The stamp is replaced with the text, for the same reason the review is: the
     row then says which standards the letter *now* in it was written under, not
     the ones behind a wording nobody can read any more.
+
+    Raises :class:`newspulse.brain.Unstamped` for a letter that carries no
+    version, and does so before touching the row. A re-write that overwrote a
+    correct stamp with a fresh NULL would not leave the old letter's provenance
+    standing — it would replace a readable version with the claim that the text
+    beside it predates the recorded standards.
     """
+    stamped = brain.stamp(message.brain_version, what="this letter")
     journalist = (target.journalist or "") if target else ""
     outlet = (target.outlet or "") if target else ""
     existing = session.scalars(
@@ -322,7 +331,7 @@ def store(
     row.subject = prose.plain(message.subject)
     row.message = prose.plain(message.message)
     row.hook = message.hook.strip()
-    row.brain_version = message.brain_version
+    row.brain_version = stamped
     # A stored review always belongs to the text beside it: re-writing for the
     # same recipient clears the old verdict rather than letting it stand over a
     # letter it never read.

@@ -52,7 +52,7 @@ from .analyzer import (
     strip_code_fence,
 )
 from .models import Analysis, Angle, Article, Client, visible_coverage
-from .schemas import AngleDraft
+from .schemas import AngleDraft, without_provenance
 
 _log = logging.getLogger(__name__)
 
@@ -178,13 +178,17 @@ def _parse(raw: str) -> AngleDraft:
     wrapping JSON in ```json is a habit, not an error, and unlike the batch
     analyzer there is no retry here to absorb it: one fence would cost the day's
     draft. Anything else non-JSON stays a failure, logged rather than salvaged.
+
+    The stamp is taken out of the reply before validation: provenance is the
+    tool's to state and not the model's. See
+    :func:`newspulse.schemas.without_provenance`.
     """
     try:
         payload = json.loads(strip_code_fence(raw))
     except json.JSONDecodeError as exc:
         raise ParseError(f"angle was not valid JSON: {exc}") from exc
     try:
-        return AngleDraft.model_validate(payload)
+        return AngleDraft.model_validate(without_provenance(payload))
     except Exception as exc:  # noqa: BLE001 — pydantic raises its own type
         raise ParseError(f"angle did not match the schema: {exc}") from exc
 
@@ -280,6 +284,11 @@ def store(
     here is the wrong moment: :func:`suggest` captured it when it composed the
     prompt, and a standard edited while the model was writing belongs to the next
     text and not to this one.
+
+    Raises :class:`newspulse.brain.Unstamped` for a draft that carries no
+    version. Reading the current one instead would date the row to the save, and
+    storing NULL would make it claim it predates the recorded standards; neither
+    is true of a draft that arrived here by some path other than :func:`suggest`.
     """
     by_index = {item.index: item.article_id for item in numbered}
     cited = [by_index[i] for i in draft.evidence if i in by_index]
@@ -297,7 +306,7 @@ def store(
         overclaim=draft.overclaim.strip(),
         statements=[s.strip() for s in draft.statements if s.strip()],
         article_ids=cited or [item.article_id for item in numbered],
-        brain_version=draft.brain_version,
+        brain_version=brain.stamp(draft.brain_version, what="this angle"),
     )
     session.add(angle)
     session.commit()
