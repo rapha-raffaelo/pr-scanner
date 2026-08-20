@@ -343,7 +343,10 @@
   .brainblock__key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
                      font-size: var(--t-footnote); font-weight: 700; color: var(--ink); }
   .brainblock__when { font-size: var(--t-caption); color: var(--muted); }
-  .brainblock__head .rowlink { margin-left: auto; }
+  /* Its own class rather than `.brainblock__head .rowlink`: the shared control
+     is declared once in app.css, and a page-local rule whose subject is a shared
+     class is how two definitions start drifting (see tests/test_styles.py). */
+  .brainblock__edit { margin-left: auto; }
   .tag--shipped { background: #eef0f3; color: var(--muted); text-transform: none; }
   .tag--override { background: #e0f2fe; color: #0369a1; text-transform: none; }
   /* An orphan is not an error, but it is the one state where a live edit is
@@ -690,9 +693,9 @@
               {% endif %}
             </span>
             {% if brain_open == b.key %}
-              <a class="rowlink" href="/settings#brain-{{ b.key }}">{{ t("Schließen") }}</a>
+              <a class="rowlink brainblock__edit" href="/settings#brain-{{ b.key }}">{{ t("Schließen") }}</a>
             {% else %}
-              <a class="rowlink" href="/settings/brain/{{ b.key }}#brain-{{ b.key }}">{{ t("Bearbeiten") }}</a>
+              <a class="rowlink brainblock__edit" href="/settings/brain/{{ b.key }}#brain-{{ b.key }}">{{ t("Bearbeiten") }}</a>
             {% endif %}
           </div>
 

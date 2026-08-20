@@ -39,7 +39,13 @@ def test_alembic_upgrade_creates_schema_and_round_trips_arrays(tmp_path, monkeyp
     engine = create_engine(f"sqlite:///{db_path.as_posix()}")
     try:
         tables = set(inspect(engine).get_table_names())
-        assert {"clients", "articles", "analyses", "runs", "settings", "angles"} <= tables
+        assert {
+            "clients", "articles", "analyses", "runs", "settings", "angles",
+            # The standards the tool writes under are schema, not configuration:
+            # without this table an override is silently impossible and every
+            # prompt quietly falls back to the shipped text.
+            "brain_overrides",
+        } <= tables
 
         # The acceptance-required array round-trip, but against the *migrated*
         # schema rather than the ORM's create_all().
