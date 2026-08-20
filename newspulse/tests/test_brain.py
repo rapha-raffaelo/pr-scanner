@@ -1476,12 +1476,12 @@ def _generating_modules() -> set[str]:
     three generators in this tree share, which is what the next one will be
     written against; it is a tripwire, not a proof.
     """
-    return {
-        path.stem
-        for path in sorted(Path(brain.__file__).parent.glob("*.py"))
-        if "brain.compose(" in path.read_text("utf-8")
-        and re.search(r"(?m)^def store\(", path.read_text("utf-8"))
-    }
+    found = set()
+    for path in sorted(Path(brain.__file__).parent.glob("*.py")):
+        source = path.read_text("utf-8")
+        if "brain.compose(" in source and re.search(r"(?m)^def store\(", source):
+            found.add(path.stem)
+    return found
 
 
 def test_the_generator_list_names_every_generator_in_the_codebase():
