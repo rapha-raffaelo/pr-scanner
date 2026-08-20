@@ -519,6 +519,9 @@ def test_one_format_is_written_on_its_own(factory, web, worker):
     assert resp.status_code == 303
     assert resp.headers["location"] == f"/client/{client_id}/advice#impulse-{angle_id}"
     assert worker.wait() == [(client_id, angle_id, ("qa",))]
+    # Recorded by the route, not by the worker the fixture replaced: the page the
+    # redirect lands on has to carry the notice, or nothing ever asks again.
+    assert assets_view.progress_for(client_id).label == "Q&A"
 
 
 def test_writing_the_missing_ones_skips_what_is_already_there(factory, web, worker):
@@ -592,6 +595,20 @@ def test_rewriting_a_released_text_is_refused(factory, web, worker):
 
     assert worker.calls == []
     assert "Freigegebene Texte werden weder geändert noch ersetzt" in body
+
+
+def test_asking_for_a_second_reading_hands_the_text_to_the_worker(
+    factory, web, worker
+):
+    with factory() as session:
+        client, angle = _mandate(session)
+        stored = _produce(session, client, angle)
+        assets.edit(session, stored, title="", body="Etwas ganz anderes.")
+        client_id, angle_id, asset_id = client.id, angle.id, stored.id
+
+    web.post(f"/client/{client_id}/impulse/{angle_id}/asset/{asset_id}/recheck")
+
+    assert worker.wait() == [(client_id, asset_id)]
 
 
 def test_editing_through_the_route_stores_the_text_and_marks_it(factory, web):
@@ -750,7 +767,9 @@ def test_the_worker_writes_every_format_it_was_given(
 
     assets_view._generating.acquire()
     worker.real_write(
-        client_id, angle_id, (AssetKind.PRESSEMITTEILUNG.value, AssetKind.STATEMENT.value)
+        client_id,
+        angle_id,
+        (AssetKind.PRESSEMITTEILUNG.value, AssetKind.STATEMENT.value),
     )
 
     session.expire_all()

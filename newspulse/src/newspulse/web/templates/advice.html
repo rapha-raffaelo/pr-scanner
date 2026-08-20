@@ -357,7 +357,7 @@
               {% else %}
                 <div class="fmtpane__empty">
                   <p class="fmtpane__what">{{ t(slot.fmt.description) }}</p>
-                  {% if slot.readiness.ok %}
+                  {% if slot.writable %}
                     <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/assets">
                       <input type="hidden" name="kind" value="{{ slot.key }}">
                       <button type="submit" class="btn btn--big"{% if busy %} disabled{% endif %}>{{ t("Schreiben") }}</button>

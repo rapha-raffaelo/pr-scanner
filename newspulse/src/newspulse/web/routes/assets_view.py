@@ -391,12 +391,6 @@ def _run_recheck(client_id: int, asset_id: int) -> None:
                 if asset is None or client is None or asset.client_id != client_id:
                     return
                 angle_id = asset.angle_id
-                _progress[client_id] = Progress(
-                    angle_id=angle_id,
-                    label=assets.definition(asset.kind).name,
-                    done=0,
-                    total=1,
-                )
                 _notes.pop((angle_id, asset.kind), None)
                 assets.recheck(session, client, asset)
     except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
@@ -434,7 +428,10 @@ def _impulse_or_404(session: Session, client_id: int, angle_id: int) -> Angle:
     return angle
 
 
-def _asset_or_404(session: Session, client_id: int, angle_id: int, asset_id: int) -> Asset:
+def _asset_or_404(
+    session: Session, client_id: int, angle_id: int, asset_id: int
+) -> Asset:
+    """The text, and that it belongs to this mandate and this impulse."""
     asset = session.get(Asset, asset_id)
     if asset is None or asset.client_id != client_id or asset.angle_id != angle_id:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -448,6 +445,15 @@ def _start(client_id: int, angle_id: int, kinds: tuple[str, ...]) -> None:
     if not _generating.acquire(blocking=False):
         _notes[(angle_id, kinds[0] if len(kinds) == 1 else _PACKAGE)] = _BUSY
         return
+    # Recorded here rather than left to the worker, because the redirect renders
+    # immediately: a page built before the thread got as far as saying what it was
+    # doing would carry no notice, and then nothing would ever ask again.
+    _progress[client_id] = Progress(
+        angle_id=angle_id,
+        label=assets.definition(kinds[0]).name,
+        done=0,
+        total=len(kinds),
+    )
     threading.Thread(
         target=_run_write,
         args=(client_id, angle_id, kinds),
@@ -492,12 +498,17 @@ def write_assets(
 def _missing(
     session: Session, client: Client, angle: Angle, stored: dict[str, Asset]
 ) -> tuple[str, ...]:
-    """The formats "Fehlende schreiben" writes: unwritten, and writable today."""
+    """The formats "Fehlende schreiben" writes: unwritten, and writable today.
+
+    The profile is read once for all six rather than once per format, which is
+    what ``requirements_met`` takes ``facts`` for.
+    """
+    facts = profile.stored(session, client.id)
     return tuple(
         fmt.key
         for fmt in assets.FORMATS
         if fmt.key not in stored
-        and assets.requirements_met(session, fmt, client, angle).ok
+        and assets.requirements_met(session, fmt, client, angle, facts=facts).ok
     )
 
 
@@ -571,6 +582,13 @@ def recheck_asset(
     if not _generating.acquire(blocking=False):
         _notes[(angle_id, asset.kind)] = _BUSY
         return _back(client_id, angle_id)
+    # Before the thread, for the reason ``_start`` records it before its own.
+    _progress[client_id] = Progress(
+        angle_id=angle_id,
+        label=assets.definition(asset.kind).name,
+        done=0,
+        total=1,
+    )
     threading.Thread(
         target=_run_recheck,
         args=(client_id, asset_id),
