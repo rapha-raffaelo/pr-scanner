@@ -926,6 +926,40 @@ def brain_block_view(
     )
 
 
+@router.get("/settings/brain/version/{wanted}")
+def brain_version_view(
+    wanted: int, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Send a stamped text's version number to the wording it names.
+
+    Every generated angle, letter and brief carries the brain version it was
+    written under, and a number the reader cannot open is not provenance. So the
+    stamp links here and this resolves it: the change that produced that version
+    names a block, and the block page carries that version in its history with
+    the wording it put in force.
+
+    Falls back to the block list rather than a 404 for the three cases where
+    there is no single change to point at — version 0, which is every install
+    where nothing has ever been changed; a version whose row went missing with a
+    restored dump; and a change to a block the repository has since renamed away,
+    whose page the other two verbs already answer 404 for. In all three the
+    current standards are still the honest thing to show, and a dead link on a
+    letter is not.
+
+    Two path segments, so a block that were ever named ``version`` would live at
+    ``/settings/brain/version`` and not collide with this.
+    """
+    change = brain.change_at(session, wanted)
+    if change is None or (
+        change.key not in brain.shipped() and change.key not in brain.stored(session)
+    ):
+        return RedirectResponse("/settings#brain", status_code=_SEE_OTHER)
+    return RedirectResponse(
+        f"/settings/brain/{change.key}#brain-{change.key}-v{wanted}",
+        status_code=_SEE_OTHER,
+    )
+
+
 @router.post("/settings/brain/{key}")
 def edit_brain_block_route(
     key: str,

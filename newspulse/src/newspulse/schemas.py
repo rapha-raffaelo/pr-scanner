@@ -137,11 +137,30 @@ class ActionSuggestion(BaseModel):
     evidence: list[int] = Field(default_factory=list)
 
 
+# --- Provenance: the one field on these schemas the model does not fill ---------
+#
+# ``brain_version`` appears on the three schemas a generator stores. It is the
+# brain version (:func:`newspulse.brain.version`) the prompt was composed under,
+# written onto the validated draft by the generator at the moment it builds that
+# prompt. It rides along with the text to whoever stores it rather than being
+# re-read at save time: a standard edited between the model answering and the row
+# being written must not change what the finished text says it was written under.
+#
+# It is a field on the reply schema rather than a second return value because a
+# stamp a caller has to remember to pass is a stamp that will be missing from
+# whichever call site was added last. ``extra="ignore"`` would let a model that
+# volunteered its own ``brain_version`` be validated into the field, so the
+# generators overwrite it unconditionally on the way out and what the model said
+# never survives.
+
+
 class AdvisoryBrief(BaseModel):
     """The model's read of a client's situation plus what it would do about it."""
 
     situation: str
     suggestions: list[ActionSuggestion] = Field(default_factory=list)
+    #: See "Provenance" above. Set by :func:`newspulse.advisor.advise`.
+    brain_version: int | None = None
 
 
 # --- Angle: a positioning message the consultant can send on ---------------------
@@ -184,6 +203,8 @@ class AngleDraft(BaseModel):
     # Indices into the numbered developments the prompt supplied, so every draft
     # can be traced back to the coverage that triggered it.
     evidence: list[int] = Field(default_factory=list)
+    #: See "Provenance" above. Set by :func:`newspulse.angles.suggest`.
+    brain_version: int | None = None
 
 
 # --- Outreach: the impulse, written at one recipient -----------------------------
@@ -207,6 +228,8 @@ class PersonalMessage(BaseModel):
     subject: str = ""
     message: str
     hook: str = ""
+    #: See "Provenance" above. Set by :func:`newspulse.outreach.draft`.
+    brain_version: int | None = None
 
 
 class MessageReview(BaseModel):

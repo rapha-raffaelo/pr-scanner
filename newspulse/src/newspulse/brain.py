@@ -448,6 +448,23 @@ def history(session: Session, key: str) -> list[BrainOverride]:
     )
 
 
+def change_at(session: Session, wanted: int) -> BrainOverride | None:
+    """The change that produced version ``wanted``, or ``None`` if there is none.
+
+    What turns a stamp on a generated text into something readable: the number
+    names a moment in the standards, and this is the row that moment belongs to,
+    so the interface can send a reader to the wording rather than to the integer.
+
+    ``None`` is a normal answer, not a failure. Version 0 is every fresh install
+    — nothing has been changed, so no row produced it — and a version whose row
+    was lost with a restored dump reads the same way. Both mean "there is no
+    single change to point at", which the caller answers with the block list.
+    """
+    return session.scalars(
+        select(BrainOverride).where(BrainOverride.version == wanted)
+    ).first()
+
+
 def version(session: Session) -> int:
     """The portfolio-wide brain version: how many changes the standards have had.
 
@@ -626,6 +643,7 @@ __all__ = [
     "UnknownBlock",
     "block",
     "blocks",
+    "change_at",
     "compose",
     "current",
     "declared",

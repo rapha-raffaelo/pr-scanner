@@ -794,6 +794,14 @@ _EN: dict[str, str] = {
     # word ClientFact.filled_by uses, and translated for the same reason: it is a
     # value the interface renders, not a stored German noun the reader must parse.
     "mensch": "human",
+    # --- The stamp: which standards a generated text was written under ---------
+    # Two states and they must not blur. A number is a version somebody can open
+    # and read; "unbekannt" is a text from before the tool recorded any, and it
+    # is deliberately not rendered as version zero — zero is a true claim (the
+    # standards have never been changed here) that an old row cannot make.
+    "unbekannt": "unknown",
+    "vor der Aufzeichnung der Maßstäbe entstanden":
+        "written before the standards were recorded",
 }
 
 _TABLES = {"de": {}, "en": _EN}

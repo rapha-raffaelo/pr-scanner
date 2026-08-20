@@ -28,7 +28,36 @@
   .handover__why { font-size: var(--t-small); color: var(--muted); margin-bottom: var(--s3); max-width: 68ch; }
   .handover__act { font-size: var(--t-small); color: var(--muted); }
   .handover__act a { color: var(--accent); font-weight: 600; }
+  /* Provenance, not content: the standards a text was written under sit at the
+     foot of it in the smallest voice the system has. It is there to be found
+     when the question comes up, never to compete with the draft above it. */
+  .stamp { margin-top: var(--s2); font-size: var(--t-micro); color: var(--faint); }
+  .stamp a { color: inherit; text-underline-offset: 2px; }
 </style>
+
+{# The one line that says which standards a generated text was written under.
+   Used by both cards on this page — the position and the letter — because the
+   stamp is only worth something if it is on every generated text rather than on
+   whichever one was convenient to change.
+
+   A missing version renders as "unbekannt" and not as Fassung 0: zero is a real
+   version, the one a fresh install is at before anybody has changed a standard,
+   and a row stored before this column existed cannot honestly claim it.
+
+   `t` is passed in rather than read from the surrounding template: a macro does
+   not see what the block around it set, and a stamp that silently rendered its
+   German source string on an English page would be the mixed-language failure
+   the suite forbids. #}
+{% macro brain_stamp(version, t) %}
+  <div class="stamp">
+    {{ t("Maßstäbe") }}:
+    {% if version is not none %}
+      <a href="/settings/brain/version/{{ version }}">{{ t("Fassung") }} {{ version }}</a>
+    {% else %}
+      {{ t("unbekannt") }} ({{ t("vor der Aufzeichnung der Maßstäbe entstanden") }})
+    {% endif %}
+  </div>
+{% endmacro %}
 
 <div class="client-profile">
   <h1>{{ t("Impulse") }}</h1>
@@ -98,6 +127,7 @@
         {% if angle.overclaim %}
           <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
         {% endif %}
+        {{ brain_stamp(angle.brain_version, t) }}
 
         {# The lead of this page promises that every claim names the coverage it
            rests on. This card — the *detailed* view of a draft, reached from the
@@ -249,6 +279,10 @@
             <p class="letter__caveat">
               {{ t("Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.") }}
             </p>
+            {# The letter's own stamp, not the impulse's. A message is written
+               days after the position it comes from, and the house may have
+               changed its mind in between. #}
+            {{ brain_stamp(msg.brain_version, t) }}
           </article>
         {% endfor %}
 

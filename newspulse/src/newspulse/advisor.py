@@ -218,11 +218,18 @@ def advise(
     Deliberately raises rather than returning an empty brief on a backend error:
     "nothing to advise" and "the advisor failed" must not look alike to the
     operator.
+
+    The brief carries the brain version its prompt was composed under, captured
+    here rather than read again by :func:`store`, so a standard edited while the
+    model was writing belongs to the next brief and not to this one.
     """
     coverage = recent_coverage(session, client.id, days=days)
     if not coverage:
+        # No prompt was composed and no standard governed anything, so there is
+        # nothing to stamp: this brief is a sentence this module wrote itself.
         return AdvisoryBrief(situation="Keine Berichterstattung im Zeitraum."), []
 
+    written_under = brain.version(session)
     prompt = _prompt_template().substitute(
         client_profile=_client_profile(client),
         comms_guide=guide.for_prompt(client),
@@ -241,7 +248,12 @@ def advise(
         )
         for suggestion in brief.suggestions
     ]
-    return brief.model_copy(update={"suggestions": cleaned}), coverage
+    return (
+        brief.model_copy(
+            update={"suggestions": cleaned, "brain_version": written_under}
+        ),
+        coverage,
+    )
 
 
 def store(
@@ -252,13 +264,18 @@ def store(
     *,
     days: int = DEFAULT_DAYS,
 ) -> Advisory:
-    """Persist a brief as history. The newest row is the current view."""
+    """Persist a brief as history. The newest row is the current view.
+
+    The brain version comes off the brief: :func:`advise` captured it with the
+    prompt, and reading it again here would date the row to when it was saved.
+    """
     advisory = Advisory(
         client_id=client.id,
         covered_days=days,
         article_count=len(coverage),
         situation=brief.situation,
         suggestions=[s.model_dump(mode="json") for s in brief.suggestions],
+        brain_version=brief.brain_version,
     )
     session.add(advisory)
     session.commit()

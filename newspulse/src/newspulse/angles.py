@@ -218,6 +218,11 @@ def suggest(
     if not numbered:
         return None
 
+    # Read here and carried on the draft, not read again by `store`: the model
+    # call below takes seconds and the storing happens after it, so a standard
+    # edited in between would otherwise change what this text claims to have been
+    # written under. The version is captured with the prompt or it is a guess.
+    written_under = brain.version(session)
     prompt = _prompt_template().substitute(
         client_profile=_client_profile(client),
         # What the mandate stands for, if anyone has written it down. Without it
@@ -245,7 +250,10 @@ def suggest(
     # citation pointing at nothing reads as sloppiness in the whole draft.
     valid = range(len(numbered))
     cleaned = draft.model_copy(
-        update={"evidence": [i for i in draft.evidence if i in valid]}
+        update={
+            "evidence": [i for i in draft.evidence if i in valid],
+            "brain_version": written_under,
+        }
     )
     return cleaned, numbered
 
@@ -260,6 +268,11 @@ def store(
 
     Falls back to *all* the developments it was shown when the model cited none,
     so a draft is never displayed without the coverage behind it.
+
+    The brain version comes off the draft rather than being read here, because
+    here is the wrong moment: :func:`suggest` captured it when it composed the
+    prompt, and a standard edited while the model was writing belongs to the next
+    text and not to this one.
     """
     by_index = {item.index: item.article_id for item in numbered}
     cited = [by_index[i] for i in draft.evidence if i in by_index]
@@ -277,6 +290,7 @@ def store(
         overclaim=draft.overclaim.strip(),
         statements=[s.strip() for s in draft.statements if s.strip()],
         article_ids=cited or [item.article_id for item in numbered],
+        brain_version=draft.brain_version,
     )
     session.add(angle)
     session.commit()

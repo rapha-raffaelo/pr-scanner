@@ -183,7 +183,13 @@ def draft(
     answering "no" to a direct request is not honesty here, it is a broken button.
     A backend failure still raises, because "the draft failed" and "here is your
     draft" must never look alike.
+
+    The letter carries the brain version it was written under, captured here with
+    the prompt rather than read again by :func:`store`: the model call takes
+    seconds, the storing happens after it, and a standard edited in between
+    belongs to the next letter.
     """
+    written_under = brain.version(session)
     prompt = _prompt_template().substitute(
         client_profile=_client_profile(client),
         comms_guide=guide.for_prompt(client),
@@ -195,7 +201,8 @@ def draft(
         recipient_work=_recipient_work(target),
         own_coverage=_own_coverage_block(session, client.id),
     )
-    return _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
+    message = _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
+    return message.model_copy(update={"brain_version": written_under})
 
 
 _CROSSCHECK_RESOURCE = "prompts/crosscheck.txt"
@@ -292,7 +299,12 @@ def store(
     reviewed_by: str = "",
 ) -> Outreach:
     """Persist one message. Re-writing for the same recipient replaces the old
-    one: two drafts at the same journalist are two attempts, not two pitches."""
+    one: two drafts at the same journalist are two attempts, not two pitches.
+
+    The stamp is replaced with the text, for the same reason the review is: the
+    row then says which standards the letter *now* in it was written under, not
+    the ones behind a wording nobody can read any more.
+    """
     journalist = (target.journalist or "") if target else ""
     outlet = (target.outlet or "") if target else ""
     existing = session.scalars(
@@ -310,6 +322,7 @@ def store(
     row.subject = prose.plain(message.subject)
     row.message = prose.plain(message.message)
     row.hook = message.hook.strip()
+    row.brain_version = message.brain_version
     # A stored review always belongs to the text beside it: re-writing for the
     # same recipient clears the old verdict rather than letting it stand over a
     # letter it never read.
