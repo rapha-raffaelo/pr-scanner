@@ -695,8 +695,14 @@ class Checkable:
 
     The checkers take this rather than an ``Asset`` or an ``Outreach`` row, which
     is what lets the letter and the six formats go through the same code: what a
-    check needs is a text, a position and the evidence under it, and all seven
-    have those.
+    check needs is a text, the position it argues, and everything that was
+    provable when it was written, and all seven have those.
+
+    "Everything provable" is two blocks, not one, and both are load-bearing. The
+    stories under the impulse settle whether a claim about the coverage holds up;
+    the mandate's own facts settle whether a claim about the mandate does. Give a
+    checker only the first and it has to treat a quote from the profile's named
+    spokesperson exactly like an invented one.
     """
 
     #: How to name this text to the checker, in the accusative: "eine
