@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .models import ANSWERED_BY_DEFAULT, Client, OnboardingAnswer
@@ -123,6 +124,11 @@ class Question:
     feeds: tuple[Feed, ...]
     #: The clause after the targets: "jeder Text wird dagegen geprüft".
     note: str = ""
+    #: Greyed inside the empty field. Not a second copy of the help line — it
+    #: states the *shape* of the answer ("Unternehmen, und in einem Halbsatz
+    #: warum") where the help states why the question is asked. Empty where the
+    #: locked mock leaves it empty.
+    placeholder: str = ""
 
     @property
     def verb(self) -> str:
@@ -196,6 +202,7 @@ QUESTIONS: tuple[Question, ...] = (
         InputKind.LISTE,
         (Feed(Target.PROFIL, "Sprecher"),),
         note="wird in jedem Anschreiben verwendet",
+        placeholder="Weitere Person, Rolle, Themen",
     ),
     Question(
         "wettbewerber", "unternehmen",
@@ -203,6 +210,7 @@ QUESTIONS: tuple[Question, ...] = (
         "Wichtig für den Share of Voice. Die Vergleichsgruppe ist sonst geraten.",
         InputKind.ZEILE,
         (Feed(Target.VERGLEICHSGRUPPE),),
+        placeholder="Unternehmen, und in einem Halbsatz warum",
     ),
     Question(
         "zielgruppe", "unternehmen",
@@ -226,6 +234,7 @@ QUESTIONS: tuple[Question, ...] = (
         "Laufende Verfahren, Preise, Kundennamen, eine Personalie.",
         InputKind.ABSATZ,
         (Feed(Target.NOGO),),
+        placeholder="Thema, und ob Schweigen oder eine Sprachregelung gilt",
     ),
     Question(
         "unwahrheit", "sagen",
@@ -234,6 +243,7 @@ QUESTIONS: tuple[Question, ...] = (
         InputKind.ABSATZ,
         (Feed(Target.THEMENFELDER),),
         note="Material für Impulse",
+        placeholder="Behauptung, und womit Sie dagegenhalten können",
     ),
     Question(
         "wortwahl", "sagen",
@@ -301,6 +311,7 @@ QUESTIONS: tuple[Question, ...] = (
         "kalte Liste.",
         InputKind.LISTE,
         (Feed(Target.KONTAKTE),),
+        placeholder="Weiterer Name, Titel",
     ),
     Question(
         "schieflage", "medien",
@@ -355,6 +366,12 @@ def _check_question_set() -> None:
             raise ValueError(f"question {question.key!r} declares no target")
         if question.section not in SECTIONS_BY_KEY:
             raise ValueError(f"question {question.key!r} is in no known section")
+        for feed in question.feeds:
+            # A bare string here would render — ``Target`` is a ``StrEnum`` — and
+            # would name a destination that does not exist, which is the one
+            # thing the declaration is for.
+            if not isinstance(feed, Feed) or not isinstance(feed.target, Target):
+                raise ValueError(f"question {question.key!r} feeds no known target")
 
 
 _check_question_set()
@@ -371,6 +388,18 @@ def by_section() -> tuple[tuple[Section, tuple[Question, ...]], ...]:
 def entries(value: str) -> list[str]:
     """A list answer, one entry per line, blanks dropped."""
     return [line.strip() for line in value.split(_ENTRY_SEPARATOR) if line.strip()]
+
+
+def _one_line(entry: str) -> str:
+    """One entry, flattened onto the single line the store keeps it on.
+
+    Entries are separated by newlines, so an entry holding one would come back as
+    two on the next render: a pasted "Anna Verhoeven⏎Milan Roth" would quietly
+    become two spokespeople, one of them a name nobody typed as a name. The
+    page's own ``<input type=text>`` cannot produce it; the store is where the
+    rule belongs anyway.
+    """
+    return " ".join(entry.split())
 
 
 # --- The answer store ----------------------------------------------------------
@@ -396,6 +425,56 @@ def _stored(session: Session, client_id: int, key: str) -> OnboardingAnswer | No
     ).first()
 
 
+def _write(
+    session: Session,
+    client_id: int,
+    key: str,
+    *,
+    value: str,
+    skipped: bool,
+    answered_by: str,
+) -> OnboardingAnswer:
+    """Store one answer row, surviving a concurrent first save of the same question.
+
+    Read-then-insert races here for real. The routes are sync, so FastAPI runs
+    them in a threadpool and two requests genuinely interleave: two open tabs, or
+    "Speichern" and "Übergehen" clicked in turn — different elements, so htmx's
+    per-element queue does not serialise them. Both would find no row, both would
+    insert, and the loser would hit ``uq_onboarding_answers_key`` and take a
+    sentence transcribed from a call down with it in a 500.
+
+    So the loser rolls back, rereads the row the winner just wrote, and applies
+    its own answer on top. Last writer wins, which is what "the answer is stored
+    as it is entered" has to mean when two of them arrive at once — and the
+    unique constraint keeps doing its job of refusing a second row.
+    """
+
+    def apply(row: OnboardingAnswer) -> OnboardingAnswer:
+        row.value = value
+        row.skipped = skipped
+        row.answered_at = dt.datetime.now(dt.UTC)
+        row.answered_by = answered_by
+        return row
+
+    fresh = _stored(session, client_id, key) or OnboardingAnswer(
+        client_id=client_id, key=key
+    )
+    session.add(apply(fresh))
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        won = _stored(session, client_id, key)
+        if won is None:
+            # Not the unique constraint after all — a missing mandate, say. That
+            # is a caller's bug and has to stay visible.
+            raise
+        session.add(apply(won))
+        session.commit()
+        return won
+    return fresh
+
+
 def save_answer(
     session: Session,
     client: Client,
@@ -418,23 +497,18 @@ def save_answer(
     """
     if key not in QUESTIONS_BY_KEY:
         return None
-    existing = _stored(session, client.id, key)
     value = (value or "").strip()
     if not value:
+        existing = _stored(session, client.id, key)
         if existing is not None:
             session.delete(existing)
             session.commit()
         return None
-    row = existing or OnboardingAnswer(client_id=client.id, key=key)
-    row.value = value
-    row.answered_at = dt.datetime.now(dt.UTC)
-    row.answered_by = answered_by
-    # Answering a question that was passed over is the consultant coming back to
-    # it; the skip is spent.
-    row.skipped = False
-    session.add(row)
-    session.commit()
-    return row
+    # ``skipped=False``: answering a question that was passed over is the
+    # consultant coming back to it, and the skip is spent.
+    return _write(
+        session, client.id, key, value=value, skipped=False, answered_by=answered_by
+    )
 
 
 def skip(
@@ -453,16 +527,9 @@ def skip(
     """
     if key not in QUESTIONS_BY_KEY:
         return None
-    row = _stored(session, client.id, key) or OnboardingAnswer(
-        client_id=client.id, key=key
+    return _write(
+        session, client.id, key, value="", skipped=True, answered_by=answered_by
     )
-    row.value = ""
-    row.skipped = True
-    row.answered_at = dt.datetime.now(dt.UTC)
-    row.answered_by = answered_by
-    session.add(row)
-    session.commit()
-    return row
 
 
 def add_entry(
@@ -473,13 +540,21 @@ def add_entry(
     *,
     answered_by: str = ANSWERED_BY_DEFAULT,
 ) -> OnboardingAnswer | None:
-    """Append one line to a list answer, leaving the others alone."""
+    """Append one line to a list answer, leaving the others alone.
+
+    An entry already on the list is a double submit rather than a second person:
+    two identical chips cannot be told apart, and the delete button on either one
+    removes whichever index it happens to carry.
+    """
     question = QUESTIONS_BY_KEY.get(key)
-    if question is None or not question.is_list or not entry.strip():
+    entry = _one_line(entry)
+    if question is None or not question.is_list or not entry:
         return None
     existing = _stored(session, client.id, key)
     lines = entries(existing.value) if existing and not existing.skipped else []
-    lines.append(entry.strip())
+    if any(line.casefold() == entry.casefold() for line in lines):
+        return existing
+    lines.append(entry)
     return save_answer(
         session, client, key, _ENTRY_SEPARATOR.join(lines), answered_by=answered_by
     )

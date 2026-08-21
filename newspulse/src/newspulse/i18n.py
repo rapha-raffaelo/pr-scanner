@@ -907,8 +907,17 @@ _EN: dict[str, str] = {
     "Antwort löschen": "Delete answer",
     "Gefragt, aber keine Antwort — anders als noch nicht gefragt":
         "Asked, but no answer — which is not the same as not yet asked",
-    "Eintrag hinzufügen": "Add an entry",
     "Eintrag entfernen": "Remove entry",
+    # The placeholders from the locked mock. Each says the shape of the answer,
+    # which is why they are not a second copy of the help line above the field.
+    "Weitere Person, Rolle, Themen": "Another person, role, subjects",
+    "Unternehmen, und in einem Halbsatz warum":
+        "The company, and in half a sentence why",
+    "Thema, und ob Schweigen oder eine Sprachregelung gilt":
+        "The subject, and whether it is silence or an agreed wording",
+    "Behauptung, und womit Sie dagegenhalten können":
+        "The claim, and what you can hold against it",
+    "Weiterer Name, Titel": "Another name and title",
     "und": "and",
     # The progress rail. The figure is stated in words as well as drawn as a bar:
     # a bar says "some" where a consultant needs "eight".

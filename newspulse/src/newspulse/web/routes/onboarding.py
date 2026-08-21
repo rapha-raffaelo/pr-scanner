@@ -51,16 +51,19 @@ def _question_or_404(key: str) -> onboarding.Question:
 def _shared(
     session: Session, client: Client, stored: dict[str, OnboardingAnswer]
 ) -> dict:
-    """Context every render on this page needs, including the shared header's.
+    """Context both renders on this page need: the mandate and the progress figure.
 
     The answers are handed in rather than read here: both renders already hold
     them, and the progress figure is a count of exactly those rows.
+
+    The shared header's context is *not* here. A partial swaps back a fragment
+    that never extends ``base.html``, so building ``last_run`` for it would run a
+    query over ``runs`` and a count over ``articles`` on every blur, chip and
+    skip, to render nothing.
     """
     return {
         "client": client,
         "progress": onboarding.completeness(session, client.id, stored=stored),
-        "last_run": _fetch_last_run(session),
-        "header_date": dt.datetime.now(_local_tz()).date(),
     }
 
 
@@ -105,6 +108,10 @@ def kickoff_view(
         "onboarding.html",
         {
             **_shared(session, client, stored),
+            # Only the full page extends ``base.html``, so only the full page
+            # needs what the shared header renders.
+            "last_run": _fetch_last_run(session),
+            "header_date": dt.datetime.now(_local_tz()).date(),
             "groups": onboarding.by_section(),
             "answers": stored,
         },
@@ -137,18 +144,39 @@ def save_answer(
     return _saved(request, session, client, question)
 
 
+def _entry_index(raw: str) -> int | None:
+    """The index of the chip to drop, or ``None`` if the form did not name one.
+
+    Taken as text and parsed here rather than declared ``int`` on the route: a
+    missing or malformed ``index`` would then be answered with FastAPI's raw 422
+    JSON body, in the middle of a page where every other failure is a 404 or a
+    no-op and every other response is HTML.
+    """
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
 @router.post("/client/{client_id}/kickoff/{key}/remove")
 def remove_entry(
     request: Request,
     client_id: int,
     key: str,
-    index: int = Form(...),
+    index: str = Form(default=""),
     session: Session = Depends(get_db),
 ) -> Response:
-    """Drop one entry from a list answer, leaving its siblings alone."""
+    """Drop one entry from a list answer, leaving its siblings alone.
+
+    An index that names no chip changes nothing and re-renders the question as it
+    stands, which is also what a stale delete button does after someone else's
+    tab already removed that entry.
+    """
     client = _client_or_404(session, client_id)
     question = _question_or_404(key)
-    onboarding.remove_entry(session, client, key, index)
+    position = _entry_index(index)
+    if position is not None:
+        onboarding.remove_entry(session, client, key, position)
     return _saved(request, session, client, question)
 
 

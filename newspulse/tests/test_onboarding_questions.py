@@ -158,6 +158,12 @@ def test_every_question_and_section_string_has_an_english_entry():
     for question in onboarding.QUESTIONS:
         assert question.text in known, question.text
         assert question.help in known, question.help
+        # Every optional string the template puts through ``t()`` too: a note or a
+        # placeholder added later would otherwise render German on the English
+        # page without failing anything here.
+        for optional in (question.note, question.placeholder):
+            if optional:
+                assert optional in known, optional
         for feed in question.feeds:
             assert feed.target.value in known, feed.target.value
             if feed.slot:

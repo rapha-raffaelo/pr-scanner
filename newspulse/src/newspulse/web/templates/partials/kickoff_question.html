@@ -55,18 +55,23 @@
         hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}"
         hx-target="#q-{{ question.key }}" hx-swap="outerHTML"
         hx-trigger="{% if question.is_list %}submit{% else %}change, submit{% endif %}">
-    {# No placeholder on the prose fields: the help line is directly above them,
-       and a placeholder repeating it would be the same sentence twice, one of
-       them vanishing the moment anyone types. The list field is the exception —
-       there the placeholder says what the box does, which the help does not. #}
+    {# The placeholder is the question's own, from the locked mock, and it says
+       the *shape* of the answer where the help line above says why the question
+       is asked — "Unternehmen, und in einem Halbsatz warum" against "Wichtig für
+       den Share of Voice". Questions the mock leaves without one keep none:
+       repeating the help would be the same sentence twice, one of them vanishing
+       the moment anyone types. #}
+    {% set placeholder = t(question.placeholder) if question.placeholder else "" %}
     {% if question.is_prose %}
-      <textarea id="{{ field_id }}" name="value">{{ answer.value if answered else "" }}</textarea>
+      <textarea id="{{ field_id }}" name="value"
+                {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>{{ answer.value if answered else "" }}</textarea>
     {% elif question.is_list %}
-      <input type="text" id="{{ field_id }}" name="value" value=""
-             autocomplete="off" placeholder="{{ t('Eintrag hinzufügen') }}">
+      <input type="text" id="{{ field_id }}" name="value" value="" autocomplete="off"
+             {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>
     {% else %}
       <input type="text" id="{{ field_id }}" name="value"
-             value="{{ answer.value if answered else '' }}">
+             value="{{ answer.value if answered else '' }}"
+             {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>
     {% endif %}
   </form>
 
@@ -94,7 +99,13 @@
             hx-target="#q-{{ question.key }}" hx-swap="outerHTML">
         <button type="submit" class="linkbtn">{{ t("Doch beantworten") }}</button>
       </form>
-    {% else %}
+    {% elif not answered %}
+      {# Not offered beside a stored answer. Skipping drops the value, so one
+         stray click on the button next to "Speichern" would destroy a sentence
+         transcribed from a call — the same loss the blur rule exists to prevent,
+         one element to the right. The way from answered to passed over is
+         "Antwort löschen" and then this button, which is two deliberate acts and
+         reads as what it is. #}
       <form method="post" action="/client/{{ client.id }}/kickoff/{{ question.key }}/skip"
             hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}/skip"
             hx-target="#q-{{ question.key }}" hx-swap="outerHTML">

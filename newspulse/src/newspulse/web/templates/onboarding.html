@@ -94,8 +94,12 @@
   .rail__note { font-size: var(--t-caption); color: var(--muted); margin-top: var(--s4);
                 padding-top: var(--s3); border-top: 1px dashed var(--line); }
 
-  .foot { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap;
-          margin-top: var(--s5); }
+  /* The mock draws a primary action here, "Guide daraus erzeugen", beside the
+     hint. It writes comms_guide, which this story is expressly forbidden to
+     touch, so the button arrives with the adoption step (ONB-02) and the flex row
+     that holds it arrives with the button. Until then this is one line of text,
+     styled as one line of text rather than as a row with a single child. */
+  .foot { margin-top: var(--s5); }
   .foot__hint { font-size: var(--t-footnote); color: var(--muted); max-width: 60ch; }
 
   @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } .rail { position: static; } }
