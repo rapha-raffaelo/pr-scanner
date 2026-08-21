@@ -919,12 +919,12 @@ _EN: dict[str, str] = {
     "Eine offene Frage ist ein Befund, keine Lücke im Formular.":
         "An open question is a finding, not a gap in a form.",
     "Keine Frage mehr offen.": "No question left open.",
-    "Jede Antwort wird beim Verlassen des Feldes gespeichert. Der Fragebogen muss "
-    "nicht in einem Zug fertig werden, und was fehlt, bleibt sichtbar offen statt "
-    "geraten.":
-        "Every answer is stored as you leave the field. The questionnaire does not "
-        "have to be finished in one sitting, and what is missing stays visibly "
-        "open rather than guessed.",
+    "Eine Antwort wird beim Verlassen des Feldes gespeichert, ein Listeneintrag "
+    "beim Hinzufügen. Der Fragebogen muss nicht in einem Zug fertig werden, und "
+    "was fehlt, bleibt sichtbar offen statt geraten.":
+        "An answer is stored as you leave the field, a list entry when you add it. "
+        "The questionnaire does not have to be finished in one sitting, and what "
+        "is missing stays visibly open rather than guessed.",
 }
 
 _TABLES = {"de": {}, "en": _EN}
