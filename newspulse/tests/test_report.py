@@ -1067,8 +1067,8 @@ def test_a_dash_in_a_claim_is_rewritten_before_it_is_stored(session, mandate):
 
 def test_a_report_carries_at_most_the_handful_it_is_worth(session, mandate, caplog):
     """And says so in the log. The cap is a drop like any other, and these are
-    findings that passed every guard: a consultant looking for the sixth statement
-    he expected has nowhere else to find out what happened to it."""
+    findings that passed every guard: a consultant looking for an expected sixth
+    statement has nowhere else to find out what happened to it."""
     client, _ = mandate
     figures = citable_figures(session, client, JULY)
     coverage = _ref(figures, MetricKey.COVERAGE)

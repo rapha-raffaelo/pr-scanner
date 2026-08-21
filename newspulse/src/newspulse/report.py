@@ -623,7 +623,7 @@ def findings(
     if len(accepted) > MAX_FINDINGS:
         # The cap is a drop like any other, and the rule is that a drop is logged
         # rather than shown. These are findings that passed every guard, so a
-        # consultant wondering why a sixth statement he expected is not in the
+        # consultant wondering why an expected sixth statement is not in the
         # document has nowhere else to look for the answer.
         _log.info(
             "report for %r keeps %d of %d accepted findings; dropped: %s",
