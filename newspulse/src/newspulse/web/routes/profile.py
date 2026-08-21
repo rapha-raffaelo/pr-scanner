@@ -123,9 +123,9 @@ async def save_profile(
     """Save the whole form. Whatever a person typed here outranks the machine.
 
     Async because the form is read off the request body rather than declared
-    field by field: the profile is a list of keys in one module, and repeating all
-    fourteen of them in a signature would mean a new field is two edits, one of
-    which is easy to forget.
+    field by field: the profile is a list of keys in one module, and repeating
+    every one of them in a signature would mean a new field is two edits, one of
+    which is easy to forget — as the three this story added would have been.
     """
     client = session.get(Client, client_id)
     if client is None:

@@ -855,9 +855,18 @@ ExtractionError = guide.ExtractionError
 #: because a rule that has been reworded is a different rule.
 _NOGO_HEADING = "No-Gos, wörtlich aus dem Kickoff:"
 
-#: What the draft says instead of inventing a section nobody answered.
+#: What the draft says instead of inventing a section nobody answered. The note
+#: describes the guide rather than instructing anyone: this text is saved, and
+#: ``guide.for_prompt`` prepends the saved guide to every generated text under
+#: the word "Verbindlich". A bare "Nichts ergänzen." in that block reads as an
+#: order to the drafting model about the whole prompt rather than as a remark
+#: about three named sections, so it says what is true instead: this guide has
+#: nothing to say about them.
 _MISSING_HEADING = "Im Kickoff nicht beantwortet:"
-_MISSING_NOTE = "Zu diesen Punkten liegt nichts vor. Nichts ergänzen."
+_MISSING_NOTE = (
+    "Zu diesen Punkten liegt aus dem Kickoff nichts vor; dieser Guide sagt "
+    "dazu nichts."
+)
 
 
 @dataclass(frozen=True, slots=True)

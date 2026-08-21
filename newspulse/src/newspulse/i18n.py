@@ -651,9 +651,13 @@ _EN: dict[str, str] = {
     "Noch keine: dafür braucht es Medien, die mehrfach über den Wettbewerb geschrieben haben.":
         "None yet: that needs outlets which have written about the competition "
         "more than once.",
+    # The lead is split around the mandate's name and the window, so the two
+    # fragments either side of it need entries of their own.
+    "Wie": "How",
     "gegen sein Feld steht — Anteil, Themen und die Medien, die über die anderen schreiben und nicht über ihn. Alle Zahlen aus den letzten":
         "stands against its field: share, subjects, and the outlets that write "
         "about the others and not about them. Every figure from the last",
+    "Tagen": "days",
     "Fragen": "Ask",
     "Frage stellen…": "Ask a question…",
     # --- Captain Comms: voice ------------------------------------------------

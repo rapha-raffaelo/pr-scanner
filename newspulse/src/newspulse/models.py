@@ -766,8 +766,9 @@ class ClientFact(Base):
         """Whether an older value is still standing beside this one.
 
         Read by the profile page rather than having it compare a string against
-        the empty one: "there is a superseded value" is the question being asked,
-        and the timestamp is what says a supersession actually happened.
+        the empty one: "there is a superseded value" is the question being asked.
+        The value is what answers it; ``superseded_at`` is provenance for the
+        line beside it and never decides whether the line is shown.
         """
         return bool(self.superseded_value.strip())
 

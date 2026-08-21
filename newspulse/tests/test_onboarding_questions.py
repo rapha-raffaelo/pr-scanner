@@ -20,6 +20,8 @@ a full questionnaire is run against a byte-for-byte snapshot of ``client_facts``
 from __future__ import annotations
 
 import datetime as dt
+import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,6 +33,7 @@ from sqlalchemy.pool import StaticPool
 from newspulse import guide, i18n, onboarding
 from newspulse import profile as profiles
 from newspulse.models import Base, Client, ClientFact, OnboardingAnswer
+from newspulse.web import app as web_app
 from newspulse.web.app import create_app, get_db
 
 
@@ -1406,10 +1409,39 @@ def test_converting_a_questionnaire_adopts_none_of_it(web, session):
     assert list(session.get(Client, client.id).competitors) == []
 
 
-def test_every_new_kickoff_conversion_string_has_an_english_entry():
+#: The four pages the kick-off conversion writes onto. Read off disk rather than
+#: listed as strings, because a hand-copied list of literals is exactly the thing
+#: that stops matching the template the next time somebody edits one.
+_CONVERSION_PAGES = (
+    "client_profile.html",
+    "client_guide.html",
+    "client_rivals.html",
+    "clients.html",
+)
+
+#: ``t("…")`` as Jinja calls it. The lookbehind is what keeps the pattern off the
+#: tail of an identifier that happens to end in ``t`` — ``document.createElement(
+#: "div")`` in an inline script would otherwise read as a translated string.
+_TRANSLATED = re.compile(r'(?<![\w.])t\(\s*"([^"]*)"\s*\)')
+
+
+def test_every_string_on_the_kickoff_conversion_pages_has_an_english_entry():
     """The same rule as the questionnaire's own strings: a German line on an
-    English page is the mixed UI the i18n table exists to prevent."""
+    English page is the mixed UI the i18n table exists to prevent.
+
+    The pages are scanned rather than the literals listed, so the next string
+    added to one of them is covered by this test on the day it is written and not
+    on the day somebody remembers to extend a list here.
+    """
     known = set(i18n.known_keys())
+    templates = Path(web_app.__file__).parent / "templates"
+
+    for name in _CONVERSION_PAGES:
+        found = _TRANSLATED.findall((templates / name).read_text("utf-8"))
+        assert found, f"{name} renders no translated string at all"
+        assert [s for s in found if s in known] == found, (
+            name, sorted({s for s in found if s not in known})
+        )
 
     assert onboarding.SOURCE_NAME in known
     for key in onboarding._PROFILE_SLOTS.values():
