@@ -560,11 +560,17 @@ def test_a_figure_outside_the_permitted_set_cannot_be_built():
 def test_the_names_the_trade_asks_for_are_all_refused():
     for name in FORBIDDEN_FIGURES:
         assert is_forbidden(name)
-    for wording in ("Geschätzte Reichweite", "Werbeäquivalenz in EUR", "AVE"):
+    for wording in ("Geschätzte Reichweite", "Werbeäquivalenz in EUR", "AVE", "Reach"):
         assert is_forbidden(wording)
 
 
 def test_a_permitted_figure_is_not_refused_by_the_guard():
-    """The guard has to be narrow enough to leave the real figures alone."""
-    for name in ("Beiträge", "Anteil am Marktgespräch", "Average der Wichtigkeit"):
+    """The guard has to be narrow enough to leave the real figures alone: refusing
+    "Outreach" would take the one figure this feature exists to produce."""
+    for name in (
+        "Beiträge",
+        "Anteil am Marktgespräch",
+        "Average der Wichtigkeit",
+        "Outreach-Anschreiben",
+    ):
         assert not is_forbidden(name)

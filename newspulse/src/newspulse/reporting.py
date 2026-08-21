@@ -384,17 +384,19 @@ FORBIDDEN_FIGURES: frozenset[str] = frozenset(
         "leserschaft",
         "visits",
         "unique user",
-        # The trade's acronyms, matched as whole words — see _MIN_SUBSTRING_TERM.
+        # Short terms, matched as whole words — see _MIN_SUBSTRING_TERM.
         "ave",
         "ots",
+        "reach",
     }
 )
 
-#: A forbidden term this short is an acronym and is matched as a whole word; any
-#: longer one is matched anywhere in the name, so "geschätzte Reichweite" is the
-#: same refusal as "Reichweite". Without the split, "ave" would refuse "Average"
-#: and every other word that happens to contain it.
-_MIN_SUBSTRING_TERM = 5
+#: A forbidden term shorter than this is matched as a whole word; any longer one is
+#: matched anywhere in the name, so "geschätzte Reichweite" is the same refusal as
+#: "Reichweite". The split is what keeps "ave" from refusing "Average" and "reach"
+#: from refusing "Outreach", which is a word this product uses for something else
+#: entirely.
+_MIN_SUBSTRING_TERM = 6
 
 #: Below this a difference between two shares is float noise, not a movement.
 _DIRECTION_EPSILON = 1e-9
