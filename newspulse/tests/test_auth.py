@@ -225,3 +225,24 @@ def test_forwarded_headers_trusted_only_when_a_proxy_is_in_front():
         )
     for public in ("0.0.0.0", "::"):
         assert forwarded_allow_ips(public) == "*"
+
+
+def test_a_non_ascii_credential_is_refused_rather_than_crashing(monkeypatch):
+    """`hmac.compare_digest` raises TypeError on a str above U+007F, and the
+    middleware does not catch it. An unauthenticated request carrying an umlaut
+    in the header was a 500, and an umlaut in the configured password broke
+    every request instead of one."""
+    import base64
+
+    from newspulse import config
+    from newspulse.web import auth
+
+    monkeypatch.setattr(config, "AUTH_USER", "lucas")
+    monkeypatch.setattr(config, "AUTH_PASSWORD", "geheim")
+    header = "Basic " + base64.b64encode("ü:x".encode()).decode()
+
+    assert auth._credentials_match(header) is False
+
+    monkeypatch.setattr(config, "AUTH_PASSWORD", "gehäim")
+    right = "Basic " + base64.b64encode("lucas:gehäim".encode()).decode()
+    assert auth._credentials_match(right) is True

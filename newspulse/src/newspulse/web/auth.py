@@ -101,8 +101,10 @@ def _credentials_match(header: str | None) -> bool:
     user, _, password = decoded.partition(":")
     # compare_digest on both halves, and never short-circuit between them: an
     # early return on a wrong username would leak whether the name was right.
-    user_ok = hmac.compare_digest(user, config.AUTH_USER)
-    password_ok = hmac.compare_digest(password, config.AUTH_PASSWORD)
+    user_ok = hmac.compare_digest(user.encode("utf-8"), config.AUTH_USER.encode("utf-8"))
+    password_ok = hmac.compare_digest(
+        password.encode("utf-8"), config.AUTH_PASSWORD.encode("utf-8")
+    )
     return user_ok and password_ok
 
 

@@ -289,3 +289,34 @@ def test_folding_stops_at_gmail(configured, other):
     folding them would let one address stand in for another — the allow-list
     would then admit people it was never given."""
     assert not google_auth.is_allowed(other)
+
+
+def test_the_sign_in_page_does_not_publish_who_may_sign_in(web, configured):
+    """/login is served to anyone who finds the URL.
+
+    It used to print both allowed addresses under the button, which handed a
+    stranger the exact two accounts whose compromise opens the whole client
+    portfolio: a target list, published by the page whose job is to keep them
+    out. Somebody who belongs here already knows which of their addresses to
+    pick; somebody who does not is told after Google, by name, in the error.
+    """
+    body = web.get("/login").text
+
+    assert _ALLOWED not in body
+    assert "lucas.neurauter@gmail.com" not in body
+    # And the page still says there is a list, so a refusal later is not a
+    # surprise about a rule nobody mentioned.
+    assert "freigegebene Konten" in body
+
+
+def test_an_empty_secret_file_is_taken_over_rather_than_crashing(configured):
+    """A key file that exists and is empty used to raise FileExistsError out of
+    every request: the O_EXCL open sat outside the handler written for it."""
+    path = google_auth.secret_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"   \n")
+
+    first = google_auth.session_secret()
+
+    assert first.strip()
+    assert google_auth.session_secret() == first, "and it stays put afterwards"

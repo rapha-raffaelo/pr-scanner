@@ -212,12 +212,19 @@ def session_secret() -> bytes:
     path.parent.mkdir(parents=True, exist_ok=True)
     # Opened with the mode rather than written and then chmod-ed: the second
     # shape leaves the key world-readable for the moment that matters.
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _SECRET_MODE)
     try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(generated)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _SECRET_MODE)
     except FileExistsError:  # a parallel worker won the race; theirs is fine
-        return path.read_bytes().strip()
+        existing = path.read_bytes().strip()
+        if existing:
+            return existing
+        # Present and empty: nothing to adopt and nothing that will ever fill
+        # it, so this worker takes the file over rather than looping.
+        path.write_bytes(generated)
+        path.chmod(_SECRET_MODE)
+        return generated
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(generated)
     return generated
 
 

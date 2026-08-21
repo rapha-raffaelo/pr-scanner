@@ -86,7 +86,6 @@ def login_page(request: Request, next: str | None = None, error: str | None = No
             "next": _safe_next(next),
             "error": error,
             "configured": google_auth.is_configured(),
-            "allowed": sorted(google_auth.allowed_emails()),
         },
     )
 

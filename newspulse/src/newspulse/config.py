@@ -208,7 +208,8 @@ def _load_dotenv() -> None:
     machine; on a server the platform's own configuration must not be silently
     overridden by a file that happened to be committed alongside the code.
     """
-    path = Path(os.environ.get("NEWSPULSE_ENV_FILE", "")) or Path.cwd() / ".env"
+    configured = os.environ.get("NEWSPULSE_ENV_FILE", "").strip()
+    path = Path(configured) if configured else Path.cwd() / ".env"
     try:
         text = path.read_text("utf-8")
     except OSError:

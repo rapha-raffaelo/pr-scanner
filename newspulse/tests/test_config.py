@@ -10,6 +10,7 @@ hours early.
 from __future__ import annotations
 
 import datetime as dt
+import os
 from zoneinfo import ZoneInfo
 
 from newspulse import config
@@ -72,3 +73,35 @@ def test_local_zone_reads_the_module_value(monkeypatch):
     """Callers go through the accessor, so a test (or a reload) can swap it."""
     monkeypatch.setattr(config, "LOCAL_ZONE", ZoneInfo("Pacific/Auckland"))
     assert config.local_zone() == ZoneInfo("Pacific/Auckland")
+
+
+def test_the_env_file_is_actually_read(tmp_path, monkeypatch):
+    """It never was. `Path("")` is `Path(".")` and truthy, so the `or` fallback
+    was dead and every run read the working directory instead, swallowing the
+    IsADirectoryError. A key somebody put in .env was silently ignored."""
+    from newspulse import config
+
+    env = tmp_path / ".env"
+    env.write_text('NEWSPULSE_TESTVALUE="aus der Datei"\n# ein Kommentar\n', "utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("NEWSPULSE_ENV_FILE", raising=False)
+    monkeypatch.delenv("NEWSPULSE_TESTVALUE", raising=False)
+
+    config._load_dotenv()
+
+    assert os.environ["NEWSPULSE_TESTVALUE"] == "aus der Datei"
+
+
+def test_a_real_environment_variable_still_wins(tmp_path, monkeypatch):
+    """The file is for a developer's machine; the platform's own configuration
+    must not be overridden by a file that shipped beside the code."""
+    from newspulse import config
+
+    (tmp_path / ".env").write_text("NEWSPULSE_TESTVALUE=aus der Datei\n", "utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("NEWSPULSE_ENV_FILE", raising=False)
+    monkeypatch.setenv("NEWSPULSE_TESTVALUE", "aus der Umgebung")
+
+    config._load_dotenv()
+
+    assert os.environ["NEWSPULSE_TESTVALUE"] == "aus der Umgebung"

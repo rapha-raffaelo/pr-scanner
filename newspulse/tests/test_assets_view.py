@@ -1288,3 +1288,66 @@ def test_no_german_string_is_translated_twice():
 
 
 _STATE_NAMES = ("Nicht geschrieben", "Entwurf", "Geprüft", "Freigegeben")
+
+
+# --- Two people, one release ---------------------------------------------------
+
+
+def test_the_first_release_stands_when_two_sessions_race(factory):
+    """The docstring on ``assets.release`` has always promised this and the code
+    did not do it.
+
+    Each request gets its own session, so both can read released_at IS NULL
+    before either writes. Without a WHERE on the update the second click simply
+    overwrote who took responsibility and when, which is the one thing this row
+    exists to record. The outreach ledger has always guarded it in the database;
+    this is the same guard.
+    """
+    with factory() as setup:
+        client, angle = _mandate(setup)
+        stored = _produce(setup, client, angle)
+        asset_id = stored.id
+
+    first, second = factory(), factory()
+    a, b = first.get(Asset, asset_id), second.get(Asset, asset_id)
+    assert not a.released and not b.released, "both read it as unreleased"
+
+    assets.release(first, a, by="anna")
+    assets.release(second, b, by="bert")
+
+    with factory() as check:
+        row = check.get(Asset, asset_id)
+    assert row.released_by == "anna", "the first release stands"
+
+
+def test_a_release_landing_mid_recheck_is_not_written_over(factory, monkeypatch):
+    """The route refuses a released text before it starts a re-check, and then
+    two model calls go by. A release landing in that window used to have a
+    verdict written over it, leaving the row asserting that somebody released a
+    text nothing had read, with a release older than the check under it."""
+    with factory() as setup:
+        client, angle = _mandate(setup)
+        stored = _produce(setup, client, angle)
+        asset_id, client_id = stored.id, client.id
+
+    worker = factory()
+    asset = worker.get(Asset, asset_id)
+    mandate = worker.get(Client, client_id)
+
+    def _release_meanwhile(*args, **kwargs):
+        # The consultant presses Freigeben while the models are still thinking.
+        with factory() as other:
+            assets.release(other, other.get(Asset, asset_id), by="lucas")
+        raise assets.AnalyzerError("Das Zweitmodell antwortet nicht.")
+
+    monkeypatch.setattr(assets, "check", _release_meanwhile)
+
+    with pytest.raises(assets.Refused):
+        assets.recheck(worker, mandate, asset)
+
+    with factory() as check:
+        row = check.get(Asset, asset_id)
+    assert row.released_by == "lucas"
+    assert assets.CHECK_UNAVAILABLE not in (row.review or ""), (
+        "and no verdict was written over the release"
+    )

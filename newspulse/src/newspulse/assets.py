@@ -59,7 +59,7 @@ from functools import lru_cache
 from importlib import resources
 from string import Template
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from . import brain, config, gemini, guide, pitch, profile, prose
@@ -2586,19 +2586,35 @@ def recheck(
         angle,
         AssetDraft(title=asset.title, body=asset.body, speaker=asset.speaker),
     )
+    verdicts: Checked | None = None
+    unavailable = ""
     try:
-        _apply_checks(
-            asset,
-            check(session, client, item, generate=generate,
-                  guide_generate=guide_generate),
-        )
+        verdicts = check(session, client, item, generate=generate,
+                         guide_generate=guide_generate)
     except _CHECK_FAULTS as exc:
         _log.warning("re-check of %s for %r failed: %s", asset.kind, client.name, exc)
-        _apply_checks(asset, None)
         # The sentence on its own line, the backend's words under it. The page
         # renders this field line by line through the translator, so the reader's
         # half is looked up and the operator's half passes through as written.
-        asset.review = f"{CHECK_UNAVAILABLE}\n{exc}"
+        unavailable = f"{CHECK_UNAVAILABLE}\n{exc}"
+
+    # Re-read before writing, and outside the handler above: ``Refused`` is a
+    # RuntimeError and _CHECK_FAULTS catches those, so a guard inside the try
+    # would have been swallowed and written the very row it refused.
+    #
+    # The route refused a released text before it spawned this worker, and two
+    # model calls have happened since — tens of seconds in which the release
+    # button is still live, because a text nobody has edited stays releasable
+    # throughout. A verdict written over a release leaves the row saying
+    # something nothing can explain: that somebody released a text nothing had
+    # read, with a release timestamp older than the check it appears to rest on.
+    session.expire(asset)
+    if asset.released:
+        raise Refused(RELEASED_IS_FINAL)
+
+    _apply_checks(asset, verdicts)
+    if unavailable:
+        asset.review = unavailable
         # Never ok: an unread text must draw with the warning dot, not the clean
         # one, whatever the reader then decides to do about it.
         asset.review_ok = False
@@ -2626,10 +2642,26 @@ def release(session: Session, asset: Asset, by: str = "") -> Asset:
         return asset
     if needs_recheck(asset):
         raise Refused(UNREAD_SINCE_EDIT)
-    asset.released_at = dt.datetime.now(dt.UTC)
-    asset.released_by = by.strip()[:_MAX_RELEASER_CHARS]
-    session.add(asset)
+    # The freeze holds in the database, not in the copy this session read. The
+    # in-memory check above is what stops the common second click; it is not
+    # what makes the first release stand, because two requests each get their
+    # own session and both can read released_at IS NULL before either writes.
+    # Without the WHERE the second unconditionally overwrote who took
+    # responsibility and when — the one field this row exists to record. Same
+    # shape as outreach.release, which has always done it this way.
+    session.execute(
+        update(Asset)
+        .where(Asset.id == asset.id, Asset.released_at.is_(None))
+        .values(
+            released_at=dt.datetime.now(dt.UTC),
+            released_by=by.strip()[:_MAX_RELEASER_CHARS],
+        )
+        .execution_options(synchronize_session=False)
+    )
     session.commit()
+    # Whether this request won or lost the write, the row now shows the release
+    # that actually stands.
+    session.refresh(asset)
     return asset
 
 
