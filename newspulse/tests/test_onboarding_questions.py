@@ -1069,6 +1069,23 @@ def test_regenerating_replaces_the_kickoff_source_rather_than_piling_up(session)
     assert "Immer Kundinnen und Kunden, nie User." in stored[0].text
 
 
+def test_regenerating_does_not_push_the_kickoff_ahead_of_a_newer_document(session):
+    """``sources`` is newest first and the distillation spends its budget in that
+    order, so a bumped date would put the questionnaire in front of a brand book
+    uploaded since — on every later distillation, including the document one the
+    kick-off had nothing to do with. A new version is not a newer source."""
+    client = _client(session)
+    _kickoff(session, client)
+    onboarding.to_guide_draft(session, client, invoke=_distilled())
+    guide.store_source(session, client, "markenbuch.pdf", "Wir schreiben sachlich.")
+
+    onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    assert [s.filename for s in guide.sources(session, client.id)] == [
+        "markenbuch.pdf", onboarding.SOURCE_NAME
+    ]
+
+
 def test_an_uploaded_document_survives_the_kickoff_source(session):
     """Two ways in, both sources. The brand book is not replaced by the call."""
     client = _client(session)

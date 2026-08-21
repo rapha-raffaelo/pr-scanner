@@ -29,7 +29,6 @@ copied on every deploy is worth more than being able to hand the original back.
 
 from __future__ import annotations
 
-import datetime as dt
 import io
 import logging
 from dataclasses import dataclass
@@ -149,16 +148,24 @@ def replace_source(
     something that keeps being answered, and a fresh copy on every regeneration
     would push the real documents out of the distillation's character budget with
     six near-identical versions of itself.
+
+    Replacing keeps the original ``uploaded_at`` for the same reason. ``sources``
+    is ordered newest first and :func:`distill` spends its budget in that order,
+    so a bumped timestamp would put the questionnaire in front of a brand book
+    uploaded since — on every later distillation, including the plain document
+    one the kick-off had nothing to do with. A new version of the same source is
+    not a newer source.
     """
     existing = session.scalars(
         select(GuideSource).where(
             GuideSource.client_id == client.id, GuideSource.filename == filename
         )
     ).first()
+    # A new row takes its date from the column default; an existing one keeps the
+    # date it already had.
     source = existing or GuideSource(client_id=client.id, filename=filename)
     source.text = text
     source.characters = len(text)
-    source.uploaded_at = dt.datetime.now(dt.UTC)
     session.add(source)
     session.commit()
     return source
