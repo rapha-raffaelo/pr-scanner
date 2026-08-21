@@ -77,7 +77,7 @@ from .models import (
     visible_coverage,
 )
 from .pitch import PitchTarget
-from .schemas import MessageReview, PersonalMessage, without_provenance
+from .schemas import GuideVerdict, MessageReview, PersonalMessage, without_provenance
 
 if TYPE_CHECKING:
     # Only for the two signatures below. The ledger records *that* a letter went
@@ -106,6 +106,12 @@ _RELEASED_BY_MAX = 80
 #: only needs to avoid repeating itself.
 _OWN_COVERAGE_DAYS = 60
 _MAX_OWN_COVERAGE = 6
+
+#: The width of ``Outreach.guide_reviewed_by``. SQLite does not enforce it, so an
+#: over-long model id would ride along here and be rejected or silently cut the
+#: day this database is anything else. Cut where the value is written instead, so
+#: the row says the same thing on every backend.
+_MODEL_NAME_MAX = 80
 
 
 def _prompt_template() -> Template:
@@ -336,7 +342,11 @@ def crosscheck(
 
 
 def _message_fields(
-    message: PersonalMessage, review: MessageReview | None, reviewed_by: str
+    message: PersonalMessage,
+    review: MessageReview | None,
+    reviewed_by: str,
+    guide_verdict: "GuideVerdict | None" = None,
+    guide_checked_by: str = "",
 ) -> dict:
     """The columns one drafted text writes, shared by both of ``store``'s paths."""
     # A stored review always belongs to the text beside it: re-writing for the
@@ -365,6 +375,123 @@ def _message_fields(
             if review else None
         ),
         "generated_at": dt.datetime.now(dt.UTC),
+        # Both verdicts are cleared by a redraft, for the same reason: the
+        # dangerous direction is a new text inheriting the previous letter's
+        # clean check.
+        **_guide_fields(guide_verdict, guide_checked_by),
+    }
+
+
+def _as_stored(message: PersonalMessage) -> PersonalMessage:
+    """The letter as :func:`store` will write it down.
+
+    A breach quotes the draft's sentence verbatim so it can be found in the letter
+    beside it, and ``store`` runs every letter through :func:`newspulse.prose.plain`
+    first. Checking the text before that step would let a breach quote a sentence
+    with an em dash in it — the one artefact ``plain`` exists to remove, and the
+    one the models relapse into — which is then nowhere to be found in the stored
+    letter, and a quote that cannot be located is the thing this pair of quotes
+    exists to prevent.
+
+    Only the guide check reads this. :func:`crosscheck` above deliberately keeps
+    the raw draft: it reports the dash *itself* as a concern, and normalising
+    first would take away the very thing it is looking for.
+    """
+    return message.model_copy(
+        update={
+            "subject": prose.plain(message.subject),
+            "message": prose.plain(message.message),
+        }
+    )
+
+
+def guide_check(
+    client: Client, message: PersonalMessage
+) -> tuple[GuideVerdict | None, str]:
+    """Read the letter against this client's own guide, and never raise.
+
+    Fault-isolated exactly like :func:`crosscheck`, and separately from it: the
+    two are different questions asked of different prompts, so a failure in one
+    must leave the other's answer standing. The letter is written by this point
+    and it is worth more than any verdict on it.
+
+    Every outcome is :data:`newspulse.guide.NOT_CHECKED` — the same pair a client
+    with no stored guide gets — but the log tells the two apart: a provider that
+    failed or answered with nonsense is a defect and says so at ERROR, while a
+    deployment with no second model configured is a setting nobody made, is not
+    news at ERROR on every letter written, and is already on the page in the
+    crosscheck's own words (it fails first, on the same missing key, and writes
+    the sentence the consultant actually reads).
+
+    Public and living here rather than beside one of its callers, because there
+    are two of them — the advisory worker and onboarding's first letter — and a
+    writer that reaches :func:`store` without passing through this is a letter
+    whose guide went unread with nothing on the page saying so.
+    """
+    stored = _as_stored(message)
+    try:
+        answer = guide.check_guide(
+            client,
+            title=stored.subject,
+            body=stored.message,
+            kind="Anschreiben",
+        )
+    except Exception as exc:  # noqa: BLE001 — any backend or parse failure is one state
+        _log.error("guide check failed for %r: %s", client.name, exc)
+        return None, ""
+    # None means the mandate has no guide on file. Not a pass, and not an error
+    # either: the row stores no reviewer, which is what makes the page say the
+    # check could not run rather than that it found nothing.
+    if answer is None:
+        return None, ""
+    return answer
+
+
+#: Filed under this when a verdict arrives with no model name. Never happens
+#: through :func:`newspulse.guide.check_guide`, which names the model whenever it
+#: returns a verdict; a caller that manages it anyway gets a visible objection
+#: rather than an invisible one.
+_UNNAMED_MODEL = "unbenanntes Modell"
+
+
+def _guide_fields(verdict: GuideVerdict | None, checked_by: str) -> dict:
+    """The guide check's three states as columns, or cleared.
+
+    ``None`` is not "leave what is there": it is "nothing checked *this* text".
+    Cleared on every write, exactly like the crosscheck's fields above, because
+    the dangerous direction is a redraft inheriting the previous letter's clean
+    check — a verdict that stands over a text it never read.
+
+    ``guide_reviewed_by`` is the field that tells a clean check from an unchecked
+    one, so a verdict with no name would be stored as an objection nobody can see.
+    It cannot happen through :func:`newspulse.guide.check_guide`, which names the
+    model whenever it returns a verdict at all; if a caller manages it anyway the
+    verdict is filed under :data:`newspulse.guide.UNNAMED_MODEL` rather than made
+    invisible. Deliberately not ``INJECTED_MODEL``: that names a provenance the
+    row cannot know, and this string is printed under the letter, where a guess
+    reads as fact. The name is cut to the column's own width for the same reason
+    it is never left empty — a value the database silently truncates is a value
+    nobody can trust to say what it says.
+
+    ``ok`` is recomputed from the breaches rather than taken on faith, the same
+    way :func:`newspulse.guide._parse_verdict` recomputes it, and for the same
+    reason: a verdict claiming ``ok`` while naming a breach would be stored as an
+    approval printed over an objection. ``store`` is public and ``guide_verdict``
+    is a keyword argument, so the flag can arrive from somewhere other than
+    ``check_guide``; the recompute can only ever move it toward False.
+    """
+    if verdict is None:
+        return {"guide_review": [], "guide_reviewed_by": "", "guide_ok": True}
+    # The shared checker names its breaches `sentence` and `rule`; the column has
+    # always stored them as draft/guide, which is the same pair under the names
+    # the page prints.
+    breaches = [
+        {"draft": breach.sentence, "guide": breach.rule} for breach in verdict.breaches
+    ]
+    return {
+        "guide_review": breaches,
+        "guide_reviewed_by": (checked_by or _UNNAMED_MODEL)[:_MODEL_NAME_MAX],
+        "guide_ok": verdict.ok and not breaches,
     }
 
 
@@ -376,6 +503,8 @@ def store(
     target: PitchTarget | None = None,
     review: MessageReview | None = None,
     reviewed_by: str = "",
+    guide_verdict: GuideVerdict | None = None,
+    guide_checked_by: str = "",
 ) -> Outreach:
     """Persist one message. Re-writing for the same recipient replaces the old
     one *while it is still a draft*: two drafts at the same journalist are two
@@ -388,10 +517,18 @@ def store(
     test is re-checked by the database at write time, not only at the read
     above it, because a release may commit in between (the rewrite finishing
     while the consultant clicks the release button).
+
+    Both verdicts are stored beside the letter and both are cleared by a redraft.
+    They are kept apart rather than merged: the crosscheck weighs invention and
+    overclaiming, while the guide check reports a rule the client wrote down, and
+    a written rule that arrives as one more line in a list of style notes has
+    been diluted rather than checked.
     """
     journalist = (target.journalist or "") if target else ""
     outlet = (target.outlet or "") if target else ""
-    fields = _message_fields(message, review, reviewed_by)
+    fields = _message_fields(
+        message, review, reviewed_by, guide_verdict, guide_checked_by
+    )
     draft_row = session.scalars(
         select(Outreach)
         .where(
@@ -969,6 +1106,7 @@ __all__ = [
     "TimelineKind",
     "by_angle",
     "crosscheck",
+    "guide_check",
     "days_out",
     "draft",
     "for_angle",

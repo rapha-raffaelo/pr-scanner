@@ -32,6 +32,7 @@ from ...db import get_session
 from ..runlock import guard as _run_guard
 from .. import themework
 from ...models import Angle, Article, Client, Contact, Outreach, TopicHit
+from ...schemas import GuideVerdict
 from ..app import get_db, templates
 from . import assets_view
 from .today import _fetch_last_run, _local_tz
@@ -428,6 +429,16 @@ def _target_for(
     )
 
 
+def _guide_state(verdict: GuideVerdict | None, checked_by: str) -> str:
+    """The three states in one line, for the log. Never "" for the clean case:
+    silence is what the not-checked state already looks like."""
+    if verdict is None:
+        return "not checked"
+    if verdict.ok:
+        return f"no breaches, read by {checked_by}"
+    return f"{len(verdict.breaches)} breach(es), read by {checked_by}"
+
+
 def _run_outreach(client_id: int, angle_id: int, journalist: str, outlet: str) -> None:
     """Write one personalised message on a worker thread; always release the lock."""
     try:
@@ -455,14 +466,22 @@ def _run_outreach(client_id: int, angle_id: int, journalist: str, outlet: str) -
                         f"gegengelesen: {exc}"
                     )
                     _log.warning("crosscheck skipped: %s", exc)
+                # And the same letter — as it will be stored — against the
+                # client's own written rules, as a second pass with its own
+                # verdict. After the crosscheck and isolated from it: a No-Go is
+                # not a style note, and neither check may cost the other its
+                # answer.
+                guide_verdict, guide_checked_by = outreach.guide_check(client, message)
                 outreach.store(
                     session, client, angle, message, target,
                     review=review, reviewed_by=reviewed_by or "",
+                    guide_verdict=guide_verdict, guide_checked_by=guide_checked_by,
                 )
                 _log.info(
-                    "outreach written for %r → %s",
+                    "outreach written for %r → %s (Guide: %s)",
                     client.name,
                     target.outlet if target else "(kein Empfänger)",
+                    _guide_state(guide_verdict, guide_checked_by),
                 )
     except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
         _last_message_error[client_id] = (
