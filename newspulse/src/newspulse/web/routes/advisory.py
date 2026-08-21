@@ -386,6 +386,7 @@ def _run_outreach(client_id: int, angle_id: int, journalist: str, outlet: str) -
                 outreach.store(
                     session, client, angle, message, target,
                     review=review, reviewed_by=reviewed_by or "",
+                    guide_verdict=guide_verdict, guide_checked_by=guide_checked_by,
                 )
                 _log.info(
                     "outreach written for %r → %s (Guide: %s)",

@@ -374,6 +374,17 @@ _EN: dict[str, str] = {
     "keine Einwände": "no objections",
     "Nicht gegengelesen — es ist kein Zweitmodell hinterlegt.":
         "Not cross-checked: no second model is configured.",
+    # The guide check, which is a different question from the crosscheck and says
+    # so in its own words: a No-Go is not an objection a model weighed, it is a
+    # rule the client wrote down. "Verstoß" rather than "Einwand" throughout, and
+    # "breach" rather than "concern" in English, for the same reason.
+    "Gegen den Guide geprüft von": "Checked against the guide by",
+    "kein Verstoß gegen den Guide": "no breach of the guide",
+    "Verstößt gegen den Guide": "Breaches the guide",
+    "verstößt gegen": "breaches",
+    "Nicht gegen den Guide geprüft — für diesen Mandanten ist kein Guide hinterlegt.":
+        "Not checked against the guide: no guide is stored for this client.",
+    "Guide hinterlegen": "Add a guide",
     "Bezieht sich auf": "Refers to",
     "Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.":
         "Written from headlines and feed snippets, not from the articles "

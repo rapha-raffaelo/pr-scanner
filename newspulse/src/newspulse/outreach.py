@@ -41,7 +41,7 @@ from . import config, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Analysis, Angle, Article, Client, Outreach, visible_coverage
 from .pitch import PitchTarget
-from .schemas import MessageReview, PersonalMessage
+from .schemas import GuideVerdict, MessageReview, PersonalMessage
 
 _log = logging.getLogger(__name__)
 
@@ -278,6 +278,34 @@ def crosscheck(
     return review, config.review_model()
 
 
+def _apply_guide_verdict(
+    row: Outreach, verdict: GuideVerdict | None, checked_by: str
+) -> None:
+    """Write the guide check's three states onto the row, or clear them.
+
+    ``None`` is not "leave what is there": it is "nothing checked *this* text".
+    Cleared on every write, exactly like the crosscheck's fields above, because
+    the dangerous direction is a redraft inheriting the previous letter's clean
+    check — a verdict that stands over a text it never read.
+
+    ``guide_reviewed_by`` is the field that tells a clean check from an unchecked
+    one, so a verdict with no name would be stored as an objection nobody can see.
+    It cannot happen through :func:`newspulse.guide.check_guide`, which names the
+    model whenever it returns a verdict at all; if a caller manages it anyway the
+    verdict is attributed to an unnamed model rather than made invisible.
+    """
+    if verdict is None:
+        row.guide_review = []
+        row.guide_reviewed_by = ""
+        row.guide_ok = True
+        return
+    row.guide_review = [
+        {"draft": breach.draft, "guide": breach.guide} for breach in verdict.breaches
+    ]
+    row.guide_reviewed_by = checked_by or guide.INJECTED_MODEL
+    row.guide_ok = verdict.ok
+
+
 def store(
     session: Session,
     client: Client,
@@ -286,9 +314,18 @@ def store(
     target: PitchTarget | None = None,
     review: MessageReview | None = None,
     reviewed_by: str = "",
+    guide_verdict: GuideVerdict | None = None,
+    guide_checked_by: str = "",
 ) -> Outreach:
     """Persist one message. Re-writing for the same recipient replaces the old
-    one: two drafts at the same journalist are two attempts, not two pitches."""
+    one: two drafts at the same journalist are two attempts, not two pitches.
+
+    Both verdicts are stored beside the letter and both are cleared by a redraft.
+    They are kept apart rather than merged: the crosscheck weighs invention and
+    overclaiming, while the guide check reports a rule the client wrote down, and
+    a written rule that arrives as one more line in a list of style notes has been
+    diluted into one.
+    """
     journalist = (target.journalist or "") if target else ""
     outlet = (target.outlet or "") if target else ""
     existing = session.scalars(
@@ -314,6 +351,7 @@ def store(
     row.review_ok = review.send if review else True
     if review and review.fix:
         row.review = f"{row.review}\nZuerst ändern: {review.fix}".strip()
+    _apply_guide_verdict(row, guide_verdict, guide_checked_by)
     row.generated_at = dt.datetime.now(dt.UTC)
     session.add(row)
     session.commit()

@@ -788,6 +788,29 @@ class Outreach(Base):
     reviewed_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     #: The checker's own send/hold flag. True unless it objected.
     review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: The guide check's verdict: one entry per breach, each a
+    #: ``{"draft": …, "guide": …}`` pair — the sentence from the letter and the
+    #: line of the client's guide it collides with. JSON rather than the
+    #: newline-joined text ``review`` uses, because a breach is a *pair* of
+    #: quotes and a flat line would lose which half is which; the shape belongs
+    #: to ``schemas.GuideBreach``, the same arrangement ``Advisory.suggestions``
+    #: has with ``schemas.ActionSuggestion``.
+    guide_review: Mapped[list[dict]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+    #: Which model read the letter against the guide. Empty is the not-checked
+    #: state, and it is the only field that tells it apart from a clean check —
+    #: ``guide_ok`` is True in both. A client with no stored guide, an unreachable
+    #: provider and an unusable reply all land here, and none of them may reach
+    #: the page looking like an approval.
+    guide_reviewed_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default=""
+    )
+    #: The guide check's own flag. True unless it named a breach.
+    guide_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 __all__ = [
