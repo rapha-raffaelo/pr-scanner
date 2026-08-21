@@ -23,6 +23,21 @@ report is frozen — :func:`newspulse.report.release` copies the document into t
 row — and nothing on this page can edit, drop, restore or regenerate it. A
 document a client has been sent must still say next quarter what it said when it
 was sent.
+
+The review surface follows the locked mock for DEC-1, ``features/mocks/report-\
+findings.html``, in the shape that mock argues for: one card per finding, its
+kind, the claim, what follows from it, the coverage underneath, and keep / edit /
+drop on each. Three things in the mock are deliberately not here, and each is a
+decision rather than an omission. The per-finding chart column is gone because
+the charts belong to the *document* — a figure a client is shown must be one that
+was frozen with the report, and a bar drawn beside a draft finding is a number
+nobody released. "Belege ändern" is gone because evidence is what a claim was
+generated from; a consultant who may re-pick it can build a sentence the archive
+never supported, which is the one failure this feature exists to prevent — the
+honest control is dropping the finding. And "Weiteren Befund suchen" is gone
+because a second reading of the same month is what the draft button already does,
+for the whole report, and a per-finding top-up would spend model calls to argue
+with a decision the reader has already made.
 """
 
 from __future__ import annotations
@@ -42,7 +57,7 @@ from ... import reporting
 from ...analyzer import AnalyzerError, ParseError, invoke_with_fallback
 from ...models import Client, Report, ReportFinding
 from ...reporting import Period
-from ..app import get_db, templates
+from ..app import get_db, templates, translator
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -82,6 +97,28 @@ _NO_REPORT = (
     "einer automatisch; er lässt sich hier auch sofort erzeugen."
 )
 
+#: What a refused action says. Module-level and translated where they are raised
+#: rather than composed inline, so every German sentence this module puts in front
+#: of a reader is a key :mod:`newspulse.i18n` can hold — including the two that
+#: carry data, whose placeholders travel into the translation with them.
+_ERR_RELEASED = (
+    "Der Bericht ist freigegeben und wird nicht überschrieben. Ein freigegebener "
+    "Bericht wird nicht neu erzeugt."
+)
+_ERR_GENERATION_FAILED = "Der Bericht ist fehlgeschlagen: {reason}"
+_ERR_EMPTY_CLAIM = (
+    "Ein Befund ohne Aussage ist kein Befund. Der Text bleibt wie er war."
+)
+_ERR_FORBIDDEN_FIGURE = (
+    "„{terms}“ kann RauteOS aus Archiv und Ledger nicht belegen und steht deshalb "
+    "in keinem Bericht. Der Text bleibt wie er war."
+)
+
+#: The filename a download falls back to when the mandate's name survives
+#: sanitising as nothing at all — a name written entirely in a script the
+#: allow-list drops. A file called ``bericht__2026-07.html`` reads as broken.
+_FILENAME_FALLBACK = "mandant"
+
 
 # --- Periods --------------------------------------------------------------------
 
@@ -101,20 +138,35 @@ def _period_from(value: str | None, now: dt.datetime) -> Period:
     match = re.fullmatch(r"(\d{4})-(\d{2})", (value or "").strip())
     if not match:
         return reports.previous_month(now)
-    year, month = int(match[1]), int(match[2])
-    if not 1 <= month <= 12:
+    try:
+        # The shape is not the whole of "readable". ``0000-01`` and ``9999-12``
+        # both match the pattern and both leave the calendar — the second because
+        # the exclusive end of December 9999 is a year that does not exist — and a
+        # ValueError escaping a GET handler is the 500 this fallback exists to
+        # prevent.
+        return Period.month(int(match[1]), int(match[2]))
+    except ValueError:
         return reports.previous_month(now)
-    return Period.month(year, month)
 
 
-def _period_options(now: dt.datetime) -> list[str]:
-    """The pickable months, newest first."""
+def _period_options(now: dt.datetime, showing: str = "") -> list[str]:
+    """The pickable months, newest first, with the one on screen among them.
+
+    ``showing`` is prepended when the page is displaying a report older than the
+    year the picker offers — which :func:`_chosen_report` can legitimately pick,
+    since with no period asked for it shows the newest report the mandate has.
+    Without it the browser selects the first option, and the picker then names a
+    month the page is not showing while the draft button, carrying the real key,
+    would draft a third one.
+    """
     period = reports.previous_month(now)
     options = []
     for _ in range(_PERIOD_CHOICES):
         options.append(_period_key(period))
         earlier = period.start.astimezone(_local_tz()) - dt.timedelta(days=1)
         period = Period.month(earlier.year, earlier.month)
+    if showing and showing not in options:
+        options.insert(0, showing)
     return options
 
 
@@ -136,6 +188,10 @@ class Segment:
     text: str
     #: Percent of the bar, 0..100.
     share: float
+    #: Whether ``label`` is interface chrome the page may translate. Off for a
+    #: mandate's own name: it is client data, and a company called "Bericht" would
+    #: otherwise be renamed to "Report" on its own report.
+    translated: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,16 +235,17 @@ def _voice_chart(document: reports.Document) -> Chart | None:
     document; splitting it into five coloured slices would turn a report about one
     company into a league table nobody asked for.
     """
-    share = next(
+    figure = next(
         (
-            figure.value
-            for figure in document.figures
-            if figure.key == reporting.MetricKey.SHARE_OF_VOICE.value
+            candidate
+            for candidate in document.figures
+            if candidate.key == reporting.MetricKey.SHARE_OF_VOICE.value
         ),
         None,
     )
-    if share is None:
+    if figure is None or figure.value is None:
         return None
+    share = figure.value
     return Chart(
         title="Anteil am Marktgespräch",
         unit="Anteil",
@@ -197,13 +254,20 @@ def _voice_chart(document: reports.Document) -> Chart | None:
             Segment(
                 label=document.client_name,
                 tone=_VOICE_TONE_MANDATE,
-                text=f"{share * 100:.1f} %",
+                # The frozen text, not a re-formatting of the frozen value: this
+                # is the same number the tile above the chart prints, and a
+                # released document may not have two of it.
+                text=figure.text,
                 share=share * 100,
+                translated=False,
             ),
             Segment(
                 label="Vergleichsumfeld",
                 tone=_VOICE_TONE_FIELD,
-                text=f"{(1 - share) * 100:.1f} %",
+                # The one half nothing froze, because the metric set never carried
+                # it as a figure. Formatted by the module that formatted the other
+                # half, so the two cannot come out to different precisions.
+                text=reports.share_text(1 - share),
                 share=(1 - share) * 100,
             ),
         ),
@@ -308,9 +372,8 @@ def _render(
             "views": reports.resolve(session, row, kept_only=False) if row else [],
             "released": reports.is_released(row) if row is not None else False,
             "kind_labels": _KIND_LABELS,
-            "periods": _period_options(dt.datetime.now(dt.UTC)),
+            "periods": _period_options(dt.datetime.now(dt.UTC), period_key),
             "period_key": period_key,
-            "reports": _reports_for(session, client.id),
             "no_report": _NO_REPORT,
             "error": error,
             "notice": notice,
@@ -349,14 +412,17 @@ def generate(
     look alike to somebody who is about to send a document.
     """
     client = _client_or_404(session, client_id)
+    translate = translator(request)
     period = _period_from(zeitraum, dt.datetime.now(dt.UTC))
     key = _period_key(period)
     try:
         draft = reports.findings(session, client, period, generate=_generate)
         reports.store(session, client, draft)
-    except reports.ReportReleased as exc:
+    except reports.ReportReleased:
         existing = reports.for_period(session, client.id, period)
-        return _render(request, session, client, existing, key, error=str(exc))
+        return _render(
+            request, session, client, existing, key, error=translate(_ERR_RELEASED)
+        )
     except (AnalyzerError, ParseError) as exc:
         existing = reports.for_period(session, client.id, period)
         return _render(
@@ -365,7 +431,7 @@ def generate(
             client,
             existing,
             key,
-            error=f"Der Bericht ist fehlgeschlagen: {exc}",
+            error=translate(_ERR_GENERATION_FAILED).format(reason=exc),
         )
     return RedirectResponse(
         f"/client/{client_id}/berichte?zeitraum={key}", status_code=_SEE_OTHER
@@ -398,6 +464,7 @@ def edit_finding(
     that only bound the model would be a rule the report does not have.
     """
     client = _client_or_404(session, client_id)
+    translate = translator(request)
     row = _editable(_report_or_404(session, client, report_id))
     finding = _finding_or_404(row, finding_id)
     period_key = _period_key(Period(row.period_start, row.period_end))
@@ -407,20 +474,13 @@ def edit_finding(
     if not written:
         return _render(
             request, session, client, row, period_key,
-            error=(
-                "Ein Befund ohne Aussage ist kein Befund. Der Text bleibt wie "
-                "er war."
-            ),
+            error=translate(_ERR_EMPTY_CLAIM),
         )
     stated = reporting.forbidden_terms(f"{written}\n{follows}")
     if stated:
         return _render(
             request, session, client, row, period_key,
-            error=(
-                f"„{', '.join(stated)}“ kann RauteOS aus Archiv und Ledger nicht "
-                "belegen und steht deshalb in keinem Bericht. Der Text bleibt wie "
-                "er war."
-            ),
+            error=translate(_ERR_FORBIDDEN_FIGURE).format(terms=", ".join(stated)),
         )
     finding.claim = written
     finding.consequence = follows
@@ -518,7 +578,9 @@ def _document_context(
 
 def _filename(client: Client, document: reports.Document) -> str:
     """A downloaded report's filename: mandate and period, both readable."""
-    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", client.name).strip("_") or "mandant"
+    safe = (
+        re.sub(r"[^A-Za-z0-9_-]+", "_", client.name).strip("_") or _FILENAME_FALLBACK
+    )
     stamp = f"{document.period_start.astimezone(_local_tz()):%Y-%m}"
     return f"bericht_{safe}_{stamp}.html"
 

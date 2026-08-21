@@ -287,19 +287,52 @@ def citable_figures(
     }
 
 
+def _number_text(key: MetricKey, figure: float) -> str:
+    """One figure of one metric, formatted the one way this tool prints it.
+
+    A single formatter for every consumer — the prompt, the document's tiles, the
+    frozen snapshot and the charts. The figure a document states is frozen at
+    release precisely so it cannot drift; a second format string somewhere else,
+    kept in step by nobody, is how it would drift anyway.
+    """
+    if key is MetricKey.SHARE_OF_VOICE:
+        return f"{figure * 100:.1f} %"
+    return f"{figure:g}"
+
+
+def share_text(share: float) -> str:
+    """A share of voice as the document prints it, ``0.4137`` -> ``41.4 %``.
+
+    Public because a chart also has to print a share the metric set never carried
+    as a figure of its own — the *rest* of the comparison set, which is one minus
+    the mandate's part of it. It goes through the same formatter as the number it
+    sits beside, so the two halves of one bar cannot be printed to different
+    precisions.
+    """
+    return _number_text(MetricKey.SHARE_OF_VOICE, share)
+
+
 def _figure_text(value: MetricValue) -> str:
     """The number as the document would print it."""
-    if value.key is MetricKey.SHARE_OF_VOICE:
-        return f"{value.figure * 100:.1f} %"
-    return f"{value.figure:g}"
+    return _number_text(value.key, value.figure)
+
+
+def _previous_number(value: MetricValue) -> str:
+    """The comparison period's number alone, without the words around it."""
+    return _number_text(value.key, value.previous)
 
 
 def _previous_text(value: MetricValue) -> str:
+    """The comparison, as the *prompt* states it: German, one line, with the word.
+
+    The document builds this sentence from its parts instead (see
+    :class:`Figure`), because its chrome translates and a pre-composed German
+    phrase is one an English reader would be handed untranslated. The prompt has
+    no such problem: it is always German and it is read by the model.
+    """
     if value.previous is None:
         return "kein Vergleichszeitraum"
-    if value.key is MetricKey.SHARE_OF_VOICE:
-        return f"vorher {value.previous * 100:.1f} %, {value.direction.value}"
-    return f"vorher {value.previous:g}, {value.direction.value}"
+    return f"vorher {_previous_number(value)}, {value.direction.value}"
 
 
 def _render_figures(figures: dict[str, MetricValue]) -> str:
@@ -956,7 +989,14 @@ class Figure:
     text: str
     #: The bare number, for the geometry of a chart. ``None`` where there is none.
     value: float | None
-    previous_text: str
+    #: The comparison period's number, formatted the same way and frozen for the
+    #: same reason. ``""`` where there is no comparison to make. Stored as the
+    #: number alone rather than as "vorher 12, gestiegen": the words around it are
+    #: chrome, and chrome translates, while the number may not move.
+    previous_value_text: str
+    #: ``gestiegen``/``gefallen``/``unverändert``, or ``unbekannt`` where there is
+    #: nothing to compare against. ``""`` where there is no figure at all — which
+    #: is what tells the two apart on the page.
     direction: str
     #: Why there is no number, or the qualification the reader needs with it.
     note: str
@@ -999,8 +1039,6 @@ class Document:
     tonality: tuple[Figure, ...]
     findings: tuple[DocumentFinding, ...]
     note: str
-    #: Whether this came out of the snapshot rather than off the archive.
-    frozen: bool = False
 
     @property
     def tonality_total(self) -> float:
@@ -1029,8 +1067,15 @@ def _figure(value: MetricValue) -> Figure:
         subject=value.subject,
         text=_stated_text(value),
         value=value.figure,
-        previous_text="" if value.figure is None else _previous_text(value),
-        direction=value.direction.value,
+        previous_value_text=(
+            "" if value.figure is None or value.previous is None
+            else _previous_number(value)
+        ),
+        # Empty where there is no figure, so a tile with nothing on it says
+        # nothing about a comparison either. With a figure and no baseline the
+        # direction is ``unbekannt``, which is what the page renders as "no
+        # comparison period" rather than as a movement of zero.
+        direction="" if value.figure is None else value.direction.value,
         note=value.note,
     )
 
@@ -1104,7 +1149,7 @@ def _thawed_figure(row: dict) -> Figure:
         subject=row.get("subject", ""),
         text=row.get("text", ""),
         value=row.get("value"),
-        previous_text=row.get("previous_text", ""),
+        previous_value_text=row.get("previous_value_text", ""),
         direction=row.get("direction", ""),
         note=row.get("note", ""),
     )
@@ -1150,7 +1195,6 @@ def _thaw(payload: dict) -> Document:
         tonality=tuple(_thawed_figure(row) for row in payload.get("tonality", ())),
         findings=tuple(_thawed_finding(row) for row in payload.get("findings", ())),
         note=payload.get("note", ""),
-        frozen=True,
     )
 
 
@@ -1162,10 +1206,23 @@ def document(session: Session, client: Client, report: Report) -> Document:
     it. A released report has a snapshot, and from then on the archive is not
     consulted at all — which is what makes the document a client was sent still say
     next quarter what it said when it was sent.
+
+    The middle case is a released row with no snapshot, and it is not hypothetical:
+    :func:`release` returns early on an already-released report, and the column was
+    added after releasing existed, so any report released before this migration
+    would otherwise read off the live archive forever — unfrozen, silently, and for
+    exactly the reports that most need not to be. It is frozen here instead, on
+    first read, against the archive as it stands. That is later than release and
+    therefore imperfect; it is the only moment still available, and a document that
+    stops moving today is worth more than one that never does.
     """
     if report.snapshot:
         return _thaw(report.snapshot)
-    return _live_document(session, client, report)
+    built = _live_document(session, client, report)
+    if is_released(report):
+        report.snapshot = _payload(built)
+        session.commit()
+    return built
 
 
 __all__ = [
@@ -1190,5 +1247,6 @@ __all__ = [
     "previous_month",
     "release",
     "resolve",
+    "share_text",
     "store",
 ]

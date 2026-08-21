@@ -286,6 +286,32 @@ def test_an_edit_that_empties_the_claim_is_refused(http, seeded, factory):
         )
 
 
+@pytest.mark.parametrize("zeitraum", ["0000-01", "9999-12", "2026-13", "2026-00", "x"])
+def test_a_hand_edited_period_lands_on_last_month_rather_than_a_500(
+    http, seeded, zeitraum
+):
+    """The pattern is not the whole of "readable": ``9999-12`` matches it and still
+    leaves the calendar, because the exclusive end of that month is a year that
+    does not exist."""
+    response = http.get(
+        f"/client/{seeded['client_id']}/berichte", params={"zeitraum": zeitraum}
+    )
+    assert response.status_code == 200
+
+
+def test_the_period_picker_shows_the_month_the_page_is_showing(http, seeded, factory):
+    """With no period asked for the page shows the newest report the mandate has,
+    which can be older than the year the picker offers. The picker then has to name
+    it, or the draft button would draft a month nobody is looking at."""
+    with factory() as session:
+        row = session.get(Report, seeded["report_id"])
+        old = Period.month(2019, 3)
+        row.period_start, row.period_end = old.start, old.end
+        session.commit()
+    body = _review(http, seeded)
+    assert '<option value="2019-03" selected>' in body
+
+
 def test_the_berichte_tab_is_on_the_client_workspace(http, seeded):
     body = http.get(f"/client/{seeded['client_id']}/guide").text
     assert f'/client/{seeded["client_id"]}/berichte' in body
@@ -377,6 +403,52 @@ def test_every_chart_has_a_table_view_and_every_segment_carries_its_own_figure(
     assert "<b>1</b>" in body, "a tonality segment carries no figure of its own"
 
 
+def test_the_share_of_voice_chart_prints_the_frozen_figure_and_its_complement(
+    http, seeded, factory
+):
+    """One formatter for both halves of a bar, and the mandate's half is the one
+    the tile above it already froze — a released document may not carry two
+    renderings of the same number."""
+    with factory() as session:
+        client = session.get(Client, seeded["client_id"])
+        row = session.get(Report, seeded["report_id"])
+        document = reports.document(session, client, row)
+    chart = report_routes._voice_chart(document)
+    mandate, field = chart.segments
+    frozen = next(f for f in document.figures if f.key == "share_of_voice")
+    assert mandate.text == frozen.text
+    assert field.text == reports.share_text(1 - frozen.value)
+    body = _body(_document(http, seeded))
+    assert frozen.text in body
+
+
+def test_a_mandate_name_is_never_translated_on_its_own_report(http, factory, seeded):
+    """A client called "Bericht" would otherwise be renamed to "Report" on an
+    English page: the mandate's name is client data, not chrome."""
+    with factory() as session:
+        session.get(Client, seeded["client_id"]).name = "Bericht"
+        session.commit()
+    http.cookies.set(i18n.COOKIE_NAME, "en")
+    body = _body(_document(http, seeded))
+    # The chart's own chrome did switch, so this is not a page that simply failed
+    # to translate — only the name held.
+    assert "Show table" in body
+    assert 'sw--mandat"></span>Bericht ' in body
+
+
+def test_a_finding_a_person_rewrote_says_so_on_the_document(http, seeded):
+    """The frozen finding carries whether it was edited, and a field written into
+    every snapshot and shown on none of them is a promise the artefact breaks."""
+    assert "redaktionell bearbeitet" not in _body(_document(http, seeded))
+    http.post(
+        f"/client/{seeded['client_id']}/berichte/{seeded['report_id']}"
+        f"/befund/{seeded['kept_id']}",
+        data={"claim": "Arrakis war im Juli deutlich sichtbar.", "consequence": "Halten."},
+        follow_redirects=False,
+    )
+    assert "redaktionell bearbeitet" in _body(_document(http, seeded))
+
+
 def test_the_document_makes_no_external_request(http, seeded):
     """The vendored-assets rule, stricter here: this file is forwarded, and one
     that phoned home would tell a third party who reads the agency's reporting."""
@@ -454,6 +526,65 @@ def test_a_released_report_renders_identically_after_the_archive_changes(
     assert _body(_document(http, seeded)) == before
     assert "Arrakis liefert aus" in before, "the frozen evidence is not on the page"
     assert "Nachtrag 0" not in _body(_document(http, seeded))
+
+
+def test_a_released_report_is_never_told_its_findings_left_the_document(
+    http, seeded, factory
+):
+    """The review page renders a released report from the frozen figures, so it may
+    not carry a live reading of the evidence beside them: "steht nicht im Dokument"
+    about a finding the document still prints is simply false."""
+    _release(http, seeded)
+    with factory() as session:
+        for name in ("positive_id", "negative_id"):
+            session.get(Analysis, seeded[name]).dismissed_at = dt.datetime(
+                2026, 9, 1, tzinfo=dt.UTC
+            )
+        session.commit()
+    body = _review(http, seeded)
+    assert "steht nicht im Dokument" not in body
+    assert "nicht mehr in der Berichterstattung" not in body
+    # And the document it is talking about still prints the finding.
+    assert "Arrakis war im Juli sichtbar." in _body(_document(http, seeded))
+
+
+def test_a_report_released_before_the_snapshot_existed_freezes_on_first_read(
+    http, seeded, factory
+):
+    """``release`` returns early on an already-released row, and the column was
+    added after releasing existed. A row stamped without one would otherwise read
+    off the live archive forever — unfrozen, silently."""
+    with factory() as session:
+        row = session.get(Report, seeded["report_id"])
+        row.state = ReportState.FREIGEGEBEN
+        row.released_at = dt.datetime(2026, 8, 2, 9, 0, tzinfo=dt.UTC)
+        row.released_by = "Lucas"
+        row.snapshot = None
+        session.commit()
+
+    before = _body(_document(http, seeded))
+    with factory() as session:
+        assert session.get(Report, seeded["report_id"]).snapshot, "still not frozen"
+        session.get(Analysis, seeded["positive_id"]).dismissed_at = dt.datetime(
+            2026, 9, 1, tzinfo=dt.UTC
+        )
+        session.commit()
+    assert _body(_document(http, seeded)) == before
+
+
+def test_the_review_surface_renders_a_report_stamped_without_a_date(
+    http, seeded, factory
+):
+    """``is_released`` answers yes to a row labelled freigegeben with no stamp, so
+    that a torn state fails closed. The page must then not fail open on a date
+    filter that has nothing to format."""
+    with factory() as session:
+        row = session.get(Report, seeded["report_id"])
+        row.state = ReportState.FREIGEGEBEN
+        session.commit()
+    body = _review(http, seeded)
+    assert "Freigegeben" in body
+    assert "/verwerfen" not in body
 
 
 def test_a_draft_by_contrast_notices_that_its_ground_moved(http, seeded, factory):
@@ -581,18 +712,26 @@ def test_the_scheduled_draft_stops_after_the_window(factory, no_monthly_report_d
         assert drafted == 0
 
 
+@pytest.mark.parametrize("failing_first", [True, False])
 def test_a_failing_report_draft_never_fails_the_sweep(
-    factory, no_monthly_report_draft, caplog
+    factory, no_monthly_report_draft, caplog, failing_first
 ):
     """A report is not worth a failed sweep: the failure is logged, the transaction
-    is rolled back, and the next mandate is tried."""
+    is rolled back, and the next mandate is tried.
+
+    Both orders, because they fail differently. Failure-then-success only shows
+    that a rollback leaves the *next* mandate a usable session. Success-then-
+    failure is the one that would catch a rollback reaching backwards and taking
+    an already-written report with it — it does not, because ``report.store``
+    commits each draft as it is made, and this is the test that says so.
+    """
     with factory() as session:
-        first = Client(name="Arrakis AG")
-        second = Client(name="Ix AG")
-        session.add_all([first, second])
+        broken = Client(name="Arrakis AG")
+        sound = Client(name="Ix AG")
+        session.add_all([broken, sound])
         session.flush()
-        _piece(session, first, "Arrakis liefert aus")
-        _piece(session, second, "Ix liefert aus")
+        _piece(session, broken, "Arrakis liefert aus")
+        _piece(session, sound, "Ix liefert aus")
         session.commit()
 
         def _explode(prompt, **kw):
@@ -600,15 +739,16 @@ def test_a_failing_report_draft_never_fails_the_sweep(
                 raise RuntimeError("the model was unreachable")
             return _reply()
 
+        order = [broken, sound] if failing_first else [sound, broken]
         drafted = no_monthly_report_draft(
             session,
-            [first, second],
+            order,
             now=dt.datetime(2026, 8, 1, 6, 10, tzinfo=dt.UTC),
             generate=_explode,
         )
         assert drafted == 1, "one mandate's failure took the other down with it"
-        assert reports.for_period(session, first.id, JULY) is None
-        assert reports.for_period(session, second.id, JULY) is not None
+        assert reports.for_period(session, broken.id, JULY) is None
+        assert reports.for_period(session, sound.id, JULY) is not None
 
 
 def test_the_sweep_survives_a_broken_report_step(factory, monkeypatch):
@@ -649,7 +789,7 @@ def test_every_german_string_in_the_new_templates_is_translated(name):
 def test_every_label_the_report_renders_dynamically_is_translated():
     """The labels that reach ``t()`` as a value rather than as a literal: a new
     metric or a fifth finding kind must not silently render as its German value."""
-    from newspulse.reporting import MetricKey, MetricValue
+    from newspulse.reporting import Direction, MetricKey, MetricValue
 
     # Membership rather than "translates to something else": "neutral" is the same
     # word in both languages, and a missing entry must still fail here.
@@ -660,6 +800,50 @@ def test_every_label_the_report_renders_dynamically_is_translated():
         assert MetricValue(key=key, client_id=1, figure=1.0).label in known, key
     for tone in Tonality:
         assert tone.value in known, tone
+    # The word under a figure that says which way it moved. Rendered from the
+    # frozen document rather than composed into a German phrase, so it reaches
+    # ``t()`` as a value like the three sets above.
+    for direction in Direction:
+        assert direction.value in known, direction
+
+
+#: Every German sentence the route module owns: the empty state, the four
+#: refusals, and the chart chrome. They reach the page through ``t()`` as values
+#: rather than as literals a template scan could see, so a fifth chart or a
+#: reworded refusal would otherwise ship half-translated and pass the suite.
+_ROUTE_STRINGS = (
+    "_NO_REPORT",
+    "_ERR_RELEASED",
+    "_ERR_GENERATION_FAILED",
+    "_ERR_EMPTY_CLAIM",
+    "_ERR_FORBIDDEN_FIGURE",
+)
+
+
+def test_every_german_string_the_route_module_owns_is_translated(http, seeded, factory):
+    known = set(i18n.known_keys())
+    missing = [
+        name for name in _ROUTE_STRINGS if getattr(report_routes, name) not in known
+    ]
+    assert not missing, missing
+    # And the chart chrome, taken off charts actually built from a document rather
+    # than off the literals in the source: a title, a unit and every segment label
+    # the page will translate.
+    with factory() as session:
+        client = session.get(Client, seeded["client_id"])
+        row = session.get(Report, seeded["report_id"])
+        document = reports.document(session, client, row)
+    charts = [
+        report_routes._tonality_chart(document),
+        report_routes._voice_chart(document),
+    ]
+    assert any(charts), "no chart was built, so nothing was checked"
+    for chart in [c for c in charts if c]:
+        assert chart.title in known, chart.title
+        assert chart.unit in known, chart.unit
+        for segment in chart.segments:
+            if segment.translated:
+                assert segment.label in known, segment.label
 
 
 def test_every_new_german_string_has_an_english_entry(http, seeded):

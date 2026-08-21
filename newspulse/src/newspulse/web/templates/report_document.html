@@ -13,6 +13,19 @@
     is the <nav> outside <article class="doc">, so the export cannot carry a figure
     the screen did not, or the other way round. -#}
 {%- set t = translator(request) -%}
+{#- The bar's coordinate system, in one place. `BAR_W` is the viewBox width below
+    and `BAR_SCALE` turns a segment's percentage into those units; deriving the
+    second from the first means a wider bar cannot leave the geometry pointing at
+    the old one. `INLINE_LABEL_MIN` is how narrow a block may get before its
+    number is dropped from inside it — below roughly this the digits touch the
+    block's edges and read as belonging to the neighbour. Nothing is lost when it
+    is: every figure is in the legend and in the table as well. -#}
+{%- set BAR_W = 600 -%}
+{%- set BAR_H = 34 -%}
+{%- set BAR_SCALE = BAR_W / 100 -%}
+{%- set INLINE_LABEL_MIN = 54 -%}
+{#- A segment's label: chrome is translated, a mandate's own name never is. -#}
+{%- macro seg_label(s) -%}{{ t(s.label) if s.translated else s.label }}{%- endmacro -%}
 {%- macro chart(c) -%}
 {%- if c %}
       <figure class="chart">
@@ -22,17 +35,17 @@
             its own figure in the legend and again in the table, so the split is
             checkable by a reader who cannot tell the hues apart, and by one
             holding a black and white printout. -#}
-        <svg class="bar" viewBox="0 0 600 34" role="img" aria-label="{{ t(c.title) }}: {% for s in c.segments %}{{ t(s.label) }} {{ s.text }}{{ ', ' if not loop.last }}{% endfor %}">
+        <svg class="bar" viewBox="0 0 {{ BAR_W }} {{ BAR_H }}" role="img" aria-label="{{ t(c.title) }}: {% for s in c.segments %}{{ seg_label(s) }} {{ s.text }}{{ ', ' if not loop.last }}{% endfor %}">
           {%- set ns = namespace(x=0) %}
           {%- for s in c.segments %}
-          {%- set w = s.share * 6 %}
+          {%- set w = s.share * BAR_SCALE %}
           <g>
-            <title>{{ t(s.label) }}: {{ s.text }}</title>
+            <title>{{ seg_label(s) }}: {{ s.text }}</title>
             {#- The fill comes from a class of its own, never from the swatch's:
                 a CSS `width` meant for the legend square would override this
                 rect's own geometry attribute and collapse the bar. -#}
-            <rect x="{{ '%.2f'|format(ns.x) }}" y="0" width="{{ '%.2f'|format(w) }}" height="34" class="seg seg--{{ s.tone }}"></rect>
-            {%- if w >= 54 %}
+            <rect x="{{ '%.2f'|format(ns.x) }}" y="0" width="{{ '%.2f'|format(w) }}" height="{{ BAR_H }}" class="seg seg--{{ s.tone }}"></rect>
+            {%- if w >= INLINE_LABEL_MIN %}
             <text x="{{ '%.2f'|format(ns.x + w / 2) }}" y="22" class="bar__n">{{ s.text }}</text>
             {%- endif %}
           </g>
@@ -41,7 +54,7 @@
         </svg>
         <ul class="legend">
           {%- for s in c.segments %}
-          <li><span class="sw sw--{{ s.tone }}"></span>{{ t(s.label) }} <b>{{ s.text }}</b></li>
+          <li><span class="sw sw--{{ s.tone }}"></span>{{ seg_label(s) }} <b>{{ s.text }}</b></li>
           {%- endfor %}
         </ul>
         <details class="tblview">
@@ -50,13 +63,20 @@
             <thead><tr><th>{{ t("Segment") }}</th><th>{{ t(c.unit) }}</th>{% if c.with_share %}<th>{{ t("Anteil") }}</th>{% endif %}</tr></thead>
             <tbody>
               {%- for s in c.segments %}
-              <tr><th scope="row">{{ t(s.label) }}</th><td>{{ s.text }}</td>{% if c.with_share %}<td>{{ '%.1f'|format(s.share) }} %</td>{% endif %}</tr>
+              <tr><th scope="row">{{ seg_label(s) }}</th><td>{{ s.text }}</td>{% if c.with_share %}<td>{{ '%.1f'|format(s.share) }} %</td>{% endif %}</tr>
               {%- endfor %}
             </tbody>
           </table>
         </details>
       </figure>
 {%- endif %}
+{%- endmacro -%}
+{#- The comparison under a figure, built from its parts rather than printed as a
+    stored German phrase: the words are chrome and translate, the number is frozen
+    and does not. -#}
+{%- macro compared(f) -%}
+{%- if f.previous_value_text %}{{ t("vorher") }} {{ f.previous_value_text }}, {{ t(f.direction) }}
+{%- elif f.direction %}{{ t("kein Vergleichszeitraum") }}{% endif %}
 {%- endmacro -%}
 <!DOCTYPE html>
 <html lang="{{ request_language(request) }}">
@@ -159,8 +179,13 @@
     <div class="tile{% if not f.text %} tile--absent{% endif %}">
       <div class="tile__l">{{ t(f.label) }}</div>
       <div class="tile__v">{{ f.text if f.text else t("kein Wert") }}</div>
-      {%- if f.previous_text %}<div class="tile__p">{{ f.previous_text }}</div>{% endif %}
-      {%- if f.note %}<div class="tile__n">{{ f.note }}</div>{% endif %}
+      {%- set comparison = compared(f) | trim %}
+      {%- if comparison %}<div class="tile__p">{{ comparison }}</div>{% endif %}
+      {#- The note is the reason a tile has no figure, which is the one line on a
+          tile an English reader most needs; it goes through the translator like
+          the rest of the chrome. A note built from counts has no entry and falls
+          back to German, which is what this scheme degrades to by design. -#}
+      {%- if f.note %}<div class="tile__n">{{ t(f.note) }}</div>{% endif %}
     </div>
     {%- endfor %}
   </div>
@@ -175,7 +200,12 @@
   {%- if document.findings %}
   {%- for f in document.findings %}
   <section class="find">
-    <div class="find__k">{{ t(kind_labels.get(f.kind, f.kind)) }}</div>
+    {#- Marked where a person rewrote the sentence. A reader of the document is
+        entitled to know which claims are as RauteOS proposed them and which the
+        agency put in its own words — the frozen finding carries the fact, and a
+        field written into every snapshot and shown on none of them would be a
+        promise the artefact does not keep. -#}
+    <div class="find__k">{{ t(kind_labels.get(f.kind, f.kind)) }}{% if f.edited %} · {{ t("redaktionell bearbeitet") }}{% endif %}</div>
     <p class="find__c">{{ f.claim }}</p>
     {%- if f.consequence %}<p class="find__f">{{ f.consequence }}</p>{% endif %}
     {%- if f.weakened %}
@@ -192,7 +222,7 @@
   </section>
   {%- endfor %}
   {%- else %}
-  <p class="note">{{ document.note or t("Für diesen Zeitraum steht kein Befund im Bericht.") }}</p>
+  <p class="note">{{ t(document.note) if document.note else t("Für diesen Zeitraum steht kein Befund im Bericht.") }}</p>
   {%- endif %}
 
   <footer class="foot">

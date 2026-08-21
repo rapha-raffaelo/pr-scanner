@@ -1310,6 +1310,83 @@ def _run_dry(
     )
 
 
+def _settle_themes(session: Session, clients: Sequence[Client], fetch: FetchFeed) -> int:
+    """Give the mandates that still have no radar one, up to the per-sweep cap.
+
+    A mandate with no themes has no radar, and every downstream feature reads off
+    that radar. It was only ever filled in at onboarding, so every mandate created
+    before that existed sat permanently in the state the onboarding step prevents
+    — reported three times as "hier wird immer noch kein Impuls angezeigt".
+    Self-limiting: the call returns immediately once a radar is in place.
+    """
+    settled = 0
+    for client in clients:
+        if client.is_competitor:
+            continue  # a yardstick has no impulse page for a radar to fill
+        if settled >= _SETTLE_PER_SWEEP:
+            break
+        try:
+            if themes.settle(session, client, fetch=fetch):
+                settled += 1
+        except Exception:  # noqa: BLE001 — a radar is not worth a failed sweep
+            _log.exception("theme settling for %r failed", client.name)
+            # A caught exception is not a clean session. ``settle`` writes, so a
+            # failed flush leaves the transaction in ``PendingRollbackError`` and
+            # every later statement in this block dies with it — after
+            # ``_finalize_run`` has already recorded the sweep as ok. Reproduced:
+            # the header shows a green run with zero errors while the drafting,
+            # the archive linking and the notification were all skipped.
+            session.rollback()
+    return settled
+
+
+def _post_run(
+    session: Session,
+    clients: Sequence[Client],
+    topic_pairs: Sequence[Candidate],
+    errors: list[str],
+    fetch: FetchFeed,
+    started: dt.datetime,
+    now_fn: Callable[[], dt.datetime],
+) -> int:
+    """Everything the sweep produces once its own work is recorded, in order.
+
+    Four steps, each after the one it needs and each inside its own fault
+    boundary, because they are worth having and none of them is worth the sweep:
+    the run row is already written by the time this is called, so an exception
+    escaping here would leave a green run beside work that silently did not
+    happen. Returns how many positioning drafts were written.
+    """
+    _settle_themes(session, clients, fetch)
+    # The archive first: the registry feeds fetched the trade press this morning
+    # and nothing linked it to the mandates whose field it is. Doing this before
+    # drafting means today's material is available to today's draft rather than
+    # tomorrow's.
+    linked = link_archive_to_themes(
+        session, clients, started - IMPULSE_LOOKBACK, started
+    )
+    if linked:
+        _log.info("linked %d archived article(s) as market material", linked)
+    angles_written = _generate_angles(session, topic_pairs, errors)
+    # And then top up the mandates the radar did not move today. Drafting only
+    # from fresh material meant a quiet fortnight showed an empty Impulse column
+    # for a fortnight — for exactly the mandate whose consultant most needs
+    # something to say.
+    angles_written += _refresh_impulses(session, clients, errors, now=now_fn())
+    # Last, and outside everything above: the monthly report reads a period that
+    # has already ended, so it needs nothing this sweep fetched, and putting it
+    # here means a failure in it cannot cost the sweep any of the work that came
+    # before. The boundary is doubled — per mandate inside, and once here —
+    # because the period arithmetic and the client list are outside the
+    # per-mandate try and must not be able to end the run either.
+    try:
+        _draft_reports(session, clients, now=now_fn())
+    except Exception:  # noqa: BLE001 — a report is never worth a failed sweep
+        _log.exception("the monthly report draft failed; the sweep stands")
+        session.rollback()
+    return angles_written
+
+
 def _run_real(
     session: Session,
     feeds: Sequence[Feed],
@@ -1392,57 +1469,9 @@ def _run_real(
     # through: pitching a positioning message off a half-fetched radar would put a
     # confident text in front of the reader on the strength of partial data.
     if status is not RunStatus.FAILED:
-        # A mandate with no themes has no radar, and every downstream feature
-        # reads off that radar. It was only ever filled in at onboarding, so every
-        # mandate created before that existed sat permanently in the state the
-        # onboarding step prevents — reported three times as "hier wird immer noch
-        # kein Impuls angezeigt". Self-limiting: the call returns immediately once
-        # a radar is in place.
-        settled = 0
-        for client in clients:
-            if client.is_competitor:
-                continue  # a yardstick has no impulse page for a radar to fill
-            if settled >= _SETTLE_PER_SWEEP:
-                break
-            try:
-                if themes.settle(session, client, fetch=fetch):
-                    settled += 1
-            except Exception:  # noqa: BLE001 — a radar is not worth a failed sweep
-                _log.exception("theme settling for %r failed", client.name)
-                # A caught exception is not a clean session. ``settle`` writes,
-                # so a failed flush leaves the transaction in
-                # ``PendingRollbackError`` and every later statement in this
-                # block dies with it — after ``_finalize_run`` has already
-                # recorded the sweep as ok. Reproduced: the header shows a green
-                # run with zero errors while the drafting, the archive linking
-                # and the notification were all skipped.
-                session.rollback()
-        # The archive first: the registry feeds fetched the trade press this
-        # morning and nothing linked it to the mandates whose field it is. Doing
-        # this before drafting means today's material is available to today's
-        # draft rather than tomorrow's.
-        linked = link_archive_to_themes(
-            session, clients, started - IMPULSE_LOOKBACK, started
+        angles_written = _post_run(
+            session, clients, topic_pairs, errors, fetch, started, now_fn
         )
-        if linked:
-            _log.info("linked %d archived article(s) as market material", linked)
-        angles_written = _generate_angles(session, topic_pairs, errors)
-        # And then top up the mandates the radar did not move today. Drafting only
-        # from fresh material meant a quiet fortnight showed an empty Impulse
-        # column for a fortnight — for exactly the mandate whose consultant most
-        # needs something to say.
-        angles_written += _refresh_impulses(session, clients, errors, now=now_fn())
-        # Last, and outside everything above: the monthly report reads a period
-        # that has already ended, so it needs nothing this sweep fetched, and
-        # putting it here means a failure in it cannot cost the sweep any of the
-        # work that came before. The boundary is doubled — per mandate inside, and
-        # once here — because the period arithmetic and the client list are
-        # outside the per-mandate try and must not be able to end the run either.
-        try:
-            _draft_reports(session, clients, now=now_fn())
-        except Exception:  # noqa: BLE001 — a report is never worth a failed sweep
-            _log.exception("the monthly report draft failed; the sweep stands")
-            session.rollback()
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), %d error(s)",
         status.value,

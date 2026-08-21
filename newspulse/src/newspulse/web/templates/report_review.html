@@ -93,10 +93,15 @@
     </label>
     <button type="submit" class="btn btn--quiet">{{ t("Anzeigen") }}</button>
   </form>
+  {#- Hidden once released. The route refuses it anyway — before it costs a model
+      call — but a button whose only possible outcome, in the state it is shown
+      in, is a refusal is a surface asking to be pressed and then arguing. -#}
+  {% if not released %}
   <form method="post" action="/client/{{ client.id }}/berichte/erzeugen">
     <input type="hidden" name="zeitraum" value="{{ period_key }}">
     <button type="submit" class="btn btn--ghost">{{ t("Bericht erzeugen") }}</button>
   </form>
+  {% endif %}
   {% if report %}
     <div class="rep__state">
       {% if released %}
@@ -110,23 +115,30 @@
 </div>
 
 {% if not report %}
-  <p class="rep__empty">{{ no_report }}</p>
+  <p class="rep__empty">{{ t(no_report) }}</p>
 {% else %}
 
   {% if document %}
     <div class="rep__figs">
+      {#- The comparison is composed from its parts rather than printed as a
+          stored German phrase: the words around the number are chrome and
+          translate, the number itself is frozen and does not. -#}
       {% for f in document.figures %}
         <span class="rep__fig">
           <span>{{ t(f.label) }}</span>
           <b>{{ f.text if f.text else t("kein Wert") }}</b>
-          {% if f.previous_text %}<span>({{ f.previous_text }})</span>{% endif %}
+          {% if f.previous_value_text %}
+            <span>({{ t("vorher") }} {{ f.previous_value_text }}, {{ t(f.direction) }})</span>
+          {% elif f.direction %}
+            <span>({{ t("kein Vergleichszeitraum") }})</span>
+          {% endif %}
         </span>
       {% endfor %}
     </div>
   {% endif %}
 
   {% if report.note and not views %}
-    <p class="rep__note">{{ report.note }}</p>
+    <p class="rep__note">{{ t(report.note) }}</p>
   {% endif %}
 
   {% for view in views %}
@@ -144,10 +156,18 @@
         <p class="fnd__why">{{ t("Verworfen, weil") }}: {{ f.drop_reason }}</p>
       {% endif %}
 
-      {% if view.unsupported %}
-        <p class="fnd__flag fnd__flag--gone">{{ t("Kein Beleg trägt diesen Befund mehr. Er steht nicht im Dokument.") }}</p>
-      {% elif view.weakened %}
-        <p class="fnd__flag fnd__flag--weak">{{ view.missing }} {{ t("Beleg(e) sind nicht mehr in der Berichterstattung. Der Befund steht auf dem, was übrig ist.") }}</p>
+      {#- Only while the report is still a draft. These flags are read off the
+          archive as it stands today, and that is the right reading for a draft:
+          a claim whose ground moved must say so before anybody releases it. For
+          a released report it would be a false statement on the page — "steht
+          nicht im Dokument" about a finding the frozen document still prints —
+          and the figures beside it already come out of the snapshot. -#}
+      {% if not released %}
+        {% if view.unsupported %}
+          <p class="fnd__flag fnd__flag--gone">{{ t("Kein Beleg trägt diesen Befund mehr. Er steht nicht im Dokument.") }}</p>
+        {% elif view.weakened %}
+          <p class="fnd__flag fnd__flag--weak">{{ view.missing }} {{ t("Beleg(e) sind nicht mehr in der Berichterstattung. Der Befund steht auf dem, was übrig ist.") }}</p>
+        {% endif %}
       {% endif %}
 
       {% if view.evidence %}
@@ -202,7 +222,12 @@
       <p>{{ t("Mit der Freigabe steht der Name der Agentur auf dem Bericht. Er wird eingefroren: Befunde, Zahlen und Belege bleiben, wie sie freigegeben wurden, auch wenn sich die Berichterstattung später ändert.") }}</p>
     </form>
   {% else %}
-    <p class="rep__rel">{{ t("Freigegeben am") }} {{ report.released_at | de_date }}{% if report.released_by %} · {{ report.released_by }}{% endif %}.
+    {#- The date is guarded because `released` does not imply it: `is_released`
+        deliberately answers yes to a row labelled freigegeben whose stamp is
+        missing, so that a half-written state fails closed rather than offering
+        the controls. It must not then fail open here, on a filter that would
+        raise on None. -#}
+    <p class="rep__rel">{% if report.released_at %}{{ t("Freigegeben am") }} {{ report.released_at | de_date }}{% else %}{{ t("Freigegeben") }}{% endif %}{% if report.released_by %} · {{ report.released_by }}{% endif %}.
       {{ t("Ein freigegebener Bericht wird nicht mehr geändert und nicht neu erzeugt.") }}</p>
   {% endif %}
 {% endif %}

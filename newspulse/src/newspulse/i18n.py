@@ -780,6 +780,18 @@ _EN: dict[str, str] = {
     "Ein freigegebener Bericht wird nicht mehr geändert und nicht neu erzeugt.":
         "A released report is neither edited nor drafted again.",
     "Dokument": "Document",
+    "Der Bericht ist freigegeben und wird nicht überschrieben. Ein freigegebener Bericht wird nicht neu erzeugt.":
+        "The report is released and is not overwritten. A released report is not "
+        "drafted again.",
+    # The two error strings that carry data keep their placeholders, so the
+    # translation is chosen before the value is put into it and an English reader
+    # gets an English sentence around a German term the archive could not source.
+    "Der Bericht ist fehlgeschlagen: {reason}": "The report failed: {reason}",
+    "Ein Befund ohne Aussage ist kein Befund. Der Text bleibt wie er war.":
+        "A finding without a claim is not a finding. The text stays as it was.",
+    "„{terms}“ kann RauteOS aus Archiv und Ledger nicht belegen und steht deshalb in keinem Bericht. Der Text bleibt wie er war.":
+        "RauteOS cannot source „{terms}“ from the archive or the ledger, "
+        "so it stands in no report. The text stays as it was.",
     "Verworfen": "Dropped",
     "Verworfen, weil": "Dropped because",
     "Warum nicht? (optional)": "Why not? (optional)",
@@ -796,6 +808,48 @@ _EN: dict[str, str] = {
         "Some of the evidence is no longer in the client's coverage. The finding "
         "stands on what is printed here.",
     "kein Wert": "no figure",
+    "redaktionell bearbeitet": "edited by the agency",
+    # The comparison under a figure, as its parts. Composed in the template rather
+    # than stored as one German phrase: the number between them is frozen at
+    # release and the words around it are chrome, and only one of those two may
+    # change with the reader's language.
+    "vorher": "previously",
+    "kein Vergleichszeitraum": "no comparison period",
+    # ``reporting.Direction``. "unbekannt" is below, with the tonality it shares
+    # the word with.
+    "gestiegen": "up",
+    "gefallen": "down",
+    "unverändert": "unchanged",
+    # Why a figure is missing, as ``reporting.MetricValue.note`` says it. This is
+    # the line an English reader most needs on a tile that shows no number, and it
+    # is the tool's own wording rather than the mandate's, so it translates. The
+    # notes built from counts (see ``reporting._unnamed_note``) have no fixed
+    # form to key on and fall back to German, which is what this scheme degrades
+    # to everywhere by design.
+    "Keine Berichterstattung im Zeitraum.": "No coverage in the period.",
+    "Kein Vergleichsumfeld hinterlegt. Ein Anteil am Marktgespräch braucht die Wettbewerber, die für diesen Mandanten hinterlegt sind.":
+        "No comparison set stored. A share of the market conversation needs the "
+        "competitors stored for this client.",
+    "Im Zeitraum wurde weder über den Mandanten noch über einen der hinterlegten Wettbewerber geschrieben. Ohne Marktgespräch gibt es keinen Anteil daran.":
+        "In this period neither the client nor any of the stored competitors was "
+        "written about. With no market conversation there is no share of it.",
+    "Keine freigegebenen Anschreiben im Zeitraum. Ohne eigene Ansprache gibt es nichts zuzurechnen — das ist keine Null, sondern keine Frage.":
+        "No released letters in the period. With no outreach of our own there is "
+        "nothing to attribute: that is not a zero, it is not a question.",
+    "Gezählt wird ein Beitrag, der die Botschaft als Ganzes aufnimmt oder mindestens zwei ihrer tragenden Begriffe.":
+        "An item counts when it carries the message as a whole, or at least two "
+        "of its load-bearing terms.",
+    "Keine Kernbotschaften im Kommunikations-Guide hinterlegt. Ohne sie gibt es nichts, woran sich die Berichterstattung messen ließe.":
+        "No key messages stored in the communications guide. Without them there "
+        "is nothing to measure the coverage against.",
+    # And why a whole report has no findings, as ``report.ReportDraft.note`` says
+    # it. Three separate sentences on purpose: an empty month, a month whose
+    # figures carry nothing, and a reading that produced nothing that stands up
+    # are different things to put in front of a client.
+    "Für diesen Zeitraum liegt keine belegbare Kennzahl vor, auf die sich eine Aussage stützen ließe.":
+        "This period holds no sourceable figure a statement could rest on.",
+    "Aus der Berichterstattung dieses Zeitraums ergibt sich keine belegbare Aussage.":
+        "The coverage in this period yields no sourceable statement.",
     "Kennzahlen": "Figures",
     "Verteilung": "Distribution",
     "Befunde": "Findings",
