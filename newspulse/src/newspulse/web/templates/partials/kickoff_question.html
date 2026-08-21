@@ -1,0 +1,129 @@
+{# One question: what is asked, the answer as it stands, and where it goes.
+
+   Its own file because an htmx save swaps exactly this block back in. Page and
+   save must render the same markup, or a just-saved question would quietly stop
+   looking like its neighbours.
+
+   Three states, and they must look like three: answered (green wash, timestamp),
+   deliberately skipped (its own badge and the way back), and untouched. The last
+   one is not a failure — it says the foundation is thin here. #}
+{% set t = translator(request) %}
+{% set answered = answer is not none and not answer.skipped and answer.value %}
+{% set skipped = answer is not none and answer.skipped %}
+{% set field_id = "a-" ~ question.key %}
+{% set form_id = "form-" ~ question.key %}
+<div class="q{% if answered %} q--done{% elif skipped %} q--skipped{% endif %}" id="q-{{ question.key }}">
+
+  {% if answered %}
+    <span class="q__saved">{{ t("gespeichert") }} {{ answer.answered_at | de_time }}</span>
+  {% elif skipped %}
+    <span class="q__saved q__saved--skipped">{{ t("übergangen") }}</span>
+  {% endif %}
+
+  <label class="q__label" for="{{ field_id }}">{{ t(question.text) }}</label>
+  <p class="q__help">{{ t(question.help) }}</p>
+
+  {# Entries already given, above the field that adds the next one — so a fourth
+     spokesperson never means retyping the first three. Each chip is its own form:
+     HTML forbids nesting one inside the answer form. #}
+  {% if question.is_list and answered %}
+    <div class="chiprow">
+      {% for entry in answer.value | kickoff_entries %}
+        <span class="chipx">
+          {{ entry }}
+          <form method="post" action="/client/{{ client.id }}/kickoff/{{ question.key }}/remove"
+                hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}/remove"
+                hx-target="#q-{{ question.key }}" hx-swap="outerHTML">
+            <input type="hidden" name="index" value="{{ loop.index0 }}">
+            <button type="submit" aria-label="{{ t('Eintrag entfernen') }}">×</button>
+          </form>
+        </span>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {# hx-trigger includes `change`, which fires when the field is left after being
+     edited: that is what "saves as you type" means without a keystroke-per-request
+     stream. The submit button below is the same route without JavaScript.
+
+     Not for a list, though. There the field is an append box, not the answer:
+     blurring it would commit "Dr. Anna Verh" as a permanent chip, and the only
+     correction is to delete the chip and retype. A list entry is added when it is
+     submitted, deliberately. #}
+  <form id="{{ form_id }}" method="post"
+        action="/client/{{ client.id }}/kickoff/{{ question.key }}"
+        hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}"
+        hx-target="#q-{{ question.key }}" hx-swap="outerHTML"
+        hx-trigger="{% if question.is_list %}submit{% else %}change, submit{% endif %}">
+    {# The placeholder is the question's own, from the locked mock, and it says
+       the *shape* of the answer where the help line above says why the question
+       is asked — "Unternehmen, und in einem Halbsatz warum" against "Wichtig für
+       den Share of Voice". Questions the mock leaves without one keep none:
+       repeating the help would be the same sentence twice, one of them vanishing
+       the moment anyone types. #}
+    {% set placeholder = t(question.placeholder) if question.placeholder else "" %}
+    {% if question.is_prose %}
+      <textarea id="{{ field_id }}" name="value"
+                {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>{{ answer.value if answered else "" }}</textarea>
+    {% elif question.is_list %}
+      <input type="text" id="{{ field_id }}" name="value" value="" autocomplete="off"
+             {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>
+    {% else %}
+      <input type="text" id="{{ field_id }}" name="value"
+             value="{{ answer.value if answered else '' }}"
+             {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>
+    {% endif %}
+  </form>
+
+  {# What this answer feeds, in words rather than in a field name. The whole
+     questionnaire rests on it: a question whose answer goes nowhere in particular
+     is a form, and this tool has enough forms. #}
+  <div class="q__feeds">
+    {{ t(question.verb) }}
+    {%- for feed in question.feeds %}
+      <b>{{ t(feed.target.value) }}{% if feed.slot %} · {{ t(feed.slot) }}{% endif %}</b>
+      {%- if not loop.last %} {{ t("und") }}{% endif %}
+    {%- endfor %}
+    {%- if question.note %} · {{ t(question.note) }}{% endif %}
+  </div>
+
+  <div class="q__acts">
+    {# A list question's button appends; the others overwrite. Two words, because
+       a reader who sees "Speichern" over an append box expects the box to hold
+       the answer. #}
+    <button type="submit" form="{{ form_id }}" class="linkbtn">
+      {{ t("Hinzufügen") if question.is_list else t("Speichern") }}</button>
+    {% if skipped %}
+      <form method="post" action="/client/{{ client.id }}/kickoff/{{ question.key }}/clear"
+            hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}/clear"
+            hx-target="#q-{{ question.key }}" hx-swap="outerHTML">
+        <button type="submit" class="linkbtn">{{ t("Doch beantworten") }}</button>
+      </form>
+    {% elif not answered %}
+      {# Not offered beside a stored answer. Skipping drops the value, so one
+         stray click on the button next to "Speichern" would destroy a sentence
+         transcribed from a call — the same loss the blur rule exists to prevent,
+         one element to the right. The way from answered to passed over is
+         "Antwort löschen" and then this button, which is two deliberate acts and
+         reads as what it is. #}
+      <form method="post" action="/client/{{ client.id }}/kickoff/{{ question.key }}/skip"
+            hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}/skip"
+            hx-target="#q-{{ question.key }}" hx-swap="outerHTML">
+        <button type="submit" class="linkbtn"
+                title="{{ t('Gefragt, aber keine Antwort — anders als noch nicht gefragt') }}">{{ t("Übergehen") }}</button>
+      </form>
+    {% endif %}
+
+    {# Deleting a stored answer is its own button rather than a side effect of
+       emptying the field. The field saves on blur, so a select-all before
+       retyping would otherwise destroy a transcribed answer that exists nowhere
+       else. Going back to unanswered stays possible; it just has to be meant. #}
+    {% if answered %}
+      <form method="post" action="/client/{{ client.id }}/kickoff/{{ question.key }}/clear"
+            hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}/clear"
+            hx-target="#q-{{ question.key }}" hx-swap="outerHTML">
+        <button type="submit" class="linkbtn">{{ t("Antwort löschen") }}</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
