@@ -1038,6 +1038,30 @@ def test_an_over_long_rule_block_survives_being_saved_as_a_guide(session):
             assert rule in saved
 
 
+def test_a_draft_posted_from_the_form_keeps_its_last_rule_whole(session):
+    """The same failure through the field the consultant actually uses.
+
+    A browser posts every newline in a ``<textarea>`` as CRLF, so a draft built to
+    sit exactly on the budget comes back one character per line longer than it
+    left — and the trim takes that off the end, where the client's own rules are.
+    """
+    client = _client(session)
+    for key in ("satz", "zwoelf_monate", "ansprechpartner"):
+        _answer(session, client, key, "Antwort.")
+    for key in ("nie_satz", "schweigen", "zahlen", "schieflage"):
+        _answer(session, client, key, f"Regel {key}: " + "kein Wort. " * 20)
+
+    draft = onboarding.to_guide_draft(session, client, invoke=_distilled("P " * 1200))
+
+    assert not draft.dropped
+    assert len(draft.text) + draft.text.count("\n") > guide.GUIDE_MAX_CHARS, (
+        "a draft below the ceiling even as CRLF would not test the trim"
+    )
+    saved = guide.save(session, client, draft.text.replace("\n", "\r\n"))
+    for rule in draft.verbatim:
+        assert rule in saved, "a no-go was trimmed off the end by guide.save"
+
+
 # --- The answers as a source of the guide --------------------------------------
 
 
@@ -1142,6 +1166,18 @@ def test_a_competitor_already_in_the_comparison_set_is_not_offered_again(session
     assert onboarding.to_rivals(session, client) == []
 
 
+def test_every_competitor_named_in_one_answer_is_offered(session):
+    """The question is one line and "wichtigster Wettbewerber" is routinely
+    answered with three. Offering only the first left the other two as prose that
+    could never be clicked into the comparison set."""
+    client = _client(session)
+    _answer(session, client, "wettbewerber", "Intuitive Surgical, Medtronic, Stryker")
+
+    named = onboarding.to_rivals(session, client)
+
+    assert [r.name for r in named] == ["Intuitive Surgical", "Medtronic", "Stryker"]
+
+
 def test_a_competitor_named_without_a_reason_is_still_offered(session):
     client = _client(session)
     _answer(session, client, "wettbewerber", "Intuitive Surgical")
@@ -1215,6 +1251,48 @@ def test_dropping_the_old_value_ends_the_disagreement(session):
 
     fact = profiles.stored(session, client.id)["sitz"]
     assert fact.value == "Bern"
+    assert fact.is_disputed is False
+
+
+def test_the_kickoff_does_not_supersede_its_own_earlier_answer(session):
+    """Two questions feed ``Sprecher``, so accepting it twice hands the field the
+    questionnaire's own earlier words. That is the same source restating itself,
+    and recording it as a contradiction would erase the researched value that was
+    genuinely superseded — which nothing else can restore."""
+    client = _client(session)
+    profiles.save(session, client, "sprecher", "Laut Website: Pressestelle.",
+                  source_url="https://beispiel.de", source_title="beispiel.de",
+                  filled_by="gemini")
+
+    def _accept() -> None:
+        p = {x.key: x for x in onboarding.to_proposals(session, client.id)}["sprecher"]
+        profiles.save(session, client, "sprecher", p.value,
+                      source_title=p.source_title, filled_by=p.filled_by,
+                      supersede=True)
+
+    _answer(session, client, "sprecher", "Dr. Anna Klar, CTO.")
+    _accept()
+    _answer(session, client, "interview", "Nur zu Technik.")
+    _accept()
+
+    row = profiles.stored(session, client.id)["sprecher"]
+    assert row.superseded_value == "Laut Website: Pressestelle."
+    assert row.superseded_filled_by == "gemini"
+
+
+def test_a_hand_edit_ends_the_disagreement_it_settles(session):
+    """The consultant has read both values and written a third. Leaving "Vorher"
+    standing would name something nobody is still arguing with — including where
+    he typed the old value back in, which would put it under itself."""
+    client = _client(session)
+    profiles.save(session, client, "sitz", "Zug", filled_by="gemini-2.5-flash")
+    profiles.save(session, client, "sitz", "Bern", supersede=True,
+                  filled_by=onboarding.SOURCE_NAME)
+
+    profiles.save(session, client, "sitz", "Zug")
+
+    fact = profiles.stored(session, client.id)["sitz"]
+    assert fact.value == "Zug"
     assert fact.is_disputed is False
 
 
@@ -1499,3 +1577,24 @@ def test_a_competitor_named_without_punctuation_keeps_a_readable_reason(session)
     assert [(r.name, r.reason) for r in named] == [
         ("Intuitive Surgical", "weil sie billiger sind")
     ]
+
+
+def test_a_sourceless_research_proposal_is_not_called_the_clients_statement(factory, web):
+    """The grounding API does come back without a source. "Angabe des Mandanten"
+    is the strongest provenance the page can print, and putting it under a machine
+    guess nobody can check is the exact inversion of what it means."""
+    from newspulse.web.routes import profile as profile_routes
+
+    with factory() as session:
+        client = _client(session)
+        client_id = client.id
+    profile_routes._proposals[client_id] = [
+        profiles.Proposal(key="geschaeftsfeld", value="Zulieferer für OP-Technik.")
+    ]
+    try:
+        body = web.get(f"/client/{client_id}/profil").text
+
+        assert "Zulieferer für OP-Technik." in body
+        assert "Angabe des Mandanten" not in body
+    finally:
+        profile_routes._proposals.pop(client_id, None)

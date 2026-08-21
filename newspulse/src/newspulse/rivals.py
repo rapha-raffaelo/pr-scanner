@@ -27,16 +27,32 @@ _log = logging.getLogger(__name__)
 
 _PROMPT_RESOURCE = "prompts/rivals.txt"
 
-#: Where a named competitor's name stops and the reason begins. The kick-off asks
-#: for "Unternehmen, und in einem Halbsatz warum", so an answer arrives as one
-#: line: "Trade Republic, weil sie dieselben Kunden umwerben". The dashes carry
-#: their spaces on purpose — a bare hyphen would cut "Trade-Republic" in half.
-_REASON_MARKS = (",", ";", ":", " – ", " — ", " - ")
+#: Where a named competitor's name stops and the reason begins beyond doubt. The
+#: kick-off asks for "Unternehmen, und in einem Halbsatz warum", so an answer
+#: arrives as one line: "Trade Republic – sie umwerben dieselben Kunden". The
+#: dashes carry their spaces on purpose — a bare hyphen would cut "Trade-Republic"
+#: in half.
+_REASON_MARKS = (":", " – ", " — ", " - ")
 
 #: The same cut where the answer runs straight into its reason with no
 #: punctuation. Kept in the reason rather than swallowed, because "weil sie
 #: billiger sind" is a sentence and "sie billiger sind" is a fragment.
 _REASON_WORDS = (" weil ",)
+
+#: The comma and the semicolon are not in ``_REASON_MARKS`` because they do two
+#: jobs in the same field: "Trade Republic, weil sie billiger sind" introduces a
+#: reason, and "Intuitive Surgical, Medtronic, Stryker" names three companies.
+#: The question is one line, so a consultant transcribing a call writes both — and
+#: cutting at the first one either way threw two of those three away.
+_LIST_MARKS = (",", ";")
+
+#: How many words a fragment may have and still read as a company name. Four
+#: covers "Deutsche Bahn Fernverkehr AG"; a half-sentence of reason is longer.
+_NAME_MAX_WORDS = 4
+
+#: Lowercase words that appear inside a company name without making the fragment
+#: a sentence: "Meyer & Sohn", "Bank of America".
+_NAME_JOINERS = frozenset({"&", "und", "and", "of", "for", "de", "van"})
 
 
 def _prompt_template() -> Template:
@@ -61,7 +77,7 @@ def _taken(client: Client) -> set[str]:
 
 
 def _split_reason(line: str) -> tuple[str, str]:
-    """One named competitor, cut into the company and why it was named."""
+    """One line, cut where a reason unmistakably begins."""
     line = line.strip()
     # ``width`` is what the separator itself eats: all of it for punctuation,
     # none of it for a word that belongs to the reason it introduces.
@@ -73,14 +89,64 @@ def _split_reason(line: str) -> tuple[str, str]:
     return line[:at].strip(), line[at + width:].strip(" ,;:–—-")
 
 
+def _reads_as_name(fragment: str) -> bool:
+    """Whether an enumerated fragment is another company or the start of a reason.
+
+    German capitalises its nouns, so a fragment that runs on in lowercase —
+    "weil sie dieselben Kunden umwerben", "die denselben Markt bedienen" — is
+    prose about the company before it. Every word has to carry a capital for the
+    fragment to count as a name, which errs the safe way: a reason mistaken for a
+    company would be created and linked into the share-of-voice arithmetic, while
+    a company mistaken for a reason merely stays displayed as prose, which is
+    where all of them stood before.
+    """
+    words = fragment.split()
+    if not words or len(words) > _NAME_MAX_WORDS:
+        return False
+    return all(
+        word.casefold() in _NAME_JOINERS or word[:1].isupper() or word[:1].isdigit()
+        for word in words
+    )
+
+
+def _named_in(line: str) -> tuple[list[str], str]:
+    """One transcribed line, cut into every company it names and their reason.
+
+    The reason is shared: "Intuitive Surgical, Medtronic, weil beide OP-Roboter
+    bauen" says the same thing about both, and the consultant reading the
+    proposals needs it on each of the rows he is deciding about.
+    """
+    head, reason = _split_reason(line)
+    for mark in _LIST_MARKS[1:]:
+        head = head.replace(mark, _LIST_MARKS[0])
+    fragments = [f.strip() for f in head.split(_LIST_MARKS[0]) if f.strip()]
+    if not fragments:
+        return [], reason
+    # The first fragment is the company however it is written — a lowercase brand
+    # is still what the client answered, and there is nothing before it for it to
+    # be a reason about.
+    names = fragments[:1]
+    rest: list[str] = []
+    for fragment in fragments[1:]:
+        if not rest and _reads_as_name(fragment):
+            names.append(fragment)
+        else:
+            rest.append(fragment)
+    return names, ", ".join(part for part in (*rest, reason) if part)
+
+
 def from_named(client: Client, lines: list[str]) -> list[RivalSuggestion]:
     """Competitors somebody named, as proposals. Creates nothing, links nothing.
 
     The kick-off answer is prose — a company and half a sentence of reason — so
-    the name is cut out of it here rather than asked for in two fields, which
-    would have made the question read like a form. Everything downstream is the
-    same path the model's own suggestions take: the consultant clicks, and only
-    then does a company exist and get linked.
+    the names are cut out of it here rather than asked for in two fields, which
+    would have made the question read like a form. One answer can carry several:
+    the question is a single line and "wichtigster Wettbewerber" is routinely
+    answered with three, so each of them becomes a proposal of its own. Offering
+    only the first left the others as prose nobody could click.
+
+    Everything downstream is the same path the model's own suggestions take: the
+    consultant clicks, and only then does a company exist and get linked.
 
     A competitor the mandate already has is dropped rather than offered again: an
     accept for it would be a no-op, and a proposal nobody can act on is noise on a
@@ -90,11 +156,12 @@ def from_named(client: Client, lines: list[str]) -> list[RivalSuggestion]:
     out: list[RivalSuggestion] = []
     for raw in lines:
         for line in raw.splitlines():
-            name, reason = _split_reason(line)
-            if not name or name.casefold() in seen:
-                continue
-            seen.add(name.casefold())
-            out.append(RivalSuggestion(name=name, reason=reason))
+            names, reason = _named_in(line)
+            for name in names:
+                if not name or name.casefold() in seen:
+                    continue
+                seen.add(name.casefold())
+                out.append(RivalSuggestion(name=name, reason=reason))
     return out
 
 
