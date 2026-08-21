@@ -36,6 +36,11 @@ from .models import Client, ClientFact
 
 _log = logging.getLogger(__name__)
 
+#: What a value the consultant typed himself is credited to. His own knowledge is
+#: the strongest provenance in the building and carries no source, so this is also
+#: what the page reads to decide whether to print a citation at all.
+FILLED_BY_HAND = "mensch"
+
 
 @dataclass(frozen=True, slots=True)
 class Field:
@@ -135,20 +140,39 @@ def stored(session: Session, client_id: int) -> dict[str, ClientFact]:
     return {row.key: row for row in rows}
 
 
-def _supersede(row: ClientFact, value: str) -> None:
+def _supersede(row: ClientFact, value: str, filled_by: str) -> None:
     """Move what this field says now into the slot behind it (DEC-2 option A).
 
     Only where the two actually disagree. Accepting an answer that says what the
     field already said is not a contradiction, and recording it as one would put a
     "die Recherche sagte" line under a value nothing ever contradicted.
+
+    And only between two different authors. One profile slot can be fed by two
+    kick-off questions — who may be quoted, and on what — so accepting that field
+    a second time hands it the questionnaire's own earlier text. That is the same
+    source restating itself, not a contradiction; treating it as one would move
+    the client's own words into the slot behind the field and overwrite the
+    researched value that was genuinely superseded, which nothing else can
+    restore.
     """
     if not row.value.strip() or row.value.strip() == value:
+        return
+    if row.filled_by == filled_by:
         return
     row.superseded_value = row.value
     row.superseded_source_url = row.source_url
     row.superseded_source_title = row.source_title
     row.superseded_filled_by = row.filled_by
     row.superseded_at = dt.datetime.now(dt.UTC)
+
+
+def _forget(row: ClientFact) -> None:
+    """Clear the older value standing beside this field. The disagreement is over."""
+    row.superseded_value = ""
+    row.superseded_source_url = ""
+    row.superseded_source_title = ""
+    row.superseded_filled_by = ""
+    row.superseded_at = None
 
 
 def save(
@@ -159,7 +183,7 @@ def save(
     *,
     source_url: str = "",
     source_title: str = "",
-    filled_by: str = "mensch",
+    filled_by: str = FILLED_BY_HAND,
     supersede: bool = False,
 ) -> ClientFact | None:
     """Write one field. An empty value clears it rather than storing a blank.
@@ -172,6 +196,11 @@ def save(
     the one case DEC-2 is about: a kick-off answer that contradicts what the web
     said. The answer wins, and what the web said stays on the page with its own
     provenance until somebody drops it.
+
+    A hand edit ends such a disagreement rather than joining it: the consultant
+    has seen both values and written a third, so the older one stops being a
+    contradiction worth showing — including where he typed it back in himself,
+    which would otherwise leave "Vorher: X" standing under a current value of X.
     """
     if key not in FIELDS_BY_KEY:
         return None
@@ -187,8 +216,11 @@ def save(
             session.commit()
         return None
     row = existing or ClientFact(client_id=client.id, key=key)
-    if supersede and existing is not None:
-        _supersede(row, value)
+    if existing is not None:
+        if supersede:
+            _supersede(row, value, filled_by)
+        elif filled_by == FILLED_BY_HAND and existing.value.strip() != value:
+            _forget(row)
     row.value = value
     row.source_url = source_url.strip()
     row.source_title = source_title.strip()
@@ -213,11 +245,7 @@ def forget_superseded(session: Session, client_id: int, key: str) -> ClientFact 
     ).first()
     if row is None:
         return None
-    row.superseded_value = ""
-    row.superseded_source_url = ""
-    row.superseded_source_title = ""
-    row.superseded_filled_by = ""
-    row.superseded_at = None
+    _forget(row)
     session.commit()
     return row
 
@@ -312,5 +340,5 @@ def research(client: Client, *, generate=None) -> list[Proposal]:
     return out
 
 
-__all__ = ["FIELDS", "FIELDS_BY_KEY", "FILLABLE", "RESEARCHED", "Field", "Proposal",
-           "forget_superseded", "research", "save", "stored"]
+__all__ = ["FIELDS", "FIELDS_BY_KEY", "FILLABLE", "FILLED_BY_HAND", "RESEARCHED",
+           "Field", "Proposal", "forget_superseded", "research", "save", "stored"]

@@ -91,7 +91,7 @@ def _pending(
     researched = [
         p for p in _proposals.get(client_id, [])
         if p.key not in answered
-        and (p.key not in facts or facts[p.key].filled_by != "mensch")
+        and (p.key not in facts or facts[p.key].filled_by != profiles.FILLED_BY_HAND)
     ]
     return from_kickoff + researched
 
@@ -158,7 +158,9 @@ async def save_profile(
                 session, client, field.key, value,
                 source_url=stored.source_url if unchanged and stored else "",
                 source_title=stored.source_title if unchanged and stored else "",
-                filled_by=(stored.filled_by if unchanged and stored else "mensch"),
+                filled_by=(
+                    stored.filled_by if unchanged and stored else profiles.FILLED_BY_HAND
+                ),
             )
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
 
