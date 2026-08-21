@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ... import onboarding
 from ... import profile as profiles
 from ...db import get_session
-from ...models import Client
+from ...models import Client, ClientFact, OnboardingAnswer
 from ..app import get_db, templates
 from ..runlock import guard as _run_guard
 from .today import _fetch_last_run, _local_tz
@@ -53,7 +53,13 @@ def _run_research(client_id: int) -> None:
         _researching.release()
 
 
-def _pending(session: Session, client_id: int) -> list[profiles.Proposal]:
+def _pending(
+    session: Session,
+    client_id: int,
+    *,
+    facts: dict[str, ClientFact] | None = None,
+    stored: dict[str, OnboardingAnswer] | None = None,
+) -> list[profiles.Proposal]:
     """Everything on offer for this profile: the web research, and the kick-off.
 
     Two sources, one list, one accept button — the consultant is answering the
@@ -67,10 +73,15 @@ def _pending(session: Session, client_id: int) -> list[profiles.Proposal]:
     A kick-off answer is not dropped, because the client contradicting the web is
     the case worth surfacing — it is only dropped when it says what the field
     already says, which is not a contradiction but a duplicate.
+
+    ``facts`` and ``stored`` are the two tables this reads, passed in by a caller
+    that already holds them: rendering the page needs the facts for the form and
+    the answers for the completeness line anyway, and fetching each of them twice
+    per render is two round trips for rows already in hand.
     """
-    facts = profiles.stored(session, client_id)
+    facts = profiles.stored(session, client_id) if facts is None else facts
     from_kickoff = [
-        p for p in onboarding.to_proposals(session, client_id)
+        p for p in onboarding.to_proposals(session, client_id, stored=stored)
         if p.key not in facts or facts[p.key].value.strip() != p.value.strip()
     ]
     # One proposal per field. Where both have something to say about the same
@@ -92,7 +103,11 @@ def profile_view(
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
+    # Both tables read once and handed on. The proposals need the facts to know
+    # what they would displace and the answers to know what to offer; the
+    # completeness line needs the same answers again.
     facts = profiles.stored(session, client_id)
+    stored = onboarding.answers(session, client_id)
     return templates.TemplateResponse(
         request,
         "client_profile.html",
@@ -102,12 +117,12 @@ def profile_view(
             "facts": facts,
             "filled": len(facts),
             "fillable": profiles.FILLABLE,
-            "proposals": _pending(session, client_id),
+            "proposals": _pending(session, client_id, facts=facts, stored=stored),
             # How much of this mandate's own foundation exists. On the profile
             # because this is the page that reads as the mandate's file: a thin
             # profile beside a full questionnaire is a different problem from a
             # thin profile beside twenty unasked questions.
-            "kickoff": onboarding.completeness(session, client_id),
+            "kickoff": onboarding.completeness(session, client_id, stored=stored),
             "researching": _researching.locked(),
             "research_error": _errors.get(client_id, ""),
             "last_run": _fetch_last_run(session),
