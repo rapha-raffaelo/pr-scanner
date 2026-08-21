@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .. import branding, config, gnews, i18n
+from .. import branding, config, gnews, i18n, onboarding
 from ..db import get_session
 from . import google_auth, navigation, runlock
 from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
@@ -244,6 +244,10 @@ templates.env.globals["signed_in_as"] = lambda request: request.scope.get("user_
 templates.env.globals["google_login_active"] = google_auth.is_configured
 templates.env.filters["monogram"] = branding.monogram
 templates.env.filters["brand_colour"] = branding.colour
+# A list answer in the questionnaire is one text column, one entry per line. The
+# split lives in ``onboarding`` rather than in the template so the chip a reader
+# deletes and the entry the route removes are indexed by the same rule.
+templates.env.filters["kickoff_entries"] = onboarding.entries
 
 
 def get_db() -> Iterator[Session]:
@@ -281,8 +285,9 @@ def create_app() -> FastAPI:
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
         advisory, archive, assets_view, assistant, client, contacts, guide_routes,
-        language, login, profile as profile_routes, rivals_view, runstatus,
-        settings, today, triage,
+        language, login, onboarding as onboarding_routes,
+        profile as profile_routes, rivals_view, runstatus, settings, today,
+        triage,
     )
 
     # First, so the sign-in pages exist before anything that needs a session.
@@ -305,6 +310,7 @@ def create_app() -> FastAPI:
     app.include_router(contacts.router)
     app.include_router(profile_routes.router)
     app.include_router(rivals_view.router)
+    app.include_router(onboarding_routes.router)
     return app
 
 

@@ -896,6 +896,91 @@ class ClientFact(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
     )
+    #: What this field said before a kick-off answer replaced it, and where *that*
+    #: came from. DEC-2 option A: the person who knows the company outranks the
+    #: page written about it, so the answer wins — but the disagreement stays
+    #: legible instead of being erased, because a researched value that a client
+    #: contradicts is a fact about the coverage even after it stops being a fact
+    #: about the company. Empty on almost every row: it fills only where an answer
+    #: and the web actually disagree.
+    superseded_value: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    superseded_source_url: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    superseded_source_title: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    superseded_filled_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default="", server_default=""
+    )
+    superseded_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+
+    @property
+    def is_disputed(self) -> bool:
+        """Whether an older value is still standing beside this one.
+
+        Read by the profile page rather than having it compare a string against
+        the empty one: "there is a superseded value" is the question being asked.
+        The value is what answers it; ``superseded_at`` is provenance for the
+        line beside it and never decides whether the line is shown.
+        """
+        return bool(self.superseded_value.strip())
+
+
+#: Who a hand-typed kick-off answer is attributed to. DEC-1 option A: the
+#: consultant sits in the call and transcribes. A name rather than a boolean,
+#: because option B (the client answers directly) puts a different name here —
+#: which is exactly when a second copy of this literal would drift, so the column
+#: default and :mod:`newspulse.onboarding` both read it from here.
+ANSWERED_BY_DEFAULT = "Berater"
+
+
+class OnboardingAnswer(Base):
+    """One answer from the kick-off questionnaire, as it was given.
+
+    Deliberately *not* a ``client_facts`` row and deliberately not a paragraph on
+    ``clients.comms_guide``. What the client said in the kick-off call and what
+    the tool has adopted as policy are two different things, and collapsing them
+    is how a sentence nobody approved becomes the rule every future text is
+    checked against. This table is the raw answer; adopting it is a separate,
+    deliberate act (ONB-02).
+
+    Keyed on (client, key): a mandate answers each question once, and answering
+    it again replaces what was there rather than growing a pile of versions.
+
+    ``skipped`` exists because "asked and deliberately passed over" and "never
+    got to it" are different states of the same foundation, and only one of them
+    is a reason to go back to the client. A row with ``skipped`` set carries no
+    value; a question with no row at all is simply still open.
+    """
+
+    __tablename__ = "onboarding_answers"
+    __table_args__ = (
+        UniqueConstraint("client_id", "key", name="uq_onboarding_answers_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: A key from :data:`newspulse.onboarding.QUESTIONS`. Free-form in the schema
+    #: so rewording the question set is a code change, not a migration.
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    answered_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: Who put it there. The consultant transcribing a call today; the client
+    #: itself once DEC-1 option B is built, which is why this is a name and not a
+    #: boolean.
+    answered_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default=ANSWERED_BY_DEFAULT
+    )
+    skipped: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 #: What :attr:`Outreach.outcome_by` holds when the mailbox sync recorded the
@@ -1385,6 +1470,8 @@ __all__ = [
     "Angle",
     "BrainOverride",
     "ClientFact",
+    "OnboardingAnswer",
+    "ANSWERED_BY_DEFAULT",
     "Contact",
     "OUTCOME_BY_MAILBOX",
     "ProfileProposal",

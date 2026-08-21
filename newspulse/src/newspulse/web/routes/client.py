@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from ... import gnews
 from ... import angles
-from ... import profile as profiles
+from ... import onboarding, profile as profiles
 from ...models import Analysis, Angle, Article, Category, Client, TopicHit, visible_coverage
 from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
@@ -363,6 +363,11 @@ class PortfolioRow:
     # a front door.
     alerts_today: int
     open_impulses: int
+    # How much of its own foundation this mandate has. On the front door because a
+    # thinly set-up client is otherwise merely quiet: no alerts and no impulses
+    # look exactly like a calm week until you notice nobody ever asked it the
+    # twenty questions.
+    kickoff: onboarding.Completeness
     # When the mandate profile was last re-read. On the roster because a profile
     # decays quietly: nothing about a card says its facts are two years old, and
     # the consultant picks the mandate to work on from exactly this screen.
@@ -458,6 +463,8 @@ def clients_index(
     # One clock for the whole list, so two cards checked the same morning cannot
     # be rendered a day apart by a render that straddles midnight.
     now = dt.datetime.now(dt.UTC)
+    # One query for the whole portfolio rather than one per card.
+    kickoffs = onboarding.completeness_by_client(session, [c.id for c in clients])
     rows = [
         PortfolioRow(
             id=c.id,
@@ -474,6 +481,7 @@ def clients_index(
             total_count=counts.totals.get(c.id, 0),
             alerts_today=counts.alerts_today.get(c.id, 0),
             open_impulses=counts.open_impulses.get(c.id, 0),
+            kickoff=kickoffs[c.id],
             profile_checked=profiles.checked(c.profile_checked_at, now=now),
         )
         for c in clients

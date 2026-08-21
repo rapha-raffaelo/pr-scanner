@@ -10,10 +10,11 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from ... import onboarding
 from ... import profile as profiles
 from ... import profile_refresh
 from ...db import get_session
-from ...models import Client, ProfileProposal
+from ...models import Client, ClientFact, OnboardingAnswer, ProfileProposal
 from ..app import get_db, templates
 from ..runlock import guard as _run_guard
 from .today import _fetch_last_run, _local_tz
@@ -81,6 +82,62 @@ def _run_research(client_id: int) -> None:
         _researching.release()
 
 
+def _pending(
+    session: Session,
+    client_id: int,
+    *,
+    facts: dict[str, ClientFact] | None = None,
+    stored: dict[str, OnboardingAnswer] | None = None,
+) -> list[profiles.Proposal]:
+    """Everything on offer for this profile: the web research, and the kick-off.
+
+    Two sources, one list, one accept button — the consultant is answering the
+    same question about every line ("does this belong on the profile?") and
+    splitting it across two panels would only ask him to notice which machine
+    produced it.
+
+    They are filtered differently, and that difference is the whole of DEC-2. A
+    researched value is dropped where a person has already filled the field: the
+    machine may fill a blank and correct itself, never overrule the consultant.
+    A kick-off answer is not dropped, because the client contradicting the web is
+    the case worth surfacing — it is only dropped when it says what the field
+    already says, which is not a contradiction but a duplicate.
+
+    ``facts`` and ``stored`` are the two tables this reads, passed in by a caller
+    that already holds them: rendering the page needs the facts for the form and
+    the answers for the completeness line anyway, and fetching each of them twice
+    per render is two round trips for rows already in hand.
+    """
+    facts = profiles.stored(session, client_id) if facts is None else facts
+    from_kickoff = [
+        p for p in onboarding.to_proposals(session, client_id, stored=stored)
+        if p.key not in facts or facts[p.key].value.strip() != p.value.strip()
+    ]
+    # One proposal per field. Where both have something to say about the same
+    # line, the answer displaces the guess before either is shown: two checkboxes
+    # writing the same field would make "accept both" mean whichever ran last.
+    answered = {p.key for p in from_kickoff}
+    researched = [
+        profiles.Proposal(
+            key=row.key,
+            value=row.value,
+            source_url=row.source_url,
+            source_title=row.source_title,
+            row_id=row.id,
+        )
+        for row in profile_refresh.outstanding(session, client_id)
+        if row.key not in answered
+        # The same three rules the branch applies before drawing a row: no
+        # source is a machine asserting what it cannot back up, a row the
+        # profile has caught up with is a contradiction between Paris and
+        # Paris, and a hand-filled field is never overruled, only contradicted.
+        and row.source_url
+        and profile_refresh.contradicts(facts, row)
+        and profile_refresh.may_replace(facts, row.key)
+    ]
+    return from_kickoff + researched
+
+
 @router.get("/client/{client_id}/profil", response_class=HTMLResponse)
 def profile_view(
     request: Request, client_id: int, session: Session = Depends(get_db)
@@ -88,6 +145,9 @@ def profile_view(
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
+    # Both tables read once and handed on. The proposals need the facts to know
+    # what they would displace and the answers to know what to offer; the
+    # completeness line needs the same answers again.
     facts = profiles.stored(session, client_id)
     # Only the fields the research may actually write: a proposal identical to
     # what is on file never becomes a row at all, and a proposal against a field a
@@ -111,7 +171,8 @@ def profile_view(
         for p in profile_refresh.outstanding(session, client_id)
         if p.source_url and profile_refresh.contradicts(facts, p)
     ]
-    pending = [p for p in proposed if profile_refresh.may_replace(facts, p.key)]
+    stored = onboarding.answers(session, client_id)
+    pending = _pending(session, client_id, facts=facts, stored=stored)
     return templates.TemplateResponse(
         request,
         "client_profile.html",
@@ -122,6 +183,11 @@ def profile_view(
             "filled": len(facts),
             "fillable": profiles.FILLABLE,
             "proposals": pending,
+            # How much of this mandate's own foundation exists. On the profile
+            # because this is the page that reads as the mandate's file: a thin
+            # profile beside a full questionnaire is a different problem from a
+            # thin profile beside twenty unasked questions.
+            "kickoff": onboarding.completeness(session, client_id, stored=stored),
             # Held back from the list above, and still on file. Handed over as
             # rows rather than a count so the page can name them in its own
             # discard form: a row nobody can see and nobody can clear sits there
@@ -165,9 +231,9 @@ async def save_profile(
     """Save the whole form. Whatever a person typed here outranks the machine.
 
     Async because the form is read off the request body rather than declared
-    field by field: the profile is a list of keys in one module, and repeating all
-    fourteen of them in a signature would mean a new field is two edits, one of
-    which is easy to forget.
+    field by field: the profile is a list of keys in one module, and repeating
+    every one of them in a signature would mean a new field is two edits, one of
+    which is easy to forget — as the three this story added would have been.
     """
     client = session.get(Client, client_id)
     if client is None:
@@ -238,25 +304,38 @@ def _chosen(
 def accept_proposals(
     client_id: int,
     pid: list[int] = Form(default_factory=list),
+    key: list[str] = Form(default_factory=list),
     session: Session = Depends(get_db),
 ) -> Response:
-    """Take the named proposals, sources and all, as the consultant's own answer.
+    """Take what the consultant ticked, sources and all, as his own answer.
 
-    The accepted value is stamped :data:`newspulse.profile.BY_HAND` rather than
-    with the model that read it. The model proposed; the person decided, and it is
-    the decision that is worth recording — a fact he has vouched for must not be
-    proposed over by the next refresh, which is exactly what the human stamp
-    buys. The source travels with it, so the page can still show where the value
-    came from even though a person put it there.
+    Two kinds of proposal arrive here and they are named differently, for the
+    reason each was built. A researched row is named by ``pid``: the 06:10 sweep
+    can replace it between the page being drawn and the button being pressed, and
+    a field name would then accept a value nobody read. A kick-off answer is
+    named by ``key``, because it is derived from the stored answer on every
+    render and only a person editing the questionnaire can change what it says.
 
-    Only the named rows go: the rest stay on offer rather than vanishing with the
-    click, because a decision not made is not a decision to discard.
+    Both are stamped :data:`newspulse.profile.BY_HAND`. The model proposed and
+    the client answered; in each case a person decided, and it is the decision
+    that is worth recording — a fact somebody vouched for must not be proposed
+    over by the next refresh, which is exactly what the human stamp buys. The
+    source travels with it, so the page still shows where the value came from.
 
-    A row against a hand-filled fact is refused here and not only hidden upstream.
-    The page draws no accept button for one, but the form body is not the page: a
-    tab left open while the field was typed into elsewhere posts a row the
-    consultant never chose, and honouring it would replace what he wrote with what
-    a model read. That is the DEC-2 rule, enforced at the write boundary.
+    Only what was named goes: the rest stay on offer, because a decision not
+    made is not a decision to discard.
+
+    A researched row against a hand-filled fact is refused here and not only
+    hidden upstream. The page draws no accept button for one, but the form body
+    is not the page: a tab left open while the field was typed into elsewhere
+    posts a row the consultant never chose. That is DEC-2, enforced at the write
+    boundary.
+
+    A kick-off answer landing on a field the web already answered supersedes it
+    rather than erasing it (DEC-2 option A): the answer wins, and what the web
+    said stays underneath with its own citation until somebody drops it. That is
+    not a conflict with the rule above — it displaces a researched value, never
+    one a person typed.
     """
     client = session.get(Client, client_id)
     if client is None:
@@ -274,7 +353,41 @@ def accept_proposals(
             filled_by=profiles.BY_HAND,
         )
     profile_refresh.clear(session, client_id, [p.id for p in taken])
-    return _back(client_id, acted=bool(taken) or not pid)
+
+    # The kick-off half. No bookkeeping to do afterwards: these are derived from
+    # the answers on every render, and an accepted one stops matching.
+    wanted = set(key)
+    kickoff_taken = [
+        p for p in _pending(session, client_id) if p.key in wanted and p.from_person
+    ]
+    for proposal in kickoff_taken:
+        profiles.save(
+            session, client, proposal.key, proposal.value,
+            source_url=proposal.source_url,
+            source_title=proposal.source_title,
+            # Its own author, not BY_HAND: "Kickoff-Fragebogen" says the client
+            # answered this, which is a stronger claim than "the consultant
+            # accepted it" and the one the page is built to print. Protected
+            # from the sweep by profile_refresh.may_replace all the same.
+            filled_by=proposal.filled_by or profiles.BY_HAND,
+            supersede=proposal.supersedes,
+        )
+    return _back(client_id, acted=bool(taken or kickoff_taken) or not (pid or key))
+
+
+@router.post("/client/{client_id}/profil/{key}/forget")
+def forget_superseded(
+    client_id: int, key: str, session: Session = Depends(get_db)
+) -> Response:
+    """Drop the older value standing beside a field, ending the disagreement.
+
+    The way out: a superseded value is kept so the reader can see that the web
+    said something else, not so it stays on the page forever.
+    """
+    if session.get(Client, client_id) is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    profiles.forget_superseded(session, client_id, key)
+    return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
 
 
 @router.post("/client/{client_id}/profil/discard")

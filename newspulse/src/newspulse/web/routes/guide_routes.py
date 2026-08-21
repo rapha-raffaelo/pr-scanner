@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
-from ... import coach, guide
+from ... import coach, guide, onboarding
 from ...analyzer import AnalyzerError
 from ...models import Client
 from ..app import get_db, templates
@@ -37,6 +37,7 @@ def _render(
     findings: list | None = None,
     coverage: list | None = None,
     coach_error: str | None = None,
+    draft: onboarding.GuideDraft | None = None,
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
@@ -45,6 +46,13 @@ def _render(
             "client": client,
             "guide_text": client.comms_guide or "",
             "sources": guide.sources(session, client.id),
+            # What the kick-off has to offer, so the button can say whether there
+            # is anything behind it before it is clicked.
+            "kickoff": onboarding.completeness(session, client.id),
+            # Only set when the draft came from the questionnaire: the page then
+            # names the sections nobody answered, rather than leaving a reader to
+            # wonder why a guide is thin.
+            "draft": draft,
             "max_chars": guide.GUIDE_MAX_CHARS,
             "max_mb": guide.MAX_UPLOAD_BYTES // (1024 * 1024),
             "proposal": proposal,
@@ -131,6 +139,28 @@ def distill_guide(
             request, session, client, error=f"Der Vorschlag ist fehlgeschlagen: {exc}"
         )
     return _render(request, session, client, proposal=proposal)
+
+
+@router.post("/client/{client_id}/guide/kickoff")
+def draft_from_kickoff(
+    request: Request, client_id: int, session: Session = Depends(get_db)
+) -> Response:
+    """Draft a guide from the kick-off answers — shown, not stored.
+
+    The same preview step an uploaded brand book gets, deliberately: the guide is
+    what every later text is checked against, and a rule nobody read before it was
+    saved is a rule nobody agreed to.
+    """
+    client = _client_or_404(session, client_id)
+    try:
+        draft = onboarding.to_guide_draft(session, client)
+    except guide.ExtractionError as exc:
+        return _render(request, session, client, error=str(exc))
+    except AnalyzerError as exc:
+        return _render(
+            request, session, client, error=f"Der Vorschlag ist fehlgeschlagen: {exc}"
+        )
+    return _render(request, session, client, proposal=draft.text, draft=draft)
 
 
 @router.post("/client/{client_id}/guide/sources/{source_id}/remove")

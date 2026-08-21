@@ -11,8 +11,8 @@ Also adds ``clients.profile_checked_at`` and ``clients.profile_note``, following
 that has aged for a year must not look alike, and neither must a check that found
 nothing and a check that broke.
 
-Revision ID: 0022_profile_proposals
-Revises: 0021_outcome_by
+Revision ID: 0025_profile_proposals
+Revises: 0024_assets
 Create Date: 2026-08-19
 """
 from __future__ import annotations
@@ -22,8 +22,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0022_profile_proposals"
-down_revision: str | None = "0021_outcome_by"
+revision: str = "0025_profile_proposals"
+down_revision: str | None = "0024_assets"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

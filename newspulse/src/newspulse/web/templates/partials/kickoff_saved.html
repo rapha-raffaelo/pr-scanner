@@ -1,0 +1,9 @@
+{# What one save answers with: the question that changed, swapped into its own
+   place, and the rail swapped out of band beside it.
+
+   Deliberately not the whole page. A full re-render is less code and would wipe
+   every other half-typed answer on screen — the one loss this questionnaire
+   promises not to cause. #}
+{% include "partials/kickoff_question.html" %}
+{% set oob = true %}
+{% include "partials/kickoff_rail.html" %}

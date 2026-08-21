@@ -141,6 +141,39 @@ def store_source(session: Session, client: Client, filename: str, text: str) -> 
     return source
 
 
+def replace_source(
+    session: Session, client: Client, filename: str, text: str
+) -> GuideSource:
+    """Store a source that has one current version, replacing the last of its name.
+
+    An uploaded file is a document with a date, and two versions of a brand book
+    are two documents. The kick-off questionnaire is not: it is a snapshot of
+    something that keeps being answered, and a fresh copy on every regeneration
+    would push the real documents out of the distillation's character budget with
+    six near-identical versions of itself.
+
+    Replacing keeps the original ``uploaded_at`` for the same reason. ``sources``
+    is ordered newest first and :func:`distill` spends its budget in that order,
+    so a bumped timestamp would put the questionnaire in front of a brand book
+    uploaded since — on every later distillation, including the plain document
+    one the kick-off had nothing to do with. A new version of the same source is
+    not a newer source.
+    """
+    existing = session.scalars(
+        select(GuideSource).where(
+            GuideSource.client_id == client.id, GuideSource.filename == filename
+        )
+    ).first()
+    # A new row takes its date from the column default; an existing one keeps the
+    # date it already had.
+    source = existing or GuideSource(client_id=client.id, filename=filename)
+    source.text = text
+    source.characters = len(text)
+    session.add(source)
+    session.commit()
+    return source
+
+
 def sources(session: Session, client_id: int) -> list[GuideSource]:
     """This client's source documents, newest first."""
     return list(
@@ -207,13 +240,26 @@ def distill(
     return proposed[:GUIDE_MAX_CHARS]
 
 
+def _lf(text: str) -> str:
+    """Form newlines counted the way the rest of the tool counts them.
+
+    A browser posts every newline inside a ``<textarea>`` as CRLF, whatever the
+    page put in it. Unnormalised, a draft built to sit exactly on
+    :data:`GUIDE_MAX_CHARS` comes back one character per line too long, and the
+    trim below takes that overshoot off the *end* — which is where the client's
+    own no-gos are, verbatim, and where the note naming the unanswered sections
+    is. A rule cut mid-clause is a rule nobody wrote.
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def save(session: Session, client: Client, text: str) -> str:
     """Store the guide, trimmed to the budget. Returns what was stored.
 
     Trimmed rather than rejected: a consultant pasting a long passage should get a
     saved guide and a visible counter, not a lost edit and an error page.
     """
-    cleaned = (text or "").strip()[:GUIDE_MAX_CHARS]
+    cleaned = _lf(text or "").strip()[:GUIDE_MAX_CHARS]
     client.comms_guide = cleaned
     session.commit()
     return cleaned
@@ -313,6 +359,7 @@ __all__ = [
     "distill",
     "extract_text",
     "for_prompt",
+    "replace_source",
     "save",
     "sources",
     "store_source",

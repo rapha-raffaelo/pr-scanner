@@ -23,8 +23,8 @@ them; a plain SQLite rowid is reused after that delete, so yesterday's id can
 come back attached to this morning's finding and a stale tab would accept a value
 nobody read.
 
-Revision ID: 0023_proposal_discarded
-Revises: 0022_profile_proposals
+Revision ID: 0026_proposal_discarded
+Revises: 0025_profile_proposals
 Create Date: 2026-08-19
 """
 from __future__ import annotations
@@ -34,8 +34,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0023_proposal_discarded"
-down_revision: str | None = "0022_profile_proposals"
+revision: str = "0026_proposal_discarded"
+down_revision: str | None = "0025_profile_proposals"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

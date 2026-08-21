@@ -37,7 +37,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from . import config, profile
+from . import config, onboarding, profile
 from .clients import list_clients
 from .models import (
     Analysis,
@@ -207,7 +207,13 @@ def may_replace(facts: Mapping[str, ClientFact], key: str) -> bool:
     invariant enforced where the page renders is not enforced.
     """
     fact = facts.get(key)
-    return fact is None or fact.filled_by != profile.BY_HAND
+    if fact is None:
+        return True
+    # Two authorships are the person's, not the machine's: what the consultant
+    # typed, and what the client answered in the kick-off. Both are somebody
+    # vouching for a value, and the sweep may contradict either, visibly, but
+    # overwrite neither.
+    return fact.filled_by not in (profile.BY_HAND, onboarding.SOURCE_NAME)
 
 
 def _on_file(facts: Mapping[str, ClientFact], key: str) -> str:
