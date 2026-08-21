@@ -749,6 +749,180 @@ _EN: dict[str, str] = {
     "Kein Feed in diesem Zeitraum hat einen Autor mitgeliefert.":
         "No feed supplied an author in this period.",
     "Tage": "days",
+    # --- Client: the kick-off questionnaire (ONB-01) --------------------------
+    # The question texts are chrome, not data: they live in ``onboarding.py`` as a
+    # module constant, the same way ``profile.FIELDS`` does, and a consultant
+    # reading the tool in English should be asking in English. What is *not*
+    # translated is the answer, ever — it is the client's own sentence.
+    "Kickoff": "Kickoff",
+    "Zwanzig Fragen, die keine Recherche beantworten kann — welcher Satz nie "
+    "gedruckt werden darf, wer zitiert werden will, welche Behauptung des "
+    "Wettbewerbs widerlegbar ist. Jede Antwort sagt, was sie speist.":
+        "Twenty questions no research can answer: which sentence must never be "
+        "printed, who wants to be quoted, which competitor claim can be "
+        "disproved. Every answer says what it feeds.",
+    "Aus diesen Antworten entstehen Profilfelder, No-Gos und die "
+    "Vergleichsgruppe. Übernommen wird davon nichts von selbst — was hier steht, "
+    "ist die Antwort, nicht die Regel.":
+        "These answers become profile fields, no-gos and the comparison set. "
+        "None of it is adopted by itself: what stands here is the answer, not "
+        "the rule.",
+    # The five sections, and the short form each gets in the progress rail.
+    "Was das Unternehmen ist": "What the company is",
+    "Vier Fragen, die jeder Text braucht. Antworten hier ersetzen, was die "
+    "Recherche geraten hat.":
+        "Four questions every text needs. Answers here replace what the research "
+        "guessed.",
+    "Was gesagt werden darf, und was nie": "What may be said, and what never",
+    "Sagen und schweigen": "Saying and staying silent",
+    "Der Teil, den kein Modell erraten kann. Aus diesen Antworten entsteht der "
+    "Guide, gegen den später jeder Text geprüft wird.":
+        "The part no model can guess. These answers become the guide every later "
+        "text is checked against.",
+    "Was erreicht werden soll": "What this is meant to achieve",
+    "Ziele": "Goals",
+    "Ohne Ziel ist jede Berichterstattung gleich viel wert, und das ist sie nie.":
+        "Without a goal every piece of coverage is worth the same, and it never is.",
+    "Medien und Beziehungen": "Outlets and relationships",
+    "Wo Sie vorkommen müssen, und wen Sie dort schon kennen.":
+        "Where you have to appear, and who you already know there.",
+    "Zusammenarbeit": "Working together",
+    "Wie wir arbeiten, damit im Ernstfall niemand erst suchen muss.":
+        "How we work, so nobody has to go looking when it matters.",
+    # The twenty questions, each with the line under it.
+    "Was verkaufen Sie, in einem Satz, ohne Fachbegriffe?":
+        "What do you sell, in one sentence, without jargon?",
+    "Wenn der Satz eine Erklärung braucht, ist es noch nicht der Satz.":
+        "If the sentence needs an explanation, it is not yet the sentence.",
+    "Wer spricht für das Unternehmen, und wozu?":
+        "Who speaks for the company, and on what?",
+    "Name, Rolle, und für welche Themen diese Person zitierbar ist.":
+        "Name, role, and which subjects this person can be quoted on.",
+    "Wen halten Sie für Ihren wichtigsten Wettbewerber, und warum?":
+        "Who do you consider your most important competitor, and why?",
+    "Wichtig für den Share of Voice. Die Vergleichsgruppe ist sonst geraten.":
+        "It decides the share of voice. Otherwise the comparison set is guesswork.",
+    "Wer trifft die Kaufentscheidung, und wen müssen wir dafür erreichen?":
+        "Who makes the buying decision, and who must we reach to get it?",
+    "Nicht die Branche, sondern die Person, die am Ende unterschreibt.":
+        "Not the industry, but the person who ends up signing.",
+    "Welchen Satz sollen wir über Sie nie schreiben?":
+        "Which sentence should we never write about you?",
+    "Wörtlich, so wie er nicht dastehen soll.":
+        "Verbatim, exactly as it must not appear.",
+    "Gibt es ein Thema, zu dem Sie grundsätzlich schweigen?":
+        "Is there a subject you stay silent on as a matter of policy?",
+    "Laufende Verfahren, Preise, Kundennamen, eine Personalie.":
+        "Pending proceedings, prices, client names, a personnel matter.",
+    "Was behaupten Ihre Wettbewerber, das schlicht nicht stimmt?":
+        "What do your competitors claim that is simply untrue?",
+    "Die ergiebigste Frage im Fragebogen. Hier liegen die Thesen.":
+        "The most productive question in the set. This is where the arguments are.",
+    "Welche Wörter benutzen Sie über sich selbst, und welche nie?":
+        "Which words do you use about yourselves, and which never?",
+    "Heißt es Kunden oder Partner, Mitarbeitende oder Team? Ein falsches Wort "
+    "fällt sofort auf.":
+        "Is it customers or partners, staff or team? A wrong word is noticed "
+        "immediately.",
+    "Welche Zahlen dürfen genannt werden, und welche nie?":
+        "Which figures may be named, and which never?",
+    "Umsatz, Kundenzahl, Finanzierung. Was nicht raus darf, muss hier stehen.":
+        "Revenue, customer count, funding. Whatever must not go out has to be "
+        "written here.",
+    "Wer gibt einen Text frei, bevor er rausgeht?":
+        "Who signs off on a text before it goes out?",
+    "Name und Rolle. Und ob das auch für ein einzelnes Zitat gilt.":
+        "Name and role. And whether that also applies to a single quote.",
+    "Was soll in zwölf Monaten über Sie in der Presse stehen, das heute nicht dasteht?":
+        "In twelve months, what should the press say about you that it does not "
+        "say today?",
+    "Ein Satz, den Sie in einem Artikel lesen wollen.":
+        "One sentence you want to read in an article.",
+    "Was steht in den nächsten Monaten an, worüber man berichten könnte?":
+        "What is coming up in the next few months that could be reported on?",
+    "Produkt, Zahlen, Personalie, Standort, Studie — mit ungefährem Datum.":
+        "Product, figures, an appointment, a site, a study, with a rough date.",
+    "Welche Entscheidung soll die Berichterstattung bei Ihren Kunden auslösen?":
+        "Which decision should the coverage trigger in your customers?",
+    "PR ohne beabsichtigte Wirkung ist Dekoration.":
+        "PR with no intended effect is decoration.",
+    "Woran würden Sie in einem Jahr sehen, dass sich das gelohnt hat?":
+        "A year from now, what would show you this was worth it?",
+    "Eine Zahl oder ein konkretes Ereignis, kein Gefühl.":
+        "A number or a concrete event, not a feeling.",
+    "In welchem Medium müssen Sie vorkommen, damit Ihre Kunden es sehen?":
+        "Which outlet must you appear in for your customers to see it?",
+    "Ein Fachtitel zählt hier mehr als die FAZ, wenn dort eingekauft wird.":
+        "A trade title counts for more than the FAZ here, if that is where the "
+        "buying happens.",
+    "Zu welchen Journalistinnen und Journalisten haben Sie schon einen Draht?":
+        "Which journalists do you already have a line to?",
+    "Name und Titel reichen. Ein bestehender Kontakt ist mehr wert als eine "
+    "kalte Liste.":
+        "A name and a title are enough. One existing contact is worth more than a "
+        "cold list.",
+    "Gab es eine Berichterstattung, die schiefging?":
+        "Has any coverage gone wrong?",
+    "Was passiert ist, und was daraus gilt. Das erklärt eine Empfindlichkeit "
+    "besser als jede Regel.":
+        "What happened, and what holds because of it. That explains a sensitivity "
+        "better than any rule.",
+    "Wofür stehen Sie für ein Interview zur Verfügung, und wofür nie?":
+        "What will you give an interview on, and what never?",
+    "Trennt die gute Anfrage von der, die Ärger macht.":
+        "Separates the good request from the one that causes trouble.",
+    "Wer ist bei Ihnen unser erster Ansprechpartner, und wie schnell erreichen wir ihn?":
+        "Who is our first point of contact with you, and how fast can we reach them?",
+    "Auch: wer entscheidet, wenn diese Person im Urlaub ist.":
+        "Also: who decides while that person is on leave.",
+    "Wen rufen wir an, wenn abends um sieben etwas passiert?":
+        "Who do we call when something happens at seven in the evening?",
+    "Name und Nummer. Diese Frage wird sonst genau einmal zu spät gestellt.":
+        "A name and a number. Otherwise this question gets asked exactly once, "
+        "too late.",
+    # What an answer feeds: the verb, the targets and the named slots inside them.
+    "Füllt": "Fills",
+    "Wird": "Becomes a",
+    "No-Go": "No-go",
+    "Themenfelder": "Subject areas",
+    "Geschäftsfeld": "Line of business",
+    "Kernbotschaft": "Key message",
+    "Sprecher": "Spokespeople",
+    "Zielgruppe": "Target audience",
+    "Tonalität": "Tone",
+    "Freigabe": "Sign-off",
+    "Zielbild": "Objective",
+    "Zielmedien": "Target outlets",
+    "Pressekontakt": "Press contact",
+    "Krisenkontakt": "Crisis contact",
+    "wird in jedem Anschreiben verwendet": "used in every letter",
+    "jeder Text wird dagegen geprüft": "every text is checked against it",
+    "Material für Impulse": "material for the openings",
+    # The three states of a question, and the controls that move between them.
+    "gespeichert": "saved",
+    "übergangen": "passed over",
+    "Übergehen": "Pass over",
+    "Doch beantworten": "Answer it after all",
+    "Gefragt, aber keine Antwort — anders als noch nicht gefragt":
+        "Asked, but no answer — which is not the same as not yet asked",
+    "Eintrag hinzufügen": "Add an entry",
+    "Eintrag entfernen": "Remove entry",
+    "und": "and",
+    # The progress rail. The figure is stated in words as well as drawn as a bar:
+    # a bar says "some" where a consultant needs "eight".
+    "beantwortet oder übergangen": "answered or passed over",
+    "zuletzt": "last",
+    "Frage ist noch offen": "question is still open",
+    "Fragen sind noch offen": "questions are still open",
+    "Eine offene Frage ist ein Befund, keine Lücke im Formular.":
+        "An open question is a finding, not a gap in a form.",
+    "Keine Frage mehr offen.": "No question left open.",
+    "Jede Antwort wird beim Verlassen des Feldes gespeichert. Der Fragebogen muss "
+    "nicht in einem Zug fertig werden, und was fehlt, bleibt sichtbar offen statt "
+    "geraten.":
+        "Every answer is stored as you leave the field. The questionnaire does not "
+        "have to be finished in one sitting, and what is missing stays visibly "
+        "open rather than guessed.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Kickoff") }} · {{ client.name }} · RauteOS{% endblock %}
+
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'kickoff' %}
+{% include '_client_tabs.html' %}
+
+<style>
+  /* The locked mock for DEC-1: sectioned questions on the left, a progress rail
+     on the right that stays put while the form scrolls past it. Page-local rather
+     than in app.css because none of it is reused — a questionnaire is the only
+     screen in this tool built out of questions. */
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 268px;
+           gap: var(--s5); align-items: start; }
+
+  .sect { background: var(--card); border: 1px solid var(--line);
+          border-radius: var(--radius); margin-bottom: var(--s5); overflow: hidden; }
+  .sect__head { padding: var(--s4); border-bottom: 1px solid var(--line);
+                background: var(--fill-2); }
+  .sect__t { font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.015em; }
+  .sect__d { font-size: var(--t-footnote); color: var(--muted); margin-top: 2px;
+             max-width: 70ch; }
+
+  .q { padding: var(--s4); border-top: 1px solid var(--line); }
+  .q:first-of-type { border-top: 0; }
+  .q__label { display: block; font-size: var(--t-subhead); font-weight: 600;
+              margin-bottom: 3px; }
+  .q__help { font-size: var(--t-footnote); color: var(--muted);
+             margin-bottom: var(--s2); max-width: 66ch; }
+  .q input[type="text"], .q textarea {
+    font: inherit; font-size: var(--t-subhead); width: 100%; padding: 9px 11px;
+    border: 1px solid var(--line); border-radius: var(--radius-s);
+    background: var(--card); resize: vertical;
+  }
+  .q textarea { min-height: 74px; line-height: 1.55; }
+  .q input:focus, .q textarea:focus { outline: 2px solid rgba(0, 113, 227, 0.35);
+                                      outline-offset: -1px; border-color: var(--tint); }
+  /* Three states, three appearances: answered, deliberately passed over, and
+     open. The third is the plain one on purpose — an unanswered question is the
+     normal state of a questionnaire nobody has finished yet. */
+  .q--done { background: rgba(36, 138, 61, 0.03); }
+  .q--skipped { background: var(--fill-2); }
+  .q__saved { float: right; font-size: var(--t-caption); color: var(--good);
+              font-weight: 600; }
+  .q__saved--skipped { color: var(--muted); }
+  .q__feeds { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+              letter-spacing: 0.04em; color: var(--muted); margin-top: 7px; }
+  .q__feeds b { color: var(--tint); font-weight: 700; }
+  .q__acts { display: flex; gap: var(--s3); align-items: center; margin-top: var(--s2); }
+
+  .chiprow { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: var(--s2); }
+  .chipx { font-size: var(--t-footnote); background: var(--fill-2);
+           border: 1px solid var(--line); border-radius: var(--radius-pill);
+           padding: 3px 10px; color: var(--ink-2); display: inline-flex; gap: 6px;
+           align-items: center; }
+  .chipx button { background: none; border: 0; color: var(--muted); cursor: pointer;
+                  font-size: var(--t-footnote); padding: 0; }
+  .chipx button:hover { color: var(--alert); }
+
+  .linkbtn { font: inherit; font-size: var(--t-caption); background: none; border: 0;
+             color: var(--muted); cursor: pointer; text-decoration: underline; padding: 0; }
+  .linkbtn:hover { color: var(--tint); }
+
+  .rail { position: sticky; top: var(--s5); background: var(--card);
+          border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s4); }
+  .rail__n { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.03em;
+             line-height: 1.1; }
+  .rail__n span { font-size: var(--t-body); font-weight: 600; color: var(--muted); }
+  .rail__l { font-size: var(--t-footnote); color: var(--muted); margin-bottom: var(--s3); }
+  .bar { height: 5px; border-radius: var(--radius-pill); background: var(--fill);
+         overflow: hidden; margin-bottom: var(--s3); }
+  .bar i { display: block; height: 100%; background: var(--tint); }
+  /* The figure in words. The bar says "some"; this says "acht", which is the
+     number somebody has to act on. */
+  .rail__open { font-size: var(--t-footnote); color: var(--ink-2);
+                margin-bottom: var(--s4); }
+  .rail__open strong { font-size: var(--t-subhead); }
+  .rail__sect { display: flex; align-items: center; gap: var(--s2); padding: 5px 0;
+                font-size: var(--t-footnote); color: var(--ink-2);
+                border-top: 1px solid var(--line); }
+  .rail__sect:first-of-type { border-top: 0; }
+  .rail__sect a { color: inherit; }
+  .rail__tick { width: 14px; height: 14px; border-radius: 50%;
+                border: 1.5px solid var(--faint); flex: none; }
+  .rail__tick.is-done { background: var(--good); border-color: var(--good); }
+  .rail__tick.is-part { border-color: var(--tint);
+                        background: linear-gradient(90deg, var(--tint) 50%, transparent 50%); }
+  .rail__cnt { margin-left: auto; font-size: var(--t-caption2); font-weight: 700;
+               color: var(--faint); }
+  .rail__note { font-size: var(--t-caption); color: var(--muted); margin-top: var(--s4);
+                padding-top: var(--s3); border-top: 1px dashed var(--line); }
+
+  .foot { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap;
+          margin-top: var(--s5); }
+  .foot__hint { font-size: var(--t-footnote); color: var(--muted); max-width: 60ch; }
+
+  @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } .rail { position: static; } }
+</style>
+
+<div class="split">
+  <div>
+    <h1>{{ t("Kickoff") }}</h1>
+    <p class="panel-hint">
+      {{ t("Zwanzig Fragen, die keine Recherche beantworten kann — welcher Satz nie gedruckt werden darf, wer zitiert werden will, welche Behauptung des Wettbewerbs widerlegbar ist. Jede Antwort sagt, was sie speist.") }}
+    </p>
+
+    {% for section, questions in groups %}
+      <section class="sect" id="s-{{ section.key }}">
+        <div class="sect__head">
+          <div class="sect__t">{{ t(section.title) }}</div>
+          <div class="sect__d">{{ t(section.intro) }}</div>
+        </div>
+        {% for question in questions %}
+          {% set answer = answers.get(question.key) %}
+          {% include "partials/kickoff_question.html" %}
+        {% endfor %}
+      </section>
+    {% endfor %}
+
+    <div class="foot">
+      <span class="foot__hint">
+        {{ t("Aus diesen Antworten entstehen Profilfelder, No-Gos und die Vergleichsgruppe. Übernommen wird davon nichts von selbst — was hier steht, ist die Antwort, nicht die Regel.") }}
+      </span>
+    </div>
+  </div>
+
+  {% include "partials/kickoff_rail.html" %}
+</div>
+{% endblock %}

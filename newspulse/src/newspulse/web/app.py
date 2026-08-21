@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .. import branding, config, gnews, i18n
+from .. import branding, config, gnews, i18n, onboarding
 from ..db import get_session
 from . import navigation, runlock
 from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
@@ -227,6 +227,10 @@ templates.env.globals["LANGUAGES"] = i18n.LANGUAGES
 templates.env.globals["nav_clients"] = navigation.nav_clients
 templates.env.filters["monogram"] = branding.monogram
 templates.env.filters["brand_colour"] = branding.colour
+# A list answer in the questionnaire is one text column, one entry per line. The
+# split lives in ``onboarding`` rather than in the template so the chip a reader
+# deletes and the entry the route removes are indexed by the same rule.
+templates.env.filters["kickoff_entries"] = onboarding.entries
 
 
 def get_db() -> Iterator[Session]:
@@ -264,7 +268,8 @@ def create_app() -> FastAPI:
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
         advisory, archive, assistant, client, contacts, guide_routes, language,
-        profile as profile_routes, rivals_view, runstatus, settings, today, triage,
+        onboarding as onboarding_routes, profile as profile_routes, rivals_view,
+        runstatus, settings, today, triage,
     )
 
     app.include_router(today.router)
@@ -280,6 +285,7 @@ def create_app() -> FastAPI:
     app.include_router(contacts.router)
     app.include_router(profile_routes.router)
     app.include_router(rivals_view.router)
+    app.include_router(onboarding_routes.router)
     return app
 
 

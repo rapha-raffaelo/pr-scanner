@@ -1,0 +1,39 @@
+{# The progress rail: how much of this mandate's foundation actually exists.
+
+   A bar alone says "some". A consultant about to walk into a second call needs
+   "acht", and needs to know which section they are in — so the figure is stated
+   in words and broken down per section, and the bar is the decoration beside it.
+
+   Swapped out of band after every save (`oob`), because it is the one thing
+   outside the answered question whose value just changed. #}
+{% set t = translator(request) %}
+<aside class="rail" id="kickoff-rail"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <div class="rail__n">{{ progress.settled }}<span> / {{ progress.total }}</span></div>
+  <div class="rail__l">
+    {{ t("beantwortet oder übergangen") }}{% if progress.last_answered_at %}
+      · {{ t("zuletzt") }} {{ progress.last_answered_at | de_datetime }}{% endif %}
+  </div>
+  <div class="bar"><i style="width: {{ progress.percent }}%"></i></div>
+
+  <p class="rail__open">
+    {% if progress.remaining %}
+      <strong>{{ progress.remaining }}</strong>
+      {% if progress.remaining == 1 %}{{ t("Frage ist noch offen") }}{% else %}{{ t("Fragen sind noch offen") }}{% endif %}.
+      {{ t("Eine offene Frage ist ein Befund, keine Lücke im Formular.") }}
+    {% else %}
+      {{ t("Keine Frage mehr offen.") }}
+    {% endif %}
+  </p>
+
+  {% for line in progress.sections %}
+    <div class="rail__sect">
+      <span class="rail__tick{% if line.state == 'fertig' %} is-done{% elif line.state == 'teilweise' %} is-part{% endif %}"></span>
+      <a href="#s-{{ line.section.key }}">{{ t(line.section.short) }}</a>
+      <span class="rail__cnt">{{ line.settled }}/{{ line.total }}</span>
+    </div>
+  {% endfor %}
+
+  <p class="rail__note">
+    {{ t("Jede Antwort wird beim Verlassen des Feldes gespeichert. Der Fragebogen muss nicht in einem Zug fertig werden, und was fehlt, bleibt sichtbar offen statt geraten.") }}
+  </p>
+</aside>
