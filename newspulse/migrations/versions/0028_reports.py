@@ -17,6 +17,12 @@ renumbered down to the next free slot: the ids in between belong to features
 already building against them, and a revision that changed its name after the
 fact would leave every database that ran it unable to find its own head.
 
+The obligation that comes with the gap: whoever merges a sibling revision that
+also chains from ``0018_outreach_ledger`` has to re-point one of the two, so the
+tree keeps a single head. Nothing here can detect that on its own — it appears at
+merge, not in this branch — so ``test_the_migration_chain_has_exactly_one_head``
+asserts it, and the suite goes red instead of the deploy.
+
 Revision ID: 0028_reports
 Revises: 0018_outreach_ledger
 Create Date: 2026-08-21

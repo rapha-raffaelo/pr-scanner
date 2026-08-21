@@ -158,8 +158,10 @@ class Finding:
     consequence: str
     #: Analysis ids. Never empty: that is what acceptance means here.
     evidence_ids: tuple[int, ...]
-    #: Which figures the claim stands on, kept for the log and for a reviewer
-    #: asking why these rows and not others.
+    #: Which figures the claim stands on. Generation-time only — it does not
+    #: outlive the draft, because :func:`store` writes the rows and not the
+    #: references that produced them. What survives is the evidence itself, which
+    #: is what a reader of the document opens.
     figures: tuple[str, ...]
 
 
@@ -342,12 +344,17 @@ def build_prompt(
     """The prompt, composed rather than restated.
 
     Every standard in it comes from where that standard already lives: the
-    mandate's own rules from :func:`newspulse.guide.for_prompt`, the profile block
-    from the advisor that all the other prompts share, the figure labels and
-    qualifications from the metrics themselves, and the list of what this tool may
-    never state from :data:`newspulse.reporting.FORBIDDEN_FIGURES`. A prompt that
-    retyped any of them would be a second copy of the house standard, drifting from
-    the first the day either changed.
+    mandate's own rules from :func:`newspulse.guide.for_prompt`, the figure labels
+    and qualifications from the metrics themselves, and the list of what this tool
+    may never state from :data:`newspulse.reporting.FORBIDDEN_FIGURES`. A prompt
+    that retyped any of them would be a second copy of the house standard, drifting
+    from the first the day either changed.
+
+    The profile block is a reuse rather than a standard: ``outreach``, ``angles``
+    and ``analyzer`` each render their own, with different fields, so there is no
+    shared one to compose. This borrows the advisor's because it is the one that
+    carries the alarm topics a risk finding needs — the same reach across a module
+    boundary ``coach.py:149`` makes for ``advisor._render_coverage``.
     """
     return _prompt_template().substitute(
         client_profile=advisor._client_profile(client),
@@ -369,6 +376,16 @@ def _parse(raw: str) -> Proposal:
     The same trust boundary as everywhere else in this codebase: the reply is text
     until the schema says otherwise, and a half-parsed report is discarded rather
     than shown.
+
+    Note where the line falls, because it is not where the discard rule falls. A
+    finding with a bad *kind* fails here and takes the whole reply with it, while a
+    finding with a bad figure reference is dropped alone by :func:`_accept`. The
+    difference is what the fault says about the reply: a figure reference is a
+    judgement the model made about one sentence and can be wrong about once, but
+    ``kind`` is a closed four-member set spelled out in the prompt, and a reply
+    that invents a fifth was not answering the question that was asked. The coach
+    draws the same line for the same reason; a retry costs one call, and a report
+    quietly missing the finding that did not fit the schema costs more.
     """
     try:
         payload = json.loads(strip_code_fence(raw))
@@ -376,7 +393,7 @@ def _parse(raw: str) -> Proposal:
         raise ParseError(f"report findings were not valid JSON: {exc}") from exc
     try:
         return Proposal.model_validate(payload)
-    except Exception as exc:  # noqa: BLE001 — pydantic raises its own type
+    except ValidationError as exc:
         raise ParseError(f"report findings did not match the schema: {exc}") from exc
 
 
@@ -392,6 +409,35 @@ def _evidence_for(
     return tuple(
         sorted({row for ref in refs for row in figures[ref].analysis_ids})
     )
+
+
+def _without_own_wording(text: str, figures: dict[str, MetricValue]) -> str:
+    """``text`` with the mandate's own key messages taken out of it.
+
+    The carve-out :class:`newspulse.reporting.MetricValue` already makes for a
+    MESSAGE subject, extended to the sentence that cites it. A guide whose key
+    message is "Reichweite in der Zielgruppe" is the client's own wording quoted
+    back at them, so RPT-01 lets that subject through the guard and
+    :func:`_render_figures` duly prints it into the prompt as a figure to write a
+    ``botschaft`` finding about — and without this, the finding the prompt asked
+    for is thrown away by the same guard that let the figure exist.
+
+    Removed rather than whitelisted: what is checked afterwards is everything the
+    model wrote *around* the quote, so "die Reichweite lag bei 1,2 Millionen"
+    beside the message is still refused.
+    """
+    for value in figures.values():
+        subject = value.subject.strip()
+        if value.key is MetricKey.MESSAGE and subject:
+            text = re.sub(re.escape(subject), " ", text, flags=re.IGNORECASE)
+    return text
+
+
+def _states_forbidden_figure(text: str, figures: dict[str, MetricValue]) -> str:
+    """The forbidden figure ``text`` states, or ``""`` — the mandate's own key
+    messages not counting against it."""
+    terms = reporting.forbidden_terms(_without_own_wording(text, figures))
+    return ", ".join(terms)
 
 
 def _accept(
@@ -412,7 +458,14 @@ def _accept(
         _log.info("report finding for %r discarded: no claim", client_name)
         return None
 
-    refs = tuple(dict.fromkeys(ref.strip().upper() for ref in proposed.figures if ref))
+    # ``[F1]`` normalises to ``F1``: the prompt renders every figure inside brackets
+    # and a model echoing the form it was shown has not invented anything. The
+    # reject-whole rule below is for a reference that does not exist, not for a
+    # formatting habit that would otherwise empty a whole report.
+    refs = tuple(
+        dict.fromkeys(ref.strip().strip("[]").upper() for ref in proposed.figures if ref)
+    )
+    refs = tuple(ref for ref in refs if ref)
     unknown = [ref for ref in refs if ref not in figures]
     if unknown:
         # Rejected whole, not filtered down: the sentence was written about a
@@ -426,11 +479,19 @@ def _accept(
             claim,
         )
         return None
-    if reporting.is_forbidden(claim) or reporting.is_forbidden(consequence):
+    stated = _states_forbidden_figure(claim, figures) or _states_forbidden_figure(
+        consequence, figures
+    )
+    if stated:
+        # The term is named rather than implied: the matcher is deliberately blunt
+        # (substring, so "geschätzte Reichweite" is caught alongside "Reichweite"),
+        # which means a German sentence can trip it on a word that is not a figure
+        # at all. Whoever reads the log should not have to guess which one it was.
         _log.info(
-            "report finding for %r rejected: states a figure this tool may not "
+            "report finding for %r rejected: states %s, a figure this tool may not "
             "produce (%r)",
             client_name,
+            stated,
             claim,
         )
         return None
@@ -453,12 +514,18 @@ def _accept(
     )
 
 
+#: What a generator has to look like: ``generate(prompt, timeout=...) -> str``, the
+#: shape :func:`newspulse.analyzer.invoke_with_fallback` has and the one every test
+#: stub reproduces.
+Generate = Callable[..., str]
+
+
 def findings(
     session: Session,
     client: Client,
     period: Period,
     *,
-    generate=invoke_with_fallback,
+    generate: Generate = invoke_with_fallback,
 ) -> ReportDraft:
     """Propose the handful of things worth saying about ``client``'s ``period``.
 
@@ -531,9 +598,22 @@ def store(
     quietly doing nothing. It is the same rule the outreach ledger applies to a
     released letter: this is the artefact the client was sent, and a document that
     changes after the fact is worse than no document.
+
+    Raises :class:`ValueError` if the draft was generated for another mandate. The
+    draft carries the id it was measured for, and filing it under a different
+    client would produce a document about one company built on another's coverage —
+    exactly the failure this feature exists to make impossible.
     """
+    if draft.client_id != client.id:
+        raise ValueError(
+            f"report draft belongs to client {draft.client_id}, not {client.id}"
+        )
     existing = for_period(session, client.id, draft.period)
-    if existing is not None and existing.state is ReportState.FREIGEGEBEN:
+    # The timestamp rather than the label: ``state`` is what the interface shows,
+    # ``released_at`` is the fact it shows, and a row carrying one without the other
+    # must fail closed. The two are written together by ``release`` and could still
+    # come apart in a restore or in a route somebody writes next.
+    if existing is not None and existing.released_at is not None:
         raise ReportReleased(
             f"Der Bericht für {_period_text(draft.period)} ist freigegeben und "
             "wird nicht überschrieben."

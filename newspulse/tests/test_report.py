@@ -17,7 +17,7 @@ import logging
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -295,6 +295,59 @@ def test_a_figure_with_no_rows_under_it_cannot_carry_a_finding(session, mandate)
     assert draft.findings == ()
 
 
+def test_a_share_of_voice_finding_cites_only_the_mandates_own_coverage(
+    session, mandate
+):
+    """The share-of-voice metric is computed over the whole comparison set, because
+    the denominator is part of the figure. A citation is narrower: this is the
+    document Alpha AG receives, and a rival's headline printed as the ground under
+    Alpha's claim is the one failure here a client would see before we did."""
+    client, rival = mandate
+    figures = citable_figures(session, client, JULY)
+    voice = _ref(figures, MetricKey.SHARE_OF_VOICE)
+
+    stored = store(
+        session, client, findings(session, client, JULY, generate=_reply(_finding([voice])))
+    )
+    (view,) = resolve(session, stored)
+
+    assert {row.headline for row in view.evidence} == {"A1", "A2", "A3", "A4"}
+    rival_rows = set(
+        session.scalars(select(Analysis.id).where(Analysis.client_id == rival.id))
+    )
+    assert rival_rows
+    assert not rival_rows & set(stored.findings[0].evidence_ids)
+
+
+def test_a_rivals_article_dismissed_does_not_weaken_this_mandates_finding(
+    session, mandate
+):
+    """Weakened means *this* claim's ground moved. A competitor's piece leaving the
+    archive changes the market, not the evidence Alpha AG was shown."""
+    client, rival = mandate
+    figures = citable_figures(session, client, JULY)
+    stored = store(
+        session,
+        client,
+        findings(
+            session,
+            client,
+            JULY,
+            generate=_reply(_finding([_ref(figures, MetricKey.SHARE_OF_VOICE)])),
+        ),
+    )
+
+    dropped = session.scalars(
+        select(Analysis).where(Analysis.client_id == rival.id)
+    ).one()
+    dropped.dismissed_at = dt.datetime.now(dt.UTC)
+    session.commit()
+
+    (view,) = resolve(session, stored)
+    assert view.weakened is False
+    assert len(view.evidence) == 4
+
+
 # --- Only the figures RPT-01 produced ----------------------------------------------
 
 
@@ -414,6 +467,75 @@ def test_a_kind_outside_the_closed_set_is_not_parsed_into_a_report(session, mand
         )
 
 
+def test_a_key_message_in_the_clients_own_wording_may_be_named_in_a_finding(session):
+    """RPT-01 lets a guide say "Reichweite in der Zielgruppe" — the client's own
+    sentence, not a figure this tool produced — and the prompt duly offers it as a
+    figure to write a botschaft finding about. The finding it asked for must
+    survive the guard that let the figure exist, while a reach *claim* beside the
+    quote is still refused."""
+    client = Client(
+        name="Gamma AG",
+        industry="Fintech",
+        comms_guide="Kernbotschaften: Reichweite in der Zielgruppe\n",
+    )
+    session.add(client)
+    session.flush()
+    _piece(
+        session,
+        client,
+        "G1",
+        summary="Der Anbieter erzielt Reichweite in der Zielgruppe des Mittelstands.",
+    )
+    session.commit()
+
+    figures = citable_figures(session, client, JULY)
+    message = _ref(figures, MetricKey.MESSAGE, "Reichweite in der Zielgruppe")
+    assert figures[message].analysis_ids
+
+    draft = findings(
+        session,
+        client,
+        JULY,
+        generate=_reply(
+            _finding(
+                [message],
+                kind="botschaft",
+                claim=(
+                    "Die Kernbotschaft Reichweite in der Zielgruppe trägt einen "
+                    "Beitrag."
+                ),
+                consequence="Die Linie hält.",
+            ),
+            _finding(
+                [message],
+                kind="botschaft",
+                claim="Die Reichweite lag bei 1,2 Millionen Kontakten.",
+            ),
+        ),
+    )
+
+    (kept,) = draft.findings
+    assert kept.kind is ReportFindingKind.BOTSCHAFT
+    assert "Reichweite in der Zielgruppe" in kept.claim
+
+
+def test_a_reference_echoed_in_the_brackets_it_was_shown_in_is_read(session, mandate):
+    """The prompt renders every figure as ``[F1]``. A model handing the form back
+    has invented nothing, and reject-whole is for a reference that does not exist,
+    not for a formatting habit that would empty a report."""
+    client, _ = mandate
+    figures = citable_figures(session, client, JULY)
+    coverage = _ref(figures, MetricKey.COVERAGE)
+
+    draft = findings(
+        session, client, JULY, generate=_reply(_finding([f"[{coverage}]"]))
+    )
+
+    (kept,) = draft.findings
+    assert kept.figures == (coverage,)
+    assert kept.evidence_ids == tuple(sorted(figures[coverage].analysis_ids))
+
+
 # --- Evidence that moved ------------------------------------------------------------
 
 
@@ -478,6 +600,35 @@ def test_an_untouched_finding_resolves_to_the_coverage_it_was_drafted_on(
     assert view.weakened is False
     assert {row.source for row in view.evidence} == {"FAZ", "Handelsblatt"}
     assert all(row.url for row in view.evidence)
+
+
+def test_a_finding_the_consultant_dropped_is_not_rendered(session, mandate):
+    """The row stays — what was proposed and rejected is part of how a report was
+    arrived at — but the row surviving is not the sentence surviving."""
+    client, _ = mandate
+    figures = citable_figures(session, client, JULY)
+    coverage = _ref(figures, MetricKey.COVERAGE)
+    stored = store(
+        session,
+        client,
+        findings(
+            session,
+            client,
+            JULY,
+            generate=_reply(
+                _finding([coverage], claim="Erste Aussage."),
+                _finding([coverage], claim="Zweite Aussage."),
+            ),
+        ),
+    )
+
+    stored.findings[0].kept = False
+    session.commit()
+
+    views = resolve(session, stored)
+    assert [view.finding.claim for view in views] == ["Zweite Aussage."]
+    # Dropped, not deleted: the report still knows what it was offered.
+    assert len(stored.findings) == 2
 
 
 # --- Silence is an answer ------------------------------------------------------------
@@ -598,6 +749,34 @@ def test_a_released_report_is_never_replaced(session, mandate):
     assert kept.id == released.id
     assert len(kept.findings) == 1
     assert kept.state is ReportState.FREIGEGEBEN
+
+
+def test_a_report_carrying_a_release_stamp_is_never_replaced(session, mandate):
+    """``store`` gates on the fact rather than on the label for it. A row whose
+    ``released_at`` is set without its ``state`` — a restore, a route somebody
+    writes next — is still a document that went out."""
+    client, _ = mandate
+    stored = store(session, client, findings(session, client, AUGUST, generate=_refuse))
+    stored.released_at = dt.datetime(2026, 9, 1, tzinfo=dt.UTC)
+    session.commit()
+    assert stored.state is ReportState.ENTWURF
+
+    with pytest.raises(ReportReleased):
+        store(session, client, findings(session, client, AUGUST, generate=_refuse))
+
+
+def test_a_draft_generated_for_another_mandate_is_not_filed_under_this_one(
+    session, mandate
+):
+    """The draft carries the id it was measured for. Filing it elsewhere would put
+    one company's coverage under another company's name."""
+    client, rival = mandate
+    draft = findings(session, client, JULY, generate=_reply())
+
+    with pytest.raises(ValueError):
+        store(session, rival, draft)
+
+    assert for_period(session, rival.id, JULY) is None
 
 
 def test_releasing_a_report_twice_keeps_the_first_stamp(session, mandate):
@@ -727,6 +906,29 @@ def test_a_report_carries_at_most_the_handful_it_is_worth(session, mandate):
 
 
 # --- The migrated schema ------------------------------------------------------------------
+
+
+def test_the_migration_chain_has_exactly_one_head():
+    """The failure mode of the reserved revision id, caught here rather than on the
+    deploy.
+
+    0028 chains from 0018 because the ids in between belong to features already
+    building against them. Alembic chains on ``down_revision``, so that is correct
+    in itself — but a sibling story landing 0019 with the *same* ``down_revision``
+    gives the tree two heads, and ``alembic upgrade head`` then refuses to run at
+    all. Nothing in this worktree can see that coming; it appears at merge. So the
+    invariant is asserted rather than assumed, and whoever merges the two gets a
+    red suite instead of a broken release: one of the revisions has to be
+    re-pointed at the other."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_PROJECT_ROOT / "migrations"))
+
+    heads = ScriptDirectory.from_config(cfg).get_heads()
+
+    assert len(heads) == 1, f"the migration tree has {len(heads)} heads: {heads}"
 
 
 def test_the_migration_creates_the_report_tables_the_models_expect(tmp_path, monkeypatch):
