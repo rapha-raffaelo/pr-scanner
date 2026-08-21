@@ -191,17 +191,21 @@ def test_an_answer_survives_a_fresh_session(factory):
 def test_re_answering_overwrites_in_place_and_moves_the_timestamp(session):
     client = _client(session)
     first = onboarding.save_answer(session, client, "satz", "Erste Fassung.")
-    was = first.answered_at
     # Backdated rather than slept on: the assertion is about the write moving the
     # timestamp, and a test that waits a second to prove it is a test nobody runs.
-    first.answered_at = was - dt.timedelta(hours=1)
+    # The comparison has to be against this captured value and not against the
+    # row's own attribute — `save_answer` hands back the same identity-mapped
+    # object, so `second.answered_at > second.answered_at - 1h` would hold even if
+    # the write never touched the timestamp at all.
+    backdated = first.answered_at - dt.timedelta(hours=1)
+    first.answered_at = backdated
     session.commit()
 
     second = onboarding.save_answer(session, client, "satz", "Zweite Fassung.")
 
     assert second.id == first.id
     assert second.value == "Zweite Fassung."
-    assert second.answered_at > first.answered_at - dt.timedelta(hours=1)
+    assert second.answered_at > backdated
     assert session.scalar(
         select(func.count()).select_from(OnboardingAnswer)
         .where(OnboardingAnswer.client_id == client.id)
