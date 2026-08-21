@@ -199,6 +199,13 @@ def _own_evidence(
     metric whose ids span mandates would otherwise reintroduce the same bug
     silently, and narrowing early also means the prompt's "N belegende Zeilen" is
     the count of what could actually be cited.
+
+    The trade this makes: what :func:`citable_figures` returns is a *citation* view
+    and no longer a recomputable one, so it must not be handed to
+    :func:`newspulse.reporting.recompute` — a share of voice re-derived from the
+    mandate's rows alone comes back as 100 %, having lost its denominator. Take
+    metrics for that check from :func:`newspulse.reporting.period_metrics`, which
+    is where they keep it.
     """
     cited = {row for value in values for row in value.analysis_ids}
     if not cited:
