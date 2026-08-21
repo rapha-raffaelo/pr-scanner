@@ -69,17 +69,20 @@ def _pending(session: Session, client_id: int) -> list[profiles.Proposal]:
     already says, which is not a contradiction but a duplicate.
     """
     facts = profiles.stored(session, client_id)
-    researched = [
-        p for p in _proposals.get(client_id, [])
-        if p.key not in facts or facts[p.key].filled_by != "mensch"
-    ]
-    offered = {p.key for p in researched}
     from_kickoff = [
         p for p in onboarding.to_proposals(session, client_id)
-        if p.key not in offered
-        and (p.key not in facts or facts[p.key].value.strip() != p.value.strip())
+        if p.key not in facts or facts[p.key].value.strip() != p.value.strip()
     ]
-    return researched + from_kickoff
+    # One proposal per field. Where both have something to say about the same
+    # line, the answer displaces the guess before either is shown: two checkboxes
+    # writing the same field would make "accept both" mean whichever ran last.
+    answered = {p.key for p in from_kickoff}
+    researched = [
+        p for p in _proposals.get(client_id, [])
+        if p.key not in answered
+        and (p.key not in facts or facts[p.key].filled_by != "mensch")
+    ]
+    return from_kickoff + researched
 
 
 @router.get("/client/{client_id}/profil", response_class=HTMLResponse)

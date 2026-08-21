@@ -31,7 +31,12 @@ _PROMPT_RESOURCE = "prompts/rivals.txt"
 #: for "Unternehmen, und in einem Halbsatz warum", so an answer arrives as one
 #: line: "Trade Republic, weil sie dieselben Kunden umwerben". The dashes carry
 #: their spaces on purpose — a bare hyphen would cut "Trade-Republic" in half.
-_REASON_SEPARATORS = (",", ";", ":", " weil ", " da ", " – ", " — ", " - ")
+_REASON_MARKS = (",", ";", ":", " – ", " — ", " - ")
+
+#: The same cut where the answer runs straight into its reason with no
+#: punctuation. Kept in the reason rather than swallowed, because "weil sie
+#: billiger sind" is a sentence and "sie billiger sind" is a fragment.
+_REASON_WORDS = (" weil ",)
 
 
 def _prompt_template() -> Template:
@@ -58,7 +63,10 @@ def _taken(client: Client) -> set[str]:
 def _split_reason(line: str) -> tuple[str, str]:
     """One named competitor, cut into the company and why it was named."""
     line = line.strip()
-    cuts = [(line.find(sep), len(sep)) for sep in _REASON_SEPARATORS if sep in line]
+    # ``width`` is what the separator itself eats: all of it for punctuation,
+    # none of it for a word that belongs to the reason it introduces.
+    cuts = [(line.find(sep), len(sep)) for sep in _REASON_MARKS if sep in line]
+    cuts += [(line.find(sep), 1) for sep in _REASON_WORDS if sep in line]
     if not cuts:
         return line, ""
     at, width = min(cuts)

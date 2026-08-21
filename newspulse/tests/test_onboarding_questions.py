@@ -1370,3 +1370,38 @@ def test_every_new_kickoff_conversion_string_has_an_english_entry():
     for key in onboarding._PROFILE_SLOTS.values():
         field = profiles.FIELDS_BY_KEY[key]
         assert field.label in known, field.label
+
+
+def test_the_answer_displaces_a_researched_proposal_for_the_same_field(factory, web):
+    """One proposal per line. Two checkboxes writing the same field would make
+    "accept both" mean whichever one happened to run last, and the answer is the
+    one that should win either way."""
+    from newspulse.web.routes import profile as profile_routes
+
+    with factory() as session:
+        client = _client(session)
+        _answer(session, client, "satz", "Wir bauen Roboterarme für OP-Säle.")
+        client_id = client.id
+    profile_routes._proposals[client_id] = [
+        profiles.Proposal(key="geschaeftsfeld", value="Laut Website: Zulieferer.",
+                          source_url="https://beispiel.de"),
+    ]
+    try:
+        body = web.get(f"/client/{client_id}/profil").text
+
+        assert "Wir bauen Roboterarme für OP-Säle." in body
+        assert "Laut Website: Zulieferer." not in body
+    finally:
+        profile_routes._proposals.pop(client_id, None)
+
+
+def test_a_competitor_named_without_punctuation_keeps_a_readable_reason(session):
+    """"weil sie billiger sind" is a sentence; "sie billiger sind" is a fragment."""
+    client = _client(session)
+    _answer(session, client, "wettbewerber", "Intuitive Surgical weil sie billiger sind")
+
+    named = onboarding.to_rivals(session, client)
+
+    assert [(r.name, r.reason) for r in named] == [
+        ("Intuitive Surgical", "weil sie billiger sind")
+    ]
