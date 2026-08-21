@@ -50,15 +50,18 @@
         hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}"
         hx-target="#q-{{ question.key }}" hx-swap="outerHTML"
         hx-trigger="change, submit">
+    {# No placeholder on the prose fields: the help line is directly above them,
+       and a placeholder repeating it would be the same sentence twice, one of
+       them vanishing the moment anyone types. The list field is the exception —
+       there the placeholder says what the box does, which the help does not. #}
     {% if question.kind == 'absatz' %}
-      <textarea id="{{ field_id }}" name="value"
-                placeholder="{{ t(question.help) }}">{{ answer.value if answered else "" }}</textarea>
+      <textarea id="{{ field_id }}" name="value">{{ answer.value if answered else "" }}</textarea>
     {% elif question.is_list %}
       <input type="text" id="{{ field_id }}" name="value" value=""
              autocomplete="off" placeholder="{{ t('Eintrag hinzufügen') }}">
     {% else %}
       <input type="text" id="{{ field_id }}" name="value"
-             value="{{ answer.value if answered else '' }}" placeholder="{{ t(question.help) }}">
+             value="{{ answer.value if answered else '' }}">
     {% endif %}
   </form>
 
