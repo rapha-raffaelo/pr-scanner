@@ -474,6 +474,64 @@ def test_a_failing_guide_check_leaves_the_crosscheck_and_the_letter_intact(
     assert "acht Prozent Rendite" in web.get(f"/client/{client_id}/advice").text
 
 
+def test_the_worker_stores_the_verdict_it_just_obtained(
+    factory, web, monkeypatch, no_background_message
+):
+    """The whole path in one go: the check runs, its verdict lands on the letter's
+    own row, and the page under the letter quotes both sides of the breach. A
+    verdict that is obtained and then dropped on the floor is the same as none —
+    and it would leave the letter reading as unchecked."""
+    from newspulse import config, gemini
+    from newspulse.web.routes import advisory
+
+    with factory() as setup:
+        client, angle = _mandate(setup)
+        client_id, angle_id = client.id, angle.id
+
+    @contextlib.contextmanager
+    def _session():
+        s = factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    def _fake_generate(prompt: str, **kwargs) -> str:
+        # The guide reaches exactly one of the two prompts; the crosscheck's
+        # template has no slot for it.
+        if "Keine Renditeversprechen." in prompt:
+            return _verdict(
+                ok=False,
+                breaches=[
+                    {
+                        "draft": "Unsere Verwahrung sichert Ihren Lesern acht "
+                                 "Prozent Rendite im Jahr.",
+                        "guide": "No-Gos: Keine Renditeversprechen.",
+                    }
+                ],
+            )
+        return json.dumps({"send": True, "concerns": [], "fix": ""})
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(advisory, "get_session", _session)
+    monkeypatch.setattr(gemini, "generate", _fake_generate)
+    monkeypatch.setattr(outreach, "draft", lambda *a, **k: _letter(_OFFENDING))
+
+    advisory._writing.acquire()
+    no_background_message(client_id, angle_id, "Jason Nelson", "Börsen-Zeitung")
+    advisory._last_message_error.pop(client_id, None)
+
+    with factory() as check:
+        stored = check.scalars(select(Outreach)).one()
+        assert stored.guide_ok is False
+        assert stored.guide_reviewed_by == config.review_model()
+        assert stored.guide_review[0]["guide"] == "No-Gos: Keine Renditeversprechen."
+
+    body = web.get(f"/client/{client_id}/advice").text
+    assert "Verstößt gegen den Guide" in body
+    assert "No-Gos: Keine Renditeversprechen." in body
+
+
 def test_the_worker_reports_the_three_guide_states_distinctly():
     """None of them may read as either of the others — the whole point of a
     separate not-checked state."""

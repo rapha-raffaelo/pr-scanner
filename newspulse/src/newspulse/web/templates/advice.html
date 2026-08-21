@@ -265,7 +265,7 @@
               </div>
             {% else %}
               <div class="guidecheck guidecheck--breach">
-                <span class="impulse__label">{{ t("Verstößt gegen den Guide") }} —{{ t("gelesen von") }} {{ msg.guide_reviewed_by }}</span>
+                <span class="impulse__label">{{ t("Verstößt gegen den Guide") }} — {{ t("gelesen von") }} {{ msg.guide_reviewed_by }}</span>
                 <ul>
                   {% for breach in msg.guide_review or [] %}
                     <li>
