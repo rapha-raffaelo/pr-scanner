@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from ... import onboarding
-from ...models import Client
+from ...models import Client, OnboardingAnswer
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
 
@@ -48,11 +48,17 @@ def _question_or_404(key: str) -> onboarding.Question:
     return question
 
 
-def _shared(session: Session, client: Client) -> dict:
-    """Context every render on this page needs, including the shared header's."""
+def _shared(
+    session: Session, client: Client, stored: dict[str, OnboardingAnswer]
+) -> dict:
+    """Context every render on this page needs, including the shared header's.
+
+    The answers are handed in rather than read here: both renders already hold
+    them, and the progress figure is a count of exactly those rows.
+    """
     return {
         "client": client,
-        "progress": onboarding.completeness(session, client.id),
+        "progress": onboarding.completeness(session, client.id, stored=stored),
         "last_run": _fetch_last_run(session),
         "header_date": dt.datetime.now(_local_tz()).date(),
     }
@@ -75,13 +81,14 @@ def _saved(
         return RedirectResponse(
             f"/client/{client.id}/kickoff#q-{question.key}", status_code=_SEE_OTHER
         )
+    stored = onboarding.answers(session, client.id)
     return templates.TemplateResponse(
         request,
         "partials/kickoff_saved.html",
         {
-            **_shared(session, client),
+            **_shared(session, client, stored),
             "question": question,
-            "answer": onboarding.answers(session, client.id).get(question.key),
+            "answer": stored.get(question.key),
         },
     )
 
@@ -92,13 +99,14 @@ def kickoff_view(
 ) -> HTMLResponse:
     """The questionnaire as it stands: what is answered, skipped and still open."""
     client = _client_or_404(session, client_id)
+    stored = onboarding.answers(session, client.id)
     return templates.TemplateResponse(
         request,
         "onboarding.html",
         {
-            **_shared(session, client),
+            **_shared(session, client, stored),
             "groups": onboarding.by_section(),
-            "answers": onboarding.answers(session, client.id),
+            "answers": stored,
         },
     )
 

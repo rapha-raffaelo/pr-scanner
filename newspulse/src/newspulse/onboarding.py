@@ -579,9 +579,18 @@ def _is_answered(row: OnboardingAnswer) -> bool:
     return not row.skipped and bool(row.value.strip())
 
 
-def completeness(session: Session, client_id: int) -> Completeness:
-    """How much of this mandate's foundation exists, per section and overall."""
-    stored = answers(session, client_id)
+def completeness(
+    session: Session,
+    client_id: int,
+    *,
+    stored: dict[str, OnboardingAnswer] | None = None,
+) -> Completeness:
+    """How much of this mandate's foundation exists, per section and overall.
+
+    A caller that already holds :func:`answers` — every render on the page does —
+    passes it in rather than making the same twenty rows come back a second time.
+    """
+    stored = answers(session, client_id) if stored is None else stored
     sections = tuple(
         SectionProgress(
             section=section,
