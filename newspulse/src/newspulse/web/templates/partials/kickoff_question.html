@@ -44,12 +44,17 @@
 
   {# hx-trigger includes `change`, which fires when the field is left after being
      edited: that is what "saves as you type" means without a keystroke-per-request
-     stream. The submit button below is the same route without JavaScript. #}
+     stream. The submit button below is the same route without JavaScript.
+
+     Not for a list, though. There the field is an append box, not the answer:
+     blurring it would commit "Dr. Anna Verh" as a permanent chip, and the only
+     correction is to delete the chip and retype. A list entry is added when it is
+     submitted, deliberately. #}
   <form id="{{ form_id }}" method="post"
         action="/client/{{ client.id }}/kickoff/{{ question.key }}"
         hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}"
         hx-target="#q-{{ question.key }}" hx-swap="outerHTML"
-        hx-trigger="change, submit">
+        hx-trigger="{% if question.is_list %}submit{% else %}change, submit{% endif %}">
     {# No placeholder on the prose fields: the help line is directly above them,
        and a placeholder repeating it would be the same sentence twice, one of
        them vanishing the moment anyone types. The list field is the exception —
@@ -78,7 +83,11 @@
   </div>
 
   <div class="q__acts">
-    <button type="submit" form="{{ form_id }}" class="linkbtn">{{ t("Speichern") }}</button>
+    {# A list question's button appends; the others overwrite. Two words, because
+       a reader who sees "Speichern" over an append box expects the box to hold
+       the answer. #}
+    <button type="submit" form="{{ form_id }}" class="linkbtn">
+      {{ t("Hinzufügen") if question.is_list else t("Speichern") }}</button>
     {% if skipped %}
       <form method="post" action="/client/{{ client.id }}/kickoff/{{ question.key }}/clear"
             hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}/clear"
@@ -91,6 +100,18 @@
             hx-target="#q-{{ question.key }}" hx-swap="outerHTML">
         <button type="submit" class="linkbtn"
                 title="{{ t('Gefragt, aber keine Antwort — anders als noch nicht gefragt') }}">{{ t("Übergehen") }}</button>
+      </form>
+    {% endif %}
+
+    {# Deleting a stored answer is its own button rather than a side effect of
+       emptying the field. The field saves on blur, so a select-all before
+       retyping would otherwise destroy a transcribed answer that exists nowhere
+       else. Going back to unanswered stays possible; it just has to be meant. #}
+    {% if answered %}
+      <form method="post" action="/client/{{ client.id }}/kickoff/{{ question.key }}/clear"
+            hx-post="/client/{{ client.id }}/kickoff/{{ question.key }}/clear"
+            hx-target="#q-{{ question.key }}" hx-swap="outerHTML">
+        <button type="submit" class="linkbtn">{{ t("Antwort löschen") }}</button>
       </form>
     {% endif %}
   </div>

@@ -489,6 +489,42 @@ def test_clearing_through_the_page_reopens_the_question(web, session):
     assert "schweigen" not in with_session
 
 
+def test_an_emptied_field_does_not_delete_the_stored_answer(web, session):
+    """The field saves on blur. Selecting an answer to retype it and then being
+    interrupted must not destroy a sentence transcribed from a call."""
+    client = _client(session)
+    web.post(f"/client/{client.id}/kickoff/satz", data={"value": "Roboterarme."})
+
+    web.post(f"/client/{client.id}/kickoff/satz", data={"value": "   "})
+
+    assert onboarding.answers(session, client.id)["satz"].value == "Roboterarme."
+
+
+def test_an_answered_question_offers_the_deliberate_way_back_to_unanswered(web, session):
+    """Deleting stays possible — it just stops being a side effect of a blur."""
+    client = _client(session)
+    web.post(f"/client/{client.id}/kickoff/satz", data={"value": "Roboterarme."})
+
+    body = web.get(f"/client/{client.id}/kickoff").text
+    assert f'action="/client/{client.id}/kickoff/satz/clear"' in body
+
+    web.post(f"/client/{client.id}/kickoff/satz/clear")
+    assert "satz" not in onboarding.answers(session, client.id)
+
+
+def test_a_list_field_is_not_committed_on_blur(web, session):
+    """For prose the field *is* the answer, so saving a partial one is the point.
+    For a list it is an append box: a half-typed name would become a chip that can
+    only be corrected by deleting it and starting over."""
+    client = _client(session)
+    body = web.get(f"/client/{client.id}/kickoff").text
+
+    block = body.split('id="q-sprecher"')[1].split('id="q-wettbewerber"')[0]
+    assert 'hx-trigger="submit"' in block
+    prose = body.split('id="q-satz"')[1].split('id="q-sprecher"')[0]
+    assert 'hx-trigger="change, submit"' in prose
+
+
 def test_a_list_question_shows_its_entries_as_chips(web, session):
     client = _client(session)
     web.post(f"/client/{client.id}/kickoff/sprecher",

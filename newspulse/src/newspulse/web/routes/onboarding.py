@@ -111,12 +111,20 @@ def save_answer(
     value: str = Form(default=""),
     session: Session = Depends(get_db),
 ) -> Response:
-    """Store one answer. A list question gets one more entry; the rest overwrite."""
+    """Store one answer. A list question gets one more entry; the rest overwrite.
+
+    An emptied field is not a delete. This route is what the ``change`` trigger
+    fires on blur, so treating a blank value as "remove the row" would mean a
+    consultant who selects a stored answer to retype it and is interrupted comes
+    back to nothing — the client's own words from a call, gone with no undo. The
+    deliberate way back to unanswered is ``/clear``, which the page offers next to
+    every answered question.
+    """
     client = _client_or_404(session, client_id)
     question = _question_or_404(key)
     if question.is_list:
         onboarding.add_entry(session, client, key, value)
-    else:
+    elif value.strip():
         onboarding.save_answer(session, client, key, value)
     return _saved(request, session, client, question)
 
@@ -151,7 +159,12 @@ def skip_question(
 def clear_answer(
     request: Request, client_id: int, key: str, session: Session = Depends(get_db)
 ) -> Response:
-    """Put a question back to unanswered — the way out of an accidental skip."""
+    """Put a question back to unanswered.
+
+    The way out of an accidental skip, and the only way to delete a stored
+    answer: emptying the field does nothing, so losing a transcribed answer takes
+    a deliberate click rather than a stray blur.
+    """
     client = _client_or_404(session, client_id)
     question = _question_or_404(key)
     onboarding.save_answer(session, client, key, "")

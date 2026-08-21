@@ -903,6 +903,8 @@ _EN: dict[str, str] = {
     "übergangen": "passed over",
     "Übergehen": "Pass over",
     "Doch beantworten": "Answer it after all",
+    # "Hinzufügen" — the list question's button — is already in the table above.
+    "Antwort löschen": "Delete answer",
     "Gefragt, aber keine Antwort — anders als noch nicht gefragt":
         "Asked, but no answer — which is not the same as not yet asked",
     "Eintrag hinzufügen": "Add an entry",
