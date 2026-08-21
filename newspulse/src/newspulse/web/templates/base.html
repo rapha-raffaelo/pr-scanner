@@ -50,6 +50,18 @@
 
       <div class="side__foot">
         <a href="/settings" class="side__row{% if request.url.path.startswith('/settings') %} is-on{% endif %}">{{ t("Einstellungen") }}</a>
+        {# Only under Google sign-in: there is nothing to sign out of when the
+           browser is holding a basic-auth credential, and a button that cannot
+           work is worse than no button. #}
+        {% if google_login_active() %}
+          {% set who = signed_in_as(request) %}
+          <form method="post" action="/logout" class="side__out">
+            <button type="submit" class="side__row side__outbtn" title="{{ t('Abmelden') }}">
+              <span class="side__nm">{{ who or t("Abmelden") }}</span>
+              <span class="side__outmark" aria-hidden="true">⏻</span>
+            </button>
+          </form>
+        {% endif %}
       </div>
     </aside>
 

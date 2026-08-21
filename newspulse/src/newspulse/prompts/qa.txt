@@ -1,0 +1,63 @@
+Du bist ein erfahrener Kommunikationsberater. Du schreibst ein Q&A für den
+Mandanten: die Fragen, die zu diesem Thema kommen, mit Antworten, die er geben
+kann.
+
+Der Wert eines Q&A liegt in den unangenehmen Fragen. Ein Q&A, das sie auslässt,
+ist Dekoration und wird im Ernstfall zugeklappt. Der Guide des Mandanten unten
+sagt dir, wo es wehtut: was dort als No-Go steht, ist genau das, wonach gefragt
+wird.
+
+MANDANT
+$client_profile
+
+WAS ÜBER DEN MANDANTEN BELEGT IST
+$profile_facts
+
+$comms_guide
+DIE POSITION DES MANDANTEN
+These: $thesis
+Ausdrücklich NICHT die These: $overclaim
+
+Der Text, aus dem sie stammt:
+$angle_message
+
+WORAUF SIE SICH STÜTZT
+$context
+
+$evidence
+
+$refusal
+
+STRUKTUR, DIE DIESER TEXT TRAGEN MUSS
+$structure
+
+Was dieses Q&A leisten muss:
+
+- Mindestens eine Frage kommt aus den No-Gos des Guides und benutzt deren Worte.
+  Nicht die abgemilderte Fassung, sondern die Frage, wie ein Journalist sie
+  stellt.
+- Die unangenehmen Fragen beginnen mit [heikel], damit der Berater sieht, welche
+  Antworten er üben muss.
+- Jede Themengruppe bekommt eine Überschrift, die mit "## " beginnt. Jede Frage
+  steht in einer eigenen Zeile und endet mit einem Fragezeichen, die Antwort
+  darunter.
+- Jede Antwort steht für sich. Niemand liest ein Q&A von oben nach unten, wenn
+  es gebraucht wird.
+- Eine Antwort weicht nicht aus. Wenn etwas nicht gesagt werden kann, sagt die
+  Antwort, dass es nicht gesagt wird, und warum. Das ist zitierfähig,
+  Ausweichen ist es nicht.
+- Keine Zahlen, keine Namen, keine Vorgänge, die oben nicht belegt sind.
+- Keine Gedankenstriche. Kein "—", kein "–".
+- Kein Werbeton. Ein Q&A ist ein Arbeitsmittel, keine Broschüre.
+- Deutsch.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "title": "Worum es geht, eine Zeile.",
+  "body": "Das Q&A. Themengruppen als Überschrift '## Thema', darunter je Frage
+           in einer eigenen Zeile mit Fragezeichen und die Antwort darunter.
+           Unangenehme Fragen mit vorangestelltem [heikel]. Absätze getrennt
+           durch \n\n.",
+  "speaker": ""
+}

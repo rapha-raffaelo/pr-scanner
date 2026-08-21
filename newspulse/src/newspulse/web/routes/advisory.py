@@ -19,19 +19,22 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
+from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import angles, job, outreach, pitch
+from ... import angles, contacts, gmail_link, job, outreach, pitch
 from ...db import get_session
 from ..runlock import guard as _run_guard
 from .. import themework
-from ...models import Angle, Article, Client, TopicHit
+from ...models import Angle, Article, Client, Contact, Outreach, TopicHit
 from ...schemas import GuideVerdict
 from ..app import get_db, templates
+from . import assets_view
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -41,7 +44,7 @@ _SEE_OTHER = 303
 
 
 def _backing(
-    messages: dict[int, list], targets: dict[int, list[pitch.PitchTarget]]
+    messages: dict[int, list[Outreach]], targets: dict[int, list[pitch.PitchTarget]]
 ) -> dict[int, tuple[str, ...]]:
     """Headlines per stored message, matched on (journalist, outlet).
 
@@ -62,6 +65,217 @@ def _backing(
     return out
 
 
+def _silence(messages: dict[int, list[Outreach]]) -> dict[int, int]:
+    """Days out, per letter that has gone quiet for too long.
+
+    Only the silent ones are in the map, so the template asks one question
+    ("is this letter in here?") instead of repeating the threshold. The value is
+    the day count, because "seit 21 Tagen still" is actionable where "still"
+    alone is a mood.
+    """
+    now = dt.datetime.now(dt.UTC)
+    return {
+        row.id: outreach.days_out(row, now=now)
+        for rows in messages.values()
+        for row in rows
+        if outreach.is_silent(row, now=now)
+    }
+
+
+# --- Who a letter can actually be sent to ---------------------------------------
+#
+# The contact book is the only source of an address in this tool, and it is filled
+# by hand. Nothing here derives one: a "vorname.nachname@medium.de" built from a
+# byline is plausible, gets used, and reaches a stranger — which under DEC-4
+# option C would mean RauteOS itself sent a client's pitch to the wrong person.
+# So a missing address disables the action and says which of the three reasons it
+# is, because they need three different answers from the reader.
+
+#: No byline at all. The letter is addressed to a desk, and a desk has no entry.
+NO_NAME = "Kein Name zu diesem Anschreiben — nur die Redaktion."
+#: A name the book has never seen. One click away from being fixed.
+NOT_IN_BOOK = "Nicht im Kontaktbuch. RauteOS leitet keine Adresse aus Name oder Medium ab."
+#: In the book, but the address field was left empty.
+NO_ADDRESS = "Im Kontaktbuch, aber ohne E-Mail-Adresse."
+#: Not about the recipient at all: the mailbox is connected without the
+#: permission that lets RauteOS compose and send. Every connection made before
+#: DEC-4's send path is in this state, because Google fixes the granted scopes at
+#: consent time and no request widens them afterwards.
+NO_SEND_PERMISSION = "Dieses Postfach ist nur zum Lesen verbunden."
+
+
+@dataclass(frozen=True, slots=True)
+class Recipient:
+    """The address one letter would go to, or why there is none.
+
+    ``email`` is empty exactly when the letter cannot be sent, and ``reason`` is
+    then never empty: a disabled button with no explanation is the thing this
+    dataclass exists to prevent.
+    """
+
+    email: str = ""
+    reason: str = ""
+    contact_id: int | None = None
+
+    @property
+    def is_reachable(self) -> bool:
+        return bool(self.email)
+
+
+def _recipient(session: Session, row: Outreach) -> Recipient:
+    """The contact book's answer for one letter's recipient.
+
+    Prefers the contact the ledger already resolved at release
+    (``Outreach.contact_id``) over a fresh name match: that link was made when a
+    person released the letter, and it is the stronger fact — a journalist who
+    has since moved masthead would otherwise match a different entry, or none.
+    """
+    known: Contact | None = None
+    if row.contact_id is not None:
+        known = session.get(Contact, row.contact_id)
+    if known is None:
+        if not row.journalist:
+            return Recipient(reason=NO_NAME)
+        known = contacts.find(session, row.journalist, row.outlet)
+    if known is None:
+        return Recipient(reason=NOT_IN_BOOK)
+    if not known.email:
+        return Recipient(reason=NO_ADDRESS, contact_id=known.id)
+    return Recipient(email=known.email, contact_id=known.id)
+
+
+def _recipients(
+    session: Session, messages: dict[int, list[Outreach]]
+) -> dict[int, Recipient]:
+    """The address question answered once per letter, for the whole page."""
+    return {
+        row.id: _recipient(session, row)
+        for rows in messages.values()
+        for row in rows
+    }
+
+
+def _thread_links(
+    messages: dict[int, list[Outreach]], link: gmail_link.Link | None
+) -> dict[int, str]:
+    """Where to open each letter's conversation in Gmail, for the ones that have
+    one. Absent rather than empty for the rest, so the template asks one question
+    instead of testing a string.
+
+    The connected address goes into the link so it opens in *this* mailbox: a
+    browser signed into a personal account as well has RauteOS's at ``/u/1/``,
+    and an account-indexed link lands on "conversation not found".
+    """
+    account = link.email if link is not None else ""
+    return {
+        row.id: gmail_link.thread_url(row.gmail_thread_id, account=account)
+        for rows in messages.values()
+        for row in rows
+        if row.gmail_thread_id
+    }
+
+
+def _advice_context(session: Session, client: Client) -> dict:
+    """Everything advice.html renders for one mandate, in one place."""
+    drafts = angles.for_client(session, client.id)
+    targets = {a.id: pitch.targets_for(session, client, a) for a in drafts}
+    messages = outreach.by_angle(session, [a.id for a in drafts])
+    mailbox = gmail_link.connected()
+    return {
+        "client": client,
+        "drafting": _drafting.locked(),
+        "writing": _writing.locked(),
+        # Why the last click came back empty, if it did. Shown instead of the
+        # generic "the radar has collected nothing", which was wrong as often
+        # as it was right.
+        # The click's own answer if there was one this session, otherwise
+        # what the last sweep recorded — which is the usual case, since the
+        # sweep runs at 06:10 and the page is opened at nine.
+        "impulse_refusal": _last_refusal.get(client.id) or client.impulse_note,
+        "impulse_checked_at": client.impulse_checked_at,
+        # The remedy for the commonest refusal, offered where the refusal is
+        # read rather than on a settings screen the reader has never opened.
+        "theme_work": themework.state.get(client.id),
+        "angles": drafts,
+        # The stories each draft rests on, keyed by angle id. The page's own
+        # lead promises that "jede Aussage nennt die Meldungen, auf die sie
+        # sich stützt" — and this card, the detailed view of a draft the Today
+        # column already shows in full, was the one place that named none of
+        # them. It showed strictly less than the overview it is reached from.
+        "sources": {
+            a.id: session.scalars(
+                select(Article).where(Article.id.in_(a.article_ids or [-1]))
+            ).all()
+            for a in drafts
+        },
+        # Who to send each draft to, keyed by angle id. Computed per draft
+        # because the strongest signal is specific to it: the bylines on the
+        # very stories it answers.
+        "pitch_targets": targets,
+        # The messages already written off each impulse, keyed the same way.
+        "messages": messages,
+        # And, per message, the recipient's own headlines — the ones the
+        # letter claims to have read. A pitch that says "Sie haben über X
+        # geschrieben" has to be checkable where it is read, not two scrolls
+        # down in the pitch list.
+        "evidence": _backing(messages, targets),
+        # The one letter state nobody enters, computed where the page is
+        # built rather than in the template: it is a judgement about time,
+        # and Jinja is the wrong place to do arithmetic on a timestamp.
+        "silent": _silence(messages),
+        "state_labels": outreach.STATE_LABELS,
+        "outcomes": outreach.OUTCOMES,
+        "message_error": _last_message_error.get(client.id, ""),
+        # The mailbox, and what it makes possible on each card. ``gmail`` is
+        # None or an unconnected Link when no mailbox is attached, and the card
+        # then offers no send action at all — the Kopieren path is the whole
+        # answer, exactly as it was before this feature existed. A connected
+        # mailbox that was never granted the send permission (``may_send``)
+        # renders the action disabled with ``gmail_scope_reason`` beside it,
+        # because a button that 403s after the confirmation is worse than none.
+        "gmail": mailbox,
+        "gmail_scope_reason": NO_SEND_PERMISSION,
+        "recipients": _recipients(session, messages),
+        "gmail_threads": _thread_links(messages, mailbox),
+        "gmail_error": _last_gmail_error.get(client.id, ""),
+        # Whether a radar is possible at all, which is a question about the
+        # client's themes — not about whether it has found anything yet. Read
+        # off the hit count, a mandate with twenty-five themes and a radar that
+        # has simply not run yet was told it had no radar.
+        "has_themes": bool(client.keywords or client.alert_topics),
+        # Rendered rather than written into the template, so the sentence and
+        # the window can never disagree.
+        "impulse_days": job.IMPULSE_LOOKBACK.days,
+        "pitch_days": pitch.LOOKBACK_DAYS,
+        # Two different numbers, and conflating them is why a page could say
+        # "the radar collected 2 items and made nothing of them" about a
+        # mandate that had no usable material at all. What the radar found is
+        # ``market_seen``; what an impulse can be built from is
+        # ``market_usable`` — inside the window, and not coverage of the
+        # mandate itself, which is what the draft actually reads.
+        "market_seen": session.scalar(
+            select(func.count()).select_from(TopicHit).where(
+                TopicHit.client_id == client.id
+            )
+        ) or 0,
+        "market_usable": len(
+            job.market_material(
+                session,
+                client,
+                dt.datetime.now(dt.UTC) - job.IMPULSE_LOOKBACK,
+            )
+        ),
+        "last_run": _fetch_last_run(session),
+        "header_date": dt.datetime.now(_local_tz()).date(),
+        # DEC-1: one occasion, one package. Every format for each impulse with
+        # the state it is in, built from the registry crossed with what is
+        # stored, so a seventh format appears in the strip without this route
+        # learning its name. Handed the recipients and letters this function
+        # already looked up rather than fetching them again.
+        **assets_view.page_context(session, client, drafts, targets, messages),
+    }
+
+
 @router.get("/client/{client_id}/advice", response_class=HTMLResponse)
 def advice_view(
     request: Request,
@@ -72,82 +286,8 @@ def advice_view(
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-
-    drafts = angles.for_client(session, client_id)
-    targets = {a.id: pitch.targets_for(session, client, a) for a in drafts}
-    messages = outreach.by_angle(session, [a.id for a in drafts])
     return templates.TemplateResponse(
-        request,
-        "advice.html",
-        {
-            "client": client,
-            "drafting": _drafting.locked(),
-            "writing": _writing.locked(),
-            # Why the last click came back empty, if it did. Shown instead of the
-            # generic "the radar has collected nothing", which was wrong as often
-            # as it was right.
-            # The click's own answer if there was one this session, otherwise
-            # what the last sweep recorded — which is the usual case, since the
-            # sweep runs at 06:10 and the page is opened at nine.
-            "impulse_refusal": _last_refusal.get(client_id) or client.impulse_note,
-            "impulse_checked_at": client.impulse_checked_at,
-            # The remedy for the commonest refusal, offered where the refusal is
-            # read rather than on a settings screen the reader has never opened.
-            "theme_work": themework.state.get(client_id),
-            "angles": drafts,
-            # The stories each draft rests on, keyed by angle id. The page's own
-            # lead promises that "jede Aussage nennt die Meldungen, auf die sie
-            # sich stützt" — and this card, the detailed view of a draft the Today
-            # column already shows in full, was the one place that named none of
-            # them. It showed strictly less than the overview it is reached from.
-            "sources": {
-                a.id: session.scalars(
-                    select(Article).where(Article.id.in_(a.article_ids or [-1]))
-                ).all()
-                for a in drafts
-            },
-            # Who to send each draft to, keyed by angle id. Computed per draft
-            # because the strongest signal is specific to it: the bylines on the
-            # very stories it answers.
-            "pitch_targets": targets,
-            # The messages already written off each impulse, keyed the same way.
-            "messages": messages,
-            # And, per message, the recipient's own headlines — the ones the
-            # letter claims to have read. A pitch that says "Sie haben über X
-            # geschrieben" has to be checkable where it is read, not two scrolls
-            # down in the pitch list.
-            "evidence": _backing(messages, targets),
-            "message_error": _last_message_error.get(client_id, ""),
-            # Whether a radar is possible at all, which is a question about the
-            # client's themes — not about whether it has found anything yet. Read
-            # off the hit count, a mandate with twenty-five themes and a radar that
-            # has simply not run yet was told it had no radar.
-            "has_themes": bool(client.keywords or client.alert_topics),
-            # Rendered rather than written into the template, so the sentence and
-            # the window can never disagree.
-            "impulse_days": job.IMPULSE_LOOKBACK.days,
-            "pitch_days": pitch.LOOKBACK_DAYS,
-            # Two different numbers, and conflating them is why a page could say
-            # "the radar collected 2 items and made nothing of them" about a
-            # mandate that had no usable material at all. What the radar found is
-            # ``market_seen``; what an impulse can be built from is
-            # ``market_usable`` — inside the window, and not coverage of the
-            # mandate itself, which is what the draft actually reads.
-            "market_seen": session.scalar(
-                select(func.count()).select_from(TopicHit).where(
-                    TopicHit.client_id == client_id
-                )
-            ) or 0,
-            "market_usable": len(
-                job.market_material(
-                    session,
-                    client,
-                    dt.datetime.now(dt.UTC) - job.IMPULSE_LOOKBACK,
-                )
-            ),
-            "last_run": _fetch_last_run(session),
-            "header_date": dt.datetime.now(_local_tz()).date(),
-        },
+        request, "advice.html", _advice_context(session, client)
     )
 
 
@@ -393,4 +533,234 @@ def write_message(
         ).start()
     return RedirectResponse(
         f"/client/{client_id}/advice#impulse-{angle_id}", status_code=_SEE_OTHER
+    )
+
+
+# --- The ledger: the human act at the end of the pipeline ------------------------
+
+
+def _refuse_foreign_origin(request: Request) -> None:
+    """Refuse a browser POST that arrived from another site's page.
+
+    These two routes mint the audit record — "a human released this" — and the
+    app has no CSRF token yet, so any open web page could auto-submit a form at
+    the loopback bind and the browser would attach the cached Basic-auth
+    credentials. A browser names the submitting page in ``Origin`` (or at least
+    ``Referer``); when that name is not this app, the request was made *by* the
+    consultant's browser but not *from* this tool, and writing the ledger off it
+    would let any website forge the very claim the ledger exists to make.
+
+    A request with neither header passes: that is not a browser (curl, a test
+    client), and a non-browser carries no ambient credentials for a foreign page
+    to ride on. An app-wide same-site token remains the real fix; this closes
+    the hole where it costs the most first.
+    """
+    named = request.headers.get("origin") or request.headers.get("referer") or ""
+    if not named:
+        return
+    # ``Origin: null`` (sandboxed frames, data: pages) has an empty netloc and
+    # fails the comparison too, which is the right answer for it.
+    if urlsplit(named).netloc != request.url.netloc:
+        raise HTTPException(
+            status_code=403,
+            detail="Anfrage von einer fremden Seite — nicht eingetragen.",
+        )
+
+
+def _letter(session: Session, client_id: int, outreach_id: int) -> Outreach:
+    """One letter of this mandate, or a 404.
+
+    The mandate is checked as well as the id: a letter id is a small integer in a
+    URL, and without this a guessed one would release another client's pitch.
+    """
+    row = session.get(Outreach, outreach_id)
+    if row is None or row.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Outreach not found")
+    return row
+
+
+@router.post("/client/{client_id}/outreach/{outreach_id}/release")
+def release_letter(
+    request: Request,
+    client_id: int,
+    outreach_id: int,
+    released_by: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Record that a person read this letter, released it and sent it.
+
+    Nothing leaves the house here — this build has no mailbox — and the card says
+    so in as many words. What the button produces is the record that was missing:
+    the product's own L5 claim is that a human reads, edits and releases, and
+    until now that act left no trace anywhere in the tool.
+
+    ``released_by`` is a form field with no control behind it yet, because there
+    are no user accounts; it defaults to "mensch", the same answer a hand-filled
+    profile fact gives.
+    """
+    _refuse_foreign_origin(request)
+    row = _letter(session, client_id, outreach_id)
+    outreach.release(session, row, released_by=released_by)
+    _log.info("outreach %d released by %r", row.id, row.released_by)
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
+    )
+
+
+# Why the last push to Gmail failed, per client. Same shape and the same reason
+# as the two dicts above: it describes one click, not the mandate, and going
+# stale on restart is the right behaviour for a "what just happened" line. It
+# matters more here than anywhere else in this file, because the reader has to
+# know whether a letter went out — silence after pressing send is unbearable.
+_last_gmail_error: dict[int, str] = {}
+
+
+def _refuse_unsendable(session: Session, row: Outreach) -> Recipient:
+    """Every reason this letter must not go out through Gmail, in one place.
+
+    Five reasons, all of them a 400 and all of them checked before anything is
+    composed: no mailbox, a mailbox without the send permission, a letter this
+    tool already sent, a letter a person already released, and a recipient with
+    no address in the contact book. The card renders none of them as an
+    available action, so a request that hits one did not come from the card — it
+    came from a tab opened before the letter's state changed, which is exactly
+    the case the route has to catch rather than trust.
+
+    The release check is the one that matters most. OUT-01's button says
+    "Freigegeben und verschickt": a hand release *is* a send, performed by the
+    consultant in their own client. Pushing that letter to Gmail as well would
+    put a second copy of the same pitch in the journalist's inbox — the one
+    irreversible harm the two-click confirmation exists to prevent.
+    """
+    link = gmail_link.connected()
+    if link is None or not link.is_connected:
+        raise HTTPException(status_code=400, detail="Kein Postfach verbunden.")
+    if not link.may_send:
+        raise HTTPException(status_code=400, detail=NO_SEND_PERMISSION)
+    if row.sent_through_gmail:
+        raise HTTPException(
+            status_code=400, detail="Dieses Anschreiben ist bereits verschickt."
+        )
+    if row.released_at is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Dieses Anschreiben wurde bereits freigegeben und verschickt.",
+        )
+    recipient = _recipient(session, row)
+    if not recipient.is_reachable:
+        raise HTTPException(status_code=400, detail=recipient.reason)
+    return recipient
+
+
+def _already_gone(row: Outreach) -> gmail_link.Sent | None:
+    """The send this row never got to record, if Gmail says it happened anyway.
+
+    Only ever asked on a retry — a first push has no thread yet — and it closes
+    the two-step's one hole: a ``drafts.send`` whose answer was lost sent the
+    letter *and* consumed the draft, so composing again would write a second
+    letter and updating the old draft id would 404 forever. Reading the thread
+    turns that unanswerable state back into a fact.
+    """
+    if not row.gmail_thread_id:
+        return None
+    return gmail_link.sent_in_thread(row.gmail_thread_id)
+
+
+@router.post("/client/{client_id}/outreach/{outreach_id}/gmail-draft")
+def send_through_gmail(
+    request: Request,
+    client_id: int,
+    outreach_id: int,
+    released_by: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Release this letter and send it from the connected mailbox.
+
+    DEC-4 locked option C, and this is the sentence it changes: a text leaves the
+    house because a button in RauteOS was pressed. The card asks twice before it
+    gets here, and the confirmation names the address, because the first click in
+    a full week happens quickly and this one cannot be taken back.
+
+    In two Gmail calls, not one. The draft is composed first — repeating that is
+    harmless, and a repeat updates the draft already there rather than leaving a
+    second copy in the mailbox — and only then is it sent. A send that fails
+    after Gmail accepted the draft therefore leaves a draft the consultant can
+    see and this route can re-send, instead of an unanswerable question about
+    whether a journalist has the letter.
+
+    What must not happen twice is guarded twice: :func:`_refuse_unsendable`
+    before anything is composed, and :func:`_already_gone` for the send whose
+    answer never came back.
+    """
+    _refuse_foreign_origin(request)
+    row = _letter(session, client_id, outreach_id)
+    _last_gmail_error.pop(client_id, None)
+    recipient = _refuse_unsendable(session, row)
+
+    try:
+        gone = _already_gone(row)
+        if gone is not None:
+            # It left after all. Recorded, not re-sent.
+            outreach.record_sent(session, row, gone, released_by=released_by)
+            _log.info("outreach %d was already sent (thread %s)", row.id, gone.thread_id)
+            return RedirectResponse(
+                f"/client/{client_id}/advice#impulse-{row.angle_id}",
+                status_code=_SEE_OTHER,
+            )
+        draft = gmail_link.create_draft(
+            recipient.email,
+            row.subject,
+            row.message,
+            draft_id=row.gmail_draft_id,
+            thread_id=row.gmail_thread_id,
+        )
+        outreach.record_draft(session, row, draft)
+        sent = gmail_link.send(draft.draft_id)
+    except gmail_link.GmailError as exc:
+        # Never swallowed and never fatal to the page: the letter is untouched,
+        # the draft id (if one was composed) is stored, and the card says what
+        # happened so the reader knows the message did not go.
+        _log.error("Gmail send failed for outreach %d: %s", row.id, exc)
+        _last_gmail_error[client_id] = (
+            f"Die Nachricht wurde nicht verschickt: {exc}"
+        )
+        return RedirectResponse(
+            f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
+        )
+
+    outreach.record_sent(session, row, sent, draft_id=draft.draft_id, released_by=released_by)
+    # The thread, never the text: what this line has to prove later is which
+    # conversation the letter belongs to.
+    _log.info(
+        "outreach %d sent through Gmail (thread %s)", row.id, row.gmail_thread_id
+    )
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
+    )
+
+
+@router.post("/client/{client_id}/outreach/{outreach_id}/outcome")
+def record_letter_outcome(
+    request: Request,
+    client_id: int,
+    outreach_id: int,
+    state: str = Form(...),
+    note: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Record what came back on a letter that went out.
+
+    A 400 rather than a redirect when the letter was never released or the state
+    is not an outcome: this is a form the page only renders on a released letter,
+    so a request that fails either test did not come from the card, and answering
+    it with a cheerful redirect would hide that.
+    """
+    _refuse_foreign_origin(request)
+    row = _letter(session, client_id, outreach_id)
+    try:
+        outreach.record_outcome(session, row, state, note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
     )

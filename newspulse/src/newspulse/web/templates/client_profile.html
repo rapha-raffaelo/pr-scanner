@@ -34,6 +34,9 @@
   .fillbar { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap;
              padding: var(--s4) 0; border-top: 1px solid var(--ink); }
   .fillbar .panel-hint { margin: 0; max-width: 52ch; }
+  /* The check date sits with the button that refreshes it, and is pushed to the
+     far end so the eye finds it without it competing with the button. */
+  .fillbar__checked { margin-left: auto; font-size: var(--t-micro); color: var(--faint); }
   .props { border-top: 1px solid var(--ink); padding-top: var(--s4); margin-bottom: var(--s5); }
   .props__row { display: flex; gap: var(--s3); align-items: flex-start;
                 padding: var(--s3) 0; border-top: 1px solid var(--line); }
@@ -42,13 +45,57 @@
                 letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
   .props__val { flex: 1; font-size: var(--t-small); }
   .props__act { display: flex; gap: var(--s3); margin-top: var(--s4); }
+  /* The value a kick-off answer replaced (DEC-2). Set back and quieter than the
+     line above it: it is what the web said, kept legible while the disagreement
+     stands, not a second answer competing for the reader's eye. */
+  .prof__old { margin-top: var(--s2); padding-left: var(--s3);
+               border-left: 2px solid var(--line); font-size: var(--t-micro);
+               color: var(--faint); }
+  .prof__old form { display: inline; }
+  .foundation { display: flex; align-items: baseline; gap: var(--s3);
+                flex-wrap: wrap; font-size: var(--t-small); color: var(--muted); }
+  /* Old above, new below, and the old one quiet: the decision is about what
+     changed, so the value being argued against is context and not the headline.
+     Struck through only when there is something to strike: the same rule on the
+     "bisher nicht gefüllt" line would print a sentence that says the field is
+     empty and cross it out, which reads as a claim being withdrawn. */
+  .props__was { color: var(--faint); text-decoration: line-through; }
+  .props__empty { color: var(--faint); font-style: italic; }
+  .props__new { color: var(--ink); }
+  /* What the web says against a hand-filled field. Quiet, but not struck
+     through: nothing is replacing it, and the consultant may well want to read
+     that sentence and type the value in himself. */
+  .props__other { color: var(--muted); }
+  /* One decision per row, at the end of it. Two forms rather than two buttons in
+     one, because a form may not sit inside another and the bulk actions below
+     need their own. */
+  .props__decide { flex: 0 0 auto; display: flex; gap: var(--s2); }
+  .props__decide form { margin: 0; }
+  .props__act { display: flex; gap: var(--s3); margin-top: var(--s4);
+                align-items: center; flex-wrap: wrap; }
+  .props__act form { margin: 0; }
+  .props__rule { margin: 0 0 var(--s3); max-width: 68ch; }
 </style>
 
 <div class="client-profile">
   <h1>{{ t("Profil") }}</h1>
   <p class="panel-hint">
-    {{ t("Was dieses Unternehmen ist, in vierzehn Zeilen. Jede Zeile speist die Impulse, die Anschreiben und Captain Comms — und jede sagt, woher sie stammt.") }}
+    {{ t("Was dieses Unternehmen ist, Zeile für Zeile. Jede Zeile speist die Impulse, die Anschreiben und Captain Comms — und jede sagt, woher sie stammt.") }}
     <strong>{{ filled }}/{{ fillable }}</strong> {{ t("Felder gefüllt") }}.
+  </p>
+  {# How much of the foundation this mandate actually has. A thin profile beside a
+     full questionnaire is a different problem from a thin profile beside twenty
+     questions nobody has asked, and only this line tells the two apart. #}
+  <p class="foundation">
+    {% if kickoff.started %}
+      <span><strong>{{ kickoff.settled }}/{{ kickoff.total }}</strong> {{ t("Fragen aus dem Kickoff beantwortet oder übergangen") }}.</span>
+      {% if kickoff.remaining %}
+        <span>{{ kickoff.remaining }} {{ t("Frage ist noch offen") if kickoff.remaining == 1 else t("Fragen sind noch offen") }}.</span>
+      {% endif %}
+    {% else %}
+      <span>{{ t("Kein Fragebogen beantwortet — für dieses Mandat gibt es noch kein Fundament.") }}</span>
+    {% endif %}
+    <a href="/client/{{ client.id }}/kickoff">{{ t("Zum Fragebogen") }} →</a>
   </p>
 </div>
 
@@ -62,6 +109,9 @@
   <span class="panel-hint">
     {{ t("Liest das offene Netz und schlägt Werte vor — mit Quelle, und ohne etwas zu speichern. Was hier steht, entscheiden Sie.") }}
   </span>
+  {# When the profile was last read, on every visit and not only after a failure:
+     a stale profile has to be visible instead of assumed fresh. #}
+  <span class="fillbar__checked">{% include "partials/profile_checked.html" %}</span>
 </div>
 
 {% if researching %}
@@ -71,38 +121,176 @@
     <span class="spinner" aria-hidden="true"></span>{{ t("Recherche läuft — die Seite aktualisiert sich, sobald die Vorschläge stehen.") }}
   </div>
 {% elif research_error %}
-  <p class="sect__empty sect__refusal"><strong>{{ t("Keine Recherche.") }}</strong> {{ research_error }}</p>
+  {# The click's own answer, or the note the last check left — a sweep that broke
+     at 06:10 is read here at nine, and the check date on its own would report a
+     profile nobody managed to look at as freshly checked. #}
+  {# The reason only. The check stamp used to be repeated here, from the days
+     when a failure was the one thing that printed it; it now sits in the fill
+     bar on every visit, and saying it twice on the same screen invites the
+     reader to look for a difference between the two. #}
+  <p class="sect__empty sect__refusal">
+    <strong>{{ t("Keine Recherche.") }}</strong> {{ research_error }}
+  </p>
+{% endif %}
+
+{% if stale_click %}
+  {# The click named rows the sweep had already replaced, so nothing happened.
+     That is the promise working — a finding nobody has read is never swept up by
+     a button drawn before it existed — but silence reads as a broken button, and
+     a reader who is not told re-clicks it. What he is looking at now is current. #}
+  <div class="notice notice--error">
+    {{ t("Diese Vorschläge gab es nicht mehr — der Abgleich hatte sie inzwischen ersetzt. Nichts wurde geändert; unten steht der aktuelle Stand.") }}
+  </div>
 {% endif %}
 
 <div id="profilebody">
 {% if proposals %}
+  {# What changed since the last look: one row per field, each carrying the value
+     on file, the value the web now gives, the page it was read on, and one
+     decision. Every form posts row ids and never field names — between this page
+     being drawn and a button being pressed the 06:10 sweep may have replaced a
+     row, and "alle übernehmen" must mean the twelve rows the reader just read,
+     not whatever is on file at the moment he clicks. #}
   <div class="props">
-    <div class="eyebrow">{{ proposals | length }} {{ t("Vorschläge aus dem Netz") }}</div>
-    <form method="post" action="/client/{{ client.id }}/profil/accept">
-      {% for p in proposals %}
-        <div class="props__row">
-          <label class="props__key" for="p-{{ p.key }}">
-            <input type="checkbox" id="p-{{ p.key }}" name="key" value="{{ p.key }}" checked>
-            {{ fields | selectattr("key", "equalto", p.key) | map(attribute="label") | first }}
-          </label>
-          <div class="props__val">
-            {{ p.value }}
+    {# Not "aus dem Netz" any more: the same list also carries what the client
+       said in the kick-off, and every row names which of the two it is. #}
+    <div class="eyebrow">{{ proposals | length }} {{ t("Vorschläge für das Profil") }}</div>
+    <p class="panel-hint props__rule">
+      {{ t("Was Sie übernehmen, wird als Ihre Angabe gespeichert — mit Quelle, aber unter Ihrem Namen, weil Sie es entschieden haben. Was Sie verwerfen, wird beim nächsten Abgleich nicht erneut vorgeschlagen.") }}
+    </p>
+    {% for p in proposals %}
+      {# The value on file *now*, read the same way the contradictions below read
+         it. ``p.previous_value`` is what the profile said when the row was
+         filed, which is the right thing for the row to remember and the wrong
+         thing to print: a field cleared through the form since then would leave
+         the row claiming a current value the profile no longer holds. #}
+      {% set fact = facts.get(p.key) %}
+      <div class="props__row">
+        <div class="props__key">
+          {{ t(fields | selectattr("key", "equalto", p.key) | map(attribute="label") | first) }}
+        </div>
+        <div class="props__val">
+          {% if fact %}
+            <div class="props__was">{{ fact.value }}</div>
+          {% else %}
+            <div class="props__empty">{{ t("bisher nicht gefüllt") }}</div>
+          {% endif %}
+          <div class="props__new">{{ p.value }}</div>
+          <div class="prof__src">
+            {{ t("Quelle") }}:
+            {# A proposal names where it came from either way. From the web that
+               is a link; from the kick-off it is the questionnaire by name,
+               because nobody published the call and a citation linking nowhere
+               would be worse than none. #}
             {% if p.source_url %}
-              <div class="prof__src">
-                {{ t("Quelle") }}:
-                <a href="{{ p.source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ p.source_title or p.source_url }}</a>
-              </div>
+              <a href="{{ p.source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ p.source_title or p.source_url }}</a>
+            {% elif p.source_title %}
+              {{ t(p.source_title) }}
+            {% elif p.from_person %}
+              {{ t("Angabe des Mandanten") }}
+            {% else %}
+              {# The research came back without a source, which the grounding API
+                 does. Naming the client here would put the strongest provenance
+                 on the page under its weakest value. #}
+              {{ t("Recherche ohne Quelle") }}
+            {% endif %}
+            {% if p.supersedes and fact %}
+              · {{ t("ersetzt die bisherige Angabe, die sichtbar bleibt") }}
             {% endif %}
           </div>
         </div>
-      {% endfor %}
-      <div class="props__act">
-        <button type="submit" class="btn">{{ t("Ausgewählte übernehmen") }}</button>
-        <button type="submit" class="btn btn--ghost" formaction="/client/{{ client.id }}/profil/discard">
-          {{ t("Verwerfen") }}
-        </button>
+        <div class="props__decide">
+          <form method="post" action="/client/{{ client.id }}/profil/accept">
+            {% if p.from_person %}
+              <input type="hidden" name="key" value="{{ p.key }}">
+            {% else %}
+              <input type="hidden" name="pid" value="{{ p.row_id }}">
+            {% endif %}
+            <button type="submit" class="btn">{{ t("Übernehmen") }}</button>
+          </form>
+          {# No Verwerfen on a kick-off answer: it is not a row that can be
+             cleared, it is what the client said, derived from the questionnaire
+             on every render. Disagreeing with it means changing the answer, and
+             a button here would promise otherwise. #}
+          {% if not p.from_person %}
+            <form method="post" action="/client/{{ client.id }}/profil/discard">
+              <input type="hidden" name="pid" value="{{ p.row_id }}">
+              <button type="submit" class="btn btn--ghost">{{ t("Verwerfen") }}</button>
+            </form>
+          {% endif %}
+        </div>
       </div>
-    </form>
+    {% endfor %}
+    {# Twelve small changes should not cost twelve clicks. Both bulk forms carry
+       exactly the ids drawn above, so they act on this page and nothing else. #}
+    <div class="props__act">
+      <form method="post" action="/client/{{ client.id }}/profil/accept">
+        {% for p in proposals %}{% if p.from_person %}<input type="hidden" name="key" value="{{ p.key }}">{% else %}<input type="hidden" name="pid" value="{{ p.row_id }}">{% endif %}{% endfor %}
+        <button type="submit" class="btn">{{ t("Alle übernehmen") }}</button>
+      </form>
+      <form method="post" action="/client/{{ client.id }}/profil/discard">
+        {% for p in proposals %}{% if p.from_person %}<input type="hidden" name="key" value="{{ p.key }}">{% else %}<input type="hidden" name="pid" value="{{ p.row_id }}">{% endif %}{% endfor %}
+        <button type="submit" class="btn btn--ghost">{{ t("Alle verwerfen") }}</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+{% if contradictions %}
+  {# The refresh found something the web disagrees with on a field that was
+     filled in by hand. Those are never proposed over, so they get no checkbox —
+     but they are on file, and a pile nobody can clear is worse than no pile.
+     PRF-02 shows what they say.
+
+     Its own block rather than the else-branch of the offers above: the two are
+     independent, and hanging this off "there are no proposals" hid every
+     contradiction on any mandate that also had one ordinary offer — which is
+     most of them. It carries the keys it is about, so clearing the
+     contradictions does not also throw away the offers beside them. #}
+  <div class="props">
+    <div class="eyebrow">
+      {{ contradictions | length }} {{ t("Feld(er) von Hand gefüllt — das Netz sagt etwas anderes") }}
+    </div>
+    {# The rule in force, printed rather than left to be inferred from the missing
+       button: a reader who sees no "Übernehmen" here should not have to guess
+       whether that is a policy or an oversight. #}
+    {# And what the one button here does, because it is not obvious and it is not
+       small: verwerfen means this exact claim is never reported again, so a
+       consultant tidying the block away is opting out of a warning about a field
+       he may have got wrong. The offers block says the same thing about its own
+       discard; leaving it unsaid here is how a page teaches the wrong lesson. #}
+    <p class="panel-hint props__rule">
+      {{ t("Regel: Eine Angabe von Hand wird nie überschrieben. Das Netz widerspricht hier nur — ändern können Sie den Wert selbst, unten im Feld.") }}
+      {{ t("Verwerfen heißt: Dieser Widerspruch wird beim nächsten Abgleich nicht erneut gemeldet.") }}
+    </p>
+    {% for p in contradictions %}
+      {% set fact = facts.get(p.key) %}
+      <div class="props__row">
+        <div class="props__key">
+          {{ t(fields | selectattr("key", "equalto", p.key) | map(attribute="label") | first) }}
+        </div>
+        <div class="props__val">
+          <div class="props__new">{{ t("Ihre Angabe") }}: {{ fact.value if fact else "" }}</div>
+          <div class="props__other">{{ t("Das Netz sagt") }}: {{ p.value }}</div>
+          <div class="prof__src">
+            {{ t("Quelle") }}:
+            <a href="{{ p.source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ p.source_title or p.source_url }}</a>
+          </div>
+        </div>
+        <div class="props__decide">
+          <form method="post" action="/client/{{ client.id }}/profil/discard">
+            <input type="hidden" name="pid" value="{{ p.id }}">
+            <button type="submit" class="btn btn--ghost">{{ t("Verwerfen") }}</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+    <div class="props__act">
+      <form method="post" action="/client/{{ client.id }}/profil/discard">
+        {% for p in contradictions %}<input type="hidden" name="pid" value="{{ p.id }}">{% endfor %}
+        <button type="submit" class="btn btn--ghost">{{ t("Alle verwerfen") }}</button>
+      </form>
+    </div>
   </div>
 {% endif %}
 
@@ -122,12 +310,39 @@
         {% else %}
           <input type="text" id="f-{{ field.key }}" name="{{ field.key }}" value="{{ fact.value if fact else '' }}">
         {% endif %}
-        {% if fact and fact.filled_by != "mensch" %}
+        {# Who believes this, on every filled line and not only on the machine's.
+           That is what ``filled_by`` is for: a reader has to be able to tell an
+           answer the consultant stands behind from one a model read on an about
+           page, and an unlabelled line leaves him guessing. His own name is
+           printed as "Ihre Angabe" rather than as the stored authority level —
+           "Von mensch" beside a sentence he typed is noise. #}
+        {% if fact %}
           <div class="prof__src">
-            {{ t("Von") }} {{ fact.filled_by }}
+            {% if fact.filled_by == by_hand %}
+              {{ t("Ihre Angabe") }}
+            {% else %}
+              {{ t("Von") }} {{ fact.filled_by }}
+            {% endif %}
             {% if fact.source_url %}
               · <a href="{{ fact.source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ fact.source_title or t("Quelle") }}</a>
             {% endif %}
+          </div>
+        {% endif %}
+        {# DEC-2 option A: the answer won, and what it replaced stays here with its
+           own provenance for as long as the disagreement is worth seeing. #}
+        {% if fact and fact.is_disputed %}
+          <div class="prof__old">
+            {{ t("Vorher") }}: {{ fact.superseded_value }}
+            {% if fact.superseded_filled_by %}· {{ t(fact.superseded_filled_by) }}{% endif %}
+            {% if fact.superseded_source_url %}
+              · <a href="{{ fact.superseded_source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ fact.superseded_source_title or t("Quelle") }}</a>
+            {% endif %}
+            {# The button belongs beside the value it drops, but its form cannot:
+               this row sits inside the profile form, and a form inside a form is
+               dropped by the browser. It points at one declared below instead. #}
+            <button type="submit" class="linkbtn" form="forget-{{ field.key }}">
+              {{ t("Alte Angabe verwerfen") }}
+            </button>
           </div>
         {% endif %}
       </div>
@@ -138,5 +353,15 @@
     <span class="panel-hint">{{ t("Was Sie hier ändern, gilt als Ihre Angabe und wird von der KI nicht mehr überschrieben.") }}</span>
   </div>
 </form>
+
+{# The forms behind the "verwerfen" buttons above. Empty and outside the profile
+   form, so dropping an old value never carries a half-typed edit with it. #}
+{% for field in fields %}
+  {% set fact = facts.get(field.key) %}
+  {% if fact and fact.is_disputed %}
+    <form id="forget-{{ field.key }}" method="post"
+          action="/client/{{ client.id }}/profil/{{ field.key }}/forget"></form>
+  {% endif %}
+{% endfor %}
 </div>
 {% endblock %}

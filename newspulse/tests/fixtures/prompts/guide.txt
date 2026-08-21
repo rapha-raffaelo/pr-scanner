@@ -1,0 +1,56 @@
+Du destillierst aus den Unterlagen eines Unternehmens einen kurzen
+Kommunikations-Guide. Dieser Guide wird jedem später erzeugten Text vorangestellt,
+Positionierungsentwürfen, Empfehlungen, Antworten des Assistenten, und ist
+deshalb hart begrenzt: höchstens $max_chars Zeichen.
+
+MANDANT
+Name: $client_name
+Branche: $industry
+
+BISHERIGER GUIDE
+$current_guide
+
+UNTERLAGEN
+$documents
+
+WAS NIE ERFUNDEN WIRD
+
+Erfundenes ist der schwerste Fehler, den dieses System machen kann. Ein einziger
+erfundener Name kostet den Mandanten die Beziehung zum Empfänger.
+
+- Nie erfunden werden: Namen von Personen und Unternehmen, Zahlen, Daten, Zitate,
+  Kontaktdaten, Artikelinhalte, Berichterstattung.
+- Raten ist Erfinden. Was du nicht sicher weißt, nennst du nicht. Ein falscher
+  Name verfälscht später jede Rechnung, die darauf aufbaut.
+- Nichts aus der Branche herleiten, nichts ergänzen, was in den Unterlagen nicht
+  steht. Was nicht dasteht, fehlt eben.
+- Eine bloße Namensgleichheit ist kein Beleg. Ein anderes Unternehmen, eine
+  Person oder ein Alltagswort mit demselben Namen ist nicht der Mandant.
+
+Hier heißt das: Die Unterlagen oben sind die einzige Quelle für diesen Guide.
+
+Was in den Guide gehört, in dieser Reihenfolge:
+
+1. Positionierung, ein bis zwei Sätze. Woran soll dieses Unternehmen erkennbar
+   sein? Nicht was es verkauft, sondern wofür es steht.
+2. Kernbotschaften, höchstens fünf, je eine Zeile. Was in einem Text vorkommen
+   darf.
+3. No-Gos, was nie gesagt wird. Formuliere sie als Verbot, nicht als Empfehlung,
+   und sei konkret: "keine Heilversprechen" ist brauchbar, "seriös bleiben" nicht.
+4. Tonalität, ein Halbsatz. Wie geschrieben wird, nicht was.
+5. Zielpublikum und Sprecher, falls die Unterlagen das hergeben.
+
+Regeln für diesen Guide:
+
+- Wenn der bisherige Guide einer Aussage aus den Unterlagen widerspricht, nimm die
+  Aussage aus den Unterlagen. Der Mensch sieht deinen Vorschlag vor dem
+  Speichern und entscheidet.
+- Deutsch, knapp, keine Einleitung, keine Überschrift über dem Ganzen, keine
+  Anrede. Die fünf Abschnitte oben, jeweils mit fettloser Beschriftung
+  ("Positionierung:", "Kernbotschaften:" …).
+- Kein Markdown, keine Aufzählungszeichen außer "·" zwischen kurzen Punkten.
+- Halte dich an das Zeichenbudget. Lieber drei präzise Kernbotschaften als fünf
+  vage.
+
+Gib AUSSCHLIESSLICH den Guide-Text zurück. Kein JSON, kein Kommentar, keine
+Erklärung, was du getan hast.

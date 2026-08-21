@@ -217,6 +217,78 @@ NEWSPULSE_SMTP_HOST=…
 NEWSPULSE_SMTP_RECIPIENT=…
 ```
 
+## Sign in with Google
+
+The dashboard prefers Google sign-in over the shared password. Configure it and
+basic auth stops being accepted at all — there is no state where both work,
+because a shared password that still opens the door makes the allow-list
+decorative.
+
+Four steps, and the third is the one everybody forgets.
+
+1. **Create an OAuth client.** Google Cloud Console → APIs & Services →
+   Credentials → Create credentials → OAuth client ID → **Web application**.
+   The type matters: a "Desktop app" client cannot carry the redirect URI below.
+
+2. **Set the consent screen.** Scopes `openid` and `email`, nothing else. Both
+   are non-sensitive, so Google does not require app verification. While the app
+   is in *Testing*, every address that should be able to sign in must also be
+   listed under **Test users** — otherwise Google refuses them before RauteOS is
+   ever asked.
+
+3. **Register the redirect URI, exactly.** Under *Authorised redirect URIs*:
+
+   ```
+   https://<your-domain>/auth/google/callback
+   ```
+
+   Down to the scheme, the host and the path. Google compares it verbatim and
+   rejects the whole request on any difference, before showing a consent screen —
+   which is why the error surfaces as `redirect_uri_mismatch` and not as
+   anything the app can explain.
+
+4. **Set the variables.**
+
+   ```
+   NEWSPULSE_GOOGLE_CLIENT_ID=<client id>
+   NEWSPULSE_GOOGLE_CLIENT_SECRET=<client secret>
+   NEWSPULSE_ALLOWED_EMAILS=raphaelmankopf@gmail.com,lucas.neurauter@gmail.com
+   ```
+
+   Sign-in reads **only** these two. It deliberately does not fall back to the
+   mailbox credential: one Google client can serve both, but making the fallback
+   automatic meant that connecting a mailbox for *sending* silently changed how
+   everyone *signs in* — two unrelated decisions behind one switch, with the
+   surprise landing on whoever is locked out.
+
+   Sharing one client is still fine and costs one line. On Railway, reference
+   the mailbox variables instead of pasting the secret twice:
+
+   ```
+   NEWSPULSE_GOOGLE_CLIENT_ID=${{GMAIL_CLIENT_ID}}
+   NEWSPULSE_GOOGLE_CLIENT_SECRET=${{GMAIL_CLIENT_SECRET}}
+   ```
+
+   The unprefixed `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` spellings are read
+   for the *mailbox* alongside the prefixed ones, because that is how the
+   credential is named in this deployment.
+
+`NEWSPULSE_BASE_URL` decides the redirect URI the app sends. On Railway it is
+derived from `RAILWAY_PUBLIC_DOMAIN` when unset, so it usually needs no
+configuring; anywhere else, set it, or the app will hand Google its bind address
+and every sign-in will fail.
+
+Sessions are cookies signed with a key kept beside the database
+(`.session-secret`, mode 600), generated on first use. On Railway that is the
+mounted volume, so it survives a redeploy and nobody is signed out by one. It is
+next to the database rather than inside it so a database copy pulled down for
+local work cannot mint production sessions.
+
+**If sign-in breaks, you are not locked out.** Clear
+`NEWSPULSE_GOOGLE_CLIENT_ID` and `GMAIL_CLIENT_ID`; the app falls straight back
+to `NEWSPULSE_AUTH_USER` / `NEWSPULSE_AUTH_PASSWORD` on the next boot. Keep
+those two set for exactly that reason.
+
 ## Before you hand out the URL
 
 - `curl -I https://…/` returns **401**, not 200.
@@ -267,3 +339,121 @@ error stands and you ask again.
 
 Settings shows whether the fallback is armed, so its absence is visible on an
 ordinary day rather than on the morning it was needed.
+
+---
+
+## The mailbox (Gmail)
+
+Optional, and off until both variables below are set: with no client id the
+Settings panel says the integration is not set up and offers no button.
+
+**This assumes a Google Workspace account on a domain you control.** That is not
+a preference, it is what makes the whole thing legal to run without an audit —
+see "On a personal @gmail.com" at the end.
+
+### 1. A Google Cloud project
+
+console.cloud.google.com → **New project**. Any name; it exists to hold one
+OAuth client.
+
+Then **APIs & Services → Library → Gmail API → Enable**. Nothing else needs
+enabling: RauteOS talks to the Gmail API and to Google's OAuth endpoints, and to
+nothing else at Google.
+
+### 2. The consent screen, as an *Internal* app
+
+**APIs & Services → OAuth consent screen → User type: Internal.**
+
+This is the load-bearing choice (DEC-5). Gmail read access is a *restricted*
+scope. An app that asks for one from users outside its own organisation needs
+Google verification plus a recurring third-party security assessment — weeks of
+work and a running cost. An **Internal** app, publishable only inside your own
+Workspace and usable only by accounts in it, needs neither.
+
+Internal is only offered when the Cloud project belongs to a Workspace
+organisation. If the radio button is greyed out, you are on a personal account —
+skip to the last section.
+
+Add the two scopes, and only these two:
+
+```
+https://www.googleapis.com/auth/gmail.readonly
+https://www.googleapis.com/auth/gmail.send
+```
+
+They are exactly what DEC-4 licenses ("lesen und senden"), and they are what the
+consent screen will show the person connecting. RauteOS asks for no others: the
+list lives in one tuple in `gmail_link.py`, so what Google displays and what the
+code can do are the same sentence. Do **not** add `gmail.modify` or
+`mail.google.com` "to be safe" — they would licence deleting and relabelling
+mail, which nothing here does.
+
+### 3. The OAuth client
+
+**Credentials → Create credentials → OAuth client ID → Web application.**
+
+Under **Authorised redirect URIs**, add exactly:
+
+```
+<NEWSPULSE_BASE_URL>/settings/gmail/callback
+```
+
+e.g. `https://newspulse.up.railway.app/settings/gmail/callback`. Google matches
+this character for character. The app derives its own copy from
+`NEWSPULSE_BASE_URL`, so the two cannot drift — but **changing that variable
+means re-registering the URI**, or the next connection attempt dies at Google
+with `redirect_uri_mismatch`.
+
+Copy the client id and secret into the environment, beside the other secrets:
+
+```
+NEWSPULSE_GMAIL_CLIENT_ID=<...>.apps.googleusercontent.com
+NEWSPULSE_GMAIL_CLIENT_SECRET=<...>
+```
+
+Restart, open **Einstellungen → Postfach**, press **Postfach verbinden**, and
+grant consent as the mailbox that sends the letters. The panel then names the
+address it read back from that account's Gmail profile — not one anybody typed.
+
+### 4. What lands on the volume
+
+The consent produces a **refresh token**, and unlike every other secret here it
+is obtained at runtime, so it cannot come from an environment variable. It is
+written to a file beside the database:
+
+```
+/data/gmail_token.json     # mode 0600, owner only
+```
+
+Never to a table. That is deliberate: the database is copied for backups and
+exported to Excel, and a credential in it would ride along both times. Treat the
+file like `./claude` and `.env` — a secret, backed up as one, in neither git nor
+the image.
+
+Consequences worth knowing:
+
+- **It survives a redeploy, not a deleted volume.** Recreate the volume and the
+  panel is honestly back to "kein Postfach verbunden"; connect once more.
+- **Google can end it from its side.** Remove RauteOS under *Google account →
+  Security → Third-party apps*, and the next refresh fails with `invalid_grant`.
+  The panel then shows disconnected *with that reason*, rather than throwing.
+- **Trennen revokes.** The disconnect button revokes the token at Google and
+  deletes the file. Stored letters, replies and contacts are untouched — nothing
+  about the mailbox connection is a reason to lose the record of what was sent.
+
+### On a personal @gmail.com
+
+There is no Internal option, so the app would be **External**. Two ways from
+there and neither is good:
+
+- **Testing mode** — no verification needed, but Google expires refresh tokens
+  after roughly seven days. The connection dies every week, which for a daily
+  sync means it dies every Monday.
+- **Published** — needs Google verification *and* an annual third-party security
+  assessment (restricted scopes), which is a five-figure recurring cost for a
+  one-mailbox tool.
+
+So on a personal account DEC-5 has to go a different way: an app password over
+IMAP (a full-mailbox credential that cannot be scoped, DEC-5 option B), or a
+dedicated forwarding address (option C). Neither is what is built here. Move the
+mailbox to a Workspace domain if you want this feature.

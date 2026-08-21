@@ -28,8 +28,8 @@ next deploy rather than at merge. Whichever of the two branches merges second mu
 be re-pointed at the other's head. If this one is second, its ``down_revision``
 moves to ``0020_*`` and the number stops being a gap at all.
 
-Revision ID: 0021_guide_check
-Revises: 0017_client_facts
+Revision ID: 0029_guide_check
+Revises: 0028_fact_superseded
 Create Date: 2026-08-21
 """
 from __future__ import annotations
@@ -39,8 +39,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0021_guide_check"
-down_revision: str | None = "0017_client_facts"
+revision: str = "0029_guide_check"
+down_revision: str | None = "0028_fact_superseded"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

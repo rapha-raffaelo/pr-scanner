@@ -36,43 +36,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import resources
 from string import Template
-from typing import Final
 
-from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config, gemini
+from . import brain, config, gemini
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Client, GuideSource
-from .schemas import MAX_BREACHES, GuideVerdict, PersonalMessage
+from .schemas import GuideVerdict
 
 _log = logging.getLogger(__name__)
 
 _PROMPT_RESOURCE = "prompts/guide.txt"
-
-_CHECK_RESOURCE = "prompts/guide_check.txt"
-
-#: What :func:`check_guide` returns for a mandate that has no guide at all: no
-#: verdict, and no model that gave one. A distinct state on purpose — "nothing to
-#: object with" must never arrive at the page looking like "no objections", which
-#: is the failure this whole check exists to prevent.
-NOT_CHECKED: Final[tuple[GuideVerdict | None, str]] = (None, "")
-
-#: Who the verdict is attributed to when the caller brought its own callable.
-#: Never :func:`config.review_model`: that names the configured provider, which an
-#: injected callable is exactly not, and GDC-02 persists this string and renders it
-#: under the letter. Not ``""`` either — the empty name belongs to
-#: :data:`NOT_CHECKED`, and a verdict that exists must not borrow its look.
-INJECTED_MODEL: Final = "(injiziertes Modell)"
-
-#: Who a verdict is attributed to when it arrives carrying no model name at all.
-#: Not :data:`INJECTED_MODEL`, which is a claim about provenance — *this came from
-#: a callable the caller brought* — and a name that is merely absent is not that
-#: claim. GDC-02 prints this string under the letter, where an attribution the
-#: page invented reads as fact; "not named" is the honest version and is still
-#: never ``""``, which belongs to :data:`NOT_CHECKED`.
-UNNAMED_MODEL: Final = "(Modell nicht genannt)"
 
 #: Hard ceiling on the stored guide. Every prompt carries it, so this is a cost
 #: and an attention budget at once: past a few hundred words it stops being a
@@ -96,16 +71,6 @@ SUPPORTED_SUFFIXES = (".pdf", ".txt", ".md", ".markdown")
 
 class ExtractionError(RuntimeError):
     """The upload could not be turned into text, with a reason worth showing."""
-
-
-class NoSecondModel(RuntimeError):
-    """No second provider is configured, so the check cannot run at all.
-
-    Its own type because it is not a failure: nothing broke, nothing was reached,
-    a key is simply not set. The caller logs it differently for exactly that
-    reason. A ``RuntimeError`` subclass so callers that only care that the check
-    refused rather than passed keep working.
-    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +141,39 @@ def store_source(session: Session, client: Client, filename: str, text: str) -> 
     return source
 
 
+def replace_source(
+    session: Session, client: Client, filename: str, text: str
+) -> GuideSource:
+    """Store a source that has one current version, replacing the last of its name.
+
+    An uploaded file is a document with a date, and two versions of a brand book
+    are two documents. The kick-off questionnaire is not: it is a snapshot of
+    something that keeps being answered, and a fresh copy on every regeneration
+    would push the real documents out of the distillation's character budget with
+    six near-identical versions of itself.
+
+    Replacing keeps the original ``uploaded_at`` for the same reason. ``sources``
+    is ordered newest first and :func:`distill` spends its budget in that order,
+    so a bumped timestamp would put the questionnaire in front of a brand book
+    uploaded since — on every later distillation, including the plain document
+    one the kick-off had nothing to do with. A new version of the same source is
+    not a newer source.
+    """
+    existing = session.scalars(
+        select(GuideSource).where(
+            GuideSource.client_id == client.id, GuideSource.filename == filename
+        )
+    ).first()
+    # A new row takes its date from the column default; an existing one keeps the
+    # date it already had.
+    source = existing or GuideSource(client_id=client.id, filename=filename)
+    source.text = text
+    source.characters = len(text)
+    session.add(source)
+    session.commit()
+    return source
+
+
 def sources(session: Session, client_id: int) -> list[GuideSource]:
     """This client's source documents, newest first."""
     return list(
@@ -197,7 +195,7 @@ def delete_source(session: Session, client_id: int, source_id: int) -> None:
 
 def _prompt_template() -> Template:
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text("utf-8")
-    return Template(text)
+    return Template(brain.compose(text))
 
 
 def distill(
@@ -242,16 +240,94 @@ def distill(
     return proposed[:GUIDE_MAX_CHARS]
 
 
+def _lf(text: str) -> str:
+    """Form newlines counted the way the rest of the tool counts them.
+
+    A browser posts every newline inside a ``<textarea>`` as CRLF, whatever the
+    page put in it. Unnormalised, a draft built to sit exactly on
+    :data:`GUIDE_MAX_CHARS` comes back one character per line too long, and the
+    trim below takes that overshoot off the *end* — which is where the client's
+    own no-gos are, verbatim, and where the note naming the unanswered sections
+    is. A rule cut mid-clause is a rule nobody wrote.
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def save(session: Session, client: Client, text: str) -> str:
     """Store the guide, trimmed to the budget. Returns what was stored.
 
     Trimmed rather than rejected: a consultant pasting a long passage should get a
     saved guide and a visible counter, not a lost edit and an error page.
     """
-    cleaned = (text or "").strip()[:GUIDE_MAX_CHARS]
+    cleaned = _lf(text or "").strip()[:GUIDE_MAX_CHARS]
     client.comms_guide = cleaned
     session.commit()
     return cleaned
+
+
+_CHECK_RESOURCE = "prompts/guide_check.txt"
+
+#: What a client with no guide gets told, instead of a clean bill of health.
+#: "Nothing objected" and "nothing to object with" must not read alike.
+NO_GUIDE = "Kein Guide hinterlegt, gegen den geprüft werden könnte."
+
+#: What is stored when the check was attempted and broke. A third sentence rather
+#: than either of the other two: the guide exists, the check ran, and it produced
+#: nothing, which is not the same as a mandate that has no guide to check against.
+CHECK_FAILED = "Die Guide-Prüfung ist fehlgeschlagen. Der Text ist ungeprüft."
+
+
+def check_guide(
+    client: Client,
+    *,
+    title: str,
+    body: str,
+    kind: str = "Text",
+    generate: Callable[..., str] | None = None,
+) -> tuple[GuideVerdict, str] | None:
+    """Read a finished text against this client's own rules.
+
+    Returns the verdict and the model that gave it, or ``None`` when the mandate
+    has no guide on file. ``None`` is not a pass: the caller stores
+    :data:`NO_GUIDE` so the page can say the check could not run, which is a
+    different sentence from "nothing to object to".
+
+    A separate pass rather than five more lines in the crosscheck prompt, for
+    the reason a No-Go is a different kind of thing: invention and overclaiming
+    are judgements about the world, and a model weighs them. A No-Go is not a
+    judgement. The client wrote it down, and a written rule that gets averaged
+    against a tone remark has been diluted rather than checked.
+
+    Runs on the second provider, like every other check here, so the model that
+    wrote the text is never the one that clears it.
+    """
+    rules = (client.comms_guide or "").strip()
+    if not rules:
+        return None
+    if generate is None:
+        generate = gemini.reviewer()
+
+    template = Template(
+        resources.files("newspulse").joinpath(_CHECK_RESOURCE).read_text("utf-8")
+    )
+    prompt = template.substitute(
+        client=client.name,
+        guide=rules,
+        kind=kind,
+        title=title or "(ohne Titel)",
+        body=body,
+    )
+    raw = generate(prompt)
+    try:
+        payload = json.loads(strip_code_fence(raw))
+        verdict = GuideVerdict.model_validate(payload)
+    except Exception as exc:  # noqa: BLE001 — pydantic and json raise their own
+        raise ParseError(f"guide check did not match the schema: {exc}") from exc
+    # The model's own flag is not trusted against its own findings: a verdict
+    # that lists a breach and still says ok would clear a text nobody cleared.
+    if verdict.breaches:
+        verdict = verdict.model_copy(update={"ok": False})
+    return verdict, config.review_model()
 
 
 def for_prompt(client: Client) -> str:
@@ -271,178 +347,19 @@ def for_prompt(client: Client) -> str:
     )
 
 
-# --- The check: does a finished text obey the rules this client wrote down? ------
-
-
-def _check_template() -> Template:
-    text = resources.files("newspulse").joinpath(_CHECK_RESOURCE).read_text("utf-8")
-    return Template(text)
-
-
-#: The block markers in ``prompts/guide_check.txt``, kept here because the same
-#: two tokens have to be taken away from everything that lands between them. The
-#: draft is model-written from a journalist's headline that neither the client nor
-#: the operator controls, so a letter whose body opens its own "KOMMUNIKATIONS-
-#: GUIDE" section would otherwise read as a second, emptier guide.
-_FENCE_OPEN = "<<<"
-_FENCE_CLOSE = ">>>"
-
-
-def _fenced(text: str) -> str:
-    """Interpolated text with the block markers taken out of its hands.
-
-    Replaced rather than dropped, and with lookalikes, so a guide line that really
-    did contain angle brackets still reads the way its author wrote it.
-    """
-    return (text or "").replace(_FENCE_OPEN, "‹‹‹").replace(_FENCE_CLOSE, "›››")
-
-
-def _second_model() -> Callable[..., str]:
-    """The configured second provider, as a ``generate(prompt) -> str``.
-
-    Deliberately not :func:`newspulse.analyzer.invoke_with_fallback`: falling back
-    to the model that wrote the letter would turn the check into a self-check, and
-    a model does not find its own breach of a rule it read ten seconds ago.
-
-    Raises :class:`NoSecondModel` when nothing is configured, for the same reason
-    the crosscheck does — a check that silently did not happen is worse than none.
-    """
-    if not config.review_configured():
-        raise NoSecondModel(
-            "Kein Zweitmodell hinterlegt: GEMINI_API_KEY (oder "
-            "NEWSPULSE_GEMINI_API_KEY) in der .env setzen, damit ein anderes "
-            "Modell den Text gegen den Guide liest."
-        )
-
-    def generate(prompt: str, **kwargs) -> str:
-        return gemini.generate(
-            prompt,
-            model=config.review_model(),
-            api_key=config.review_api_key(),
-            **kwargs,
-        )
-
-    return generate
-
-
-def _parse_verdict(raw: str) -> GuideVerdict:
-    """Validate the reply into a verdict; anything else is a ParseError.
-
-    The same trust boundary as everywhere else here: the reply is text until the
-    schema says otherwise, and a half-parsed verdict is discarded rather than
-    shown as an approval.
-    """
-    try:
-        payload = json.loads(strip_code_fence(raw))
-    # AttributeError/TypeError as well as the obvious one: ``strip_code_fence``
-    # runs inside this ``try`` and a backend handing back ``None`` or ``bytes``
-    # would otherwise leave through a type this function does not document. The
-    # route catches everything, but the next caller will not.
-    except (AttributeError, TypeError, json.JSONDecodeError) as exc:
-        _log.debug("guide check reply was not JSON: %.500r", raw)
-        raise ParseError(f"the guide check was not valid JSON: {exc}") from exc
-    try:
-        verdict = GuideVerdict.model_validate(payload)
-    except ValidationError as exc:
-        _log.debug("guide check reply missed the schema: %.500r", raw)
-        raise ParseError(f"the guide check did not match the schema: {exc}") from exc
-    # Cut, never rejected. A reply with more breaches than fit is a *worse* draft,
-    # and that is the last one allowed to come back as "not checked"; the prompt
-    # asks for the gravest first so the cut lands at the bottom of the list. Said
-    # out loud, because a cap nobody logs reads afterwards like full coverage.
-    breaches = verdict.breaches[:MAX_BREACHES]
-    if len(verdict.breaches) > MAX_BREACHES:
-        _log.info(
-            "guide check reported %d breaches, keeping the first %d",
-            len(verdict.breaches),
-            MAX_BREACHES,
-        )
-    # A reply that objects and names nothing is unusable, not clean. Recomputing
-    # ``ok`` from an empty list would answer "keine Beanstandung" on behalf of a
-    # model that said the opposite — the one direction this whole pass exists to
-    # prevent — so the contradiction yields the honest not-checked state instead.
-    if not verdict.ok and not breaches:
-        _log.debug("guide check objected without naming a breach: %.500r", raw)
-        raise ParseError("the guide check set ok=false but named no breach")
-    # And in the other direction ``ok`` is recomputed rather than believed: a reply
-    # that lists a breach and calls itself fine would render as a clean bill of
-    # health over an objection that is right there underneath it. Written as an
-    # ``and`` so the recompute can only ever move ``ok`` toward False.
-    return verdict.model_copy(
-        update={"breaches": breaches, "ok": verdict.ok and not breaches}
-    )
-
-
-def check_guide(
-    client: Client,
-    message: PersonalMessage,
-    *,
-    generate: Callable[..., str] | None = None,
-    checked_by: str = "",
-) -> tuple[GuideVerdict | None, str]:
-    """Read one finished text against this client's stored guide.
-
-    Its own pass, with its own prompt and its own verdict, beside the crosscheck
-    rather than inside it: invention and overclaiming are judgements a checker
-    weighs, while a No-Go is not a judgement at all — the client wrote it down.
-    Folded into one verdict, a written rule would end up averaged against a
-    remark about tone.
-
-    The prompt gets the guide verbatim, the subject and the body, and nothing
-    else. Not the article, not the profile, not the angle: every extra fact is
-    another thing the model can reason its way around when the job is to read a
-    rule literally.
-
-    Returns the verdict and the name of the model that actually gave it — resolved
-    where the callable is, so an injected ``generate`` is never reported under the
-    configured provider's name — or :data:`NOT_CHECKED` for a client with no stored
-    guide, which costs no model call because there is nothing to check against. A
-    reply with more breaches than fit is cut rather than dropped, and the cut is
-    announced at INFO.
-
-    Raises :class:`newspulse.analyzer.ParseError` on an unusable reply,
-    :class:`NoSecondModel` when there is no provider to ask, and whatever the
-    backend raises on a failed call; the caller decides what an unchecked letter
-    looks like, and the three are worth telling apart.
-    """
-    stored = (getattr(client, "comms_guide", "") or "").strip()
-    if not stored:
-        _log.info("guide check skipped for %r: no guide stored", client.name)
-        return NOT_CHECKED
-
-    if generate is None:
-        generate = _second_model()
-        checked_by = checked_by or config.review_model()
-    else:
-        checked_by = checked_by or INJECTED_MODEL
-
-    prompt = _check_template().substitute(
-        comms_guide=_fenced(stored),
-        subject=_fenced(message.subject) or "(kein Betreff)",
-        message=_fenced(message.message),
-    )
-    # The same budget the distillation gives its call. Without one the provider's
-    # own 180 s default applies, and this call sits inside the writing lock with
-    # the letter not yet stored: a hung check would hold every other mandate's
-    # sweep behind it for three minutes over a verdict that is advisory.
-    reply = generate(prompt, timeout=config.ANALYZER_TIMEOUT)
-    return _parse_verdict(reply), checked_by
-
-
 __all__ = [
-    "GUIDE_MAX_CHARS",
-    "INJECTED_MODEL",
-    "MAX_UPLOAD_BYTES",
-    "NOT_CHECKED",
-    "UNNAMED_MODEL",
+    "CHECK_FAILED",
     "ExtractionError",
-    "NoSecondModel",
+    "GUIDE_MAX_CHARS",
+    "MAX_UPLOAD_BYTES",
+    "NO_GUIDE",
     "SUPPORTED_SUFFIXES",
     "check_guide",
     "delete_source",
     "distill",
     "extract_text",
     "for_prompt",
+    "replace_source",
     "save",
     "sources",
     "store_source",

@@ -38,6 +38,13 @@
   }
   .proposal__head { font-size: var(--t-footnote); font-weight: 600; margin-bottom: 8px; }
   .proposal__text { white-space: pre-wrap; font-size: var(--t-footnote); line-height: 1.6; margin-bottom: 12px; }
+  .proposal__area { min-height: 260px; margin-bottom: 12px; background: var(--card); }
+  /* What the questionnaire had nothing to say about. Stated rather than filled
+     in, because an invented section reads exactly like an answered one. */
+  .proposal__gaps { font-size: var(--t-caption); color: var(--muted); margin-bottom: 10px; }
+  /* A rule that did not fit the budget is a louder problem than an unanswered
+     section: the client said it and the guide cannot carry it. */
+  .proposal__dropped { color: #b91c1c; }
   /* .btn and its variants come from app.css — declaring them again here is what
      let the two drift apart, and left every page that did not carry a copy with
      the browser's own button. */
@@ -71,17 +78,45 @@
 </p>
 
 {% if saved %}<div class="notice notice--ok">{{ t("Guide gespeichert.") }}</div>{% endif %}
-{% if guide_error %}<div class="notice notice--error">{{ guide_error }}</div>{% endif %}
+{# Through the table like every other line on the page: these are fixed sentences
+   raised as exceptions rather than written into the template, and a German
+   refusal on an English page is the mixed UI the table exists to prevent. One
+   carrying a message from the model is untranslated and degrades to itself. #}
+{% if guide_error %}<div class="notice notice--error">{{ t(guide_error) }}</div>{% endif %}
 
 {% if proposal %}
-  {# The preview step. Nothing from a document is applied without a person seeing
-     it: an upload can contradict what is already there, and that is not a call a
-     model should make silently. #}
+  {# The preview step. Nothing from a document or a kick-off call is applied
+     without a person seeing it: either can contradict what is already there, and
+     that is not a call a model should make silently. Editable here rather than
+     after saving, because the first place a wrong rule can be caught is before
+     it becomes the rule every later text is checked against. #}
   <div class="proposal">
-    <div class="proposal__head">{{ t("Vorschlag aus den Unterlagen — noch nicht gespeichert") }}</div>
-    <div class="proposal__text">{{ proposal }}</div>
+    <div class="proposal__head">
+      {% if draft %}
+        {{ t("Entwurf aus dem Kickoff — noch nicht gespeichert") }}
+      {% else %}
+        {{ t("Vorschlag aus den Unterlagen — noch nicht gespeichert") }}
+      {% endif %}
+    </div>
+    {% if draft and draft.has_gaps %}
+      <p class="proposal__gaps">
+        {{ t("Ohne Antwort im Kickoff, deshalb nicht im Entwurf") }}:
+        {% for section in draft.missing %}{{ t(section.title) }}{% if not loop.last %}, {% endif %}{% endfor %}.
+      </p>
+    {% endif %}
+    {% if draft and draft.dropped %}
+      {# The guide has a hard character budget and the client's rules come first,
+         so a rule is only ever dropped whole and never trimmed mid-clause. When
+         even that is not enough, the rule is named here rather than lost: the
+         consultant shortens it himself or decides it can go. #}
+      <p class="proposal__gaps proposal__dropped">
+        {{ t("Zu lang für den Guide, deshalb nicht im Entwurf") }}:
+        {% for rule in draft.dropped %}„{{ rule }}“{% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+    {% endif %}
     <form method="post" action="/client/{{ client.id }}/guide">
-      <input type="hidden" name="comms_guide" value="{{ proposal }}">
+      <textarea class="guide__area proposal__area" name="comms_guide"
+                maxlength="{{ max_chars }}">{{ proposal }}</textarea>
       <button type="submit" class="btn">{{ t("Übernehmen") }}</button>
       <a class="btn btn--quiet" href="/client/{{ client.id }}/guide">{{ t("Verwerfen") }}</a>
     </form>
@@ -111,6 +146,25 @@
     {% else %}
       <p class="drop__hint" style="margin-bottom:12px">{{ t("Noch keine Unterlagen. Der Guide lässt sich auch einfach selbst schreiben.") }}</p>
     {% endif %}
+
+    {# The other way in: the kick-off answers. Same path as an uploaded document —
+       the answers are filed as a source and distilled into a draft — so there is
+       one route to a guide rather than two. #}
+    <div style="margin-top:12px">
+      {% if kickoff.started %}
+        <form method="post" action="/client/{{ client.id }}/guide/kickoff">
+          <button type="submit" class="btn btn--ghost">{{ t("Entwurf aus dem Kickoff") }}</button>
+        </form>
+        <p class="drop__hint">
+          {{ kickoff.answered }} {{ t("Antworten aus dem Fragebogen. No-Gos übernimmt der Entwurf wörtlich; unbeantwortete Abschnitte bleiben leer.") }}
+        </p>
+      {% else %}
+        <p class="drop__hint">
+          {{ t("Der Kickoff-Fragebogen ist noch unbeantwortet — daraus lässt sich kein Entwurf machen.") }}
+          <a href="/client/{{ client.id }}/kickoff">{{ t("Zum Fragebogen") }} →</a>
+        </p>
+      {% endif %}
+    </div>
 
     <form method="post" action="/client/{{ client.id }}/guide/upload" enctype="multipart/form-data" class="drop" style="margin-top:12px">
       <input type="file" name="file" accept=".pdf,.txt,.md,.markdown">

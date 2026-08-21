@@ -1,4 +1,6 @@
-Du nennst die Wettbewerber eines Unternehmens — die, gegen die es im Markt
+#blocks: no_invention, refusal
+
+Du nennst die Wettbewerber eines Unternehmens, die, gegen die es im Markt
 tatsächlich um dieselben Kunden und dieselbe Aufmerksamkeit konkurriert.
 
 UNTERNEHMEN
@@ -7,20 +9,22 @@ Branche: $industry
 Land: $country
 $extra
 
-Regeln:
+{{brain:no_invention}}
 
-- Nenne nur Unternehmen, die es wirklich gibt und die du sicher kennst. Erfinde
-  keinen Namen und rate nicht. Ein falscher Wettbewerber verfälscht später jede
-  Anteilsrechnung.
+{{brain:refusal}}
+
+Hier heißt das: Kennst du das Unternehmen nicht, und kleine oder sehr junge
+Firmen sind der Normalfall, gib eine leere Liste zurück.
+
+Regeln für diese Liste:
+
+- Nenne nur Unternehmen, die es wirklich gibt und die du sicher kennst.
 - Höchstens sechs, lieber drei sichere als sechs vage.
 - Wettbewerber im selben Markt und in vergleichbarer Größenordnung. Ein
   Weltkonzern ist für ein Start-up kein Vergleichsmaßstab, sondern ein anderes
   Thema.
 - Bevorzuge den Markt des Unternehmens (siehe Land), aber nimm internationale
   Anbieter auf, wenn sie dort tatsächlich präsent sind.
-- Kennst du das Unternehmen nicht — kleine oder sehr junge Firmen sind der
-  Normalfall —, gib eine leere Liste zurück. Das ist die richtige Antwort und
-  keine Fehlleistung.
 - "reason" ist ein Halbsatz: worin genau konkurrieren die beiden.
 
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.

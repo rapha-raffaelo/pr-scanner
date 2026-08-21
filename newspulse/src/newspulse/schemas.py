@@ -16,9 +16,8 @@ Two kinds of object live here and it is worth keeping them distinct:
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import SCORE_MAX as _SCORE_MAX
 from .models import SCORE_MIN as _SCORE_MIN
@@ -138,11 +137,61 @@ class ActionSuggestion(BaseModel):
     evidence: list[int] = Field(default_factory=list)
 
 
+# --- Provenance: the one field on these schemas the model does not fill ---------
+#
+# ``brain_version`` appears on the three schemas a generator stores. It is the
+# brain version (:func:`newspulse.brain.version`) the prompt was composed under,
+# written onto the validated draft by the generator at the moment it builds that
+# prompt. It rides along with the text to whoever stores it rather than being
+# re-read at save time: a standard edited between the model answering and the row
+# being written must not change what the finished text says it was written under.
+#
+# It is a field on the reply schema rather than a second return value because a
+# stamp a caller has to remember to pass is a stamp that will be missing from
+# whichever call site was added last. The cost of putting a system-owned field on
+# a schema that parses model output is that the model can now reach it, and
+# :func:`without_provenance` below is what takes that back.
+
+
+def without_provenance(payload: object) -> object:
+    """The model's reply with the stamp field taken out of it, before validation.
+
+    Provenance is not the model's to state. A reply that volunteers
+    ``"brain_version": 3`` would otherwise be validated straight into the field
+    and the row would carry a number nothing recorded; one that volunteers
+    ``"brain_version": "v2"`` would fail validation outright and cost the whole
+    draft — a text a consultant is waiting for, lost over a field the model had
+    no business filling. Dropping the key answers both.
+
+    Applied by each generator's ``_parse`` to the decoded reply, and there alone,
+    which is the difference between this and a validator on the field. A
+    validator fires on *every* validation, so a draft that ever went through
+    ``model_validate(draft.model_dump())`` — a queue payload, a cached draft, an
+    API echo — would come back with its stamp silently reset to ``None``, and
+    ``None`` is the one value that means "written before the standards were
+    recorded". The discard belongs to model output, so it lives on the path model
+    output takes.
+
+    Non-mapping payloads pass through untouched: a reply that decoded to a list
+    is the schema's failure to report, not this function's to pre-empt.
+    """
+    if isinstance(payload, dict):
+        return {key: value for key, value in payload.items() if key != _STAMP_FIELD}
+    return payload
+
+
+#: The field :func:`without_provenance` takes out. Named once so the three
+#: ``_parse`` functions and the three schemas cannot drift apart on the spelling.
+_STAMP_FIELD = "brain_version"
+
+
 class AdvisoryBrief(BaseModel):
     """The model's read of a client's situation plus what it would do about it."""
 
     situation: str
     suggestions: list[ActionSuggestion] = Field(default_factory=list)
+    #: See "Provenance" above. Set by :func:`newspulse.advisor.advise`.
+    brain_version: int | None = None
 
 
 # --- Angle: a positioning message the consultant can send on ---------------------
@@ -185,6 +234,8 @@ class AngleDraft(BaseModel):
     # Indices into the numbered developments the prompt supplied, so every draft
     # can be traced back to the coverage that triggered it.
     evidence: list[int] = Field(default_factory=list)
+    #: See "Provenance" above. Set by :func:`newspulse.angles.suggest`.
+    brain_version: int | None = None
 
 
 # --- Outreach: the impulse, written at one recipient -----------------------------
@@ -208,6 +259,26 @@ class PersonalMessage(BaseModel):
     subject: str = ""
     message: str
     hook: str = ""
+    #: See "Provenance" above. Set by :func:`newspulse.outreach.draft`.
+    brain_version: int | None = None
+
+
+#: How many objections one check may raise, for the crosscheck and the guide check
+#: alike: past five it is an audit, not a check, and a list nobody reads to the end
+#: is a list that gets clicked away whole.
+MAX_CONCERNS = 5
+
+
+def _capped(value: object) -> object:
+    """Keep the worst five and drop the rest, rather than rejecting the reply.
+
+    A ``max_length`` alone would make a sixth objection a validation error, so the
+    most thorough read of the worst draft would be the one that produced no verdict
+    at all. Truncating is what the cap was always meant to do.
+    """
+    if isinstance(value, list):
+        return value[:MAX_CONCERNS]
+    return value
 
 
 class MessageReview(BaseModel):
@@ -228,86 +299,86 @@ class MessageReview(BaseModel):
     send: bool = True
     #: One line per concern, in the consultant's language. Empty is the good case
     #: and must stay possible: a checker that always finds something is noise.
-    concerns: list[str] = Field(default_factory=list, max_length=5)
+    concerns: list[str] = Field(default_factory=list, max_length=MAX_CONCERNS)
     #: The one thing to change first, if anything.
     fix: str = ""
+    #: See "Provenance" above. Set by :func:`newspulse.outreach.crosscheck`, and
+    #: its own rather than the letter's: the check composes a second brain prompt
+    #: after the letter is already written, so the two can land on either side of
+    #: an edit.
+    brain_version: int | None = None
+
+    @field_validator("concerns", mode="before")
+    @classmethod
+    def _cap_concerns(cls, value: object) -> object:
+        return _capped(value)
 
 
-#: How many breaches one verdict carries. A cap on what is shown, not on what may
-#: be found: it is enforced by truncation in :func:`newspulse.guide._parse_verdict`
-#: and deliberately *not* by ``max_length`` on the field below. A sixth breach that
-#: voided the whole verdict would invert the feature — the worse the draft, the
-#: more breaches it draws, and the letter that draws six is the last one allowed to
-#: come back saying "not checked".
-MAX_BREACHES = 5
-
-#: A quote that can actually be looked up: whitespace-only is the same as absent,
-#: so it is stripped first and then required to have survived. Stripping is what
-#: the reader does anyway when they search the letter for the sentence.
-_Quote = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+# --- Assets: every other format an agency delivers -------------------------------
 
 
-class GuideBreach(BaseModel):
-    """One collision between a sentence in the draft and a line of the guide.
+class AssetDraft(BaseModel):
+    """One generated text in one format, as the model hands it back.
 
-    Both sides are quoted, and that is the whole point of the type: a rule breach
-    asserted in the abstract ("zu werblich") has to be taken on faith, while a
-    pair of quotes can be judged in a second by the person who is accountable for
-    the letter. It is also what keeps a breach checkable against a guide the
-    consultant wrote himself and can therefore re-read.
+    Deliberately the same three fields for all seven formats. What differs
+    between a press release and a set of talking points is the *structure inside*
+    ``body``, and that belongs to the format definition, not to the envelope: a
+    schema per format would mean a writer per format, which is the thing this
+    feature exists to avoid.
 
-    Both quotes are required *and* non-empty. An empty side is the same failure as
-    a missing one: it renders as an accusation with nothing under it, and it would
-    still flip ``ok`` to False. Rejecting the verdict costs a real objection and
-    yields the honest not-checked state; keeping the breach and dropping the quote
-    would show an unanswerable one, and silently dropping the breach could turn an
-    objection into an approval, which is the direction that ends a mandate.
-
-    Non-empty is measured *after* stripping, because ``"   "`` and ``"\\n\\t"``
-    render exactly like ``""`` — an empty blockquote under a red heading — and a
-    bare ``min_length=1`` would wave them through.
+    ``speaker`` is the person a quote is attributed to. The model is asked for it
+    and its answer is not what is kept: :func:`newspulse.assets.write` replaces it
+    with the profile fact the format named, because the worst artefact this feature
+    can produce is a press release quoting a CEO who never said it, and a name that
+    only a prompt guarantees is a name nothing guarantees.
     """
 
     model_config = ConfigDict(extra="ignore")
 
-    #: The sentence from the letter, verbatim.
-    draft: _Quote
-    #: The line of the stored guide it breaks, verbatim.
-    guide: _Quote
+    #: Headline, subject line or briefing title. Empty for the formats that have
+    #: no title of their own.
+    title: str = ""
+    body: str
+    speaker: str = ""
+
+
+class GuideBreach(BaseModel):
+    """One collision between a draft and the client's own rules.
+
+    Both halves are quoted, because a breach that names only the verdict has to
+    be taken on faith, and an objection nobody can check in ten seconds is an
+    objection that gets clicked away.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: The sentence in the draft.
+    sentence: str
+    #: The line of the guide it collides with.
+    rule: str
 
 
 class GuideVerdict(BaseModel):
-    """A second model's read of a letter against the client's own guide.
+    """The guide check's read of one finished text.
 
-    Separate from :class:`MessageReview` on purpose. Invention and overclaiming
-    are judgements about the world and a checker weighs them; a No-Go is not a
-    judgement, because the client wrote it down. Averaging the two into one
-    verdict would let a written rule be diluted into a style note.
-
-    ``ok`` is recomputed in code from ``breaches`` (see
-    :func:`newspulse.guide.check_guide`) rather than believed, the way the
-    analyzer recomputes ``is_alert``: a reply that lists a breach and calls itself
-    fine would otherwise render as an approval. The recompute only ever moves
-    ``ok`` toward False; the opposite direction is a ParseError, not a correction.
-
-    ``extra="forbid"`` here, against this module's usual stance (see
-    :class:`ArticleVerdict`, where a stray key must not cost a whole batch). The
-    prompt is German end to end and its only English tokens are these two keys, so
-    a reply that lists its breaches under ``verstoesse`` or ``violations`` is the
-    likely miss — and under ``extra="ignore"`` it arrives as an empty list, which
-    is byte-identical to a clean letter. Losing one verdict to a stray key costs an
-    honest "nicht geprüft"; keeping it costs an approval over an objection.
+    Kept apart from :class:`MessageReview` on purpose. Invention and overclaiming
+    are judgements about the world and a model weighs them; a No-Go is not a
+    judgement, the client wrote it down. Averaging the two into one verdict is
+    how a written rule ends up diluted into a style note.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     ok: bool = True
-    #: Empty is the good case and must stay possible — a check that always finds
-    #: something is ignored by the third letter and is then worse than none.
-    #: Unbounded here on purpose: the list is cut to :data:`MAX_BREACHES` in
-    #: :func:`newspulse.guide._parse_verdict`, so a thorough reply is trimmed
-    #: rather than thrown away.
-    breaches: list[GuideBreach] = Field(default_factory=list)
+    # Capped like the crosscheck's concerns, and truncated rather than rejected for
+    # the same reason: the draft that breaks six rules is the one whose verdict
+    # matters most, and it must not be the one that fails to parse.
+    breaches: list[GuideBreach] = Field(default_factory=list, max_length=MAX_CONCERNS)
+
+    @field_validator("breaches", mode="before")
+    @classmethod
+    def _cap_breaches(cls, value: object) -> object:
+        return _capped(value)
 
 
 # --- Coach: does the guide hold up against the actual coverage? ------------------

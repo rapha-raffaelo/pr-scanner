@@ -50,7 +50,7 @@ from string import Template
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, guide
+from . import brain, config, guide
 from .analyzer import (
     AnalyzerError,
     BackendError,
@@ -59,7 +59,7 @@ from .analyzer import (
     strip_code_fence,
 )
 from .models import Advisory, Analysis, Article, Client, visible_coverage
-from .schemas import AdvisoryBrief
+from .schemas import AdvisoryBrief, without_provenance
 
 _log = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ class CoverageRef:
 
 def _prompt_template() -> Template:
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text("utf-8")
-    return Template(text)
+    return Template(brain.compose(text))
 
 
 def _client_profile(client: Client) -> str:
@@ -191,13 +191,17 @@ def _parse(raw: str) -> AdvisoryBrief:
     :mod:`newspulse.angles` and unlike the batch analyzer, this is a single call
     with no retry behind it, so a ```json wrapper would otherwise cost the whole
     brief at the moment someone asked for it.
+
+    The stamp is taken out of the reply before validation: provenance is the
+    tool's to state and not the model's. See
+    :func:`newspulse.schemas.without_provenance`.
     """
     try:
         payload = json.loads(strip_code_fence(raw))
     except json.JSONDecodeError as exc:
         raise ParseError(f"advisory was not valid JSON: {exc}") from exc
     try:
-        return AdvisoryBrief.model_validate(payload)
+        return AdvisoryBrief.model_validate(without_provenance(payload))
     except Exception as exc:  # noqa: BLE001 — pydantic raises its own type
         raise ParseError(f"advisory did not match the schema: {exc}") from exc
 
@@ -218,10 +222,27 @@ def advise(
     Deliberately raises rather than returning an empty brief on a backend error:
     "nothing to advise" and "the advisor failed" must not look alike to the
     operator.
+
+    The brief carries the brain version its prompt was composed under, captured
+    here rather than read again by :func:`store`, so a standard edited while the
+    model was writing belongs to the next brief and not to this one.
     """
+    written_under = brain.version(session)
     coverage = recent_coverage(session, client.id, days=days)
     if not coverage:
-        return AdvisoryBrief(situation="Keine Berichterstattung im Zeitraum."), []
+        # Stamped too, though no prompt was composed and this sentence is one the
+        # module wrote itself. What the stamp records is which standards were in
+        # force when the row was made, and they were these. Leaving it NULL would
+        # store the one value the whole change reserves for "written before the
+        # standards were recorded" — and the page says exactly that in words, so
+        # a brief made this morning would render a false claim about its own age.
+        return (
+            AdvisoryBrief(
+                situation="Keine Berichterstattung im Zeitraum.",
+                brain_version=written_under,
+            ),
+            [],
+        )
 
     prompt = _prompt_template().substitute(
         client_profile=_client_profile(client),
@@ -241,7 +262,12 @@ def advise(
         )
         for suggestion in brief.suggestions
     ]
-    return brief.model_copy(update={"suggestions": cleaned}), coverage
+    return (
+        brief.model_copy(
+            update={"suggestions": cleaned, "brain_version": written_under}
+        ),
+        coverage,
+    )
 
 
 def store(
@@ -252,13 +278,21 @@ def store(
     *,
     days: int = DEFAULT_DAYS,
 ) -> Advisory:
-    """Persist a brief as history. The newest row is the current view."""
+    """Persist a brief as history. The newest row is the current view.
+
+    The brain version comes off the brief: :func:`advise` captured it with the
+    prompt, and reading it again here would date the row to when it was saved.
+    Raises :class:`newspulse.brain.Unstamped` for a brief that carries none —
+    :func:`advise` stamps both of its paths, so an unstamped one came from
+    somewhere else and a NULL would file it as older than the recorded standards.
+    """
     advisory = Advisory(
         client_id=client.id,
         covered_days=days,
         article_count=len(coverage),
         situation=brief.situation,
         suggestions=[s.model_dump(mode="json") for s in brief.suggestions],
+        brain_version=brain.stamp(brief.brain_version, what="this brief"),
     )
     session.add(advisory)
     session.commit()

@@ -308,3 +308,50 @@ def test_the_byline_of_the_answered_story_is_offered_regardless(session):
     named = [t.journalist for t in pitch.targets_for(session, client, angle, now=_NOW)]
 
     assert "Jan Roth" in named
+
+
+# --- What one byline wrote lately ----------------------------------------------
+#
+# The other question the same material answers, for the interview briefing: not
+# "who should this go to" but "what has the person asking been working on".
+
+
+def test_recent_headlines_are_that_bylines_own_and_newest_first(session):
+    _client(session)
+    _article(session, "Retouren werden teurer", author="Jan Roth", days_ago=9)
+    _article(session, "Der Handel rechnet nach", author="Jan Roth", days_ago=2)
+    _article(session, "Ganz anderes Thema", author="Eine Andere", days_ago=1)
+
+    headlines = pitch.recent_headlines(session, "Jan Roth", now=_NOW)
+
+    assert headlines == ["Der Handel rechnet nach", "Retouren werden teurer"]
+
+
+def test_recent_headlines_stay_inside_the_window(session):
+    """The same window the pitch list uses. A briefing that opens with a piece
+    from last year is a briefing that has not read the person."""
+    _client(session)
+    _article(session, "Von damals", author="Jan Roth", days_ago=pitch.LOOKBACK_DAYS + 5)
+
+    assert pitch.recent_headlines(session, "Jan Roth", now=_NOW) == []
+
+
+def test_recent_headlines_narrow_to_the_outlet_when_it_is_known(session):
+    """Two people share a name more often than one writes for two mastheads in a
+    quarter, and crediting a stranger's article is worse than crediting none."""
+    _client(session)
+    _article(session, "Bei der einen Zeitung", author="Jan Roth", source="Handelsblatt")
+    _article(session, "Bei der anderen", author="Jan Roth", source="Textilwirtschaft")
+
+    headlines = pitch.recent_headlines(session, "Jan Roth", "Handelsblatt", now=_NOW)
+
+    assert headlines == ["Bei der einen Zeitung"]
+
+
+def test_no_byline_is_no_headlines_rather_than_everything(session):
+    """The common case: the feed carried no author. An empty name must never be
+    read as "match anything", which would hand the briefing the whole archive."""
+    _client(session)
+    _article(session, "Ohne Autor", author=None)
+
+    assert pitch.recent_headlines(session, "", now=_NOW) == []

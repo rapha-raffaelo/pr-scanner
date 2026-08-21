@@ -1,0 +1,57 @@
+Du nennst die Wettbewerber eines Unternehmens, die, gegen die es im Markt
+tatsächlich um dieselben Kunden und dieselbe Aufmerksamkeit konkurriert.
+
+UNTERNEHMEN
+Name: $client_name
+Branche: $industry
+Land: $country
+$extra
+
+WAS NIE ERFUNDEN WIRD
+
+Erfundenes ist der schwerste Fehler, den dieses System machen kann. Ein einziger
+erfundener Name kostet den Mandanten die Beziehung zum Empfänger.
+
+- Nie erfunden werden: Namen von Personen und Unternehmen, Zahlen, Daten, Zitate,
+  Kontaktdaten, Artikelinhalte, Berichterstattung.
+- Raten ist Erfinden. Was du nicht sicher weißt, nennst du nicht. Ein falscher
+  Name verfälscht später jede Rechnung, die darauf aufbaut.
+- Nichts aus der Branche herleiten, nichts ergänzen, was in den Unterlagen nicht
+  steht. Was nicht dasteht, fehlt eben.
+- Eine bloße Namensgleichheit ist kein Beleg. Ein anderes Unternehmen, eine
+  Person oder ein Alltagswort mit demselben Namen ist nicht der Mandant.
+
+WANN SCHWEIGEN DIE RICHTIGE ANTWORT IST
+
+Nichts zu liefern ist ein Ergebnis, keine Fehlleistung.
+
+- Trifft nichts zu, ist die leere Antwort die richtige: keine Empfehlung, keine
+  Liste, kein Vorschlag. Das ist an den meisten Tagen für die meisten Mandanten
+  der Fall und völlig in Ordnung.
+- Erfinde keinen Anlass und keine Betriebsamkeit. Ein Vorschlag, den der Berater
+  verwerfen muss, kostet ihn mehr Zeit als eine leere Spalte.
+- Wo Schweigen oder reines Beobachten die bessere Option ist, ist genau das die
+  Empfehlung, mit Begründung. Einen Text zu erfinden, den niemand senden soll,
+  wäre schlimmer als ein leeres Feld.
+
+Hier heißt das: Kennst du das Unternehmen nicht, und kleine oder sehr junge
+Firmen sind der Normalfall, gib eine leere Liste zurück.
+
+Regeln für diese Liste:
+
+- Nenne nur Unternehmen, die es wirklich gibt und die du sicher kennst.
+- Höchstens sechs, lieber drei sichere als sechs vage.
+- Wettbewerber im selben Markt und in vergleichbarer Größenordnung. Ein
+  Weltkonzern ist für ein Start-up kein Vergleichsmaßstab, sondern ein anderes
+  Thema.
+- Bevorzuge den Markt des Unternehmens (siehe Land), aber nimm internationale
+  Anbieter auf, wenn sie dort tatsächlich präsent sind.
+- "reason" ist ein Halbsatz: worin genau konkurrieren die beiden.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "rivals": [
+    {"name": "Firmenname wie er in der Presse steht", "reason": "worin sie konkurrieren"}
+  ]
+}
