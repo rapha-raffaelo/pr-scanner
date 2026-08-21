@@ -170,7 +170,7 @@ def _archive_conditions(
     if date_to is not None:
         conditions.append(Article.published_at < _day_bounds_utc(date_to)[1])
     if source:
-        conditions.append(Article.source == source)
+        conditions.append(func.lower(Article.source) == source.casefold())
     if category is not None:
         conditions.append(Analysis.category == category)
     if search:

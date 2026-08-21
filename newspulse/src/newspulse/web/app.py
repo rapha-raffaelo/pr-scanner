@@ -131,6 +131,34 @@ def de_date(value: dt.datetime) -> str:
     return _local(value).strftime("%d.%m.%Y")
 
 
+def de_when(value: dt.datetime) -> str:
+    """A timestamp as the header has to read it: the clock alone only for today.
+
+    The header prints the reader's date on one line and the last sweep on the
+    next, and the sweep line used to carry a bare "06:15 Uhr". On the morning
+    after a sweep that worked, that is exactly right. Three days after the last
+    one it says "Letzter Lauf 06:15 Uhr · Lauf ok · 84 neue Artikel" under
+    today's date, and the only honest reading of that sentence is that the tool
+    ran this morning and the week was quiet. It had not run since Tuesday.
+
+    So the clock stands alone only when the day is today. Anything older names
+    its day, because a media monitor that has not run is the news on the page.
+    """
+    local = _local(value)
+    days = (dt.datetime.now(config.local_zone()).date() - local.date()).days
+    if days <= 0:
+        return f"{local:%H:%M} Uhr"
+    if days == 1:
+        return f"gestern {local:%H:%M} Uhr"
+    return f"{local:%d.%m.}, {local:%H:%M} Uhr"
+
+
+def run_age_days(value: dt.datetime) -> int:
+    """Whole days between that sweep and today, in the reader's zone."""
+    local = _local(value)
+    return (dt.datetime.now(config.local_zone()).date() - local.date()).days
+
+
 def de_short_date(value: dt.datetime) -> str:
     """Day and month in the reader's zone, as coverage lists cite it: ``22.07.``"""
     return _local(value).strftime("%d.%m.")
@@ -216,6 +244,9 @@ templates.env.filters["de_time"] = de_time
 templates.env.filters["de_datetime"] = de_datetime
 templates.env.filters["de_date"] = de_date
 templates.env.filters["de_short_date"] = de_short_date
+# The header's own reading of a timestamp: see de_when.
+templates.env.filters["de_when"] = de_when
+templates.env.filters["run_age_days"] = run_age_days
 # Client identity: a monogram + stable colour stand in wherever no logo is set,
 # so the portfolio never looks half-configured.
 templates.env.filters["logo_src"] = logo_src

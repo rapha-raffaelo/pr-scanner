@@ -464,7 +464,7 @@
                 {% if asset.reviewed_by %}
                   <div class="crosscheck{% if not asset.review_ok %} crosscheck--hold{% endif %}">
                     <span class="impulse__label">
-                      {% if asset.review_ok %}{{ t("Gegengelesen von") }}{% else %}{{ t("Zweitmodell rät ab") }} —{{ t("gelesen von") }}{% endif %}
+                      {% if asset.review_ok %}{{ t("Gegengelesen von") }}{% else %}{{ t("Zweitmodell rät ab") }} — {{ t("gelesen von") }}{% endif %}
                       {{ asset.reviewed_by }}
                     </span>
                     {% if asset.review %}
@@ -681,7 +681,7 @@
             {% if msg.reviewed_by %}
               <div class="crosscheck{% if not msg.review_ok %} crosscheck--hold{% endif %}">
                 <span class="impulse__label">
-                  {% if msg.review_ok %}{{ t("Gegengelesen von") }}{% else %}{{ t("Zweitmodell rät ab") }} —{{ t("gelesen von") }}{% endif %}
+                  {% if msg.review_ok %}{{ t("Gegengelesen von") }}{% else %}{{ t("Zweitmodell rät ab") }} — {{ t("gelesen von") }}{% endif %}
                   {{ msg.reviewed_by }}
                 </span>
                 {% if msg.review %}
@@ -848,6 +848,17 @@
                       {{ t("Diese Nachricht geht jetzt an") }} <strong>{{ rec.email }}</strong>.
                       {{ t("Sie ist danach nicht mehr zurückzuholen. Gegengelesen wurde sie von einem zweiten Modell, nicht von einem Menschen.") }}
                     </p>
+                    {% if not msg.review_ok %}
+                      {# The objection, repeated at the point of no return. The
+                         verdict is advisory and the consultant may overrule it,
+                         which is the design — but overruling has to be a
+                         decision, and a warning two scrolls up that the reader
+                         has already passed is not one. #}
+                      <p class="confirm__hold">
+                        <strong>{{ t("Das Zweitmodell rät ab.") }}</strong>
+                        {{ t("Es hält etwas in diesem Text für unbelegt. Wenn Sie widersprechen, geht die Nachricht so hinaus.") }}
+                      </p>
+                    {% endif %}
                     <div class="confirm__row">
                       <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/gmail-draft">
                         <button type="submit" class="btn btn--send">{{ t("Ja, senden") }}</button>
@@ -885,9 +896,31 @@
                       {% endif %}
                     </span>
                   {% endif %}
-                  <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/release">
-                    <button type="submit" class="btn">{{ t("Freigegeben und verschickt") }}</button>
-                  </form>
+                  {% if msg.review_ok %}
+                    <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/release">
+                      <button type="submit" class="btn">{{ t("Freigegeben und verschickt") }}</button>
+                    </form>
+                  {% else %}
+                    {# Not blocked: the check is advisory and the person signing
+                       is accountable, not the model. But this button writes
+                       "wer hat das freigegeben" into the ledger, and doing that
+                       over a standing objection should cost a second click. #}
+                    <details class="gsend">
+                      <summary class="btn">{{ t("Freigegeben und verschickt") }}</summary>
+                      <div class="confirm">
+                        <p class="confirm__hold">
+                          <strong>{{ t("Das Zweitmodell rät ab.") }}</strong>
+                          {{ t("Sie halten fest, dass dieser Text hinausgegangen ist. Der Einwand oben bleibt daneben stehen.") }}
+                        </p>
+                        <div class="confirm__row">
+                          <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/release">
+                            <button type="submit" class="btn">{{ t("Ja, eintragen") }}</button>
+                          </form>
+                          <button type="button" class="linkbtn" data-close-confirm>{{ t("Abbrechen") }}</button>
+                        </div>
+                      </div>
+                    </details>
+                  {% endif %}
                 </span>
               {% endif %}
             </div>

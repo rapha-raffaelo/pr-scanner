@@ -713,5 +713,27 @@ def test_a_running_draft_makes_the_page_fetch_its_own_result(factory, client):
     assert f'hx-get="/client/{subject_id}/advice"' in busy
 
 
+def test_one_publisher_is_one_choice_however_the_feed_spelled_it(factory, client):
+    """Feeds capitalise as they please. "Finanzen.net" and "finanzen.net" were
+    two entries in the filter, each showing part of the same outlet's clips, so
+    a clipping list filtered to one silently dropped the rest."""
+    with factory() as s:
+        mandate = _seed_client(s, name="Alpha AG")
+        for i, spelling in enumerate(
+            ["Finanzen.net", "Finanzen.net", "finanzen.net", "FINANZEN.NET"]
+        ):
+            _seed_article(
+                s, client_obj=mandate, title=f"Meldung {i}",
+                url=f"https://ex.de/{i}", published_at=_local_noon(_JAN),
+                source=spelling,
+            )
+        s.commit()
 
+    body = client.get("/archive").text
+    options = body.count('value="Finanzen.net"') + body.count('value="finanzen.net"') \
+        + body.count('value="FINANZEN.NET"')
+    assert options == 1, "one publisher, one entry in the dropdown"
 
+    # And picking it finds every clip, whichever way the feed wrote the name.
+    filtered = client.get("/archive", params={"source": "finanzen.net"}).text
+    assert _headline_count(filtered) == 4

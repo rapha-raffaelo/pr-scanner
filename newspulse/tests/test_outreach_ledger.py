@@ -828,3 +828,33 @@ def test_the_state_column_refuses_a_value_outside_the_set(tmp_path, monkeypatch)
                 )
     finally:
         engine.dispose()
+
+
+def test_recording_a_release_over_an_objection_costs_a_second_click(session, web=None):
+    """The cross-check is advisory and the consultant may overrule it — that is
+    the design, and blocking the button would put a model in charge of a
+    decision a person is accountable for.
+
+    What the flag has to buy is that overruling is a decision rather than an
+    oversight. The release button used to sit there enabled beside "Zweitmodell
+    rät ab", one click from writing "wer hat das freigegeben" into the ledger
+    over a standing objection.
+    """
+    from fastapi.testclient import TestClient
+
+    from newspulse.web.app import create_app, get_db
+
+    client, angle = _mandate(session)
+    row = _write(session, client, angle)
+    row.review = "Die genannten Artikel sind nicht belegt."
+    row.reviewed_by = "gemini-2.5-flash"
+    row.review_ok = False
+    session.commit()
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: session
+    body = TestClient(app).get(f"/client/{client.id}/advice").text
+
+    card = body.split(f"outreach/{row.id}/release", 1)[0][-1400:]
+    assert "Ja, eintragen" in body, "the confirmation exists"
+    assert "<details" in card, "and the button is behind it"
