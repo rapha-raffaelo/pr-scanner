@@ -30,21 +30,41 @@ copied on every deploy is worth more than being able to hand the original back.
 from __future__ import annotations
 
 import io
+import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import resources
 from string import Template
+from typing import Final
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config
+from . import config, gemini
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Client, GuideSource
+from .schemas import MAX_BREACHES, GuideVerdict, PersonalMessage
 
 _log = logging.getLogger(__name__)
 
 _PROMPT_RESOURCE = "prompts/guide.txt"
+
+_CHECK_RESOURCE = "prompts/guide_check.txt"
+
+#: What :func:`check_guide` returns for a mandate that has no guide at all: no
+#: verdict, and no model that gave one. A distinct state on purpose — "nothing to
+#: object with" must never arrive at the page looking like "no objections", which
+#: is the failure this whole check exists to prevent.
+NOT_CHECKED: Final[tuple[GuideVerdict | None, str]] = (None, "")
+
+#: Who the verdict is attributed to when the caller brought its own callable.
+#: Never :func:`config.review_model`: that names the configured provider, which an
+#: injected callable is exactly not, and GDC-02 persists this string and renders it
+#: under the letter. Not ``""`` either — the empty name belongs to
+#: :data:`NOT_CHECKED`, and a verdict that exists must not borrow its look.
+INJECTED_MODEL: Final = "(injiziertes Modell)"
 
 #: Hard ceiling on the stored guide. Every prompt carries it, so this is a cost
 #: and an attention budget at once: past a few hundred words it stops being a
@@ -68,6 +88,16 @@ SUPPORTED_SUFFIXES = (".pdf", ".txt", ".md", ".markdown")
 
 class ExtractionError(RuntimeError):
     """The upload could not be turned into text, with a reason worth showing."""
+
+
+class NoSecondModel(RuntimeError):
+    """No second provider is configured, so the check cannot run at all.
+
+    Its own type because it is not a failure: nothing broke, nothing was reached,
+    a key is simply not set. The caller logs it differently for exactly that
+    reason. A ``RuntimeError`` subclass so callers that only care that the check
+    refused rather than passed keep working.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,11 +263,173 @@ def for_prompt(client: Client) -> str:
     )
 
 
+# --- The check: does a finished text obey the rules this client wrote down? ------
+
+
+def _check_template() -> Template:
+    text = resources.files("newspulse").joinpath(_CHECK_RESOURCE).read_text("utf-8")
+    return Template(text)
+
+
+#: The block markers in ``prompts/guide_check.txt``, kept here because the same
+#: two tokens have to be taken away from everything that lands between them. The
+#: draft is model-written from a journalist's headline that neither the client nor
+#: the operator controls, so a letter whose body opens its own "KOMMUNIKATIONS-
+#: GUIDE" section would otherwise read as a second, emptier guide.
+_FENCE_OPEN = "<<<"
+_FENCE_CLOSE = ">>>"
+
+
+def _fenced(text: str) -> str:
+    """Interpolated text with the block markers taken out of its hands.
+
+    Replaced rather than dropped, and with lookalikes, so a guide line that really
+    did contain angle brackets still reads the way its author wrote it.
+    """
+    return (text or "").replace(_FENCE_OPEN, "‹‹‹").replace(_FENCE_CLOSE, "›››")
+
+
+def _second_model() -> Callable[..., str]:
+    """The configured second provider, as a ``generate(prompt) -> str``.
+
+    Deliberately not :func:`newspulse.analyzer.invoke_with_fallback`: falling back
+    to the model that wrote the letter would turn the check into a self-check, and
+    a model does not find its own breach of a rule it read ten seconds ago.
+
+    Raises :class:`NoSecondModel` when nothing is configured, for the same reason
+    the crosscheck does — a check that silently did not happen is worse than none.
+    """
+    if not config.review_configured():
+        raise NoSecondModel(
+            "Kein Zweitmodell hinterlegt: GEMINI_API_KEY (oder "
+            "NEWSPULSE_GEMINI_API_KEY) in der .env setzen, damit ein anderes "
+            "Modell den Text gegen den Guide liest."
+        )
+
+    def generate(prompt: str, **kwargs) -> str:
+        return gemini.generate(
+            prompt,
+            model=config.review_model(),
+            api_key=config.review_api_key(),
+            **kwargs,
+        )
+
+    return generate
+
+
+def _parse_verdict(raw: str) -> GuideVerdict:
+    """Validate the reply into a verdict; anything else is a ParseError.
+
+    The same trust boundary as everywhere else here: the reply is text until the
+    schema says otherwise, and a half-parsed verdict is discarded rather than
+    shown as an approval.
+    """
+    try:
+        payload = json.loads(strip_code_fence(raw))
+    # AttributeError/TypeError as well as the obvious one: ``strip_code_fence``
+    # runs inside this ``try`` and a backend handing back ``None`` or ``bytes``
+    # would otherwise leave through a type this function does not document. The
+    # route catches everything, but the next caller will not.
+    except (AttributeError, TypeError, json.JSONDecodeError) as exc:
+        _log.debug("guide check reply was not JSON: %.500r", raw)
+        raise ParseError(f"the guide check was not valid JSON: {exc}") from exc
+    try:
+        verdict = GuideVerdict.model_validate(payload)
+    except ValidationError as exc:
+        _log.debug("guide check reply missed the schema: %.500r", raw)
+        raise ParseError(f"the guide check did not match the schema: {exc}") from exc
+    # Cut, never rejected. A reply with more breaches than fit is a *worse* draft,
+    # and that is the last one allowed to come back as "not checked"; the prompt
+    # asks for the gravest first so the cut lands at the bottom of the list. Said
+    # out loud, because a cap nobody logs reads afterwards like full coverage.
+    breaches = verdict.breaches[:MAX_BREACHES]
+    if len(verdict.breaches) > MAX_BREACHES:
+        _log.info(
+            "guide check reported %d breaches, keeping the first %d",
+            len(verdict.breaches),
+            MAX_BREACHES,
+        )
+    # A reply that objects and names nothing is unusable, not clean. Recomputing
+    # ``ok`` from an empty list would answer "keine Beanstandung" on behalf of a
+    # model that said the opposite — the one direction this whole pass exists to
+    # prevent — so the contradiction yields the honest not-checked state instead.
+    if not verdict.ok and not breaches:
+        _log.debug("guide check objected without naming a breach: %.500r", raw)
+        raise ParseError("the guide check set ok=false but named no breach")
+    # And in the other direction ``ok`` is recomputed rather than believed: a reply
+    # that lists a breach and calls itself fine would render as a clean bill of
+    # health over an objection that is right there underneath it. Written as an
+    # ``and`` so the recompute can only ever move ``ok`` toward False.
+    return verdict.model_copy(
+        update={"breaches": breaches, "ok": verdict.ok and not breaches}
+    )
+
+
+def check_guide(
+    client: Client,
+    message: PersonalMessage,
+    *,
+    generate: Callable[..., str] | None = None,
+    checked_by: str = "",
+) -> tuple[GuideVerdict | None, str]:
+    """Read one finished text against this client's stored guide.
+
+    Its own pass, with its own prompt and its own verdict, beside the crosscheck
+    rather than inside it: invention and overclaiming are judgements a checker
+    weighs, while a No-Go is not a judgement at all — the client wrote it down.
+    Folded into one verdict, a written rule would end up averaged against a
+    remark about tone.
+
+    The prompt gets the guide verbatim, the subject and the body, and nothing
+    else. Not the article, not the profile, not the angle: every extra fact is
+    another thing the model can reason its way around when the job is to read a
+    rule literally.
+
+    Returns the verdict and the name of the model that actually gave it — resolved
+    where the callable is, so an injected ``generate`` is never reported under the
+    configured provider's name — or :data:`NOT_CHECKED` for a client with no stored
+    guide, which costs no model call because there is nothing to check against. A
+    reply with more breaches than fit is cut rather than dropped, and the cut is
+    announced at INFO.
+
+    Raises :class:`newspulse.analyzer.ParseError` on an unusable reply,
+    :class:`NoSecondModel` when there is no provider to ask, and whatever the
+    backend raises on a failed call; the caller decides what an unchecked letter
+    looks like, and the three are worth telling apart.
+    """
+    stored = (getattr(client, "comms_guide", "") or "").strip()
+    if not stored:
+        _log.info("guide check skipped for %r: no guide stored", client.name)
+        return NOT_CHECKED
+
+    if generate is None:
+        generate = _second_model()
+        checked_by = checked_by or config.review_model()
+    else:
+        checked_by = checked_by or INJECTED_MODEL
+
+    prompt = _check_template().substitute(
+        comms_guide=_fenced(stored),
+        subject=_fenced(message.subject) or "(kein Betreff)",
+        message=_fenced(message.message),
+    )
+    # The same budget the distillation gives its call. Without one the provider's
+    # own 180 s default applies, and this call sits inside the writing lock with
+    # the letter not yet stored: a hung check would hold every other mandate's
+    # sweep behind it for three minutes over a verdict that is advisory.
+    reply = generate(prompt, timeout=config.ANALYZER_TIMEOUT)
+    return _parse_verdict(reply), checked_by
+
+
 __all__ = [
-    "ExtractionError",
     "GUIDE_MAX_CHARS",
+    "INJECTED_MODEL",
     "MAX_UPLOAD_BYTES",
+    "NOT_CHECKED",
+    "ExtractionError",
+    "NoSecondModel",
     "SUPPORTED_SUFFIXES",
+    "check_guide",
     "delete_source",
     "distill",
     "extract_text",

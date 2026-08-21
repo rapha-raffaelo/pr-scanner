@@ -16,8 +16,9 @@ Two kinds of object live here and it is worth keeping them distinct:
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from .models import SCORE_MAX as _SCORE_MAX
 from .models import SCORE_MIN as _SCORE_MIN
@@ -230,6 +231,83 @@ class MessageReview(BaseModel):
     concerns: list[str] = Field(default_factory=list, max_length=5)
     #: The one thing to change first, if anything.
     fix: str = ""
+
+
+#: How many breaches one verdict carries. A cap on what is shown, not on what may
+#: be found: it is enforced by truncation in :func:`newspulse.guide._parse_verdict`
+#: and deliberately *not* by ``max_length`` on the field below. A sixth breach that
+#: voided the whole verdict would invert the feature — the worse the draft, the
+#: more breaches it draws, and the letter that draws six is the last one allowed to
+#: come back saying "not checked".
+MAX_BREACHES = 5
+
+#: A quote that can actually be looked up: whitespace-only is the same as absent,
+#: so it is stripped first and then required to have survived. Stripping is what
+#: the reader does anyway when they search the letter for the sentence.
+_Quote = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class GuideBreach(BaseModel):
+    """One collision between a sentence in the draft and a line of the guide.
+
+    Both sides are quoted, and that is the whole point of the type: a rule breach
+    asserted in the abstract ("zu werblich") has to be taken on faith, while a
+    pair of quotes can be judged in a second by the person who is accountable for
+    the letter. It is also what keeps a breach checkable against a guide the
+    consultant wrote himself and can therefore re-read.
+
+    Both quotes are required *and* non-empty. An empty side is the same failure as
+    a missing one: it renders as an accusation with nothing under it, and it would
+    still flip ``ok`` to False. Rejecting the verdict costs a real objection and
+    yields the honest not-checked state; keeping the breach and dropping the quote
+    would show an unanswerable one, and silently dropping the breach could turn an
+    objection into an approval, which is the direction that ends a mandate.
+
+    Non-empty is measured *after* stripping, because ``"   "`` and ``"\\n\\t"``
+    render exactly like ``""`` — an empty blockquote under a red heading — and a
+    bare ``min_length=1`` would wave them through.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: The sentence from the letter, verbatim.
+    draft: _Quote
+    #: The line of the stored guide it breaks, verbatim.
+    guide: _Quote
+
+
+class GuideVerdict(BaseModel):
+    """A second model's read of a letter against the client's own guide.
+
+    Separate from :class:`MessageReview` on purpose. Invention and overclaiming
+    are judgements about the world and a checker weighs them; a No-Go is not a
+    judgement, because the client wrote it down. Averaging the two into one
+    verdict would let a written rule be diluted into a style note.
+
+    ``ok`` is recomputed in code from ``breaches`` (see
+    :func:`newspulse.guide.check_guide`) rather than believed, the way the
+    analyzer recomputes ``is_alert``: a reply that lists a breach and calls itself
+    fine would otherwise render as an approval. The recompute only ever moves
+    ``ok`` toward False; the opposite direction is a ParseError, not a correction.
+
+    ``extra="forbid"`` here, against this module's usual stance (see
+    :class:`ArticleVerdict`, where a stray key must not cost a whole batch). The
+    prompt is German end to end and its only English tokens are these two keys, so
+    a reply that lists its breaches under ``verstoesse`` or ``violations`` is the
+    likely miss — and under ``extra="ignore"`` it arrives as an empty list, which
+    is byte-identical to a clean letter. Losing one verdict to a stray key costs an
+    honest "nicht geprüft"; keeping it costs an approval over an objection.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool = True
+    #: Empty is the good case and must stay possible — a check that always finds
+    #: something is ignored by the third letter and is then worse than none.
+    #: Unbounded here on purpose: the list is cut to :data:`MAX_BREACHES` in
+    #: :func:`newspulse.guide._parse_verdict`, so a thorough reply is trimmed
+    #: rather than thrown away.
+    breaches: list[GuideBreach] = Field(default_factory=list)
 
 
 # --- Coach: does the guide hold up against the actual coverage? ------------------
