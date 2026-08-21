@@ -1035,6 +1035,16 @@ def message_pull_through(
     )
 
 
+#: Printed with every pull-through figure, because "die Botschaft trägt" means
+#: something specific here and a reader who is told what it means can disagree with
+#: the count. Left to the report to render or drop; it is a qualification, not a
+#: reason the figure is missing.
+_MESSAGE_RULE = (
+    "Gezählt wird ein Beitrag, der die Botschaft als Ganzes aufnimmt oder "
+    "mindestens zwei ihrer tragenden Begriffe."
+)
+
+
 def _message_metric(
     client_id: int,
     message: str,
@@ -1046,6 +1056,7 @@ def _message_metric(
     return MetricValue(
         key=MetricKey.MESSAGE,
         client_id=client_id,
+        note=_MESSAGE_RULE,
         figure=float(len(carried)),
         previous=(
             None

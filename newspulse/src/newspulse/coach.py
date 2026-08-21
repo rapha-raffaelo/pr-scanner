@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from dataclasses import dataclass
 from importlib import resources
 from string import Template
 
@@ -85,6 +86,15 @@ _MAX_KEY_MESSAGES = 5
 #: characters a German token is a preposition or an initialism and would match half
 #: the press; the same floor :func:`newspulse.matching.radar_matcher` uses.
 _MIN_PROBE_CHARS = 5
+
+#: How many of a message's own content words a piece must carry before the message
+#: counts as landed. One shared noun is not a message: "Buchhaltung wird teurer"
+#: and "Buchhaltung ohne Papier" are opposite claims about the same word.
+#: :func:`newspulse.matching.radar_matcher` may sit on a single word because Claude
+#: reads every candidate it lets through and throws the wrong ones away; this figure
+#: has no second reader — it goes into a client's document as a count — so it cannot
+#: buy recall with precision the way the pre-filter can.
+_MIN_MESSAGE_WORDS = 2
 
 
 def _prompt_template() -> Template:
@@ -221,41 +231,71 @@ def key_messages(client: Client) -> list[str]:
     return messages[:_MAX_KEY_MESSAGES]
 
 
-def message_matcher(message: str) -> re.Pattern[str] | None:
-    """A matcher for one key message, or ``None`` when it carries nothing to match.
+@dataclass(frozen=True, slots=True)
+class MessageProbe:
+    """What a piece of coverage has to contain to count as carrying one message.
 
-    Built exactly the way :func:`newspulse.matching.radar_matcher` builds a theme
-    probe: the whole phrase, plus the message's longest word as the term a headline
-    is likely to repeat. A press report never quotes a key message verbatim — it
-    picks up the one word that carries it — and the word-boundary lookarounds are
-    what keep "Kosmetik" out of "Kosmetikerin-Ausbildung" reading as a hit.
+    Two ways in and deliberately not a third: the message as a whole phrase, or at
+    least :data:`_MIN_MESSAGE_WORDS` of its own content words.
+    """
+
+    phrase: re.Pattern[str]
+    words: tuple[re.Pattern[str], ...]
+
+
+def message_matcher(message: str) -> MessageProbe | None:
+    """What it takes to carry ``message``, or ``None`` if it carries nothing to match.
+
+    The phrase alone would count almost nothing — a press report never quotes a key
+    message verbatim, it paraphrases. A single word, the way
+    :func:`newspulse.matching.radar_matcher` probes a theme, would count almost
+    everything, including the piece that uses the word to say the opposite: "die
+    Buchhaltung wird teurer" is not "Buchhaltung ohne Papier" landing. That trade
+    is right for the pre-filter, which hands its hits to Claude, and wrong here,
+    where the hit is the figure.
+
+    So: the phrase, or two of the message's own content words. The cheapest rule
+    that still requires the piece to be about what the message is about, and one a
+    reader can re-apply by hand — which a client-facing count has to survive. The
+    word-boundary lookarounds are what keep "Kosmetik" out of
+    "Kosmetikerin-Ausbildung" reading as a hit.
     """
     term = (message or "").strip()
-    if not term:
+    phrase = matching.terms_matcher([term])
+    if phrase is None:
         return None
-    probes = [term]
-    words = [w for w in re.findall(r"\w+", term, re.UNICODE) if len(w) >= _MIN_PROBE_CHARS]
-    if words:
-        probes.append(max(words, key=len))
-    return matching.terms_matcher(probes)
+    found = re.findall(r"\w+", term, re.UNICODE)
+    words = dict.fromkeys(w.casefold() for w in found if len(w) >= _MIN_PROBE_CHARS)
+    compiled = [matching.terms_matcher([word]) for word in words]
+    probes = tuple(pattern for pattern in compiled if pattern is not None)
+    # A message with only one content word is carried by its phrase or not at all:
+    # a bar of two it could never clear would silence it entirely.
+    return MessageProbe(
+        phrase=phrase, words=probes if len(probes) >= _MIN_MESSAGE_WORDS else ()
+    )
 
 
-def carries(text: str, matcher: re.Pattern[str] | None) -> bool:
-    """Whether ``text`` carries the message ``matcher`` was built from.
+def carries(text: str, probe: MessageProbe | None) -> bool:
+    """Whether ``text`` carries the message ``probe`` was built from.
 
     Case-folded here rather than at every call site, so the ß→ss fold the matchers
     are compiled with is applied on both sides — the same pairing
     :func:`newspulse.matching.match_candidates` makes.
     """
-    if matcher is None:
+    if probe is None:
         return False
-    return matcher.search((text or "").casefold()) is not None
+    folded = (text or "").casefold()
+    if probe.phrase.search(folded) is not None:
+        return True
+    hits = sum(1 for word in probe.words if word.search(folded) is not None)
+    return hits >= _MIN_MESSAGE_WORDS
 
 
 __all__ = [
     "AnalyzerError",
     "DEFAULT_DAYS",
     "GuideMissing",
+    "MessageProbe",
     "ParseError",
     "carries",
     "key_messages",
