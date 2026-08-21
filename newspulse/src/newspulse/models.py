@@ -924,6 +924,19 @@ class Report(Base):
     )
     #: Why there is nothing to say, when there is nothing to say.
     note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: The document as it read the moment it was released — figures, findings and
+    #: the evidence under them, copied rather than referenced. Null while it is a
+    #: draft, and written exactly once, by :func:`newspulse.report.release`.
+    #:
+    #: This is the one place in the feature where copying beats pointing, and it is
+    #: the same reason the rest of it points: a *draft* must notice that its ground
+    #: moved, so its evidence is ids resolved against the archive as it is. A
+    #: released report is the artefact a client was sent, and re-deriving it from a
+    #: live archive means a piece of coverage dismissed in October silently changes
+    #: what the September document says it said. Both are honesty about the same
+    #: rows; which one applies is decided by whether a human put the agency's name
+    #: on it.
+    snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     findings: Mapped[list["ReportFinding"]] = relationship(
         back_populates="report",
