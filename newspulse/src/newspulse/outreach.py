@@ -39,7 +39,15 @@ from sqlalchemy.orm import Session
 
 from . import config, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
-from .models import Analysis, Angle, Article, Client, Outreach, visible_coverage
+from .models import (
+    Analysis,
+    Angle,
+    Article,
+    Client,
+    Outreach,
+    OutreachState,
+    visible_coverage,
+)
 from .pitch import PitchTarget
 from .schemas import MessageReview, PersonalMessage
 
@@ -288,7 +296,14 @@ def store(
     reviewed_by: str = "",
 ) -> Outreach:
     """Persist one message. Re-writing for the same recipient replaces the old
-    one: two drafts at the same journalist are two attempts, not two pitches."""
+    one: two drafts at the same journalist are two attempts, not two pitches.
+
+    A *released* letter is never replaced. Once somebody has put the agency's name
+    on a text it is a record of what went out, and the report cites its id as the
+    evidence for a piece of coverage — overwriting it would leave a claim standing
+    on a letter whose stored text is not the one the journalist read. A redraft
+    after release is therefore a new row, which is also what it is in fact.
+    """
     journalist = (target.journalist or "") if target else ""
     outlet = (target.outlet or "") if target else ""
     existing = session.scalars(
@@ -296,6 +311,7 @@ def store(
             Outreach.angle_id == angle.id,
             Outreach.journalist == journalist,
             Outreach.outlet == outlet,
+            Outreach.released_at.is_(None),
         )
     ).first()
     row = existing or Outreach(angle_id=angle.id, client_id=client.id)
@@ -318,6 +334,63 @@ def store(
     session.add(row)
     session.commit()
     return row
+
+
+#: Who a release is recorded against when the caller names nobody. There are no
+#: user accounts in this tool, so this follows ``ClientFact.filled_by``: the
+#: interesting fact is that a person was in the loop, not which one.
+DEFAULT_RELEASED_BY = "mensch"
+
+
+def release(
+    session: Session,
+    row: Outreach,
+    *,
+    by: str = DEFAULT_RELEASED_BY,
+    when: dt.datetime | None = None,
+) -> Outreach:
+    """Record that a person put the agency's name on this letter.
+
+    The one act in the pipeline a machine may not perform, so it is stored rather
+    than inferred. Releasing an already-released letter leaves the first stamp
+    alone: the record is of the moment it went out, and a second click is not a
+    second sending.
+    """
+    if row.released_at is None:
+        row.released_at = when or dt.datetime.now(dt.UTC)
+        row.released_by = (by or DEFAULT_RELEASED_BY).strip() or DEFAULT_RELEASED_BY
+        row.state = OutreachState.RAUS
+        session.commit()
+    return row
+
+
+def released_letters(
+    session: Session,
+    client_id: int,
+    *,
+    until: dt.datetime | None = None,
+    since: dt.datetime | None = None,
+) -> list[Outreach]:
+    """Released letters for one mandate, oldest release first.
+
+    Drafts are absent by construction rather than by a filter a caller has to
+    remember: this is the only way the report reads the ledger, and a report may
+    only credit outreach that actually left the house.
+
+    ``since``/``until`` bound the *release*, not the drafting: a letter matters to
+    a reporting period because of when it went out.
+    """
+    query = select(Outreach).where(
+        Outreach.client_id == client_id,
+        Outreach.released_at.is_not(None),
+    )
+    if since is not None:
+        query = query.where(Outreach.released_at >= since)
+    if until is not None:
+        query = query.where(Outreach.released_at < until)
+    return list(
+        session.scalars(query.order_by(Outreach.released_at, Outreach.id)).all()
+    )
 
 
 def for_angle(session: Session, angle_id: int) -> list[Outreach]:
@@ -349,4 +422,13 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
     return grouped
 
 
-__all__ = ["draft", "crosscheck", "store", "for_angle", "by_angle"]
+__all__ = [
+    "DEFAULT_RELEASED_BY",
+    "draft",
+    "crosscheck",
+    "store",
+    "release",
+    "released_letters",
+    "for_angle",
+    "by_angle",
+]
