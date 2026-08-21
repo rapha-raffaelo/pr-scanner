@@ -16,8 +16,9 @@
   .split { display: grid; grid-template-columns: minmax(0, 1fr) 268px;
            gap: var(--s5); align-items: start; }
 
-  .sect { background: var(--card); border: 1px solid var(--line);
-          border-radius: var(--radius); margin-bottom: var(--s5); overflow: hidden; }
+  /* .sect itself — the white card with the hairline — comes from app.css, which
+     already gives its children exactly the var(--s4) inset the mock draws. Only
+     the parts that are particular to a questionnaire are declared here. */
   .sect__head { padding: var(--s4); border-bottom: 1px solid var(--line);
                 background: var(--fill-2); }
   .sect__t { font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.015em; }
@@ -60,9 +61,9 @@
                   font-size: var(--t-footnote); padding: 0; }
   .chipx button:hover { color: var(--alert); }
 
-  .linkbtn { font: inherit; font-size: var(--t-caption); background: none; border: 0;
-             color: var(--muted); cursor: pointer; text-decoration: underline; padding: 0; }
-  .linkbtn:hover { color: var(--tint); }
+  /* .linkbtn — the quiet text control under each question — comes from app.css.
+     Redeclaring it here would style it on this page and nowhere else, which is
+     the defect test_styles.py exists to catch. */
 
   .rail { position: sticky; top: var(--s5); background: var(--card);
           border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s4); }
