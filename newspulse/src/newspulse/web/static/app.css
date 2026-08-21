@@ -859,6 +859,56 @@ a:hover { text-decoration: underline; }
 .crosscheck--none a { color: var(--accent); }
 .crosscheck__clean { color: #15803d; }
 
+/* The guide check, stacked under the crosscheck and deliberately not wearing its
+   colours. Two green boxes in a row are read as one box, and then the second
+   verdict has told the reader nothing: this one is blue where the crosscheck is
+   green, and it carries a heavy left rule the crosscheck does not have, so the
+   two are one glance apart even for a reader who cannot separate the hues.
+
+   Its "never checked" state is amber rather than the crosscheck's muted grey. A
+   letter for a mandate with no stored guide has had a whole class of error looked
+   for by nothing at all, and grey reads as "nothing to report".
+
+   Each of the three states carries its own colours in its own modifier rule; the
+   base holds the layout the three share. A modifier that exists only in the
+   markup is a hook nobody restyling the block would know is load-bearing. */
+.guidecheck {
+  margin-top: 6px; padding: 8px 10px; border-radius: var(--radius);
+  background: #eef2ff; border: 1px solid #c7d2fe; border-left: 3px solid #4f46e5;
+  font-size: var(--t-caption); color: #312e81;
+}
+.guidecheck .impulse__label { color: #4338ca; display: block; }
+.guidecheck ul { list-style: none; margin: 4px 0 0; padding: 0; }
+.guidecheck li { margin-top: 6px; }
+.guidecheck__verdict { color: #4338ca; }
+/* The clean verdict. Blue where the crosscheck's clean verdict is green, and
+   spelled out here rather than left to the base so that restyling this one state
+   has an obvious home. */
+.guidecheck--clean {
+  background: #eef2ff; border-color: #c7d2fe; border-left-color: #4f46e5;
+  color: #312e81;
+}
+/* A breach is the one state here that is not advisory in tone: the client wrote
+   the rule down. Red, and unmistakably not the crosscheck's amber "would hold". */
+.guidecheck--breach {
+  background: #fef2f2; border-color: #fecaca; border-left-color: #b91c1c;
+  color: #7f1d1d;
+}
+.guidecheck--breach .impulse__label { color: #b91c1c; }
+/* The pair, in the order it is judged in: the sentence that was written, then the
+   line it collides with. Blocks rather than a run of text, because a quote that
+   wraps into the next quote cannot be told from it. */
+.guidecheck__draft, .guidecheck__line { display: block; font-style: italic; }
+.guidecheck__against {
+  display: block; margin: 2px 0; font-style: normal; text-transform: uppercase;
+  letter-spacing: 0.04em; font-size: var(--t-caption2); color: #b91c1c;
+}
+.guidecheck--none {
+  background: #fffbeb; border-color: #fde68a; border-left-color: #d97706;
+  color: #92400e;
+}
+.guidecheck--none a { color: #b45309; }
+
 /* --- Shared surfaces ------------------------------------------------------ */
 /* Card, table and status box. Every one of these was declared only in
    settings.html, so the same markup produced a card on one page and a bare run

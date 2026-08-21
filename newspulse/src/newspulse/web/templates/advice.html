@@ -246,6 +246,74 @@
                 <a href="/settings">{{ t("Einstellungen") }} →</a>
               </p>
             {% endif %}
+            {# The guide check, under the crosscheck and never merged into it. The
+               same three states, and deliberately not the same colours: two green
+               boxes stacked are read as one box, and then the second verdict is
+               nobody's second look. A No-Go is not a style note — the client wrote
+               it down — so a breach is quoted on both sides, the draft's sentence
+               first and the guide's line under it, and the reader can settle it in
+               a second instead of taking it on faith. #}
+            {% if not msg.guide_reviewed_by %}
+              {# The worker reports every failure as this one state — no stored
+                 guide, no second model, an unreachable provider, an unusable
+                 reply — but the page must not name a cause it cannot know. A
+                 mandate that *has* a guide was not skipped for want of one, and
+                 offering a link to write the guide they already wrote sends the
+                 consultant to fix nothing. The guide itself is the one half the
+                 page can tell apart, so it says that much and no more.
+
+                 And it points at no log. The largest population in this state is
+                 letters written before the check existed: nothing ran for them,
+                 so nothing was ever logged about them, and sending the reader to
+                 search for a line that was never written is a second dead end on
+                 top of the first. A redraft is the one remedy that holds for
+                 every letter here — a stored letter never gains a verdict after
+                 the fact. #}
+              {% if not (client.comms_guide or "").strip() %}
+                <p class="guidecheck guidecheck--none">
+                  {{ t("Nicht gegen den Guide geprüft — für diesen Mandanten ist kein Guide hinterlegt.") }}
+                  <a href="/client/{{ client.id }}/guide">{{ t("Guide hinterlegen") }} →</a>
+                </p>
+              {% else %}
+                <p class="guidecheck guidecheck--none">
+                  {{ t("Nicht gegen den Guide geprüft — für diesen Brief liegt kein Ergebnis vor. Erst ein neuer Entwurf wird wieder geprüft.") }}
+                </p>
+              {% endif %}
+            {% elif msg.guide_review or not msg.guide_ok %}
+              {# The objecting branch is entered on *either* signal, never on the
+                 flag alone. A row carrying breaches must not be printed as an
+                 approval, and a row flagged as a breach with nothing under it is
+                 an accusation the reader cannot check — so it says which of the
+                 two it is instead of rendering an empty list.
+
+                 What is printed comes from ``guide_breaches``, which keeps only
+                 the pairs that have both halves. A pair with one quote missing
+                 renders as „…“ verstößt gegen „“ — the same unsettleable
+                 accusation, arrived at from the other side — so it falls back to
+                 the same sentence the empty list gets. #}
+              {% set breaches = msg.guide_breaches %}
+              <div class="guidecheck guidecheck--breach">
+                <span class="impulse__label">{{ t("Verstößt gegen den Guide") }} — {{ t("gelesen von") }} {{ msg.guide_reviewed_by }}</span>
+                {% if breaches %}
+                  <ul>
+                    {% for breach in breaches %}
+                      <li>
+                        <span class="guidecheck__draft">„{{ breach["draft"] }}“</span>
+                        <span class="guidecheck__against">{{ t("verstößt gegen") }}</span>
+                        <span class="guidecheck__line">„{{ breach["guide"] }}“</span>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <span class="guidecheck__verdict">{{ t("Die beanstandeten Stellen sind nicht mitgespeichert.") }}</span>
+                {% endif %}
+              </div>
+            {% else %}
+              <div class="guidecheck guidecheck--clean">
+                <span class="impulse__label">{{ t("Gegen den Guide geprüft von") }} {{ msg.guide_reviewed_by }}</span>
+                <span class="guidecheck__verdict">{{ t("kein Verstoß gegen den Guide") }}</span>
+              </div>
+            {% endif %}
             <p class="letter__caveat">
               {{ t("Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.") }}
             </p>

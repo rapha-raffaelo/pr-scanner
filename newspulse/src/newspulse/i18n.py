@@ -374,6 +374,28 @@ _EN: dict[str, str] = {
     "keine Einwände": "no objections",
     "Nicht gegengelesen — es ist kein Zweitmodell hinterlegt.":
         "Not cross-checked: no second model is configured.",
+    # The guide check, which is a different question from the crosscheck and says
+    # so in its own words: a No-Go is not an objection a model weighed, it is a
+    # rule the client wrote down. "Verstoß" rather than "Einwand" throughout, and
+    # "breach" rather than "concern" in English, for the same reason.
+    "Gegen den Guide geprüft von": "Checked against the guide by",
+    "kein Verstoß gegen den Guide": "no breach of the guide",
+    "Verstößt gegen den Guide": "Breaches the guide",
+    "verstößt gegen": "breaches",
+    "Nicht gegen den Guide geprüft — für diesen Mandanten ist kein Guide hinterlegt.":
+        "Not checked against the guide: no guide is stored for this client.",
+    # The same state for a mandate that *does* have a guide. Deliberately names
+    # no cause: the worker reports a missing second model, an unreachable
+    # provider and an unusable reply as one outcome, and a page that guesses
+    # between them sends the reader to fix the wrong thing. It names no *log*
+    # either — a letter written before this feature existed has nothing in one —
+    # and offers the only remedy that holds for every letter in this state.
+    "Nicht gegen den Guide geprüft — für diesen Brief liegt kein Ergebnis vor. Erst ein neuer Entwurf wird wieder geprüft.":
+        "Not checked against the guide: no result is on file for this letter. "
+        "Only a new draft gets checked again.",
+    "Die beanstandeten Stellen sind nicht mitgespeichert.":
+        "The passages objected to were not stored with it.",
+    "Guide hinterlegen": "Add a guide",
     "Bezieht sich auf": "Refers to",
     "Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.":
         "Written from headlines and feed snippets, not from the articles "
