@@ -252,17 +252,20 @@ def _first_drafts(session: Session, client: Client) -> None:
                 )
             except Exception as exc:  # noqa: BLE001 — no key, no network, no loss
                 _log.info("first message for %r not cross-checked: %s", client.name, exc)
-            # No guide check here, and not an oversight: this runs once, on a
-            # mandate created moments ago by ``_parse_client_form``, which has no
-            # field for ``comms_guide`` — so there is no guide to read the letter
-            # against and ``guide.check_guide`` would return the not-checked state
-            # without calling a model. The letter is stored as not-checked, which
-            # is what it is. If a mandate ever arrives with a guide already on it
-            # (an import, a template, a re-onboarding), this call has to grow the
-            # same ``_guide_check`` the advisory worker runs.
+            # And against the client's own guide, the same pass the advisory
+            # worker runs. Today a mandate created by ``_parse_client_form`` has
+            # no ``comms_guide``, so this costs nothing — ``guide_check`` returns
+            # the not-checked state without reaching a model. It is wired anyway
+            # because the day a mandate does arrive with a guide on it (an import,
+            # a template, a re-onboarding) this letter would otherwise be the one
+            # nobody ever read against it, and the page would say so about a
+            # mandate that had a guide all along. A comment cannot enforce that;
+            # the call can.
+            guide_verdict, guide_checked_by = outreach.guide_check(client, message)
             outreach.store(
                 session, client, first, message, target,
                 review=review, reviewed_by=reviewed_by or "",
+                guide_verdict=guide_verdict, guide_checked_by=guide_checked_by,
             )
             _log.info("first message for %r written", client.name)
     except Exception:  # noqa: BLE001

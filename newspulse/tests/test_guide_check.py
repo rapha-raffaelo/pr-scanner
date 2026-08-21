@@ -356,7 +356,6 @@ def test_a_failed_check_returns_the_not_checked_state_and_logs_at_error(
     verdict on it, and a defect must not be silent."""
     from newspulse import gemini
     from newspulse.analyzer import BackendError
-    from newspulse.web.routes import advisory
 
     client, _ = _mandate(session)
 
@@ -366,8 +365,8 @@ def test_a_failed_check_returns_the_not_checked_state_and_logs_at_error(
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(gemini, "generate", _explode)
 
-    with caplog.at_level(logging.ERROR, logger="newspulse.web.routes.advisory"):
-        result = advisory._guide_check(client, _letter())
+    with caplog.at_level(logging.ERROR, logger="newspulse.outreach"):
+        result = outreach.guide_check(client, _letter())
 
     assert result == guide.NOT_CHECKED
     assert "guide check failed" in caplog.text
@@ -380,18 +379,15 @@ def test_no_second_model_is_a_warning_rather_than_an_error(
     and the crosscheck already puts that sentence on the page — at ERROR it would
     be noise over a defect that is not there."""
     from newspulse import config
-    from newspulse.web.routes import advisory
 
     client, _ = _mandate(session)
     monkeypatch.setattr(config, "review_configured", lambda: False)
 
-    with caplog.at_level(logging.DEBUG, logger="newspulse.web.routes.advisory"):
-        result = advisory._guide_check(client, _letter())
+    with caplog.at_level(logging.DEBUG, logger="newspulse.outreach"):
+        result = outreach.guide_check(client, _letter())
 
     assert result == guide.NOT_CHECKED
-    levels = [
-        r.levelno for r in caplog.records if r.name == "newspulse.web.routes.advisory"
-    ]
+    levels = [r.levelno for r in caplog.records if r.name == "newspulse.outreach"]
     assert levels == [logging.WARNING]
     assert "guide check failed" not in caplog.text
 
@@ -401,7 +397,6 @@ def test_the_letter_is_checked_in_the_form_it_will_be_stored_in(session, monkeyp
     beside it, and ``outreach.store`` writes the dash-free text. Checking the
     draft before that step would quote a sentence that is nowhere on the page."""
     from newspulse import gemini
-    from newspulse.web.routes import advisory
 
     client, _ = _mandate(session)
     seen: list[str] = []
@@ -413,7 +408,7 @@ def test_the_letter_is_checked_in_the_form_it_will_be_stored_in(session, monkeyp
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(gemini, "generate", _capture)
 
-    advisory._guide_check(client, _letter("Die Verwahrkette — geprüft — steht offen."))
+    outreach.guide_check(client, _letter("Die Verwahrkette — geprüft — steht offen."))
 
     assert "Die Verwahrkette — geprüft — steht offen." not in seen[0]
     assert "Die Verwahrkette, geprüft, steht offen." in seen[0]
@@ -461,7 +456,7 @@ def test_a_failing_guide_check_leaves_the_crosscheck_and_the_letter_intact(
     )
 
     advisory._writing.acquire()
-    with caplog.at_level(logging.ERROR, logger="newspulse.web.routes.advisory"):
+    with caplog.at_level(logging.ERROR, logger="newspulse.outreach"):
         no_background_message(client_id, angle_id, "Jason Nelson", "Börsen-Zeitung")
     advisory._last_message_error.pop(client_id, None)
 
@@ -964,7 +959,7 @@ def test_a_mandate_with_a_guide_is_not_told_its_guide_is_missing(factory, web):
 
     assert "Nicht gegen den Guide geprüft" in body
     assert "kein Guide hinterlegt" not in body
-    assert "die Prüfung ist nicht durchgelaufen" in body
+    assert "liegt kein Ergebnis vor" in body
     assert "guidecheck--none" in body
 
 
@@ -1132,6 +1127,97 @@ def test_a_letter_with_the_columns_at_their_defaults_renders_the_not_checked_sta
     assert "Nicht gegen den Guide geprüft" in resp.text
 
 
+def test_a_letter_written_before_the_check_is_not_sent_to_a_log_about_it(
+    factory, web
+):
+    """The largest population in the not-checked state is letters this feature
+    never saw — and this mandate *has* a guide, so the page falls to the branch
+    that used to say "Details stehen im Log". Nothing ran for this letter and
+    nothing was ever logged about it: that sends the consultant to search for a
+    line that was never written. The remedy that holds for every letter here is a
+    redraft, because a stored letter never gains a verdict after the fact."""
+    with factory() as session:
+        client, angle = _mandate(session)  # _GUIDE is stored on this mandate
+        session.add(
+            Outreach(                      # a row as the previous revision wrote it
+                angle_id=angle.id,
+                client_id=client.id,
+                generated_at=dt.datetime.now(dt.UTC),
+                message="Der Brief.",
+            )
+        )
+        session.commit()
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "Nicht gegen den Guide geprüft" in body
+    assert "Details stehen im Log" not in body
+    assert "Erst ein neuer Entwurf wird wieder geprüft." in body
+
+
+def test_a_half_stored_pair_is_not_rendered_as_an_empty_quote(factory, web):
+    """A breach with one quote missing would print „…“ verstößt gegen „“ under a
+    red heading — an accusation the reader cannot settle by looking, which is the
+    one thing this block exists to let them do. ``GuideBreach`` makes it
+    unreachable through ``store``; a hand-edited row and the next writer are not
+    covered by that, and the empty-list branch already carries the sentence for
+    exactly this case."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = _stored(session, client, angle, body=_OFFENDING)
+        row.guide_reviewed_by = "gemini-2.5-flash"
+        row.guide_review = [{"draft": "Acht Prozent Rendite."}]  # the guide line is gone
+        row.guide_ok = False
+        session.commit()
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "„“" not in body
+    assert "Die beanstandeten Stellen sind nicht mitgespeichert." in body
+    assert "kein Verstoß gegen den Guide" not in body
+
+
+def test_the_migration_tree_has_exactly_one_head():
+    """0021 chains from 0017 and leaves 0018-0020 free for another feature's
+    branch. Whichever of the two merges second has to be re-pointed at the
+    other's head; unnoticed, ``alembic upgrade head`` fails on the next deploy
+    rather than here."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_PROJECT_ROOT / "migrations"))
+
+    heads = ScriptDirectory.from_config(cfg).get_heads()
+
+    assert len(heads) == 1, f"two migration heads: {heads}"
+
+
+def test_a_verdict_with_no_model_name_is_not_attributed_to_an_injected_one(session):
+    """The name is printed under the letter, so it must not claim a provenance the
+    row cannot know. "(injiziertes Modell)" says the caller brought its own
+    callable; a name that is merely absent says nothing of the kind, and a blank
+    ``NEWSPULSE_GEMINI_MODEL`` used to arrive here and be printed as that claim."""
+    client, angle = _mandate(session)
+
+    row = _stored(
+        session,
+        client,
+        angle,
+        body=_OFFENDING,
+        verdict=GuideVerdict(
+            ok=False,
+            breaches=[_breach("Acht Prozent Rendite.", "Keine Renditeversprechen.")],
+        ),
+        checked_by="",
+    )
+
+    assert row.guide_reviewed_by == guide.UNNAMED_MODEL
+    assert row.guide_reviewed_by != guide.INJECTED_MODEL
+
+
 # --- Both languages --------------------------------------------------------------
 
 
@@ -1143,8 +1229,8 @@ def test_a_letter_with_the_columns_at_their_defaults_renders_the_not_checked_sta
         "Verstößt gegen den Guide",
         "verstößt gegen",
         "Nicht gegen den Guide geprüft — für diesen Mandanten ist kein Guide hinterlegt.",
-        "Nicht gegen den Guide geprüft — die Prüfung ist nicht durchgelaufen. "
-        "Details stehen im Log.",
+        "Nicht gegen den Guide geprüft — für diesen Brief liegt kein Ergebnis vor. "
+        "Erst ein neuer Entwurf wird wieder geprüft.",
         "Die beanstandeten Stellen sind nicht mitgespeichert.",
         "Guide hinterlegen",
     ],

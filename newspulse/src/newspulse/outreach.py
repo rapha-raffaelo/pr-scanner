@@ -284,6 +284,62 @@ def crosscheck(
     return review, config.review_model()
 
 
+def _as_stored(message: PersonalMessage) -> PersonalMessage:
+    """The letter as :func:`store` will write it down.
+
+    A breach quotes the draft's sentence verbatim so it can be found in the letter
+    beside it, and ``store`` runs every letter through :func:`newspulse.prose.plain`
+    first. Checking the text before that step would let a breach quote a sentence
+    with an em dash in it — the one artefact ``plain`` exists to remove, and the
+    one the models relapse into — which is then nowhere to be found in the stored
+    letter, and a quote that cannot be located is the thing this pair of quotes
+    exists to prevent.
+
+    Only the guide check reads this. :func:`crosscheck` above deliberately keeps
+    the raw draft: it reports the dash *itself* as a concern, and normalising
+    first would take away the very thing it is looking for.
+    """
+    return message.model_copy(
+        update={
+            "subject": prose.plain(message.subject),
+            "message": prose.plain(message.message),
+        }
+    )
+
+
+def guide_check(
+    client: Client, message: PersonalMessage
+) -> tuple[GuideVerdict | None, str]:
+    """Read the letter against this client's own guide, and never raise.
+
+    Fault-isolated exactly like :func:`crosscheck`, and separately from it: the
+    two are different questions asked of different prompts, so a failure in one
+    must leave the other's answer standing. The letter is written by this point
+    and it is worth more than any verdict on it.
+
+    Every outcome is :data:`newspulse.guide.NOT_CHECKED` — the same pair a client
+    with no stored guide gets — but the log tells the two apart: a provider that
+    failed or answered with nonsense is a defect and says so at ERROR, while a
+    deployment with no second model configured is a setting nobody made, is not
+    news at ERROR on every letter written, and is already on the page in the
+    crosscheck's own words (it fails first, on the same missing key, and writes
+    the sentence the consultant actually reads).
+
+    Public and living here rather than beside one of its callers, because there
+    are two of them — the advisory worker and onboarding's first letter — and a
+    writer that reaches :func:`store` without passing through this is a letter
+    whose guide went unread with nothing on the page saying so.
+    """
+    try:
+        return guide.check_guide(client, _as_stored(message))
+    except guide.NoSecondModel as exc:
+        _log.warning("guide check skipped for %r: %s", client.name, exc)
+        return guide.NOT_CHECKED
+    except Exception as exc:  # noqa: BLE001 — any backend or parse failure is one state
+        _log.error("guide check failed for %r: %s", client.name, exc)
+        return guide.NOT_CHECKED
+
+
 def _apply_guide_verdict(
     row: Outreach, verdict: GuideVerdict | None, checked_by: str
 ) -> None:
