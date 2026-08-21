@@ -27,7 +27,7 @@
 
   {% for line in progress.sections %}
     <div class="rail__sect">
-      <span class="rail__tick{% if line.state == 'fertig' %} is-done{% elif line.state == 'teilweise' %} is-part{% endif %}"></span>
+      <span class="rail__tick{% if line.is_done %} is-done{% elif line.is_partial %} is-part{% endif %}"></span>
       <a href="#s-{{ line.section.key }}">{{ t(line.section.short) }}</a>
       <span class="rail__cnt">{{ line.settled }}/{{ line.total }}</span>
     </div>

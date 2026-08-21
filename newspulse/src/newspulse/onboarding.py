@@ -35,12 +35,7 @@ from enum import StrEnum
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Client, OnboardingAnswer
-
-#: Who a hand-typed answer is attributed to. DEC-1 option A: the consultant sits
-#: in the kick-off call and transcribes. A name rather than a boolean, because
-#: option B (the client answers directly) puts a different name here.
-ANSWERED_BY_DEFAULT = "Berater"
+from .models import ANSWERED_BY_DEFAULT, Client, OnboardingAnswer
 
 #: List answers are stored as one text column, one entry per line. A child table
 #: for two or three names per mandate would buy nothing that ``splitlines`` does
@@ -137,6 +132,13 @@ class Question:
     @property
     def is_list(self) -> bool:
         return self.kind is InputKind.LISTE
+
+    @property
+    def is_prose(self) -> bool:
+        """A paragraph rather than a line. Read by the template, which would
+        otherwise compare the enum against the bare string ``'absatz'`` and fall
+        silently through to a one-line input if the member were ever renamed."""
+        return self.kind is InputKind.ABSATZ
 
 
 SECTIONS: tuple[Section, ...] = (
@@ -526,6 +528,17 @@ class SectionProgress:
         if self.settled >= self.total:
             return Progress.FERTIG
         return Progress.TEILWEISE if self.settled else Progress.OFFEN
+
+    #: The rail asks for these rather than comparing ``state`` against a string:
+    #: the enum is the value set, and a renamed member should break here where the
+    #: fixture tests run, not silently draw the wrong tick.
+    @property
+    def is_done(self) -> bool:
+        return self.state is Progress.FERTIG
+
+    @property
+    def is_partial(self) -> bool:
+        return self.state is Progress.TEILWEISE
 
 
 @dataclass(frozen=True, slots=True)

@@ -40,12 +40,14 @@ def upgrade() -> None:
         sa.Column("key", sa.String(length=64), nullable=False),
         sa.Column("value", sa.Text(), nullable=False, server_default=""),
         sa.Column("answered_at", sa.DateTime(timezone=True), nullable=False),
+        # The literal is spelled out rather than imported: a migration is a
+        # historical record and must keep saying what it said the day it ran, even
+        # after ``models.ANSWERED_BY_DEFAULT`` becomes a different name (DEC-1
+        # option B). That constant is where the application reads it from.
         sa.Column(
             "answered_by", sa.String(length=80), nullable=False, server_default="Berater"
         ),
-        sa.Column(
-            "skipped", sa.Boolean(), nullable=False, server_default=sa.text("0")
-        ),
+        sa.Column("skipped", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.UniqueConstraint("client_id", "key", name="uq_onboarding_answers_key"),
     )
     op.create_index(

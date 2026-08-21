@@ -59,7 +59,7 @@
        and a placeholder repeating it would be the same sentence twice, one of
        them vanishing the moment anyone types. The list field is the exception —
        there the placeholder says what the box does, which the help does not. #}
-    {% if question.kind == 'absatz' %}
+    {% if question.is_prose %}
       <textarea id="{{ field_id }}" name="value">{{ answer.value if answered else "" }}</textarea>
     {% elif question.is_list %}
       <input type="text" id="{{ field_id }}" name="value" value=""

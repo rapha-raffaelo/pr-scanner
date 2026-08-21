@@ -14,6 +14,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 from newspulse import config
@@ -26,6 +27,20 @@ def _alembic_config() -> Config:
     cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(_PROJECT_ROOT / "migrations"))
     return cfg
+
+
+def test_the_migration_chain_has_exactly_one_head():
+    """Two heads make ``alembic upgrade head`` fail, and they arrive quietly.
+
+    The revision ids are not contiguous — a story numbers its migration after
+    itself and parents whatever was at head — so nothing about the filenames says
+    whether two sibling branches both hung off the same parent. Merging them is
+    when it would otherwise be noticed, on a database that then refuses to
+    upgrade. This is the cheap check that catches it at the merge instead.
+    """
+    heads = ScriptDirectory.from_config(_alembic_config()).get_heads()
+
+    assert len(heads) == 1, f"the migration chain forked: {sorted(heads)}"
 
 
 def test_alembic_upgrade_creates_schema_and_round_trips_arrays(tmp_path, monkeypatch):

@@ -740,6 +740,14 @@ class ClientFact(Base):
     )
 
 
+#: Who a hand-typed kick-off answer is attributed to. DEC-1 option A: the
+#: consultant sits in the call and transcribes. A name rather than a boolean,
+#: because option B (the client answers directly) puts a different name here —
+#: which is exactly when a second copy of this literal would drift, so the column
+#: default and :mod:`newspulse.onboarding` both read it from here.
+ANSWERED_BY_DEFAULT = "Berater"
+
+
 class OnboardingAnswer(Base):
     """One answer from the kick-off questionnaire, as it was given.
 
@@ -778,7 +786,9 @@ class OnboardingAnswer(Base):
     #: Who put it there. The consultant transcribing a call today; the client
     #: itself once DEC-1 option B is built, which is why this is a name and not a
     #: boolean.
-    answered_by: Mapped[str] = mapped_column(String(80), nullable=False, default="Berater")
+    answered_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default=ANSWERED_BY_DEFAULT
+    )
     skipped: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
@@ -846,6 +856,7 @@ __all__ = [
     "Angle",
     "ClientFact",
     "OnboardingAnswer",
+    "ANSWERED_BY_DEFAULT",
     "Outreach",
     "TopicHit",
     "GuideSource",
