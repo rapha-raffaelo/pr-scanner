@@ -37,7 +37,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -370,7 +370,6 @@ _LABELS: dict[MetricKey, str] = {
 FORBIDDEN_FIGURES: frozenset[str] = frozenset(
     {
         "reichweite",
-        "reach",
         "impressionen",
         "impressions",
         "kontaktchancen",
@@ -525,6 +524,17 @@ class MetricValue:
                 f"{self.key!r} is not a figure this tool produces; "
                 f"permitted: {', '.join(sorted(MetricKey))}"
             )
+        # The key is not the only thing that reaches the page. Both free-text
+        # fields travel into the document beside the number, so a figure labelled
+        # COVERAGE and captioned "Geschätzte Reichweite" would state the forbidden
+        # figure with the guard intact. They are checked against the same list.
+        if is_forbidden(self.note):
+            raise ForbiddenFigure(f"a metric's note may not name {self.note!r}")
+        # A key message is the mandate's own wording quoted back at it: a guide
+        # whose message is "Reichweite in der Zielgruppe" is a sentence the client
+        # wrote, not a figure this tool produced. Every other subject is ours.
+        if self.key is not MetricKey.MESSAGE and is_forbidden(self.subject):
+            raise ForbiddenFigure(f"a metric's subject may not name {self.subject!r}")
         if self.figure is None and not self.note.strip():
             raise ValueError("a missing figure has to say why it is missing")
 
@@ -564,7 +574,15 @@ class PeriodMetrics:
 
     @property
     def values(self) -> tuple[MetricValue, ...]:
-        """Every figure actually produced. The set a finding may cite, and no more."""
+        """The *period-level* figures actually produced, and no more.
+
+        Not the whole citable set. :func:`attributed_coverage` and
+        :func:`message_pull_through` are separate calls, and what they return is
+        just as citable — a finding about coverage "aus eigener Ansprache" is the
+        strongest sentence a report can carry, and a whitelist built from this
+        property alone would reject it. A caller checking what a finding may cite
+        wants the union of all three.
+        """
         stated = [self.coverage, self.share_of_voice, self.lead_media, *self.tonality]
         return tuple(value for value in stated if value.figure is not None)
 
@@ -608,6 +626,27 @@ def _rows(session: Session, client_ids: Sequence[int], period: Period) -> list[_
         )
         .order_by(Article.published_at)
     ).all()
+    return _to_rows(found)
+
+
+def _rows_by_id(session: Session, analysis_ids: Sequence[int]) -> list[_Row]:
+    """The cited rows as they stand *now*, with no period and no client filter.
+
+    A recomputation is allowed to see only the ids the figure named. That is what
+    makes it a check on the figure rather than a second computation of it.
+    """
+    if not analysis_ids:
+        return []
+    found = session.execute(
+        select(Analysis, Article)
+        .join(Article, Article.id == Analysis.article_id)
+        .where(Analysis.id.in_(list(analysis_ids)), visible_coverage())
+        .order_by(Article.published_at)
+    ).all()
+    return _to_rows(found)
+
+
+def _to_rows(found: Sequence[tuple[Analysis, Article]]) -> list[_Row]:
     return [
         _Row(
             analysis_id=analysis.id,
@@ -649,10 +688,16 @@ def _has_coverage_before(session: Session, client_id: int, moment: dt.datetime) 
     )
 
 
-def _voice_share(rows: Sequence[_Row], client_id: int) -> float:
-    """The mandate's part of its own comparison set, 0..1."""
+def _voice_share(rows: Sequence[_Row], client_id: int) -> float | None:
+    """The mandate's part of its own comparison set, 0..1, or ``None`` for silence.
+
+    0/5 is a share. 0/0 is not: a period in which nobody in the comparison set was
+    written about at all holds no conversation to own a part of, and stating that
+    as "0 % Anteil" turns the next period into a rise out of nothing. The same
+    distinction the empty month makes, one level down.
+    """
     if not rows:
-        return 0.0
+        return None
     return sum(1 for row in rows if row.client_id == client_id) / len(rows)
 
 
@@ -782,11 +827,26 @@ def _voice_metric(
             ),
         )
     rows = _rows(session, members, period)
+    share = _voice_share(rows, client.id)
+    if share is None:
+        return MetricValue(
+            key=MetricKey.SHARE_OF_VOICE,
+            client_id=client.id,
+            figure=None,
+            note=(
+                "Im Zeitraum wurde weder über den Mandanten noch über einen der "
+                "hinterlegten Wettbewerber geschrieben. Ohne Marktgespräch gibt es "
+                "keinen Anteil daran."
+            ),
+        )
     before = _rows(session, members, period.previous) if comparable else None
     return MetricValue(
         key=MetricKey.SHARE_OF_VOICE,
         client_id=client.id,
-        figure=_voice_share(rows, client.id),
+        figure=share,
+        # ``None`` where the whole comparison set was silent: the gate above only
+        # asks whether *this mandate* has an archive, and a set nobody wrote about
+        # last month is a second way for the baseline not to exist.
         previous=None if before is None else _voice_share(before, client.id),
         # The whole comparison, not only the mandate's own rows: the denominator is
         # part of the figure, so a reader recomputing it needs both halves.
@@ -845,20 +905,53 @@ def attributed_coverage(
         client_id=client.id,
         figure=float(len(matched)),
         previous=previous,
+        note=_unnamed_note(letters),
         analysis_ids=_ids(matched),
         outreach_ids=letter_ids,
     )
 
 
+def _unnamed_note(letters: Sequence[Outreach]) -> str:
+    """What letters with no named recipient did to the figure, said out loud.
+
+    A German feed carries a byline about one time in ten, and a pitch addressed to
+    an outlet rather than a person is a normal thing to write — but it can never be
+    tied to one, so it lowers this figure without appearing in it. Naming how many
+    is the difference between a low number that is a result and a low number that
+    is a limit of the evidence.
+    """
+    unnamed = sum(1 for letter in letters if not (letter.journalist or "").strip())
+    if not unnamed:
+        return ""
+    return (
+        f"{unnamed} von {len(letters)} freigegebenen Anschreiben gingen an kein "
+        "namentliches Postfach und sind deshalb keiner Zeile zurechenbar."
+    )
+
+
 def _attributed_figure(
     session: Session, client: Client, period: Period, window: dt.timedelta
-) -> float:
-    """The same count over an earlier period, for the comparison. Ids not kept:
-    a report cites the evidence for this month, not for the one before it."""
+) -> float | None:
+    """The same count over an earlier period, for the comparison.
+
+    ``None`` wherever :func:`attributed_coverage` would also have refused a figure
+    — no coverage to attribute, or no released letter that could have caused any.
+    A zero here would render the same state of the world as "keine Frage" in one
+    period and as a hard number in the other, and the difference between the two
+    would read as a rise against a month where attribution was never askable.
+
+    Ids are not kept: a report cites the evidence for this month, not the one
+    before it.
+    """
+    rows = _rows(session, [client.id], period)
+    if not rows:
+        return None
     letters = outreach.released_letters(
         session, client.id, since=period.start - window, until=period.end
     )
-    matched, _ = _attribute(_rows(session, [client.id], period), letters, window)
+    if not letters:
+        return None
+    matched, _ = _attribute(rows, letters, window)
     return float(len(matched))
 
 
@@ -964,33 +1057,49 @@ def _message_metric(
     )
 
 
+def _keeps(metric: MetricValue) -> Callable[[_Row], bool]:
+    """The rule that put a row behind ``metric``, rebuilt from the metric itself.
+
+    Re-applied on recomputation rather than assumed. A count of surviving ids
+    agrees with itself even when the rule that selected them has drifted — a
+    changed outlet tier, a corrected tone, a reworded message — and that drift is
+    exactly the failure a reader opening the cited rows could not otherwise see.
+    """
+    if metric.key is MetricKey.LEAD_MEDIA:
+        return lambda row: outlets.tier_for(row.source) == LEAD_MEDIA_TIER
+    if metric.key is MetricKey.TONALITY:
+        return lambda row: row.tonality.value == metric.subject
+    if metric.key is MetricKey.MESSAGE:
+        probe = coach.message_matcher(metric.subject)
+        return lambda row: coach.carries(row.text, probe)
+    # Coverage — and attributed coverage, whose second half is the cited letters
+    # rather than these rows — is the count itself: still being visible coverage
+    # *is* the rule, and _rows_by_id has already applied it.
+    return lambda row: True
+
+
 def recompute(session: Session, metric: MetricValue) -> float | None:
     """Re-derive a figure from the ids it cited, and from nothing else.
 
     The check the whole layer rests on: if the number and the evidence disagree,
     the evidence wins. It reads the cited rows as they are *now*, so a figure whose
     articles were since dismissed comes back smaller — which is what lets a report
-    notice that the ground under a claim moved instead of restating it.
+    notice that the ground under a claim moved instead of restating it — and it
+    re-applies the rule that picked them rather than trusting that it still holds.
 
     Returns ``None`` for a metric that states no figure.
     """
     if metric.figure is None:
         return None
-    if not metric.analysis_ids:
-        return 0.0
-    surviving = session.execute(
-        select(Analysis.id, Analysis.client_id).where(
-            Analysis.id.in_(list(metric.analysis_ids)), visible_coverage()
-        )
-    ).all()
+    rows = _rows_by_id(session, metric.analysis_ids)
     if metric.key is MetricKey.SHARE_OF_VOICE:
-        if not surviving:
-            return 0.0
-        mine = sum(1 for _, client_id in surviving if client_id == metric.client_id)
-        return mine / len(surviving)
-    # Every other figure is a count of the rows behind it; that is what makes it
-    # checkable by a reader who opens them.
-    return float(len(surviving))
+        # A share whose whole comparison has gone is not a share; 0.0 is returned
+        # so the check *disagrees* with the stated figure rather than reporting
+        # "no figure", which is what a caller reads as "nothing to check".
+        share = _voice_share(rows, metric.client_id)
+        return 0.0 if share is None else share
+    keeps = _keeps(metric)
+    return float(sum(1 for row in rows if keeps(row)))
 
 
 __all__ = [
