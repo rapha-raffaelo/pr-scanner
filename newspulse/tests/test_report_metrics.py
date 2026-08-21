@@ -8,12 +8,14 @@ disagrees with the arithmetic instead of agreeing with the bug.
 from __future__ import annotations
 
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from newspulse import config
 from newspulse import outreach as ledger
 from newspulse.models import (
     Analysis,
@@ -25,6 +27,8 @@ from newspulse.models import (
     Outreach,
     Tonality,
 )
+from newspulse.pitch import PitchTarget
+from newspulse.schemas import PersonalMessage
 from newspulse.reporting import (
     FORBIDDEN_FIGURES,
     Direction,
@@ -32,6 +36,7 @@ from newspulse.reporting import (
     MetricKey,
     MetricValue,
     Period,
+    _voice_metric,
     attributed_coverage,
     is_forbidden,
     message_pull_through,
@@ -195,6 +200,30 @@ def test_recomputing_attributed_coverage_from_its_ids_reproduces_the_figure(
     assert recompute(session, value) == 1
 
 
+def test_recomputing_re_applies_the_rule_that_selected_the_rows(session, mandate):
+    """Not a count of surviving ids: that agrees with itself even when the rule
+    that picked them has drifted, and a wrong tier is exactly what a reader opening
+    the cited rows could not otherwise see."""
+    client, _ = mandate
+    lead = period_metrics(session, client, JULY).lead_media
+    assert lead.figure == 2
+    moved = session.get(Analysis, lead.analysis_ids[0])
+    session.get(Article, moved.article_id).source = "Kosmetik Journal"
+    session.commit()
+
+    assert recompute(session, lead) == 1
+
+
+def test_recomputing_a_tonality_figure_re_applies_the_tone(session, mandate):
+    client, _ = mandate
+    by_tone = {v.subject: v for v in period_metrics(session, client, JULY).tonality}
+    neutral = by_tone["neutral"]
+    session.get(Analysis, neutral.analysis_ids[0]).tonality = Tonality.NEGATIV
+    session.commit()
+
+    assert recompute(session, neutral) == 1
+
+
 def test_a_figure_shrinks_with_its_evidence_when_a_cited_article_is_dismissed(
     session, mandate
 ):
@@ -236,6 +265,41 @@ def test_a_company_in_the_same_industry_never_enters_the_share_by_itself(
     assert period_metrics(session, client, JULY).share_of_voice.figure == pytest.approx(
         4 / 5
     )
+
+
+def test_a_silent_comparison_set_leaves_no_baseline_rather_than_a_zero_percent(
+    session, mandate
+):
+    """0/5 is a share. 0/0 is not, and a "0 % Anteil" baseline would turn this
+    month into a rise out of nothing."""
+    client, _ = mandate
+    # Covered in May, so the mandate has an archive; nobody in the set is written
+    # about in June, so the previous window holds no conversation at all.
+    _piece(session, client, "MAI", when=dt.datetime(2026, 5, 20, tzinfo=dt.UTC))
+    session.commit()
+
+    value = period_metrics(session, client, JULY).share_of_voice
+
+    assert value.figure == pytest.approx(4 / 5)
+    assert value.previous is None
+    assert value.direction is Direction.UNKNOWN
+
+
+def test_a_period_in_which_nobody_in_the_set_was_written_about_gets_no_share(session):
+    client = Client(name="Alpha AG", industry="Fintech")
+    rival = Client(name="Beta AG", industry="Fintech", is_competitor=True)
+    session.add_all([client, rival])
+    session.flush()
+    client.competitors.append(rival)
+    session.commit()
+    august = Period(
+        dt.datetime(2026, 8, 1, tzinfo=dt.UTC), dt.datetime(2026, 9, 1, tzinfo=dt.UTC)
+    )
+
+    value = _voice_metric(session, client, august, comparable=False)
+
+    assert value.figure is None
+    assert "Marktgespräch" in value.note
 
 
 def test_a_mandate_without_a_comparison_set_gets_no_share_and_says_why(session):
@@ -308,6 +372,55 @@ def test_an_equal_month_reads_as_unchanged(session, mandate):
 
     assert (coverage.figure, coverage.previous) == (4, 4)
     assert coverage.direction is Direction.FLAT
+
+
+# --- The window itself -----------------------------------------------------------
+
+
+def test_a_calendar_month_is_bounded_by_local_midnight(monkeypatch):
+    """The reader's month, not the server's: a piece filed at 00:30 Berlin time on
+    the first belongs to the month a client would put it in."""
+    monkeypatch.setattr(config, "LOCAL_ZONE", ZoneInfo("Europe/Berlin"))
+
+    july = Period.month(2026, 7)
+
+    assert july.start == dt.datetime(2026, 6, 30, 22, tzinfo=dt.UTC)  # CEST is +2
+    assert july.end == dt.datetime(2026, 7, 31, 22, tzinfo=dt.UTC)
+
+
+def test_a_december_month_rolls_over_into_the_next_january(monkeypatch):
+    monkeypatch.setattr(config, "LOCAL_ZONE", ZoneInfo("Europe/Berlin"))
+
+    december = Period.month(2026, 12)
+
+    assert december.start == dt.datetime(2026, 11, 30, 23, tzinfo=dt.UTC)  # CET is +1
+    assert december.end == dt.datetime(2026, 12, 31, 23, tzinfo=dt.UTC)
+
+
+def test_a_month_that_crosses_a_dst_change_keeps_its_local_midnights(monkeypatch):
+    """A fixed offset would shift the far end of the month by an hour and
+    misattribute anything filed near local midnight on the last day."""
+    monkeypatch.setattr(config, "LOCAL_ZONE", ZoneInfo("Europe/Berlin"))
+
+    march = Period.month(2026, 3)  # summer time starts on the 29th
+
+    assert march.start == dt.datetime(2026, 2, 28, 23, tzinfo=dt.UTC)
+    assert march.end == dt.datetime(2026, 3, 31, 22, tzinfo=dt.UTC)
+    assert march.length == dt.timedelta(days=31, hours=-1)
+
+
+def test_ending_windows_the_days_before_a_moment():
+    end = dt.datetime(2026, 7, 13, 9, tzinfo=dt.UTC)
+
+    window = Period.ending(end, days=12)
+
+    assert (window.start, window.end) == (dt.datetime(2026, 7, 1, 9, tzinfo=dt.UTC), end)
+    assert window.length == dt.timedelta(days=12)
+
+
+def test_a_period_that_ends_before_it_starts_is_refused():
+    with pytest.raises(ValueError):
+        Period(dt.datetime(2026, 8, 1, tzinfo=dt.UTC), dt.datetime(2026, 7, 1, tzinfo=dt.UTC))
 
 
 # --- An empty month --------------------------------------------------------------
@@ -470,6 +583,81 @@ def test_another_journalists_byline_is_not_attributed(session, mandate):
     assert attributed_coverage(session, client, JULY).figure == 0
 
 
+def test_a_month_without_released_letters_is_no_baseline_rather_than_a_zero(
+    session, mandate
+):
+    """"Keine Frage" in one period and a hard zero in the other would render the
+    same state of the world two ways, and the difference would read as a rise."""
+    client, _ = mandate
+    # June holds coverage but no released letter, so attribution was never askable
+    # there; July holds both.
+    _piece(session, client, "JUNI", when=dt.datetime(2026, 6, 12, tzinfo=dt.UTC))
+    _letter(session, client, "Anna Muster", released=dt.datetime(2026, 7, 2, tzinfo=dt.UTC))
+    _piece(
+        session,
+        client,
+        "JULI",
+        when=dt.datetime(2026, 7, 9, tzinfo=dt.UTC),
+        author="Anna Muster",
+    )
+    session.commit()
+
+    value = attributed_coverage(session, client, JULY)
+
+    assert value.figure == 1
+    assert value.previous is None
+    assert value.direction is Direction.UNKNOWN
+
+
+def test_letters_to_no_named_recipient_are_counted_in_the_note(session, mandate):
+    """A German feed carries a byline about one time in ten, so a low figure is
+    often a limit of the evidence rather than a result. It has to say which."""
+    client, _ = mandate
+    released = dt.datetime(2026, 7, 2, tzinfo=dt.UTC)
+    _letter(session, client, "Anna Muster", released=released)
+    _letter(session, client, "", released=released)
+    _piece(
+        session,
+        client,
+        "MIT-NAMEN",
+        when=dt.datetime(2026, 7, 9, tzinfo=dt.UTC),
+        author="Anna Muster",
+    )
+    session.commit()
+
+    value = attributed_coverage(session, client, JULY)
+
+    assert value.figure == 1
+    assert "1 von 2" in value.note
+
+
+def test_a_released_letter_is_not_overwritten_by_a_redraft(session, mandate):
+    """The report cites this row's id as the evidence for a piece of coverage. An
+    overwrite would leave the claim standing on a letter nobody ever sent."""
+    client, _ = mandate
+    sent = _letter(session, client, "Anna Muster", released=dt.datetime(2026, 7, 2, tzinfo=dt.UTC))
+    angle = session.get(Angle, sent.angle_id)
+    target = PitchTarget(
+        outlet="Handelsblatt",
+        journalist="Anna Muster",
+        reason="",
+        evidence=(),
+        about_client=0,
+    )
+
+    redraft = ledger.store(
+        session,
+        client,
+        angle,
+        PersonalMessage(subject="Neuer Betreff", message="Neuer Text.", hook=""),
+        target,
+    )
+
+    assert redraft.id != sent.id
+    assert session.get(Outreach, sent.id).message == "Nachricht"
+    assert session.get(Outreach, sent.id).released_at is not None
+
+
 def test_releasing_a_letter_twice_keeps_the_first_stamp(session, mandate):
     client, _ = mandate
     first = dt.datetime(2026, 7, 1, tzinfo=dt.UTC)
@@ -503,6 +691,30 @@ def test_message_pull_through_counts_the_coverage_carrying_each_key_message(
     assert landed.figure == 1
     assert recompute(session, landed) == 1
     assert by_message["Wachstum aus eigener Kraft"].figure == 0
+
+
+def test_one_shared_noun_is_not_the_message_landing(session, mandate):
+    """"Buchhaltung wird teurer" and "Buchhaltung ohne Papier" are opposite claims
+    about the same word. The pre-filter may count it because Claude reads what it
+    lets through; this figure goes into a client's document unread."""
+    client, _ = mandate
+    _piece(
+        session,
+        client,
+        "Buchhaltung wird teurer",
+        summary="Der Gesetzgeber verschärft die Buchhaltung.",
+    )
+    session.commit()
+
+    by_message = {v.subject: v for v in message_pull_through(session, client, JULY)}
+
+    assert by_message["Buchhaltung ohne Papier"].figure == 0
+
+
+def test_a_pull_through_figure_says_what_carrying_the_message_means(session, mandate):
+    client, _ = mandate
+    for value in message_pull_through(session, client, JULY):
+        assert "zwei ihrer tragenden Begriffe" in value.note
 
 
 def test_a_no_go_is_never_counted_as_a_key_message(session, mandate):
@@ -544,6 +756,41 @@ def test_no_metric_function_can_return_reach_impressions_or_advertising_value(
     for value in produced:
         assert not is_forbidden(value.key.value)
         assert not is_forbidden(value.label)
+        assert not is_forbidden(value.note)
+        # A key message is the client's own wording quoted back at it, so it is the
+        # one subject the guard leaves alone — and the one that never states a
+        # figure of ours.
+        if value.key is not MetricKey.MESSAGE:
+            assert not is_forbidden(value.subject)
+
+
+def test_a_forbidden_figure_cannot_be_smuggled_into_the_caption(session):
+    """The key is not the only thing that reaches the page: both free-text fields
+    travel into the document beside the number."""
+    with pytest.raises(ForbiddenFigure):
+        MetricValue(
+            key=MetricKey.COVERAGE,
+            client_id=1,
+            figure=1_200_000.0,
+            note="Geschätzte Reichweite",
+        )
+    with pytest.raises(ForbiddenFigure):
+        MetricValue(
+            key=MetricKey.COVERAGE, client_id=1, figure=1_200_000.0, subject="Reichweite"
+        )
+
+
+def test_a_clients_own_key_message_may_still_say_reichweite():
+    """A guide that says "Reichweite in der Zielgruppe" is a sentence the client
+    wrote. Refusing it would refuse the mandate its own words."""
+    value = MetricValue(
+        key=MetricKey.MESSAGE,
+        client_id=1,
+        figure=2.0,
+        subject="Reichweite in der Zielgruppe",
+    )
+
+    assert value.figure == 2.0
 
 
 def test_the_permitted_set_holds_none_of_the_forbidden_figures():
