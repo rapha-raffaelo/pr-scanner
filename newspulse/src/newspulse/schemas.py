@@ -232,6 +232,48 @@ class MessageReview(BaseModel):
     fix: str = ""
 
 
+class GuideBreach(BaseModel):
+    """One collision between a sentence in the draft and a line of the guide.
+
+    Both sides are quoted, and that is the whole point of the type: a rule breach
+    asserted in the abstract ("zu werblich") has to be taken on faith, while a
+    pair of quotes can be judged in a second by the person who is accountable for
+    the letter. It is also what keeps a breach checkable against a guide the
+    consultant wrote himself and can therefore re-read.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: The sentence from the letter, verbatim.
+    draft: str
+    #: The line of the stored guide it breaks, verbatim.
+    guide: str
+
+
+class GuideVerdict(BaseModel):
+    """A second model's read of a letter against the client's own guide.
+
+    Separate from :class:`MessageReview` on purpose. Invention and overclaiming
+    are judgements about the world and a checker weighs them; a No-Go is not a
+    judgement, because the client wrote it down. Averaging the two into one
+    verdict would let a written rule be diluted into a style note.
+
+    ``ok`` is recomputed in code from ``breaches`` (see
+    :func:`newspulse.guide.check_guide`) rather than believed, the way the
+    analyzer recomputes ``is_alert``: a reply that lists a breach and calls itself
+    fine would otherwise render as an approval.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool = True
+    #: Empty is the good case and must stay possible — a check that always finds
+    #: something is ignored by the third letter and is then worse than none.
+    #: Capped like the crosscheck's concerns: past five it is an audit, not a
+    #: verdict, and the guide it reads against is 2000 characters long.
+    breaches: list[GuideBreach] = Field(default_factory=list, max_length=5)
+
+
 # --- Coach: does the guide hold up against the actual coverage? ------------------
 
 

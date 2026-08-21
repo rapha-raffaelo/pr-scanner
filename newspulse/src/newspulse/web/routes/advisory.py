@@ -25,11 +25,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import angles, job, outreach, pitch
+from ... import angles, guide, job, outreach, pitch
 from ...db import get_session
 from ..runlock import guard as _run_guard
 from .. import themework
 from ...models import Angle, Article, Client, TopicHit
+from ...schemas import GuideVerdict, PersonalMessage
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
 
@@ -288,6 +289,35 @@ def _target_for(
     )
 
 
+def _guide_check(client: Client, message: PersonalMessage) -> tuple[GuideVerdict | None, str]:
+    """Read the letter against this client's own guide, and never raise.
+
+    Fault-isolated exactly like the crosscheck above, and separately from it: the
+    two are different questions asked of different prompts, so a failure in one
+    must leave the other's answer standing. The letter is written by this point
+    and it is worth more than any verdict on it.
+
+    A failed or unusable check returns :data:`newspulse.guide.NOT_CHECKED` — the
+    same pair a client with no stored guide gets — and says so at ERROR, because
+    the two are indistinguishable to a reader and only one of them is a defect.
+    """
+    try:
+        return guide.check_guide(client, message)
+    except Exception as exc:  # noqa: BLE001 — any backend or parse failure is one state
+        _log.error("guide check failed for %r: %s", client.name, exc)
+        return guide.NOT_CHECKED
+
+
+def _guide_state(verdict: GuideVerdict | None, checked_by: str) -> str:
+    """The three states in one line, for the log. Never "" for the clean case:
+    silence is what the not-checked state already looks like."""
+    if verdict is None:
+        return "not checked"
+    if verdict.ok:
+        return f"no breaches, read by {checked_by}"
+    return f"{len(verdict.breaches)} breach(es), read by {checked_by}"
+
+
 def _run_outreach(client_id: int, angle_id: int, journalist: str, outlet: str) -> None:
     """Write one personalised message on a worker thread; always release the lock."""
     try:
@@ -315,14 +345,20 @@ def _run_outreach(client_id: int, angle_id: int, journalist: str, outlet: str) -
                         f"gegengelesen: {exc}"
                     )
                     _log.warning("crosscheck skipped: %s", exc)
+                # And the same letter against the client's own written rules, as
+                # a second pass with its own verdict. After the crosscheck and
+                # isolated from it: a No-Go is not a style note, and neither
+                # check may cost the other its answer.
+                guide_verdict, guide_checked_by = _guide_check(client, message)
                 outreach.store(
                     session, client, angle, message, target,
                     review=review, reviewed_by=reviewed_by or "",
                 )
                 _log.info(
-                    "outreach written for %r → %s",
+                    "outreach written for %r → %s (Guide: %s)",
                     client.name,
                     target.outlet if target else "(kein Empfänger)",
+                    _guide_state(guide_verdict, guide_checked_by),
                 )
     except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
         _last_message_error[client_id] = (

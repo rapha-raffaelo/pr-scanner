@@ -30,6 +30,7 @@ copied on every deploy is worth more than being able to hand the original back.
 from __future__ import annotations
 
 import io
+import json
 import logging
 from dataclasses import dataclass
 from importlib import resources
@@ -38,13 +39,22 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config
+from . import config, gemini
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Client, GuideSource
+from .schemas import GuideVerdict, PersonalMessage
 
 _log = logging.getLogger(__name__)
 
 _PROMPT_RESOURCE = "prompts/guide.txt"
+
+_CHECK_RESOURCE = "prompts/guide_check.txt"
+
+#: What :func:`check_guide` returns for a mandate that has no guide at all: no
+#: verdict, and no model that gave one. A distinct state on purpose — "nothing to
+#: object with" must never arrive at the page looking like "no objections", which
+#: is the failure this whole check exists to prevent.
+NOT_CHECKED: tuple[GuideVerdict | None, str] = (None, "")
 
 #: Hard ceiling on the stored guide. Every prompt carries it, so this is a cost
 #: and an attention budget at once: past a few hundred words it stops being a
@@ -233,11 +243,113 @@ def for_prompt(client: Client) -> str:
     )
 
 
+# --- The check: does a finished text obey the rules this client wrote down? ------
+
+
+def _check_template() -> Template:
+    text = resources.files("newspulse").joinpath(_CHECK_RESOURCE).read_text("utf-8")
+    return Template(text)
+
+
+def _second_model():
+    """The configured second provider, as a ``generate(prompt) -> str``.
+
+    Deliberately not :func:`newspulse.analyzer.invoke_with_fallback`: falling back
+    to the model that wrote the letter would turn the check into a self-check, and
+    a model does not find its own breach of a rule it read ten seconds ago.
+
+    Raises :class:`RuntimeError` when nothing is configured, for the same reason
+    the crosscheck does — a check that silently did not happen is worse than none.
+    """
+    if not config.review_configured():
+        raise RuntimeError(
+            "Kein Zweitmodell hinterlegt: GEMINI_API_KEY (oder "
+            "NEWSPULSE_GEMINI_API_KEY) in der .env setzen, damit ein anderes "
+            "Modell den Text gegen den Guide liest."
+        )
+
+    def generate(prompt: str, **kwargs) -> str:
+        return gemini.generate(
+            prompt,
+            model=config.review_model(),
+            api_key=config.review_api_key(),
+            **kwargs,
+        )
+
+    return generate
+
+
+def _parse_verdict(raw: str) -> GuideVerdict:
+    """Validate the reply into a verdict; anything else is a ParseError.
+
+    The same trust boundary as everywhere else here: the reply is text until the
+    schema says otherwise, and a half-parsed verdict is discarded rather than
+    shown as an approval.
+    """
+    try:
+        payload = json.loads(strip_code_fence(raw))
+    except json.JSONDecodeError as exc:
+        raise ParseError(f"the guide check was not valid JSON: {exc}") from exc
+    try:
+        verdict = GuideVerdict.model_validate(payload)
+    except Exception as exc:  # noqa: BLE001 — pydantic raises its own type
+        raise ParseError(f"the guide check did not match the schema: {exc}") from exc
+    # ``ok`` is recomputed rather than believed. A reply that lists a breach and
+    # sets ok anyway would render as a clean bill of health over an objection that
+    # is right there underneath it.
+    return verdict.model_copy(update={"ok": not verdict.breaches})
+
+
+def check_guide(
+    client: Client,
+    message: PersonalMessage,
+    *,
+    generate=None,
+) -> tuple[GuideVerdict | None, str]:
+    """Read one finished text against this client's stored guide.
+
+    Its own pass, with its own prompt and its own verdict, beside the crosscheck
+    rather than inside it: invention and overclaiming are judgements a checker
+    weighs, while a No-Go is not a judgement at all — the client wrote it down.
+    Folded into one verdict, a written rule would end up averaged against a
+    remark about tone.
+
+    The prompt gets the guide verbatim, the subject and the body, and nothing
+    else. Not the article, not the profile, not the angle: every extra fact is
+    another thing the model can reason its way around when the job is to read a
+    rule literally.
+
+    Returns the verdict and the name of the model that gave it, or
+    :data:`NOT_CHECKED` for a client with no stored guide — which costs no model
+    call, because there is nothing to check against.
+
+    Raises :class:`newspulse.analyzer.ParseError` on an unusable reply and
+    whatever the backend raises on a failed call; the caller decides what an
+    unchecked letter looks like.
+    """
+    stored = (getattr(client, "comms_guide", "") or "").strip()
+    if not stored:
+        _log.info("guide check skipped for %r: no guide stored", client.name)
+        return NOT_CHECKED
+
+    if generate is None:
+        generate = _second_model()
+
+    prompt = _check_template().substitute(
+        comms_guide=stored,
+        subject=message.subject or "(kein Betreff)",
+        message=message.message,
+    )
+    return _parse_verdict(generate(prompt)), config.review_model()
+
+
 __all__ = [
     "ExtractionError",
     "GUIDE_MAX_CHARS",
     "MAX_UPLOAD_BYTES",
+    "NOT_CHECKED",
     "SUPPORTED_SUFFIXES",
+    "check_guide",
     "delete_source",
     "distill",
     "extract_text",
