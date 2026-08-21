@@ -394,10 +394,10 @@ def _one_line(entry: str) -> str:
     """One entry, flattened onto the single line the store keeps it on.
 
     Entries are separated by newlines, so an entry holding one would come back as
-    two on the next render: a pasted "Anna Verhoeven⏎Milan Roth" would quietly
-    become two spokespeople, one of them a name nobody typed as a name. The
-    page's own ``<input type=text>`` cannot produce it; the store is where the
-    rule belongs anyway.
+    two on the next render: two names pasted from a mail, one under the other,
+    would quietly become two spokespeople rather than the one entry somebody
+    added. The page's own ``<input type=text>`` cannot produce it; the store is
+    where the rule belongs anyway.
     """
     return " ".join(entry.split())
 
