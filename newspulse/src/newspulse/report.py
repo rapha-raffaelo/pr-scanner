@@ -596,7 +596,7 @@ def findings(
     model call, which is the most expensive thing in this path.
     """
     released = for_period(session, client.id, period)
-    if released is not None and _is_released(released):
+    if released is not None and is_released(released):
         raise _released(period)
 
     metrics = reporting.period_metrics(session, client, period)
@@ -643,6 +643,20 @@ def findings(
 # --- Storing, and what may not be overwritten ---------------------------------------
 
 
+def previous_month(now: dt.datetime | None = None) -> Period:
+    """The last month that has ended, in the reader's zone.
+
+    What a report is about when nobody named a period: the scheduled draft on the
+    first, and the surface's own default. A month still running would produce a
+    document that is wrong the day after it was written, and the reader's zone
+    rather than the host's because a piece published at 00:30 Berlin time on the
+    first belongs to the month a client would put it in.
+    """
+    local = (now or dt.datetime.now(dt.UTC)).astimezone(config.local_zone())
+    last_day = local.replace(day=1) - dt.timedelta(days=1)
+    return Period.month(last_day.year, last_day.month)
+
+
 def for_period(session: Session, client_id: int, period: Period) -> Report | None:
     """This mandate's report for exactly this window, if one exists."""
     return session.scalars(
@@ -654,7 +668,7 @@ def for_period(session: Session, client_id: int, period: Period) -> Report | Non
     ).first()
 
 
-def _is_released(report: Report) -> bool:
+def is_released(report: Report) -> bool:
     """Whether this row is a document that went out, by either fact that says so.
 
     Both, and either is enough. ``released_at`` is the fact and ``state`` is the
@@ -716,7 +730,7 @@ def store(
             f"report finding carries no evidence: {groundless[0].claim!r}"
         )
     existing = for_period(session, client.id, draft.period)
-    if existing is not None and _is_released(existing):
+    if existing is not None and is_released(existing):
         raise _released(draft.period)
     row = existing or Report(
         client_id=client.id,
@@ -993,6 +1007,15 @@ class Document:
         """The tonality split's denominator, for the chart's geometry."""
         return sum(figure.value or 0.0 for figure in self.tonality)
 
+    @property
+    def period_last(self) -> dt.datetime:
+        """The last day the period contains.
+
+        ``period_end`` is exclusive, and a document headed "1.7. bis 1.8." reads as
+        covering a day it does not.
+        """
+        return self.period_end - dt.timedelta(days=1)
+
 
 def _stated_text(value: MetricValue) -> str:
     """The number as the document prints it, or ``""`` where there is none."""
@@ -1163,6 +1186,8 @@ __all__ = [
     "document",
     "findings",
     "for_period",
+    "is_released",
+    "previous_month",
     "release",
     "resolve",
     "store",

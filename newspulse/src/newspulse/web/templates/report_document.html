@@ -1,0 +1,203 @@
+{#- The artefact. A self-contained page: no stylesheet link, no script, no image,
+    no font, no chart library — every rule is in the <style> below and every chart
+    is inline SVG. That is the same offline rule the vendored htmx follows, and it
+    is stricter here for a second reason: this file is downloaded and forwarded,
+    and a document that phoned home when a client opened it would tell a third
+    party who is reading the agency's reporting and when.
+
+    It does not extend base.html on purpose. The app chrome is not part of the
+    document, and a report carrying a sidebar of other mandates is not something
+    that can be sent to one of them.
+
+    The screen and the download render this same file. Everything they differ by
+    is the <nav> outside <article class="doc">, so the export cannot carry a figure
+    the screen did not, or the other way round. -#}
+{%- set t = translator(request) -%}
+{%- macro chart(c) -%}
+{%- if c %}
+      <figure class="chart">
+        <figcaption class="chart__t">{{ t(c.title) }}</figcaption>
+        {#- The bar is decoration over numbers that are already written out below
+            it. Nothing here may be readable only as a colour: every block repeats
+            its own figure in the legend and again in the table, so the split is
+            checkable by a reader who cannot tell the hues apart, and by one
+            holding a black and white printout. -#}
+        <svg class="bar" viewBox="0 0 600 34" role="img" aria-label="{{ t(c.title) }}: {% for s in c.segments %}{{ t(s.label) }} {{ s.text }}{{ ', ' if not loop.last }}{% endfor %}">
+          {%- set ns = namespace(x=0) %}
+          {%- for s in c.segments %}
+          {%- set w = s.share * 6 %}
+          <g>
+            <title>{{ t(s.label) }}: {{ s.text }}</title>
+            {#- The fill comes from a class of its own, never from the swatch's:
+                a CSS `width` meant for the legend square would override this
+                rect's own geometry attribute and collapse the bar. -#}
+            <rect x="{{ '%.2f'|format(ns.x) }}" y="0" width="{{ '%.2f'|format(w) }}" height="34" class="seg seg--{{ s.tone }}"></rect>
+            {%- if w >= 54 %}
+            <text x="{{ '%.2f'|format(ns.x + w / 2) }}" y="22" class="bar__n">{{ s.text }}</text>
+            {%- endif %}
+          </g>
+          {%- set ns.x = ns.x + w %}
+          {%- endfor %}
+        </svg>
+        <ul class="legend">
+          {%- for s in c.segments %}
+          <li><span class="sw sw--{{ s.tone }}"></span>{{ t(s.label) }} <b>{{ s.text }}</b></li>
+          {%- endfor %}
+        </ul>
+        <details class="tblview">
+          <summary>{{ t("Tabelle anzeigen") }}</summary>
+          <table>
+            <thead><tr><th>{{ t("Segment") }}</th><th>{{ t(c.unit) }}</th><th>{{ t("Anteil") }}</th></tr></thead>
+            <tbody>
+              {%- for s in c.segments %}
+              <tr><th scope="row">{{ t(s.label) }}</th><td>{{ s.text }}</td><td>{{ '%.1f'|format(s.share) }} %</td></tr>
+              {%- endfor %}
+            </tbody>
+          </table>
+        </details>
+      </figure>
+{%- endif %}
+{%- endmacro -%}
+<!DOCTYPE html>
+<html lang="{{ request_language(request) }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ t("Bericht") }} · {{ document.client_name }} · {{ document.period_start | de_date }}</title>
+<style>
+  :root { --ink: #16181d; --muted: #6b7280; --line: #e2e5ea; --mandate: #2f4a7a; --field: #c8cdd6; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 15px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); background: #f4f5f7; padding: 28px 18px 64px; }
+  .doc { max-width: 780px; margin: 0 auto; background: #fff; border: 1px solid var(--line);
+         border-radius: 10px; padding: 40px 46px 46px; }
+  .docnav { max-width: 780px; margin: 0 auto 14px; display: flex; gap: 16px; font-size: 13px; }
+  .docnav a { color: var(--mandate); }
+  h1 { font-size: 25px; letter-spacing: -0.01em; margin-bottom: 4px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+       margin: 34px 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  .meta { font-size: 13px; color: var(--muted); }
+  .meta dt { float: left; clear: left; width: 150px; }
+  .meta dd { margin-left: 150px; color: var(--ink); }
+  .stamp { margin-top: 14px; font-size: 12px; color: var(--muted);
+           border-left: 3px solid var(--mandate); padding: 6px 0 6px 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .tile { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .tile__l { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .tile__v { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin-top: 2px; }
+  .tile__p, .tile__n { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .tile--absent .tile__v { font-size: 14px; font-weight: 500; color: var(--muted); }
+  .chart { margin-bottom: 22px; }
+  .chart__t { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .bar { width: 100%; height: 34px; display: block; border-radius: 4px; overflow: hidden; }
+  .bar__n { font-size: 13px; font-weight: 700; fill: #fff; text-anchor: middle; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+  .seg--positiv { fill: #2f7a4d; } .sw--positiv { background: #2f7a4d; }
+  .seg--neutral { fill: #7b8794; } .sw--neutral { background: #7b8794; }
+  .seg--negativ { fill: #a3342e; } .sw--negativ { background: #a3342e; }
+  .seg--unbekannt { fill: #c8cdd6; } .sw--unbekannt { background: #c8cdd6; }
+  .seg--mandat { fill: var(--mandate); } .sw--mandat { background: var(--mandate); }
+  .seg--umfeld { fill: var(--field); } .sw--umfeld { background: var(--field); }
+  /* The number inside a pale block would vanish; both pale tones take dark text. */
+  .seg--unbekannt + .bar__n, .seg--umfeld + .bar__n { fill: #16181d; }
+  .legend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 9px; font-size: 12.5px; }
+  .legend b { margin-left: 5px; }
+  .tblview { margin-top: 8px; font-size: 12.5px; }
+  .tblview summary { cursor: pointer; color: var(--mandate); }
+  table { border-collapse: collapse; margin-top: 8px; width: 100%; }
+  th, td { text-align: left; padding: 5px 10px 5px 0; border-bottom: 1px solid var(--line); }
+  thead th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .find { border: 1px solid var(--line); border-radius: 8px; padding: 15px 17px; margin-bottom: 14px; }
+  .find__k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+             color: var(--muted); }
+  .find__c { font-size: 16px; font-weight: 600; margin: 5px 0 6px; }
+  .find__f { color: #3a3f4a; }
+  .find__w { font-size: 12px; color: #8a5a12; margin-top: 8px; }
+  .ev { list-style: none; margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--line);
+        font-size: 12.5px; }
+  .ev li { margin-bottom: 4px; }
+  .ev a { color: var(--mandate); }
+  .ev__src { color: var(--muted); }
+  .note { font-size: 14px; color: var(--muted); font-style: italic; }
+  .foot { margin-top: 34px; padding-top: 12px; border-top: 1px solid var(--line);
+          font-size: 11.5px; color: var(--muted); }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .doc { border: 0; padding: 0; max-width: none; }
+    .docnav { display: none; }
+    .tblview[open] summary { display: none; }
+  }
+</style>
+</head>
+<body>
+{%- if not download %}
+<nav class="docnav">
+  <a href="/client/{{ client.id }}/berichte">← {{ t("Zurück zur Prüfung") }}</a>
+  <a href="/client/{{ client.id }}/berichte/{{ report_id }}/dokument.html" download>↓ {{ t("Exportieren") }}</a>
+</nav>
+{%- endif %}
+<article class="doc">
+  <header>
+    <h1>{{ t("Bericht") }}: {{ document.client_name }}</h1>
+    <dl class="meta">
+      <dt>{{ t("Zeitraum") }}</dt>
+      <dd>{{ document.period_start | de_date }} {{ t("bis") }} {{ document.period_last | de_date }}</dd>
+      <dt>{{ t("Erstellt am") }}</dt>
+      <dd>{{ document.generated_at | de_date }}</dd>
+      <dt>{{ t("Vergleichsumfeld") }}</dt>
+      <dd>{% if document.comparison %}{{ document.comparison | join(", ") }}{% else %}{{ t("keines hinterlegt") }}{% endif %}</dd>
+    </dl>
+    {%- if document.released_at %}
+    <p class="stamp">{{ t("Freigegeben am") }} {{ document.released_at | de_date }}{% if document.released_by %} · {{ document.released_by }}{% endif %}.
+      {{ t("Der Inhalt ist ab der Freigabe eingefroren und ändert sich nicht mehr mit dem Archiv.") }}</p>
+    {%- endif %}
+  </header>
+
+  <h2>{{ t("Kennzahlen") }}</h2>
+  <div class="tiles">
+    {%- for f in document.figures %}
+    <div class="tile{% if not f.text %} tile--absent{% endif %}">
+      <div class="tile__l">{{ t(f.label) }}</div>
+      <div class="tile__v">{{ f.text if f.text else t("kein Wert") }}</div>
+      {%- if f.previous_text %}<div class="tile__p">{{ f.previous_text }}</div>{% endif %}
+      {%- if f.note %}<div class="tile__n">{{ f.note }}</div>{% endif %}
+    </div>
+    {%- endfor %}
+  </div>
+
+  {%- if tonality_chart or voice_chart %}
+  <h2>{{ t("Verteilung") }}</h2>
+  {{ chart(tonality_chart) }}
+  {{ chart(voice_chart) }}
+  {%- endif %}
+
+  <h2>{{ t("Befunde") }}</h2>
+  {%- if document.findings %}
+  {%- for f in document.findings %}
+  <section class="find">
+    <div class="find__k">{{ t(kind_labels.get(f.kind, f.kind)) }}</div>
+    <p class="find__c">{{ f.claim }}</p>
+    {%- if f.consequence %}<p class="find__f">{{ f.consequence }}</p>{% endif %}
+    {%- if f.weakened %}
+    <p class="find__w">{{ t("Ein Teil der Belege ist inzwischen nicht mehr in der Berichterstattung des Mandanten. Der Befund steht auf dem, was hier steht.") }}</p>
+    {%- endif %}
+    <ul class="ev">
+      {%- for e in f.evidence %}
+      <li>
+        {%- if e.url %}<a href="{{ e.url | safe_url }}">{{ e.headline }}</a>{% else %}{{ e.headline }}{% endif %}
+        <span class="ev__src">· {{ e.source }} · {{ e.published_at | de_date }}</span>
+      </li>
+      {%- endfor %}
+    </ul>
+  </section>
+  {%- endfor %}
+  {%- else %}
+  <p class="note">{{ document.note or t("Für diesen Zeitraum steht kein Befund im Bericht.") }}</p>
+  {%- endif %}
+
+  <footer class="foot">
+    {{ t("Jede Zahl in diesem Bericht stammt aus der archivierten Berichterstattung und dem Ansprache-Ledger. Reichweiten, Kontaktchancen und Werbewerte werden nicht geschätzt und deshalb nicht ausgewiesen.") }}
+  </footer>
+</article>
+</body>
+</html>

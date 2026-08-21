@@ -749,6 +749,87 @@ _EN: dict[str, str] = {
     "Kein Feed in diesem Zeitraum hat einen Autor mitgeliefert.":
         "No feed supplied an author in this period.",
     "Tage": "days",
+    # --- Berichte: the review surface and the document -----------------------
+    #
+    # The document's chrome is here with the rest of the interface, and its
+    # *content* is not: a claim, a consequence and a headline stay in the language
+    # they were written in, exactly as a stored summary does. An English-speaking
+    # consultant reviewing a German mandate's month gets English labels around
+    # German sentences, which is the honest rendering — the alternative is a page
+    # that claims RauteOS wrote something it did not.
+    "Berichte": "Reports",
+    "Bericht": "Report",
+    "RauteOS liest den Zeitraum und schlägt Befunde vor: eine Aussage, was daraus folgt, und darunter die Beiträge, auf denen sie steht. Behalten, ändern oder verwerfen — was übrig bleibt, wird das Dokument.":
+        "RauteOS reads the period and proposes findings: a claim, what follows "
+        "from it, and underneath it the coverage it rests on. Keep, edit or drop "
+        "— what survives becomes the document.",
+    "Bericht erzeugen": "Draft report",
+    "Für diesen Mandanten liegt noch kein Bericht vor. Zum Monatsersten entsteht einer automatisch; er lässt sich hier auch sofort erzeugen.":
+        "There is no report for this client yet. One is drafted automatically on "
+        "the first of the month; it can also be drafted here right away.",
+    "Entwurf": "Draft",
+    "Freigegeben": "Released",
+    "Freigegeben am": "Released on",
+    "Freigegeben von": "Released by",
+    "Freigeben": "Release",
+    "Name (optional)": "Name (optional)",
+    "Mit der Freigabe steht der Name der Agentur auf dem Bericht. Er wird eingefroren: Befunde, Zahlen und Belege bleiben, wie sie freigegeben wurden, auch wenn sich die Berichterstattung später ändert.":
+        "Releasing puts the agency's name on the report. It is then frozen: "
+        "findings, figures and evidence stay as they were released, even when the "
+        "coverage underneath them changes later.",
+    "Ein freigegebener Bericht wird nicht mehr geändert und nicht neu erzeugt.":
+        "A released report is neither edited nor drafted again.",
+    "Dokument": "Document",
+    "Verworfen": "Dropped",
+    "Verworfen, weil": "Dropped because",
+    "Warum nicht? (optional)": "Why not? (optional)",
+    "Wieder aufnehmen": "Take it back up",
+    "bearbeitet": "edited",
+    "Aussage": "Claim",
+    "Was daraus folgt": "What follows from it",
+    "Kein Beleg trägt diesen Befund mehr. Er steht nicht im Dokument.":
+        "No evidence carries this finding any more. It is not in the document.",
+    "Beleg(e) sind nicht mehr in der Berichterstattung. Der Befund steht auf dem, was übrig ist.":
+        "piece(s) of evidence are no longer in the coverage. The finding stands on "
+        "what is left.",
+    "Ein Teil der Belege ist inzwischen nicht mehr in der Berichterstattung des Mandanten. Der Befund steht auf dem, was hier steht.":
+        "Some of the evidence is no longer in the client's coverage. The finding "
+        "stands on what is printed here.",
+    "kein Wert": "no figure",
+    "Kennzahlen": "Figures",
+    "Verteilung": "Distribution",
+    "Befunde": "Findings",
+    "Erstellt am": "Drafted on",
+    "Vergleichsumfeld": "Comparison set",
+    "keines hinterlegt": "none stored",
+    "bis": "to",
+    "Der Inhalt ist ab der Freigabe eingefroren und ändert sich nicht mehr mit dem Archiv.":
+        "From the release onwards the content is frozen and no longer moves with "
+        "the archive.",
+    "Für diesen Zeitraum steht kein Befund im Bericht.":
+        "No finding stands in the report for this period.",
+    "Zurück zur Prüfung": "Back to the review",
+    "Exportieren": "Export",
+    "Tabelle anzeigen": "Show table",
+    "Segment": "Segment",
+    "Jede Zahl in diesem Bericht stammt aus der archivierten Berichterstattung und dem Ansprache-Ledger. Reichweiten, Kontaktchancen und Werbewerte werden nicht geschätzt und deshalb nicht ausgewiesen.":
+        "Every figure in this report comes from the archived coverage and the "
+        "outreach ledger. Reach, opportunities to see and advertising value are "
+        "not estimated and therefore not stated.",
+    # The finding kinds, as ``models.ReportFindingKind`` names them.
+    "Sichtbarkeit": "Visibility",
+    "Risiko": "Risk",
+    "Wirkung": "Impact",
+    "Botschaft": "Message",
+    # The metric labels, as ``reporting._LABELS`` names them, plus the one
+    # tonality value that had no entry yet.
+    "Beiträge": "Items",
+    "Beiträge in Leitmedien": "Items in lead media",
+    "Anteil am Marktgespräch": "Share of the market conversation",
+    "Aus eigener Ansprache": "From our own outreach",
+    "Kernbotschaft": "Key message",
+    "Tonalität": "Tonality",
+    "unbekannt": "unknown",
 }
 
 _TABLES = {"de": {}, "en": _EN}

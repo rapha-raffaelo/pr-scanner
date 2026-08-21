@@ -997,6 +997,14 @@ class ReportFinding(Base):
     kept: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1")
     )
+    #: Why it was dropped, in the consultant's own words. Optional, because a
+    #: finding that is simply wrong needs no essay — but a dropped finding that
+    #: stays visible without a reason invites the same claim to be argued down
+    #: again next month, and L8 cannot learn from a rejection nobody explained.
+    #: Cleared when a dropped finding is taken back up.
+    drop_reason: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
     #: When a human last rewrote it. Null means the sentence is as generated, which
     #: is a thing the reviewer of a document is entitled to know.
     edited_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
