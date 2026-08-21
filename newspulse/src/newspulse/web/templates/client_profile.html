@@ -42,13 +42,36 @@
                 letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
   .props__val { flex: 1; font-size: var(--t-small); }
   .props__act { display: flex; gap: var(--s3); margin-top: var(--s4); }
+  /* The value a kick-off answer replaced (DEC-2). Set back and quieter than the
+     line above it: it is what the web said, kept legible while the disagreement
+     stands, not a second answer competing for the reader's eye. */
+  .prof__old { margin-top: var(--s2); padding-left: var(--s3);
+               border-left: 2px solid var(--line); font-size: var(--t-micro);
+               color: var(--faint); }
+  .prof__old form { display: inline; }
+  .foundation { display: flex; align-items: baseline; gap: var(--s3);
+                flex-wrap: wrap; font-size: var(--t-small); color: var(--muted); }
 </style>
 
 <div class="client-profile">
   <h1>{{ t("Profil") }}</h1>
   <p class="panel-hint">
-    {{ t("Was dieses Unternehmen ist, in vierzehn Zeilen. Jede Zeile speist die Impulse, die Anschreiben und Captain Comms — und jede sagt, woher sie stammt.") }}
+    {{ t("Was dieses Unternehmen ist, Zeile für Zeile. Jede Zeile speist die Impulse, die Anschreiben und Captain Comms — und jede sagt, woher sie stammt.") }}
     <strong>{{ filled }}/{{ fillable }}</strong> {{ t("Felder gefüllt") }}.
+  </p>
+  {# How much of the foundation this mandate actually has. A thin profile beside a
+     full questionnaire is a different problem from a thin profile beside twenty
+     questions nobody has asked, and only this line tells the two apart. #}
+  <p class="foundation">
+    {% if kickoff.started %}
+      <span><strong>{{ kickoff.settled }}/{{ kickoff.total }}</strong> {{ t("Fragen aus dem Kickoff beantwortet oder übergangen") }}.</span>
+      {% if kickoff.remaining %}
+        <span>{{ kickoff.remaining }} {{ t("Frage ist noch offen") if kickoff.remaining == 1 else t("Fragen sind noch offen") }}.</span>
+      {% endif %}
+    {% else %}
+      <span>{{ t("Kein Fragebogen beantwortet — für dieses Mandat gibt es noch kein Fundament.") }}</span>
+    {% endif %}
+    <a href="/client/{{ client.id }}/kickoff">{{ t("Zum Fragebogen") }} →</a>
   </p>
 </div>
 
@@ -77,7 +100,9 @@
 <div id="profilebody">
 {% if proposals %}
   <div class="props">
-    <div class="eyebrow">{{ proposals | length }} {{ t("Vorschläge aus dem Netz") }}</div>
+    {# Not "aus dem Netz" any more: the same list now also carries what the client
+       said in the kick-off, and every row names which of the two it is. #}
+    <div class="eyebrow">{{ proposals | length }} {{ t("Vorschläge für das Profil") }}</div>
     <form method="post" action="/client/{{ client.id }}/profil/accept">
       {% for p in proposals %}
         <div class="props__row">
@@ -87,12 +112,21 @@
           </label>
           <div class="props__val">
             {{ p.value }}
-            {% if p.source_url %}
-              <div class="prof__src">
-                {{ t("Quelle") }}:
+            {# A proposal names where it came from either way. From the web that is
+               a link; from the kick-off it is the questionnaire by name, because
+               nobody published the call and a citation linking nowhere would be
+               worse than none. #}
+            <div class="prof__src">
+              {{ t("Quelle") }}:
+              {% if p.source_url %}
                 <a href="{{ p.source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ p.source_title or p.source_url }}</a>
-              </div>
-            {% endif %}
+              {% else %}
+                {{ t(p.source_title) if p.source_title else t("Angabe des Mandanten") }}
+              {% endif %}
+              {% if p.supersedes and facts.get(p.key) %}
+                · {{ t("ersetzt die bisherige Angabe, die sichtbar bleibt") }}
+              {% endif %}
+            </div>
           </div>
         </div>
       {% endfor %}
@@ -124,10 +158,27 @@
         {% endif %}
         {% if fact and fact.filled_by != "mensch" %}
           <div class="prof__src">
-            {{ t("Von") }} {{ fact.filled_by }}
+            {{ t("Von") }} {{ t(fact.filled_by) }}
             {% if fact.source_url %}
               · <a href="{{ fact.source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ fact.source_title or t("Quelle") }}</a>
             {% endif %}
+          </div>
+        {% endif %}
+        {# DEC-2 option A: the answer won, and what it replaced stays here with its
+           own provenance for as long as the disagreement is worth seeing. #}
+        {% if fact and fact.is_disputed %}
+          <div class="prof__old">
+            {{ t("Vorher") }}: {{ fact.superseded_value }}
+            {% if fact.superseded_filled_by %}· {{ t(fact.superseded_filled_by) }}{% endif %}
+            {% if fact.superseded_source_url %}
+              · <a href="{{ fact.superseded_source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ fact.superseded_source_title or t("Quelle") }}</a>
+            {% endif %}
+            {# The button belongs beside the value it drops, but its form cannot:
+               this row sits inside the profile form, and a form inside a form is
+               dropped by the browser. It points at one declared below instead. #}
+            <button type="submit" class="linkbtn" form="forget-{{ field.key }}">
+              {{ t("Alte Angabe verwerfen") }}
+            </button>
           </div>
         {% endif %}
       </div>
@@ -138,5 +189,15 @@
     <span class="panel-hint">{{ t("Was Sie hier ändern, gilt als Ihre Angabe und wird von der KI nicht mehr überschrieben.") }}</span>
   </div>
 </form>
+
+{# The forms behind the "verwerfen" buttons above. Empty and outside the profile
+   form, so dropping an old value never carries a half-typed edit with it. #}
+{% for field in fields %}
+  {% set fact = facts.get(field.key) %}
+  {% if fact and fact.is_disputed %}
+    <form id="forget-{{ field.key }}" method="post"
+          action="/client/{{ client.id }}/profil/{{ field.key }}/forget"></form>
+  {% endif %}
+{% endfor %}
 </div>
 {% endblock %}

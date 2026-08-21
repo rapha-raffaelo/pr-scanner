@@ -152,6 +152,24 @@
     </div>
   {% endif %}
 
+  {# Named by the client in the kick-off. Offered, never linked: the questionnaire
+     records what was said, and only a click turns any of it into a company this
+     tool monitors and counts. #}
+  {% if named %}
+    <div style="margin-top:var(--s4)">
+      <div class="eyebrow">{{ t("Im Kickoff genannt") }}</div>
+      {% for entry in named %}
+        <form method="post" action="/client/{{ client.id }}/competitors/accept" class="rivals__one">
+          <input type="hidden" name="name" value="{{ entry.name }}">
+          <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/wettbewerb">
+          <span class="tag">{{ entry.name }}</span>
+          {% if entry.reason %}<span class="rival__quiet">{{ entry.reason }}</span>{% endif %}
+          <button type="submit" class="linkbtn">{{ t("In die Vergleichsgruppe") }}</button>
+        </form>
+      {% endfor %}
+    </div>
+  {% endif %}
+
   <form method="post" action="/client/{{ client.id }}/competitors/accept" class="run-form" style="margin-top:var(--s4)">
     <div class="filter-field">
       <label for="rival-name">{{ t("Wettbewerber hinzufügen") }}</label>

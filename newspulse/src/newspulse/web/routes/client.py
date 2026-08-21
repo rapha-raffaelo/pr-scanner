@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from ... import gnews
 from ... import angles
+from ... import onboarding
 from ...models import Analysis, Angle, Article, Category, Client, TopicHit, visible_coverage
 from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
@@ -362,6 +363,11 @@ class PortfolioRow:
     # a front door.
     alerts_today: int
     open_impulses: int
+    # How much of its own foundation this mandate has. On the front door because a
+    # thinly set-up client is otherwise merely quiet: no alerts and no impulses
+    # look exactly like a calm week until you notice nobody ever asked it the
+    # twenty questions.
+    kickoff: onboarding.Completeness
 
 
 # The portfolio is the front door now. A consultant does not open this tool to
@@ -423,6 +429,8 @@ def clients_index(
     )
 
     clients = session.scalars(select(Client).order_by(Client.name)).all()
+    # One query for the whole portfolio rather than one per card.
+    kickoffs = onboarding.completeness_by_client(session, [c.id for c in clients])
     rows = [
         PortfolioRow(
             id=c.id,
@@ -439,6 +447,7 @@ def clients_index(
             total_count=totals.get(c.id, 0),
             alerts_today=alerts_today.get(c.id, 0),
             open_impulses=open_impulses.get(c.id, 0),
+            kickoff=kickoffs[c.id],
         )
         for c in clients
     ]

@@ -959,7 +959,7 @@ def to_guide_draft(
     client: Client,
     *,
     stored: dict[str, OnboardingAnswer] | None = None,
-    invoke=invoke_with_fallback,
+    invoke=None,
 ) -> GuideDraft:
     """Draft a communications guide from the kick-off answers. Saves no guide.
 
@@ -976,7 +976,13 @@ def to_guide_draft(
 
     Raises :class:`newspulse.guide.ExtractionError` when nothing has been
     answered, so "no answers yet" and "the model failed" stay distinguishable.
+
+    ``invoke`` defaults to the model through a sentinel rather than in the
+    signature, because the page calls this with no arguments: bound in the
+    signature, the default would be captured at import and a test driving the
+    button would shell out to `claude` with no way to stop it.
     """
+    invoke = invoke_with_fallback if invoke is None else invoke
     stored = answers(session, client.id) if stored is None else stored
     if not any(_answered(stored, question) for question in QUESTIONS):
         raise ExtractionError(

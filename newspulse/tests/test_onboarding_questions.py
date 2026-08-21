@@ -28,7 +28,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import i18n, onboarding
+from newspulse import guide, i18n, onboarding
+from newspulse import profile as profiles
 from newspulse.models import Base, Client, ClientFact, OnboardingAnswer
 from newspulse.web.app import create_app, get_db
 
@@ -743,3 +744,629 @@ def test_skipping_the_whole_questionnaire_also_writes_to_nothing_else(web, sessi
     assert progress.answered == 0
     assert progress.remaining == 0
     assert _foundation(session, client.id) == before
+
+
+# --- The conversion: what the answers are offered as (ONB-02) -------------------
+#
+# One rule runs through every test below and it is the same one ONB-01 ends on:
+# each of these produces an *offer*. A proposal on a profile field, a draft guide,
+# a competitor to click — and until somebody clicks, ``client_facts``,
+# ``comms_guide`` and the comparison set say exactly what they said before.
+
+
+def _answer(session, client, key: str, value: str) -> None:
+    onboarding.save_answer(session, client, key, value)
+
+
+def _kickoff(session, client) -> None:
+    """A half-answered questionnaire, the way one actually comes back from a call.
+
+    Two sections carry answers and three do not, which is the state the draft has
+    to be able to describe rather than fill in.
+    """
+    _answer(session, client, "satz", "Wir bauen Roboterarme für OP-Säle.")
+    _answer(session, client, "zielgruppe", "Klinikleitungen und Chefärzte.")
+    _answer(session, client, "nie_satz", "Vermont ersetzt den Chirurgen.")
+    _answer(session, client, "zahlen", "Umsatzzahlen werden nie genannt.")
+    onboarding.add_entry(session, client, "sprecher", "Dr. Anna Klar, CTO, Technik")
+
+
+def _distilled(text: str = "Positionierung: Chirurgierobotik aus Vermont."):
+    """An injected distillation. No test in this file reaches a model."""
+    return lambda *args, **kwargs: text
+
+
+# --- Answers that map to a profile field ---------------------------------------
+
+
+def test_an_answer_becomes_a_proposal_on_the_field_its_slot_names(session):
+    client = _client(session)
+    _answer(session, client, "satz", "Wir bauen Roboterarme für OP-Säle.")
+
+    proposals = onboarding.to_proposals(session, client.id)
+
+    assert [(p.key, p.value) for p in proposals] == [
+        ("geschaeftsfeld", "Wir bauen Roboterarme für OP-Säle.")
+    ]
+
+
+def test_a_proposal_names_the_questionnaire_as_its_source_and_has_no_url(session):
+    """Nobody published the kick-off call. A citation linking nowhere would be a
+    worse lie than no link at all."""
+    client = _client(session)
+    _answer(session, client, "zielgruppe", "Klinikleitungen.")
+
+    proposal = onboarding.to_proposals(session, client.id)[0]
+
+    assert proposal.source_title == onboarding.SOURCE_NAME
+    assert proposal.source_url == ""
+    assert proposal.filled_by == onboarding.SOURCE_NAME
+
+
+def test_to_proposals_stores_nothing(session):
+    client = _client(session)
+    _kickoff(session, client)
+
+    onboarding.to_proposals(session, client.id)
+
+    assert session.query(ClientFact).count() == 0
+
+
+def test_a_skipped_question_proposes_nothing(session):
+    """"Asked, and there is no answer" is not an answer to adopt."""
+    client = _client(session)
+    onboarding.skip(session, client, "satz")
+
+    assert onboarding.to_proposals(session, client.id) == []
+
+
+def test_an_unanswered_questionnaire_proposes_nothing(session):
+    client = _client(session)
+
+    assert onboarding.to_proposals(session, client.id) == []
+
+
+def test_two_questions_feeding_one_field_arrive_as_a_single_proposal(session):
+    """The profile has one line for spokespeople, and the consultant wants both
+    halves of what the client said on it."""
+    client = _client(session)
+    onboarding.add_entry(session, client, "sprecher", "Dr. Anna Klar, CTO, Technik")
+    _answer(session, client, "interview", "Interviews nur zur Technik, nie zu Preisen.")
+
+    proposals = onboarding.to_proposals(session, client.id)
+
+    assert [p.key for p in proposals] == ["sprecher"]
+    assert "Dr. Anna Klar, CTO, Technik" in proposals[0].value
+    assert "Interviews nur zur Technik, nie zu Preisen." in proposals[0].value
+
+
+def test_every_profile_slot_the_questionnaire_names_fills_a_real_field():
+    """The fixture test one level below "every question declares a target": a
+    question promising "Füllt Profil · Sprecher" against a profile that has no
+    such field would be a promise the tool cannot keep."""
+    for question in onboarding.QUESTIONS:
+        for feed in question.feeds:
+            if feed.target is onboarding.Target.PROFIL:
+                assert feed.slot in onboarding._PROFILE_SLOTS, question.key
+                assert (
+                    onboarding._PROFILE_SLOTS[feed.slot] in profiles.FIELDS_BY_KEY
+                ), question.key
+
+
+# --- The draft guide -----------------------------------------------------------
+
+
+def test_the_draft_is_returned_and_no_guide_is_written(session):
+    """The whole posture of this story in one assertion: generating proposes."""
+    client = _client(session)
+    _kickoff(session, client)
+
+    draft = onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    assert draft.text
+    assert client.comms_guide in (None, "")
+    assert session.get(Client, client.id).comms_guide in (None, "")
+
+
+def test_the_guide_is_written_only_once_the_draft_is_saved(session):
+    client = _client(session)
+    _kickoff(session, client)
+    draft = onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    guide.save(session, client, draft.text)
+
+    assert session.get(Client, client.id).comms_guide == draft.text
+
+
+def test_the_draft_carries_every_no_go_verbatim(session):
+    """A rule that has been reworded is a different rule, so the client's own
+    sentences are in the draft word for word even where the model paraphrased
+    them."""
+    client = _client(session)
+    _kickoff(session, client)
+
+    draft = onboarding.to_guide_draft(
+        session,
+        client,
+        invoke=_distilled("No-Gos: Bitte keine Aussagen über den Ersatz von Ärzten."),
+    )
+
+    assert "Vermont ersetzt den Chirurgen." in draft.text
+    assert "Umsatzzahlen werden nie genannt." in draft.text
+    assert set(draft.verbatim) == {
+        "Vermont ersetzt den Chirurgen.",
+        "Umsatzzahlen werden nie genannt.",
+    }
+
+
+def test_the_verbatim_block_lists_every_rule_even_ones_already_quoted(session):
+    """A complete block, not the leftovers the model happened to miss: whoever
+    reads the saved guide has to be able to point at one place and say "these are
+    the client's rules, in the client's words"."""
+    client = _client(session)
+    _answer(session, client, "nie_satz", "Vermont ersetzt den Chirurgen.")
+    _answer(session, client, "zahlen", "Umsatzzahlen werden nie genannt.")
+
+    draft = onboarding.to_guide_draft(
+        session, client, invoke=_distilled("No-Gos: Vermont ersetzt den Chirurgen.")
+    )
+
+    block = draft.text.split(onboarding._NOGO_HEADING)[1]
+    assert "Vermont ersetzt den Chirurgen." in block
+    assert "Umsatzzahlen werden nie genannt." in block
+
+
+def test_a_partly_answered_questionnaire_names_the_sections_that_had_no_answer(session):
+    """Rather than inventing content for them, which reads exactly like an
+    answered section."""
+    client = _client(session)
+    _kickoff(session, client)
+
+    draft = onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    assert [s.key for s in draft.missing] == ["ziele", "medien", "zusammenarbeit"]
+    for section in draft.missing:
+        assert section.title in draft.text
+
+
+def test_a_fully_answered_questionnaire_names_no_gaps(session):
+    client = _client(session)
+    for question in onboarding.QUESTIONS:
+        _answer(session, client, question.key, f"Antwort auf {question.key}.")
+
+    draft = onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    assert draft.missing == ()
+    assert draft.has_gaps is False
+
+
+def test_the_distillation_reads_the_questions_and_sees_which_had_no_answer(session):
+    """The prompt forbids inventing what is not in the documents. A question
+    standing there without an answer is the strongest version of that."""
+    client = _client(session)
+    _answer(session, client, "satz", "Wir bauen Roboterarme für OP-Säle.")
+    seen: list[str] = []
+
+    onboarding.to_guide_draft(
+        session, client, invoke=lambda prompt, **kwargs: seen.append(prompt) or "Guide."
+    )
+
+    assert "Wir bauen Roboterarme für OP-Säle." in seen[0]
+    assert "(nicht beantwortet)" in seen[0]
+
+
+def test_a_skipped_question_reaches_the_prompt_as_deliberately_unanswered(session):
+    client = _client(session)
+    _answer(session, client, "satz", "Roboterarme.")
+    onboarding.skip(session, client, "nie_satz")
+    seen: list[str] = []
+
+    onboarding.to_guide_draft(
+        session, client, invoke=lambda prompt, **kwargs: seen.append(prompt) or "Guide."
+    )
+
+    assert "übergangen" in seen[0]
+
+
+def test_an_unanswered_questionnaire_refuses_rather_than_drafting_nothing(session):
+    """"No answers yet" and "the model failed" have to stay distinguishable."""
+    client = _client(session)
+
+    with pytest.raises(onboarding.ExtractionError):
+        onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+
+def test_the_draft_stays_inside_the_guide_budget_and_keeps_the_rules_whole(session):
+    """Something has to give when both halves are long, and it is never the
+    client's own sentences."""
+    client = _client(session)
+    _answer(session, client, "nie_satz", "Vermont ersetzt den Chirurgen.")
+
+    draft = onboarding.to_guide_draft(
+        session, client, invoke=_distilled("x" * (guide.GUIDE_MAX_CHARS + 500))
+    )
+
+    assert len(draft.text) <= guide.GUIDE_MAX_CHARS
+    assert "Vermont ersetzt den Chirurgen." in draft.text
+
+
+# --- The answers as a source of the guide --------------------------------------
+
+
+def test_the_answers_are_filed_as_a_guide_source(session):
+    """So the guide's provenance says it came from the kick-off, alongside the
+    uploaded documents."""
+    client = _client(session)
+    _kickoff(session, client)
+
+    onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    stored = guide.sources(session, client.id)
+    assert [s.filename for s in stored] == [onboarding.SOURCE_NAME]
+    assert "Wir bauen Roboterarme für OP-Säle." in stored[0].text
+
+
+def test_regenerating_replaces_the_kickoff_source_rather_than_piling_up(session):
+    """Six near-identical copies of the questionnaire would push the real
+    documents out of the distillation's character budget."""
+    client = _client(session)
+    _kickoff(session, client)
+    onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    _answer(session, client, "wortwahl", "Immer Kundinnen und Kunden, nie User.")
+    onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    stored = guide.sources(session, client.id)
+    assert len(stored) == 1
+    assert "Immer Kundinnen und Kunden, nie User." in stored[0].text
+
+
+def test_an_uploaded_document_survives_the_kickoff_source(session):
+    """Two ways in, both sources. The brand book is not replaced by the call."""
+    client = _client(session)
+    _kickoff(session, client)
+    guide.store_source(session, client, "markenbuch.pdf", "Wir schreiben sachlich.")
+
+    onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    assert {s.filename for s in guide.sources(session, client.id)} == {
+        "markenbuch.pdf",
+        onboarding.SOURCE_NAME,
+    }
+
+
+# --- The named competitors -----------------------------------------------------
+
+
+def test_a_named_competitor_is_offered_with_the_reason_beside_it(session):
+    client = _client(session)
+    _answer(
+        session, client, "wettbewerber",
+        "Intuitive Surgical, weil sie den Markt definieren",
+    )
+
+    named = onboarding.to_rivals(session, client)
+
+    assert [(r.name, r.reason) for r in named] == [
+        ("Intuitive Surgical", "weil sie den Markt definieren")
+    ]
+
+
+def test_a_named_competitor_is_never_linked_automatically(session):
+    """A wrong competitor does not merely look odd — it lands in the share-of-voice
+    arithmetic and quietly changes a number the agency reports."""
+    client = _client(session)
+    _answer(session, client, "wettbewerber", "Intuitive Surgical, weil sie führen")
+
+    onboarding.to_rivals(session, client)
+
+    assert list(client.competitors) == []
+    assert session.query(Client).count() == 1
+
+
+def test_a_competitor_already_in_the_comparison_set_is_not_offered_again(session):
+    client = _client(session)
+    rival = Client(name="Intuitive Surgical", aliases=[], keywords=[],
+                   alert_topics=[], is_competitor=True)
+    session.add(rival)
+    session.flush()
+    client.competitors.append(rival)
+    session.commit()
+    _answer(session, client, "wettbewerber", "Intuitive Surgical, weil sie führen")
+
+    assert onboarding.to_rivals(session, client) == []
+
+
+def test_a_competitor_named_without_a_reason_is_still_offered(session):
+    client = _client(session)
+    _answer(session, client, "wettbewerber", "Intuitive Surgical")
+
+    named = onboarding.to_rivals(session, client)
+
+    assert [(r.name, r.reason) for r in named] == [("Intuitive Surgical", "")]
+
+
+def test_the_mandate_itself_is_never_offered_as_its_own_competitor(session):
+    client = _client(session)
+    _answer(session, client, "wettbewerber", f"{client.name}, aus Versehen genannt")
+
+    assert onboarding.to_rivals(session, client) == []
+
+
+# --- DEC-2: an answer that contradicts what was researched ---------------------
+
+
+def test_an_accepted_answer_wins_and_the_researched_value_stays_visible(session):
+    """DEC-2 option A. The person who runs the company outranks the page written
+    about it, and the disagreement stays legible instead of being erased."""
+    client = _client(session)
+    profiles.save(session, client, "geschaeftsfeld", "Medizintechnik-Zulieferer",
+                  source_url="https://beispiel.de/ueber-uns", source_title="Website",
+                  filled_by="gemini-2.5-flash")
+
+    profiles.save(session, client, "geschaeftsfeld", "Wir bauen Roboterarme.",
+                  source_title=onboarding.SOURCE_NAME,
+                  filled_by=onboarding.SOURCE_NAME, supersede=True)
+
+    fact = profiles.stored(session, client.id)["geschaeftsfeld"]
+    assert fact.value == "Wir bauen Roboterarme."
+    assert fact.filled_by == onboarding.SOURCE_NAME
+    assert fact.superseded_value == "Medizintechnik-Zulieferer"
+    assert fact.superseded_filled_by == "gemini-2.5-flash"
+    assert fact.superseded_source_url == "https://beispiel.de/ueber-uns"
+    assert fact.is_disputed is True
+
+
+def test_an_answer_that_agrees_with_the_stored_value_records_no_disagreement(session):
+    """A "die Recherche sagte" line under a value nothing ever contradicted would
+    be provenance theatre."""
+    client = _client(session)
+    profiles.save(session, client, "sitz", "Bern", filled_by="gemini-2.5-flash")
+
+    profiles.save(session, client, "sitz", "Bern", supersede=True,
+                  filled_by=onboarding.SOURCE_NAME)
+
+    assert profiles.stored(session, client.id)["sitz"].is_disputed is False
+
+
+def test_a_field_nothing_stood_in_is_filled_without_a_supersession(session):
+    client = _client(session)
+
+    profiles.save(session, client, "sitz", "Bern", supersede=True,
+                  filled_by=onboarding.SOURCE_NAME)
+
+    assert profiles.stored(session, client.id)["sitz"].is_disputed is False
+
+
+def test_dropping_the_old_value_ends_the_disagreement(session):
+    """Kept so the reader can see the web said something else, not so it stays on
+    the page forever."""
+    client = _client(session)
+    profiles.save(session, client, "sitz", "Zug", filled_by="gemini-2.5-flash")
+    profiles.save(session, client, "sitz", "Bern", supersede=True,
+                  filled_by=onboarding.SOURCE_NAME)
+
+    profiles.forget_superseded(session, client.id, "sitz")
+
+    fact = profiles.stored(session, client.id)["sitz"]
+    assert fact.value == "Bern"
+    assert fact.is_disputed is False
+
+
+# --- The pages -----------------------------------------------------------------
+
+
+def test_the_profile_offers_the_kickoff_answer_and_names_its_source(factory, web):
+    with factory() as session:
+        client = _client(session)
+        _answer(session, client, "satz", "Wir bauen Roboterarme für OP-Säle.")
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Wir bauen Roboterarme für OP-Säle." in body
+    assert onboarding.SOURCE_NAME in body
+    with factory() as session:
+        assert session.query(ClientFact).count() == 0, "offered, not adopted"
+
+
+def test_a_kickoff_answer_is_offered_even_where_the_consultant_filled_the_field(
+    factory, web
+):
+    """The reverse of the research rule, on purpose: the machine may never
+    overrule the consultant, but the client contradicting the file is exactly the
+    case this page exists to surface."""
+    with factory() as session:
+        client = _client(session)
+        profiles.save(session, client, "geschaeftsfeld", "Medizintechnik")
+        _answer(session, client, "satz", "Wir bauen Roboterarme für OP-Säle.")
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Wir bauen Roboterarme für OP-Säle." in body
+
+
+def test_an_answer_that_says_what_the_field_already_says_is_not_offered(factory, web):
+    with factory() as session:
+        client = _client(session)
+        profiles.save(session, client, "geschaeftsfeld", "Roboterarme.")
+        _answer(session, client, "satz", "Roboterarme.")
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Vorschläge für das Profil" not in body
+
+
+def test_accepting_through_the_page_shows_both_values_with_their_provenance(
+    factory, web
+):
+    with factory() as session:
+        client = _client(session)
+        profiles.save(session, client, "geschaeftsfeld", "Medizintechnik-Zulieferer",
+                      source_url="https://beispiel.de/ueber-uns",
+                      source_title="Website", filled_by="gemini-2.5-flash")
+        _answer(session, client, "satz", "Wir bauen Roboterarme für OP-Säle.")
+        client_id = client.id
+
+    web.post(f"/client/{client_id}/profil/accept", data={"key": "geschaeftsfeld"},
+             follow_redirects=False)
+    body = web.get(f"/client/{client_id}/profil").text
+
+    with factory() as session:
+        fact = profiles.stored(session, client_id)["geschaeftsfeld"]
+    assert fact.value == "Wir bauen Roboterarme für OP-Säle."
+    assert fact.superseded_value == "Medizintechnik-Zulieferer"
+    # Both values on the page, each with where it came from.
+    assert "Medizintechnik-Zulieferer" in body
+    assert "https://beispiel.de/ueber-uns" in body
+    assert onboarding.SOURCE_NAME in body
+
+
+def test_the_page_drops_the_old_value_when_asked(factory, web):
+    with factory() as session:
+        client = _client(session)
+        profiles.save(session, client, "sitz", "Zug", filled_by="gemini-2.5-flash")
+        profiles.save(session, client, "sitz", "Bern", supersede=True,
+                      filled_by=onboarding.SOURCE_NAME)
+        client_id = client.id
+
+    web.post(f"/client/{client_id}/profil/sitz/forget", follow_redirects=False)
+
+    with factory() as session:
+        assert profiles.stored(session, client_id)["sitz"].is_disputed is False
+
+
+def test_the_profile_states_how_much_of_the_kickoff_is_answered(factory, web):
+    with factory() as session:
+        client = _client(session)
+        _kickoff(session, client)
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert f"5/{onboarding.TOTAL}" in body
+    assert "Fragen aus dem Kickoff beantwortet oder übergangen" in body
+
+
+def test_a_mandate_with_no_questionnaire_says_so_on_its_profile(factory, web):
+    with factory() as session:
+        client_id = _client(session).id
+
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Kein Fragebogen beantwortet" in body
+
+
+def test_the_client_list_carries_the_completeness_line(factory, web):
+    with factory() as session:
+        client = _client(session)
+        _kickoff(session, client)
+
+    body = web.get("/clients").text
+
+    assert f"5/{onboarding.TOTAL}" in body
+    assert "Fundament" in body
+
+
+def test_the_client_list_says_plainly_when_there_is_no_questionnaire(factory, web):
+    with factory() as session:
+        _client(session)
+
+    body = web.get("/clients").text
+
+    assert "kein Fragebogen" in body
+
+
+def test_the_guide_page_offers_a_draft_from_the_kickoff(factory, web):
+    with factory() as session:
+        client = _client(session)
+        _kickoff(session, client)
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/guide").text
+
+    assert f"/client/{client_id}/guide/kickoff" in body
+    assert "Entwurf aus dem Kickoff" in body
+
+
+def test_the_guide_page_says_when_there_is_nothing_to_draft_from(factory, web):
+    with factory() as session:
+        client_id = _client(session).id
+
+    body = web.get(f"/client/{client_id}/guide").text
+
+    assert f"/client/{client_id}/guide/kickoff" not in body
+    assert "noch unbeantwortet" in body
+
+
+def test_the_drafted_guide_is_editable_and_unsaved_until_it_is_submitted(
+    factory, web, monkeypatch
+):
+    """The acceptance criterion in one pass: generate, and the guide is still
+    empty; the draft comes back in a field the consultant can change first."""
+    monkeypatch.setattr(
+        onboarding, "invoke_with_fallback",
+        lambda *args, **kwargs: "Positionierung: Chirurgierobotik.",
+    )
+    with factory() as session:
+        client = _client(session)
+        _kickoff(session, client)
+        client_id = client.id
+
+    body = web.post(f"/client/{client_id}/guide/kickoff").text
+
+    assert "Positionierung: Chirurgierobotik." in body
+    assert "Vermont ersetzt den Chirurgen." in body, "the no-go, verbatim"
+    assert '<textarea class="guide__area proposal__area"' in body
+    with factory() as session:
+        assert session.get(Client, client_id).comms_guide in (None, "")
+
+
+def test_the_rivals_page_offers_what_the_client_named(factory, web):
+    with factory() as session:
+        client = _client(session)
+        _answer(session, client, "wettbewerber",
+                "Intuitive Surgical, weil sie den Markt definieren")
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/wettbewerb").text
+
+    assert "Im Kickoff genannt" in body
+    assert "Intuitive Surgical" in body
+    with factory() as session:
+        client = session.get(Client, client_id)
+        assert list(client.competitors) == [], "offered, never linked"
+
+
+# --- The guard again, now that there is something to adopt ---------------------
+
+
+def test_converting_a_questionnaire_adopts_none_of_it(web, session):
+    """Proposals computed, a draft generated, competitors offered — and the
+    profile, the guide and the comparison set are byte-for-byte unchanged."""
+    client = _client(session)
+    _kickoff(session, client)
+    session.add(ClientFact(client_id=client.id, key="ceo", value="Aus dem Netz",
+                           source_url="https://beispiel.de", filled_by="gemini"))
+    session.commit()
+    before = _foundation(session, client.id)
+
+    onboarding.to_proposals(session, client.id)
+    onboarding.to_rivals(session, client)
+    onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    assert _foundation(session, client.id) == before
+    assert list(session.get(Client, client.id).competitors) == []
+
+
+def test_every_new_kickoff_conversion_string_has_an_english_entry():
+    """The same rule as the questionnaire's own strings: a German line on an
+    English page is the mixed UI the i18n table exists to prevent."""
+    known = set(i18n.known_keys())
+
+    assert onboarding.SOURCE_NAME in known
+    for key in onboarding._PROFILE_SLOTS.values():
+        field = profiles.FIELDS_BY_KEY[key]
+        assert field.label in known, field.label
