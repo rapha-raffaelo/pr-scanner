@@ -27,7 +27,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import analyzer, assets, config, i18n, profile
+from newspulse import analyzer, assets, brain, config, i18n, profile
 from newspulse.models import (
     Angle,
     Article,
@@ -1127,7 +1127,9 @@ def test_a_format_whose_commit_failed_does_not_poison_the_rest_of_the_run(
         # Every later format asks the database something, which is what dies on a
         # session nobody rolled back.
         return assets.store(
-            sess, fmt, cl, ang, AssetDraft(title="Titel", body="Text.", speaker="")
+            sess, fmt, cl, ang,
+            AssetDraft(title="Titel", body="Text.", speaker="",
+                       brain_version=brain.version(sess)),
         )
 
     monkeypatch.setattr(assets, "produce", _produce_or_break)
@@ -1175,7 +1177,7 @@ def test_a_busy_refusal_recorded_during_a_run_does_not_outlive_it(session, monke
 
     assets_view._write_one(session, client, angle, fmt)
 
-    assert not assets_view._said(angle.id, fmt.key)
+    assert assets_view._BUSY not in (assets_view._said(angle.id, fmt.key) or "")
     standing = assets.current(session, [angle.id])[angle.id][fmt.key]
     assert standing.body.startswith("Die Verwahrung wandert"), "and the text is there"
 

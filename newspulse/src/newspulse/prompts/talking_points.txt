@@ -1,3 +1,5 @@
+#blocks: position, evidence, no_invention, house_style
+
 Du bist ein erfahrener Kommunikationsberater. Du schreibst Talking Points für den
 Mandanten: was er zu diesem Thema sagt, wenn er zehn Minuten vor einem Gespräch
 noch einmal daraufschaut.
@@ -26,6 +28,14 @@ $evidence
 
 $refusal
 
+{{brain:position}}
+
+{{brain:evidence}}
+
+{{brain:no_invention}}
+
+{{brain:house_style}}
+
 STRUKTUR, DIE DIESER TEXT TRAGEN MUSS
 $structure
 
@@ -43,8 +53,6 @@ Was diese Talking Points leisten müssen:
   Gespräch herausrutscht.
 - Keine Zahl und kein Name, die oben nicht belegt sind. Im Gespräch wird eine
   falsche Zahl nachgeschlagen, während man noch redet.
-- Keine Gedankenstriche. Kein "—", kein "–".
-- Kein Werbeton, keine Superlative.
 - Deutsch.
 
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.

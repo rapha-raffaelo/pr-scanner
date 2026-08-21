@@ -67,9 +67,7 @@ Prüfe genau diese fünf Dinge, in dieser Reihenfolge:
    suchst du nicht: die sind vor dieser Prüfung mechanisch ersetzt worden, und was
    du liest, ist die Fassung, die der Berater sieht.
 
-Sei streng bei 1 und 2 und sparsam bei 3 bis 5. Wenn der Text in Ordnung ist, sag
-das. Eine Prüfung, die immer etwas findet, wird nach dem dritten Mal ignoriert und
-ist dann schlechter als keine.
+Sei streng bei 1 und 2 und sparsam bei 3 bis 5.
 
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 

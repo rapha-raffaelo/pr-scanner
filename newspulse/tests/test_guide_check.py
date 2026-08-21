@@ -21,7 +21,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import assets, guide
+from newspulse import assets, brain, guide
 from newspulse.analyzer import ParseError
 from newspulse.models import Base, CheckState, Client
 
@@ -253,7 +253,10 @@ def test_a_failed_guide_check_stores_as_not_clean(session):
         fmt,
         client,
         angle,
-        assets.AssetDraft(title="Alpha AG baut aus", body="Wir bauen aus."),
+        assets.AssetDraft(
+            title="Alpha AG baut aus", body="Wir bauen aus.",
+            brain_version=brain.version(session),
+        ),
         checked,
     )
 

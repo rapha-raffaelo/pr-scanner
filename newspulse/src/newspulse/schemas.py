@@ -335,6 +335,11 @@ class AssetDraft(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    #: See "Provenance". Captured by :func:`newspulse.assets.write` when it
+    #: composes the prompt, never taken from the reply: provenance is not the
+    #: model's to state.
+    brain_version: int | None = None
+
     #: Headline, subject line or briefing title. Empty for the formats that have
     #: no title of their own.
     title: str = ""

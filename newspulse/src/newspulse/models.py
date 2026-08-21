@@ -1486,6 +1486,13 @@ class Asset(Base):
     )
     released_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
 
+    #: The standards this text was written under, on the same terms as
+    #: :attr:`Angle.brain_version`: captured with the prompt, NULL for a text
+    #: from before there was anything to stamp. A press release goes out under
+    #: the client's name, so which version of the house's rules produced it is
+    #: part of the record rather than a detail of the run.
+    brain_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     @property
     def released(self) -> bool:
         return self.released_at is not None

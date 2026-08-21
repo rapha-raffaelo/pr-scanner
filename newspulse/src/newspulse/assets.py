@@ -1776,7 +1776,9 @@ def _parse(raw: str) -> AssetDraft:
     except json.JSONDecodeError as exc:
         raise ParseError(f"the format reply was not valid JSON: {exc}") from exc
     try:
-        draft = AssetDraft.model_validate(payload)
+        # A reply that volunteers a brain_version would otherwise be validated
+        # into the field and the row would carry a number nothing recorded.
+        draft = AssetDraft.model_validate(without_provenance(payload))
     except Exception as exc:  # noqa: BLE001 — pydantic raises its own type
         raise ParseError(f"the format reply did not match the schema: {exc}") from exc
     if not draft.body.strip():
@@ -1966,8 +1968,12 @@ def write(
     prompt = prompt_for(
         session, fmt, client, angle, facts=facts, target=target, headlines=headlines
     )
+    # Captured beside the prompt it describes, not after the call: an override
+    # saved while the model is thinking belongs to the next text, and a stamp
+    # read afterwards would file this one under standards it never saw.
+    written_under = brain.version(session)
     try:
-        return _drafted(
+        drafted = _drafted(
             fmt,
             prompt,
             _given(fmt, client, facts, target, headlines),
@@ -1975,6 +1981,7 @@ def write(
             invoke=invoke,
             label=client.name,
         )
+        return drafted.model_copy(update={"brain_version": written_under})
     except Malformed as exc:
         _tell(note, str(exc))
         raise
@@ -2309,6 +2316,7 @@ def store(
     # somebody typed with a dash would otherwise be the one line on the page the
     # house rule never reached.
     row.speaker = prose.plain(draft.speaker).strip()
+    row.brain_version = brain.stamp(draft.brain_version, what="this text")
     row.generated_at = dt.datetime.now(dt.UTC)
     # The model's words, freshly. Whatever a human had done to the previous draft
     # was done to a different text.

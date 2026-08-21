@@ -41,12 +41,23 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import advisor, angles, brain, config, i18n, outreach, prose
+from newspulse import (
+    advisor,
+    angles,
+    assets,
+    brain,
+    config,
+    i18n,
+    outreach,
+    prose,
+)
 from newspulse.models import (
     Advisory,
     Analysis,
     Angle,
     Article,
+    Asset,
+    AssetKind,
     Base,
     BrainOverride,
     Category,
@@ -295,6 +306,26 @@ def test_composition_reads_the_installed_override_source(monkeypatch):
 #: crosscheck.txt when the original carried six: two standards could have been
 #: deleted from it and the suite would have stayed green.
 CARRIED_BEFORE = {
+    # The six formats and the guide check, added with the formats feature and
+    # brought under the layer here. Each one already said the house style in its
+    # own words — "Keine Gedankenstriche", "Kein Werbeton, keine Superlative" —
+    # and those bullets are gone from the prompts, which is the whole point:
+    # editing the standard now moves all seven.
+    #
+    # Four of them also stated, in their own words, that nothing unbacked may be
+    # asserted ("Keine Zahl und kein Name, die oben nicht belegt sind"), which is
+    # what no_invention and evidence carry between them. statement and
+    # pressemitteilung named the overclaim trap instead ("Die pauschale Lesart
+    # oben ist die Falle"), which position states at length.
+    "statement.txt": {"house_style", "position"},
+    "qa.txt": {"house_style", "no_invention", "evidence"},
+    "talking_points.txt": {"house_style", "no_invention", "evidence"},
+    "interview_briefing.txt": {"house_style", "no_invention", "evidence"},
+    "pressemitteilung.txt": {"house_style", "position"},
+    "gastbeitrag.txt": {"house_style", "no_invention", "evidence"},
+    # The guide check said none of them. It is a checker with one question, and
+    # it says so itself: style and structure are another pass.
+    "guide_check.txt": set(),
     # "Eine Maßnahme ohne Beleg ist wertlos"; "nur Schlagzeilen und kurze
     # Zusammenfassungen"; "Lieber drei gute als sechs beliebige" / "erfinde keine
     # Betriebsamkeit"; "Empfiehl auch das Unterlassen".
@@ -348,6 +379,33 @@ CARRIED_BEFORE = {
 #: standard nobody chose for them. Together with CARRIED_BEFORE this accounts for
 #: every include in every prompt, so an addition cannot arrive as a side effect.
 ADDED_IN_MIGRATION = {
+    # What the move gives the seven, and why each is wanted.
+    #
+    # All six formats gain the standards they leaned on without stating: they are
+    # written off a thesis and its overclaim, from headlines and feed snippets,
+    # and they name people and numbers. position, evidence and no_invention are
+    # the three that decide whether such a text is publishable.
+    "statement.txt": {"evidence", "no_invention"},
+    "qa.txt": {"position"},
+    "talking_points.txt": {"position"},
+    "interview_briefing.txt": {"position"},
+    "pressemitteilung.txt": {"evidence", "no_invention", "journalistic_value"},
+    "gastbeitrag.txt": {"position", "journalistic_value"},
+    # journalistic_value is on exactly the two that land on an editor's desk. It
+    # talks about two hundred PR letters and what earns a journalist's attention,
+    # which is true of a release and a guest article and false of a briefing the
+    # client reads before an interview, of talking points nobody sends, and of a
+    # statement a newsroom already asked for. Composing it into those would be
+    # the defect the industry.txt and themes.txt entries in CONTRADICTIONS
+    # record: advice about writing to a person, in a prompt that writes to none.
+    #
+    # The generic refusal block is on none of them. Every one already composes
+    # `$refusal`, which says the same thing about the fields this particular
+    # format requires — naming them, which the generic block cannot.
+    #
+    # The guide check gains the two a checker can get wrong: quoting a rule the
+    # guide does not contain, and finding something every single time.
+    "guide_check.txt": {"no_invention", "false_alarm"},
     # advisory writes drafts that go out as they stand, to a Redaktion or as a
     # Sprachregelung. Both standards govern sendable text and the original
     # relied on the model not needing to be told.
@@ -1463,6 +1521,43 @@ def _store_an_advisory(session) -> Advisory:
     return advisor.store(session, client, brief, coverage)
 
 
+def _store_an_asset(session) -> Asset:
+    """Drive ``assets`` the way the format strip does: write, then store.
+
+    Talking points rather than a press release: it is the format with the
+    fewest required facts, so the harness is about the stamp rather than about
+    assembling a speaker and a dateline.
+    """
+    client = _a_mandate(session)
+    angle = Angle(
+        client_id=client.id,
+        generated_at=dt.datetime.now(dt.UTC),
+        subject="Verfügbarkeit als Risikoparameter",
+        message="Zwei Absätze Positionierung.",
+        context="Laut Börsen-Zeitung steht die Verwahrung vor einem Umbau.",
+        thesis="Verwahrung ist ein eigener Risikoparameter.",
+        overclaim="Fremdverwahrung ist erledigt.",
+    )
+    session.add(angle)
+    session.commit()
+    fmt = assets.definition(AssetKind.TALKING_POINTS)
+    draft = assets.write(
+        session, fmt, client, angle,
+        invoke=lambda *a, **k: json.dumps(
+            {
+                "title": "Verwahrung",
+                "body": (
+                    "1. Verwahrung ist ein eigener Risikoparameter.\n"
+                    "Brücke: Zurück zur These, dass Verwahrung eigens zählt.\n\n"
+                    "Nicht sagen\nDass Fremdverwahrung erledigt sei."
+                ),
+                "speaker": "",
+            }
+        ),
+    )
+    return assets.store(session, fmt, client, angle, draft)
+
+
 #: Every generator in the tool, each paired with a call that drives its real
 #: generate-then-store path. The point of the list is that it is exhaustive, and
 #: the test below it is what keeps it that way: a stamp on the two generators
@@ -1471,6 +1566,10 @@ GENERATORS = [
     ("angles", _store_an_angle),
     ("outreach", _store_a_letter),
     ("advisor", _store_an_advisory),
+    # The six formats, all through one writer. Added when the formats landed:
+    # a press release goes out under the client's name, so it is the last
+    # artefact that should be unable to say which standards produced it.
+    ("assets", _store_an_asset),
 ]
 
 

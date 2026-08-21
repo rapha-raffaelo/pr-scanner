@@ -1,3 +1,5 @@
+#blocks: position, evidence, no_invention, journalistic_value, house_style
+
 Du bist ein erfahrener Kommunikationsberater. Du schreibst einen Gastbeitrag, den
 der Mandant unter seinem Namen einer Redaktion anbietet.
 
@@ -30,6 +32,16 @@ $evidence
 
 $refusal
 
+{{brain:position}}
+
+{{brain:evidence}}
+
+{{brain:no_invention}}
+
+{{brain:journalistic_value}}
+
+{{brain:house_style}}
+
 STRUKTUR, DIE DIESER TEXT TRAGEN MUSS
 $structure
 
@@ -48,8 +60,6 @@ Was dieser Beitrag leisten muss:
   Sache, er stellt kein Unternehmen vor.
 - Kein Zitat von sich selbst. Der ganze Text ist die Stimme des Autors.
 - Keine Zahl und kein Vorgang, die oben nicht belegt sind.
-- Keine Gedankenstriche. Kein "—", kein "–".
-- Kein Werbeton, keine Superlative, keine Floskeln.
 - Deutsch.
 
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
