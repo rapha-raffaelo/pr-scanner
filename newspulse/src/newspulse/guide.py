@@ -43,7 +43,7 @@ from sqlalchemy.orm import Session
 from . import config, gemini
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Client, GuideSource
-from .schemas import GuideVerdict, PersonalMessage
+from .schemas import MAX_BREACHES, GuideVerdict, PersonalMessage
 
 _log = logging.getLogger(__name__)
 
@@ -79,6 +79,16 @@ SUPPORTED_SUFFIXES = (".pdf", ".txt", ".md", ".markdown")
 
 class ExtractionError(RuntimeError):
     """The upload could not be turned into text, with a reason worth showing."""
+
+
+class NoSecondModel(RuntimeError):
+    """No second provider is configured, so the check cannot run at all.
+
+    Its own type because it is not a failure: nothing broke, nothing was reached,
+    a key is simply not set. The caller logs it differently for exactly that
+    reason. A ``RuntimeError`` subclass so callers that only care that the check
+    refused rather than passed keep working.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,11 +269,11 @@ def _second_model() -> Callable[..., str]:
     to the model that wrote the letter would turn the check into a self-check, and
     a model does not find its own breach of a rule it read ten seconds ago.
 
-    Raises :class:`RuntimeError` when nothing is configured, for the same reason
+    Raises :class:`NoSecondModel` when nothing is configured, for the same reason
     the crosscheck does — a check that silently did not happen is worse than none.
     """
     if not config.review_configured():
-        raise RuntimeError(
+        raise NoSecondModel(
             "Kein Zweitmodell hinterlegt: GEMINI_API_KEY (oder "
             "NEWSPULSE_GEMINI_API_KEY) in der .env setzen, damit ein anderes "
             "Modell den Text gegen den Guide liest."
@@ -295,10 +305,21 @@ def _parse_verdict(raw: str) -> GuideVerdict:
         verdict = GuideVerdict.model_validate(payload)
     except Exception as exc:  # noqa: BLE001 — pydantic raises its own type
         raise ParseError(f"the guide check did not match the schema: {exc}") from exc
+    # Cut, never rejected. A reply with more breaches than fit is a *worse* draft,
+    # and that is the last one allowed to come back as "not checked"; the prompt
+    # asks for the gravest first so the cut lands at the bottom of the list. Said
+    # out loud, because a cap nobody logs reads afterwards like full coverage.
+    breaches = verdict.breaches[:MAX_BREACHES]
+    if len(verdict.breaches) > MAX_BREACHES:
+        _log.info(
+            "guide check reported %d breaches, keeping the first %d",
+            len(verdict.breaches),
+            MAX_BREACHES,
+        )
     # ``ok`` is recomputed rather than believed. A reply that lists a breach and
     # sets ok anyway would render as a clean bill of health over an objection that
     # is right there underneath it.
-    return verdict.model_copy(update={"ok": not verdict.breaches})
+    return verdict.model_copy(update={"breaches": breaches, "ok": not breaches})
 
 
 def check_guide(
@@ -324,9 +345,10 @@ def check_guide(
     :data:`NOT_CHECKED` for a client with no stored guide — which costs no model
     call, because there is nothing to check against.
 
-    Raises :class:`newspulse.analyzer.ParseError` on an unusable reply and
-    whatever the backend raises on a failed call; the caller decides what an
-    unchecked letter looks like.
+    Raises :class:`newspulse.analyzer.ParseError` on an unusable reply,
+    :class:`NoSecondModel` when there is no provider to ask, and whatever the
+    backend raises on a failed call; the caller decides what an unchecked letter
+    looks like, and the three are worth telling apart.
     """
     stored = (getattr(client, "comms_guide", "") or "").strip()
     if not stored:
@@ -349,6 +371,7 @@ __all__ = [
     "GUIDE_MAX_CHARS",
     "MAX_UPLOAD_BYTES",
     "NOT_CHECKED",
+    "NoSecondModel",
     "SUPPORTED_SUFFIXES",
     "check_guide",
     "delete_source",

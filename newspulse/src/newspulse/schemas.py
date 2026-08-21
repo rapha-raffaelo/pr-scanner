@@ -232,6 +232,15 @@ class MessageReview(BaseModel):
     fix: str = ""
 
 
+#: How many breaches one verdict carries. A cap on what is shown, not on what may
+#: be found: it is enforced by truncation in :func:`newspulse.guide._parse_verdict`
+#: and deliberately *not* by ``max_length`` on the field below. A sixth breach that
+#: voided the whole verdict would invert the feature — the worse the draft, the
+#: more breaches it draws, and the letter that draws six is the last one allowed to
+#: come back saying "not checked".
+MAX_BREACHES = 5
+
+
 class GuideBreach(BaseModel):
     """One collision between a sentence in the draft and a line of the guide.
 
@@ -240,14 +249,21 @@ class GuideBreach(BaseModel):
     pair of quotes can be judged in a second by the person who is accountable for
     the letter. It is also what keeps a breach checkable against a guide the
     consultant wrote himself and can therefore re-read.
+
+    Both quotes are required *and* non-empty. An empty side is the same failure as
+    a missing one: it renders as an accusation with nothing under it, and it would
+    still flip ``ok`` to False. Rejecting the verdict costs a real objection and
+    yields the honest not-checked state; keeping the breach and dropping the quote
+    would show an unanswerable one, and silently dropping the breach could turn an
+    objection into an approval, which is the direction that ends a mandate.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     #: The sentence from the letter, verbatim.
-    draft: str
+    draft: str = Field(min_length=1)
     #: The line of the stored guide it breaks, verbatim.
-    guide: str
+    guide: str = Field(min_length=1)
 
 
 class GuideVerdict(BaseModel):
@@ -269,9 +285,10 @@ class GuideVerdict(BaseModel):
     ok: bool = True
     #: Empty is the good case and must stay possible — a check that always finds
     #: something is ignored by the third letter and is then worse than none.
-    #: Capped like the crosscheck's concerns: past five it is an audit, not a
-    #: verdict, and the guide it reads against is 2000 characters long.
-    breaches: list[GuideBreach] = Field(default_factory=list, max_length=5)
+    #: Unbounded here on purpose: the list is cut to :data:`MAX_BREACHES` in
+    #: :func:`newspulse.guide._parse_verdict`, so a thorough reply is trimmed
+    #: rather than thrown away.
+    breaches: list[GuideBreach] = Field(default_factory=list)
 
 
 # --- Coach: does the guide hold up against the actual coverage? ------------------

@@ -33,10 +33,19 @@ Erfinde keine Regel und leite keine aus der Branche her. Wenn der Guide etwas
 nicht sagt, sagst du es auch nicht. Eine leere Liste ist der Normalfall und die
 richtige Antwort, sobald der Text sich an die Regeln hält.
 
-Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+Höchstens fünf Verstöße, der schwerste zuerst. Was darüber hinausgeht, wird
+abgeschnitten, also entscheide selbst, was oben steht.
+
+Gib AUSSCHLIESSLICH gültiges JSON zurück. Kein weiterer Text, kein Markdown.
+Ist nichts zu beanstanden, lautet die ganze Antwort genau so:
+
+{"ok": true, "breaches": []}
+
+Sonst nach diesem Muster, mit "ok": false und deinen Zitaten anstelle der
+Platzhalter, ein Objekt je Verstoß:
 
 {
-  "ok": true oder false. false, sobald ein Verstoß dabei ist.
+  "ok": false,
   "breaches": [
     {
       "draft": "Der Satz aus dem Text, wörtlich zitiert.",
