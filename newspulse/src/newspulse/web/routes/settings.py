@@ -27,15 +27,18 @@ import json
 import logging
 import os
 import re
+import secrets
 import tempfile
 import threading
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
+from urllib.parse import quote, urlparse
 
-from fastapi import APIRouter, Depends, Form, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
@@ -43,7 +46,9 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from ... import (
     angles,
+    brain,
     config,
+    gmail_link,
     industry,
     job,
     outreach,
@@ -70,6 +75,7 @@ from ...models import (
     DEFAULT_COUNTRY,
     SCORE_MAX,
     SCORE_MIN,
+    BrainOverride,
     Category,
     Client,
     Run,
@@ -103,6 +109,75 @@ _PREVIEW_ROW_LIMIT = 100
 # POST-Redirect-GET status: a successful mutation redirects so a browser refresh
 # re-GETs the page instead of re-submitting the form.
 _SEE_OTHER = 303
+
+
+class GmailNotice(StrEnum):
+    """What the mailbox panel says after a round trip to Google.
+
+    A typed set rather than free text in a query string: the value travels
+    through the browser, so it decides which German sentence is rendered and must
+    never be one an attacker gets to write.
+    """
+
+    CONNECTED = "verbunden"
+    DECLINED = "abgelehnt"
+    STATE = "state"
+    FAILED = "fehler"
+    DISCONNECTED = "getrennt"
+    # Disconnected here, but Google did not confirm the revocation. Its own
+    # notice, because "getrennt" would otherwise claim something that may not be
+    # true of the token still sitting in the Google account.
+    NOT_REVOKED = "widerruf-offen"
+    # Nothing was connected, so there was nothing to revoke — a double-submitted
+    # form or a stale tab. Its own notice too, and a calm one: reporting it as an
+    # unconfirmed revocation sent the operator to search their Google account for
+    # a permission that was already gone.
+    NOTHING = "nichts-verbunden"
+
+
+# What each revocation outcome says on the panel. A mapping rather than a chain
+# of ifs, so a fourth outcome cannot silently fall through to "everything fine".
+_REVOCATION_NOTICE: dict[gmail_link.Revocation, GmailNotice] = {
+    gmail_link.Revocation.REVOKED: GmailNotice.DISCONNECTED,
+    gmail_link.Revocation.REFUSED: GmailNotice.NOT_REVOKED,
+    gmail_link.Revocation.NOTHING: GmailNotice.NOTHING,
+}
+
+
+# The one-attempt ``state``, held in a cookie for the length of the consent
+# screen. A cookie rather than a module variable because it belongs to the
+# browser that started the flow, and it must be there again when Google sends
+# that same browser back — a restart in between correctly costs the attempt.
+_GMAIL_STATE_COOKIE = "newspulse_gmail_state"
+# Ten minutes: consent is one screen, and a stale state that outlives the tab it
+# was issued for is a replay window for no benefit.
+_GMAIL_STATE_MAX_AGE = 600
+# Lax, not strict: Google's callback is a top-level GET from another site, and a
+# strict cookie would not be sent with it — the flow would refuse every callback.
+_GMAIL_COOKIE_SAMESITE = "lax"
+
+# Google's own word for "the person pressed Abbrechen".
+_GMAIL_DECLINED = "access_denied"
+
+# A cross-site POST is refused with this rather than redirected: a redirect would
+# tell the attacking page that the request was even routed, and the operator is
+# not the one reading this response.
+_FORBIDDEN = 403
+
+# Where the panel points when the integration is not configured. The deployment
+# note is a repository file rather than a page this app serves, so the link goes
+# to the repository copy; there is nothing to read at runtime and pretending
+# otherwise would be a dead link inside the product.
+#
+# The path is named separately and rendered *beside* the link, because the host
+# and owner in this URL are the ones this repository happens to live under today:
+# a fork or a rename turns the link into a 404, and then the file name is the only
+# thing left that still leads anywhere.
+DEPLOYMENT_DOC_PATH = "newspulse/docs/deployment.md"
+DEPLOYMENT_DOC_URL = (
+    f"https://github.com/rapha-raffaelo/pr-scanner/blob/main/{DEPLOYMENT_DOC_PATH}"
+    "#the-mailbox-gmail"
+)
 
 _log = logging.getLogger(__name__)
 
@@ -472,6 +547,137 @@ def _header_from_runs(runs: list[RunView]) -> _HeaderRun | None:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class BlockView:
+    """One brain block as the settings panel shows it.
+
+    ``text`` is what a prompt composes today, whichever source it came from, so
+    the panel cannot show one thing while the model reads another.
+    """
+
+    key: str
+    text: str
+    is_override: bool
+    #: An override whose shipped default is gone — a block renamed in the
+    #: repository while an override for the old key was still live. Shown rather
+    #: than hidden: it is the one state in which an edit nobody can find is still
+    #: in force.
+    is_orphan: bool
+    changed_at: dt.datetime | None
+    changed_by: str
+    #: Whether ``changed_by`` is the sentinel rather than a person's name, so the
+    #: template knows which of the two to put through the translation lookup.
+    #: See :func:`_author_is_sentinel`.
+    changed_by_is_sentinel: bool
+    #: The brain version this text has been in force since, or None if the block
+    #: has never been changed and is simply what the repository ships.
+    version: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class BlockChange:
+    """One entry in a block's history, with the wording it put in force."""
+
+    version: int
+    changed_at: dt.datetime
+    changed_by: str
+    changed_by_is_sentinel: bool
+    #: The wording this change put in force, or "" for a revert whose shipped
+    #: default no longer exists — the one case where there is nothing to show and
+    #: the template says so rather than rendering an empty box.
+    text: str
+    is_revert: bool
+
+
+def _author_is_sentinel(name: str) -> bool:
+    """Whether an author is the no-named-user fallback rather than a person.
+
+    The panel used to render every author through the translation lookup, which
+    works for "mensch" — that is why the entry exists — and is wrong for
+    everything else. ``NEWSPULSE_AUTH_USER`` is a value an operator chooses, and
+    one that happened to collide with a German UI key would show the author of a
+    change as an unrelated English word: a user named "Vorgabe" appearing in the
+    history as "Shipped". Only the sentinel is chrome.
+    """
+    return name == brain._ANONYMOUS_EDITOR
+
+
+def _brain_blocks(session: Session) -> list[BlockView]:
+    """Every block the tool has: what it says, where it came from, when it moved."""
+    shipped = brain.shipped()
+    overrides = brain.stored(session)
+    changes = brain.latest(session)
+    views: list[BlockView] = []
+    for key in [*sorted(shipped), *brain.orphaned(overrides)]:
+        change = changes.get(key)
+        author = change.edited_by if change is not None else ""
+        views.append(
+            BlockView(
+                key=key,
+                text=overrides[key] if key in overrides else shipped.get(key, ""),
+                is_override=key in overrides,
+                is_orphan=key not in shipped,
+                changed_at=change.edited_at if change is not None else None,
+                changed_by=author,
+                changed_by_is_sentinel=_author_is_sentinel(author),
+                version=change.version if change is not None else None,
+            )
+        )
+    return views
+
+
+def _brain_history(session: Session, key: str) -> list[BlockChange]:
+    """One block's recorded changes, newest first, each with its own wording.
+
+    A revert carries no text of its own — it is the absence of an override — so
+    it renders the shipped wording it restored. A date alone would say a change
+    happened and nothing about what the house believed afterwards, which is the
+    only question anyone opens a history to answer.
+
+    Two honest limits. The shipped text is today's, not the one that shipped on
+    the day of the revert: the file's wording at that moment is not stored
+    anywhere this can read, and git holds the lineage. And for an orphan there is
+    no shipped text at all, which used to render as an empty ``<pre>`` — a
+    version, a date and an author with nothing readable beside them. That case is
+    now empty on purpose and the template names it.
+    """
+    shipped_text = brain.shipped().get(key, "")
+    return [
+        BlockChange(
+            version=row.version,
+            changed_at=row.edited_at,
+            changed_by=row.edited_by,
+            changed_by_is_sentinel=_author_is_sentinel(row.edited_by),
+            text=row.text if row.text is not None else shipped_text,
+            is_revert=row.text is None,
+        )
+        for row in brain.history(session, key)
+    ]
+
+
+def _block_exists(session: Session, key: str) -> bool:
+    """Whether a block has a page: it ships, or something has overridden it.
+
+    One rule, asked in two places. The three block verbs 404 on it and the stamp
+    resolver decides whether to send a reader to that page or fall back to the
+    list — and if the two ever disagreed, the disagreement would show up as a
+    stored letter linking to a 404, or as a fallback away from a page that is
+    perfectly readable.
+    """
+    return key in brain.shipped() or key in brain.stored(session)
+
+
+def _require_block(session: Session, key: str) -> None:
+    """404 for a key that neither ships nor has an override.
+
+    A block is addressed by name in the URL, so without this a typo renders the
+    whole settings page with an editor for a block that does not exist and a save
+    button that would refuse it.
+    """
+    if not _block_exists(session, key):
+        raise HTTPException(status_code=404, detail="Brain block not found")
+
+
 def _fetch_feed_views(session: Session) -> list[FeedView]:
     """The registered feeds with their active flag resolved from settings."""
     feeds = load_feeds()
@@ -681,6 +887,17 @@ def _page_context(session: Session) -> dict[str, object]:
         # out — which is the morning it mattered.
         "fallback_ready": config.gemini_configured(),
         "fallback_model": config.GEMINI_MODEL,
+        # The mailbox. Three separable facts, because the panel has three states
+        # and conflating them is how a person ends up pressing a button that
+        # cannot work: whether an OAuth client exists at all, what is connected
+        # right now (read off the local file, never the network), and what the
+        # last round trip to Google came back with.
+        "gmail_configured": config.gmail_configured(),
+        "gmail": gmail_link.connected(),
+        "gmail_scopes": gmail_link.scope_words(),
+        "gmail_notice": None,
+        "gmail_doc_url": DEPLOYMENT_DOC_URL,
+        "gmail_doc_path": DEPLOYMENT_DOC_PATH,
         "score_range": list(range(SCORE_MIN, SCORE_MAX + 1)),
         "default_country": DEFAULT_COUNTRY,
         # Per-client setup status, so a mandate created a minute ago says so on
@@ -694,6 +911,18 @@ def _page_context(session: Session) -> dict[str, object]:
         "industry_work": dict(themework.industry_job.state),
         # Offered as mutable categories in the edit form.
         "categories": _CATEGORY_VALUES,
+        # What the house believes, block by block, and how often it has moved.
+        # Read on every settings render rather than cached: this is the page the
+        # edit lands on, and a panel that shows the previous wording after a save
+        # is worse than one that shows nothing.
+        "brain_blocks": _brain_blocks(session),
+        "brain_version": brain.version(session),
+        # Which block is open for editing, its history, and any refused edit.
+        # None means "the panel is a list", which is every render but the one
+        # reached through /settings/brain/<key>.
+        "brain_open": None,
+        "brain_history": [],
+        "brain_error": None,
         "map_fields": _MAP_FIELDS,
         "map_values": {},
         "client_error": None,
@@ -743,6 +972,7 @@ def settings_view(
     edit: int | None = None,
     started: int | None = None,
     radar: int | None = None,
+    gmail: str | None = None,
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Render the settings page. ``?imported=N`` shows a post-import success note;
@@ -764,7 +994,169 @@ def settings_view(
         extra["run_started"] = started
     if radar:
         extra["radar_stale"] = radar_cleanup.survey(session)
+    if gmail is not None:
+        # Only a value this module issued is honoured; anything else is dropped
+        # rather than rendered, so the query string cannot put words on the page.
+        try:
+            extra["gmail_notice"] = GmailNotice(gmail)
+        except ValueError:
+            _log.info("ignoring unknown gmail notice %r", gmail)
     return _render_settings(request, session, **extra)
+
+
+# --- The brain: what the house believes, and who last changed it ---------------
+#
+# The standards live in the repository and are overridden here, which is the
+# whole of DEC-1 option C: a fresh install thinks correctly on day one, git keeps
+# the lineage, and a consultant does not need a deployment to change a sentence
+# about tone. Every block is its own form on purpose. A change to tonality is a
+# different act from a change to what counts as evidence, and one textarea
+# holding everything would make them the same act.
+
+
+@router.get("/settings/brain/{key}", response_class=HTMLResponse)
+def brain_block_view(
+    key: str,
+    request: Request,
+    fassung: int | None = None,
+    session: Session = Depends(get_db),
+) -> HTMLResponse:
+    """The settings page with one block open for editing, and its history.
+
+    A URL of its own rather than a panel that only opens on click, because a
+    version has to be citable: BRN-03 stamps every generated text with the brain
+    version it was written under, and that stamp is only worth something if it
+    links to the wording it names.
+
+    ``?fassung=`` says the reader arrived from such a stamp, and the page then
+    states what that number does and does not cover. The version is
+    portfolio-wide — how many changes the standards have had across every block —
+    while what it can be resolved to is the *one* change that produced it. So the
+    history below names the wording in force for this block at that moment, and
+    every other block on the page shows what it says today. Without the note the
+    page would read as "the standards at version N", which it is not.
+    """
+    _require_block(session, key)
+    return _render_settings(
+        request,
+        session,
+        brain_open=key,
+        brain_history=_brain_history(session, key),
+        brain_from_change=_arrived_from_version(session, key, fassung),
+    )
+
+
+def _arrived_from_version(
+    session: Session, key: str, wanted: int | None
+) -> BrainOverride | None:
+    """The change the reader followed here, if this page can vouch for it.
+
+    A hand-typed ``?fassung=`` must not put a sentence on the page that the
+    history below it does not support — "Fassung 3 is the change marked below"
+    is false if version 3 was a change to another block, and version 0 was never
+    a change at all. Only a version this block actually produced is echoed.
+
+    The row and not the number, because a revert is a change too and the sentence
+    reads differently for one: a text stamped with a revert was written under the
+    *shipped* wording, because somebody had just put it back. The template asks
+    ``.text`` which change it is looking at.
+    """
+    if wanted is None:
+        return None
+    change = brain.change_at(session, wanted)
+    return change if change is not None and change.key == key else None
+
+
+@router.get("/settings/brain/version/{wanted}")
+def brain_version_view(
+    wanted: int, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Send a stamped text's version number to the wording it names.
+
+    Every generated angle, letter and brief carries the brain version it was
+    written under, and a number the reader cannot open is not provenance. So the
+    stamp links here and this resolves it: the change that produced that version
+    names a block, and the block page carries that version in its history with
+    the wording it put in force.
+
+    Falls back to the block list rather than a 404 for the three cases where
+    there is no single change to point at — version 0, which is every install
+    where nothing has ever been changed; a version whose row went missing with a
+    restored dump; and a change to a block the repository has since renamed away,
+    whose page the other two verbs already answer 404 for. In all three the
+    current standards are still the honest thing to show, and a dead link on a
+    letter is not.
+
+    Two path segments, so a block that were ever named ``version`` would live at
+    ``/settings/brain/version`` and not collide with this.
+    """
+    change = brain.change_at(session, wanted)
+    if change is None or not _block_exists(session, change.key):
+        return RedirectResponse("/settings#brain", status_code=_SEE_OTHER)
+    # Quoted, because the key reaches this as data: it comes off a stored row and
+    # goes into a Location header, where a space or an umlaut would produce a
+    # redirect nothing can follow. Belt and braces — the keys are file stems
+    # today — but the cost of being wrong here is a dead link on a stored letter.
+    key = quote(change.key, safe="")
+    # The fragment carries the version alone and not the key. Versions are unique
+    # across the whole table (``uq_brain_overrides_version``), so it identifies
+    # the entry on its own — and the key would have to be encoded here to survive
+    # the header while the ``id`` in the template is emitted raw, which is a
+    # mismatch that silently lands the reader at the top of the page for exactly
+    # the keys the quoting above was added to protect.
+    return RedirectResponse(
+        f"/settings/brain/{key}?fassung={wanted}#brain-v{wanted}",
+        status_code=_SEE_OTHER,
+    )
+
+
+@router.post("/settings/brain/{key}")
+def edit_brain_block_route(
+    key: str,
+    request: Request,
+    text: str = Form(...),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Store an override for one block; it governs the next generated text.
+
+    A refused edit re-renders with the block still open and the error above it,
+    rather than redirecting to a page that says nothing about what happened. The
+    box comes back holding the wording still in force, because the only edit this
+    refuses is an empty one and there is nothing in it worth echoing.
+
+    Guarded by ``_require_block`` like the other two verbs, rather than leaning on
+    ``brain.edit`` to raise: one function deciding what exists is what keeps a GET
+    and a POST for the same URL from giving different answers.
+    """
+    _require_block(session, key)
+    try:
+        brain.edit(session, key, text)
+    except brain.UnknownBlock:
+        raise HTTPException(status_code=404, detail="Brain block not found") from None
+    except ValueError as exc:
+        return _render_settings(
+            request,
+            session,
+            brain_open=key,
+            brain_history=_brain_history(session, key),
+            brain_error=str(exc),
+        )
+    return RedirectResponse(f"/settings/brain/{key}", status_code=_SEE_OTHER)
+
+
+@router.post("/settings/brain/{key}/revert")
+def revert_brain_block_route(
+    key: str, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    """Put the shipped wording back, as its own recorded change.
+
+    Lands back on the block unless the revert was the last thing keeping an
+    orphan alive, in which case there is no block left to land on.
+    """
+    _require_block(session, key)
+    brain.revert(session, key)
+    back = f"/settings/brain/{key}" if key in brain.shipped() else "/settings#brain"
+    return RedirectResponse(back, status_code=_SEE_OTHER)
 
 
 @router.post("/settings/run")
@@ -1263,7 +1655,170 @@ async def import_commit_route(
     )
 
 
+# --- The mailbox (OUT-03) -------------------------------------------------------
+#
+# One mailbox, connected once. Nothing here reads mail: the round trip ends at a
+# panel that can say "verbunden als lucas@raute.example" and prove it, because
+# the address it shows came back from Gmail's own profile call.
+#
+# The ``state`` parameter is the whole CSRF story for this flow. It is minted on
+# the way out, parked in a cookie, and compared on the way back; a callback that
+# does not carry the value this browser was issued connects nothing at all,
+# whatever else it carries.
+
+
+def _state_matches(given: str, expected: str) -> bool:
+    """Whether the callback carries the state this browser was issued.
+
+    Encoded before comparing: ``compare_digest`` raises TypeError on a str with
+    a non-ASCII character, and this value comes straight off the query string —
+    so a crafted callback would be a 500 rather than the refusal it deserves.
+    """
+    if not given or not expected:
+        return False
+    return secrets.compare_digest(given.encode("utf-8"), expected.encode("utf-8"))
+
+
+def _back_to_panel(notice: GmailNotice) -> RedirectResponse:
+    """Return to the settings page with one sentence about what just happened."""
+    return RedirectResponse(
+        f"/settings?gmail={notice.value}#gmail", status_code=_SEE_OTHER
+    )
+
+
+def _over_tls(request: Request) -> bool:
+    """Whether the browser reached this app over https.
+
+    Read off the request rather than from ``BASE_URL``: the deployed app is behind
+    a TLS-terminating proxy and is started with ``forwarded_allow_ips`` set for
+    exactly that reason (see web.app.forwarded_allow_ips), so the scheme here is
+    the browser's. A plain-http local run must still be able to complete the flow,
+    and a ``Secure`` cookie would simply never come back.
+    """
+    return request.url.scheme == "https"
+
+
+def _same_origin(request: Request) -> bool:
+    """Whether this POST was submitted from a page of this app.
+
+    The app authenticates with HTTP Basic, so a browser attaches the operator's
+    credentials to a form POST from *any* site — and the state the disconnect
+    route changes is a revocation at a third party. There is no CSRF token
+    anywhere in this app to reuse, so this is the tokenless check: a POST whose
+    ``Origin`` (or, failing that, ``Referer``) names another host is refused.
+
+    A request carrying neither header is allowed through. It cannot be judged, and
+    a browser sends ``Origin`` on exactly the cross-site POST this is guarding
+    against; refusing the headerless case instead would only break curl and the
+    test client while stopping nothing.
+    """
+    claimed = request.headers.get("origin") or request.headers.get("referer") or ""
+    if not claimed:
+        return True
+    host = request.headers.get("host") or request.url.netloc
+    return urlparse(claimed).netloc == host
+
+
+@router.get("/settings/gmail/start")
+def gmail_start_route(request: Request) -> Response:
+    """Send the operator to Google's consent screen for exactly the DEC-4 scopes."""
+    if not config.gmail_configured():
+        # The panel never renders the button in this state; a hand-typed URL
+        # lands here and is told the same thing the panel says.
+        return _back_to_panel(GmailNotice.FAILED)
+    state = gmail_link.new_state()
+    # The address this person signed in to RauteOS with, so Google opens on that
+    # account rather than whichever one the browser was last used for. Empty
+    # under basic auth, where nobody has told us who is asking.
+    response = RedirectResponse(
+        gmail_link.authorize_url(state, login_hint=request.scope.get("user_email", "")),
+        status_code=_SEE_OTHER,
+    )
+    response.set_cookie(
+        _GMAIL_STATE_COOKIE,
+        state,
+        max_age=_GMAIL_STATE_MAX_AGE,
+        httponly=True,
+        # The one value that gates the callback: on the deployment, where the whole
+        # flow is https anyway, keeping it off the plaintext path costs nothing.
+        secure=_over_tls(request),
+        samesite=_GMAIL_COOKIE_SAMESITE,
+        path="/settings",
+    )
+    return response
+
+
+@router.get("/settings/gmail/callback")
+def gmail_callback_route(
+    request: Request,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+) -> Response:
+    """Take Google's answer: store the connection, or say why there is none.
+
+    Checked in this order, and the order is the point. The ``state`` gate comes
+    first because a callback that fails it is not this browser's flow at all, so
+    nothing it says about consent is worth reading. A genuine refusal carries the
+    state it was issued and reaches the second branch, which is why "Abbrechen"
+    reads as a plain German line rather than as a security failure.
+
+    Every path ends at the panel. An exception from the exchange would otherwise
+    render a stack trace on the one screen whose job is to be honest about
+    whether a mailbox is connected.
+    """
+    expected = request.cookies.get(_GMAIL_STATE_COOKIE, "")
+    response: Response
+    if not _state_matches(state, expected):
+        _log.warning("Gmail callback refused: state did not match")
+        response = _back_to_panel(GmailNotice.STATE)
+    elif error:
+        if error != _GMAIL_DECLINED:
+            _log.warning("Gmail consent failed at Google: %s", error)
+        response = _back_to_panel(
+            GmailNotice.DECLINED if error == _GMAIL_DECLINED else GmailNotice.FAILED
+        )
+    elif not code:
+        _log.warning("Gmail callback carried neither a code nor an error")
+        response = _back_to_panel(GmailNotice.FAILED)
+    else:
+        try:
+            # The code is single-use and never logged; only the address it
+            # resolves to is (see gmail_link.exchange).
+            gmail_link.exchange(code)
+            response = _back_to_panel(GmailNotice.CONNECTED)
+        except gmail_link.GmailError as exc:
+            _log.error("Gmail connection failed: %s", exc)
+            response = _back_to_panel(GmailNotice.FAILED)
+    # One attempt, one state: it is spent whichever way this went.
+    response.delete_cookie(_GMAIL_STATE_COOKIE, path="/settings")
+    return response
+
+
+@router.post("/settings/gmail/disconnect")
+def gmail_disconnect_route(request: Request) -> Response:
+    """Revoke the access at Google and delete the local token file.
+
+    Letters, replies and contacts are untouched — this route holds no session and
+    reaches no table. Disconnecting a mailbox is not a reason to lose the record
+    of what was sent from it.
+    """
+    if not _same_origin(request):
+        _log.warning("Gmail disconnect refused: the form came from another site")
+        return PlainTextResponse(
+            "Diese Anfrage kam nicht von dieser Anwendung.", status_code=_FORBIDDEN
+        )
+    outcome = gmail_link.disconnect()
+    if outcome is gmail_link.Revocation.REFUSED:
+        # The local credential is gone either way; say so in the log *and* on the
+        # panel, since the token may still be live at Google and only the person
+        # holding that account can finish the job.
+        _log.warning("Gmail token deleted locally but not confirmed revoked")
+    return _back_to_panel(_REVOCATION_NOTICE[outcome])
+
+
 __all__ = [
+    "GmailNotice",
     "get_active_feed_names",
     "get_alert_threshold",
     "router",

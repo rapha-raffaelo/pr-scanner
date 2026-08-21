@@ -32,7 +32,13 @@ from sqlalchemy.pool import StaticPool
 
 from newspulse import guide, i18n, onboarding
 from newspulse import profile as profiles
-from newspulse.models import Base, Client, ClientFact, OnboardingAnswer
+from newspulse.models import (
+    Base,
+    Client,
+    ClientFact,
+    OnboardingAnswer,
+    ProfileProposal,
+)
 from newspulse.web import app as web_app
 from newspulse.web.app import create_app, get_db
 
@@ -1548,23 +1554,23 @@ def test_the_answer_displaces_a_researched_proposal_for_the_same_field(factory, 
     """One proposal per line. Two checkboxes writing the same field would make
     "accept both" mean whichever one happened to run last, and the answer is the
     one that should win either way."""
-    from newspulse.web.routes import profile as profile_routes
-
     with factory() as session:
         client = _client(session)
         _answer(session, client, "satz", "Wir bauen Roboterarme für OP-Säle.")
         client_id = client.id
-    profile_routes._proposals[client_id] = [
-        profiles.Proposal(key="geschaeftsfeld", value="Laut Website: Zulieferer.",
-                          source_url="https://beispiel.de"),
-    ]
-    try:
-        body = web.get(f"/client/{client_id}/profil").text
+        session.add(ProfileProposal(
+            client_id=client_id, key="geschaeftsfeld",
+            value="Laut Website: Zulieferer.",
+            source_url="https://beispiel.de", source_title="Beispiel",
+            previous_value="", proposed_at=dt.datetime.now(dt.UTC),
+            proposed_by="gemini-2.5-flash",
+        ))
+        session.commit()
 
-        assert "Wir bauen Roboterarme für OP-Säle." in body
-        assert "Laut Website: Zulieferer." not in body
-    finally:
-        profile_routes._proposals.pop(client_id, None)
+    body = web.get(f"/client/{client_id}/profil").text
+
+    assert "Wir bauen Roboterarme für OP-Säle." in body
+    assert "Laut Website: Zulieferer." not in body
 
 
 def test_a_competitor_named_without_punctuation_keeps_a_readable_reason(session):
@@ -1583,18 +1589,23 @@ def test_a_sourceless_research_proposal_is_not_called_the_clients_statement(fact
     """The grounding API does come back without a source. "Angabe des Mandanten"
     is the strongest provenance the page can print, and putting it under a machine
     guess nobody can check is the exact inversion of what it means."""
-    from newspulse.web.routes import profile as profile_routes
-
     with factory() as session:
         client = _client(session)
         client_id = client.id
-    profile_routes._proposals[client_id] = [
-        profiles.Proposal(key="geschaeftsfeld", value="Zulieferer für OP-Technik.")
-    ]
-    try:
-        body = web.get(f"/client/{client_id}/profil").text
+        session.add(ProfileProposal(
+            client_id=client_id, key="geschaeftsfeld",
+            value="Zulieferer für OP-Technik.",
+            source_url="", source_title="",
+            previous_value="", proposed_at=dt.datetime.now(dt.UTC),
+            proposed_by="gemini-2.5-flash",
+        ))
+        session.commit()
 
-        assert "Zulieferer für OP-Technik." in body
-        assert "Angabe des Mandanten" not in body
-    finally:
-        profile_routes._proposals.pop(client_id, None)
+    body = web.get(f"/client/{client_id}/profil").text
+
+    # Not merely unlabelled: not offered. A value the reader cannot check is not
+    # a decision anybody should be asked to make, so the page drops it — which
+    # settles the provenance question this test was written about, because there
+    # is nothing left to mislabel.
+    assert "Zulieferer für OP-Technik." not in body
+    assert "Angabe des Mandanten" not in body

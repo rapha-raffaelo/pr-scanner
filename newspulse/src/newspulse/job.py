@@ -50,7 +50,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import angles, config, gnews, notify, themes
+from . import angles, config, gnews, mailsync, notify, profile_refresh, themes
 from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
 from .feeds import Feed, load_feeds
@@ -946,6 +946,34 @@ def _refresh_impulses(
     return written
 
 
+def _refresh_profiles(session: Session, now: dt.datetime) -> int:
+    """Re-read the profiles that have earned a look. Never fails the sweep.
+
+    The mandate profile decays quietly: a CEO leaves, and every generated text
+    keeps naming them until a journalist mentions it. Nothing re-reads it today,
+    so the rhythm has to come from here — the one thing that runs every morning
+    without anybody remembering to.
+
+    Bounded inside :func:`newspulse.profile_refresh.run` (a handful per run,
+    oldest-due first) and guarded out here, in the same posture as the drafting
+    steps above it: a stale profile is a problem for one mandate, a failed sweep
+    is a problem for the whole portfolio, and the second must never be caused by
+    the first. Nothing is appended to the run's errors for the same reason
+    :func:`_generate_angles` appends nothing — marking the run ``partial`` would
+    re-open the coverage watermark over something that has nothing to do with
+    coverage.
+    """
+    try:
+        return profile_refresh.run(session, now=now)
+    except Exception:  # noqa: BLE001 — a profile refresh is not worth a failed sweep
+        _log.exception("profile refresh failed; the sweep's own work stands")
+        # A caught exception is not a clean session: an unflushed write would
+        # leave the transaction in PendingRollbackError and take the notification
+        # below down with it, after the run was already recorded ok.
+        session.rollback()
+        return 0
+
+
 def _analysis_targets(
     session: Session,
     candidates: Sequence[Candidate],
@@ -1063,6 +1091,71 @@ def _finalize_run(
     session.add(run)
     session.commit()
     return run
+
+
+def _record_sync_failure(
+    session: Session, run: Run, errors: list[str], reported: Sequence[str]
+) -> None:
+    """Fold the mailbox's failures into the run row that is already written.
+
+    The ``runs`` row is committed before the mailbox is touched — deliberately,
+    so a dead Google cannot cost the day's coverage — which leaves it stating
+    ``ok`` for a sweep whose last step failed. Amended here rather than by moving
+    the sync in front of the finalize: the row is the thing that must survive,
+    and a second small write is cheaper than putting it behind a network call.
+
+    Downgraded to ``partial`` and never to ``failed``: the acceptance criterion
+    is that an unreachable mailbox does not fail the daily sweep, and it does not
+    — every stored row stands, nothing is rolled back, and the sweep's own work
+    is untouched. A run that already failed keeps that status; there is nothing
+    worse to say about it.
+    """
+    if not reported:
+        return
+    errors.extend(reported)
+    if run.status is RunStatus.FAILED:
+        return
+    run.errors = [*run.errors, *reported]
+    run.status = RunStatus.PARTIAL
+    session.add(run)
+    session.commit()
+
+
+def _sync_mailbox(
+    session: Session, run: Run, errors: list[str], *, now: dt.datetime
+) -> int:
+    """Read the replies to released letters; a mail failure never fails the sweep.
+
+    Runs after the day's coverage is stored and the ``runs`` row is written, so
+    by the time Google is asked anything the part of the sweep that does not
+    depend on somebody else's service is already safe. A mailbox that is
+    unreachable or an access that was revoked is reported at ERROR by the sync
+    itself and returned in its report; anything unexpected is caught here for the
+    same reason the notification is — the alternative is a green run's data being
+    rolled back because a journalist's mail could not be read.
+
+    Not failing the sweep is not the same as saying nothing. Whatever went wrong
+    is folded into the run's own errors by :func:`_record_sync_failure`, so a
+    mailbox that has been unreadable for a week shows as a partial run instead of
+    a green one with a line in a log nobody tails. ``now`` is the sweep's clock:
+    ``fetched_at`` says when this tool took a copy of somebody else's mail, and a
+    run with a frozen clock has to be able to answer that.
+
+    Returns how many replies were newly filed, for the run's own log line.
+    """
+    try:
+        report = mailsync.sync(session, now=now)
+    except Exception as exc:  # noqa: BLE001 — the mailbox must never fail the run
+        _log.error(
+            "mail sync failed: %s; run data already persisted, not rolled back", exc
+        )
+        # A raised write leaves the transaction half-open, and every later
+        # statement on this session would die with it.
+        session.rollback()
+        _record_sync_failure(session, run, errors, [f"mail sync: {exc}"])
+        return 0
+    _record_sync_failure(session, run, errors, report.errors)
+    return report.replies
 
 
 def _notify(session: Session, run: Run) -> None:
@@ -1236,6 +1329,7 @@ def _run_real(
     new_articles = 0
     analyses_written = 0
     angles_written = 0
+    profiles_refreshed = 0
     feeds_ok = items_count = candidates_count = 0
     # Bound before the try so the post-run drafting step has a defined value even
     # when the sweep aborts on its first line.
@@ -1298,6 +1392,17 @@ def _run_real(
         status = RunStatus.FAILED
         session.rollback()
     run = _finalize_run(session, started, now_fn(), status, new_articles, errors)
+    # The mailbox, once a day, with the sweep. Deliberately outside the
+    # status check below: reading the replies to letters that went out weeks ago
+    # has nothing to do with whether this morning's feeds answered, and a
+    # journalist's answer is the one thing in this tool nobody can re-fetch
+    # later by pressing a button.
+    replies = _sync_mailbox(session, run, errors, now=now_fn())
+    # The run row may have been downgraded to partial by an unreadable mailbox;
+    # the report has to say the same thing the stored row does. Never to failed,
+    # so the post-run work below still runs — a dead Google says nothing about
+    # whether this morning's feeds answered.
+    status = run.status
     # Drafting happens after the run is recorded and only if the sweep itself came
     # through: pitching a positioning message off a half-fetched radar would put a
     # confident text in front of the reader on the strength of partial data.
@@ -1342,12 +1447,19 @@ def _run_real(
         # column for a fortnight — for exactly the mandate whose consultant most
         # needs something to say.
         angles_written += _refresh_impulses(session, clients, errors, now=now_fn())
+        profiles_refreshed = _refresh_profiles(session, now_fn())
     _log.info(
-        "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), %d error(s)",
+        "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
+        "%d profile(s), %d repl(y/ies), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
         angles_written,
+        # On the run's own line because a refresh that quietly returns zero for
+        # weeks looks exactly like a portfolio where nothing was due, and the
+        # difference is only visible here.
+        profiles_refreshed,
+        replies,
         len(errors),
     )
     # The run's data is committed; deliver any fired-alert notification now. This is

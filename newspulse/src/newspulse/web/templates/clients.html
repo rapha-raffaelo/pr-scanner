@@ -28,8 +28,12 @@
           {% endif %}
           <span style="min-width:0">
             <span class="pname">{{ row.name }}</span>
+            {# The profile's age rides in the sub-line rather than in a column of
+               its own: it is a property of the mandate, like its industry, and
+               not a number to be compared across the roster. A mandate whose
+               profile nobody has ever re-read says so here. #}
             <span class="pind">
-              {{ row.industry or t('Ohne Branche') }}{% if not row.active %} · {{ t("inaktiv") }}{% endif %}{% if not row.keywords and not row.alert_topics %} · {{ t("kein Themen-Radar") }}{% endif %}
+              {{ row.industry or t('Ohne Branche') }}{% if not row.active %} · {{ t("inaktiv") }}{% endif %}{% if not row.keywords and not row.alert_topics %} · {{ t("kein Themen-Radar") }}{% endif %} · {% with checked = row.profile_checked %}{% include "partials/profile_checked.html" %}{% endwith %}
               {# How much of its own foundation this mandate has. A mandate nobody
                  has asked the twenty questions says so plainly rather than showing
                  a zero that reads like a bad week. #}

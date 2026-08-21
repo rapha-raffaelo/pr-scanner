@@ -107,12 +107,6 @@ a:hover{text-decoration:underline}
 .tl__cl span{width:7px;height:7px;border-radius:50%}
 .tl__quote{font-size:var(--t-footnote);color:var(--muted);margin-top:4px;font-style:italic;max-width:66ch}
 .tl__sub{font-size:var(--t-footnote);color:var(--muted);margin-top:3px;max-width:66ch}
-.tl__src{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
-  color:var(--muted);border:1px solid var(--line);border-radius:var(--radius);padding:1px 7px;
-  background:var(--fill-2);margin-left:6px;vertical-align:1px;white-space:nowrap}
-.tl__mail{margin-top:6px;padding:8px 10px;border-left:2px solid rgba(36,138,61,.35);
-  background:rgba(36,138,61,.05);border-radius:0 var(--radius-s) var(--radius-s) 0;
-  font-size:var(--t-footnote);line-height:1.6;color:var(--ink-2);max-width:66ch}
 .badge{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
   border-radius:var(--radius);padding:2px 8px;border:1px solid;white-space:nowrap;margin-left:6px}
 .b-raus{color:#0b4f8a;background:rgba(0,113,227,.10);border-color:rgba(0,113,227,.28)}
@@ -179,8 +173,6 @@ a:hover{text-decoration:underline}
               <div class="file__name">Marlene Kühn</div>
               <div class="file__outlet">Handelsblatt · Energie und Industrie</div>
               <div class="file__meta">m.kuehn@handelsblatt.example · <b>zuletzt angeschrieben vor 6 Tagen</b></div>
-              <div class="file__meta">Postfach <b>lucas@raute.example</b> verbunden, zuletzt gelesen heute 06:14 ·
-                <a href="#">Einstellungen</a></div>
             </div>
             <div class="file__acts">
               <button class="btn btn--ghost" type="button">Bearbeiten</button>
@@ -198,20 +190,17 @@ a:hover{text-decoration:underline}
           <ul class="tl">
             <li>
               <span class="tl__pin tl__pin--out"></span>
-              <div class="tl__when">14.08.2026 · 08:05</div>
+              <div class="tl__when">14.08.2026</div>
               <div class="tl__what"><b>Antwort</b> auf das Anschreiben zu den Netzentgelten
                 <span class="tl__cl"><span style="background:#8944ab"></span>Nordlicht Energie</span>
-                <span class="badge b-antwort">Antwort</span>
-                <span class="tl__src">aus dem Postfach</span></div>
-              <div class="tl__mail">Danke, das ist interessant. Schicken Sie mir die Auswertung gern vorab,
-                ich melde mich Donnerstag für einen Rückruf.</div>
+                <span class="badge b-antwort">Antwort</span></div>
+              <div class="tl__sub">Will die Auswertung sehen, Rückruf Donnerstag.</div>
             </li>
             <li>
               <span class="tl__pin tl__pin--out"></span>
-              <div class="tl__when">12.08.2026 · 09:41 · freigegeben von Mensch</div>
+              <div class="tl__when">12.08.2026 · freigegeben von Mensch</div>
               <div class="tl__what"><b>Anschreiben verschickt</b>
-                <span class="tl__cl"><span style="background:#8944ab"></span>Nordlicht Energie</span>
-                <span class="tl__src">in Gmail erkannt</span></div>
+                <span class="tl__cl"><span style="background:#8944ab"></span>Nordlicht Energie</span></div>
               <div class="tl__quote">„Anschlussdauer statt Netzentgelt: Zahlen aus 340 Industrieanschlüssen“</div>
             </li>
             <li>
@@ -219,8 +208,7 @@ a:hover{text-decoration:underline}
               <div class="tl__when">09.07.2026</div>
               <div class="tl__what"><b>Veröffentlicht</b>: „Der teure Weg ans Netz“
                 <span class="tl__cl"><span style="background:#8944ab"></span>Nordlicht Energie</span>
-                <span class="badge b-pub">Veröffentlicht</span>
-                <span class="tl__src">von Hand eingetragen</span></div>
+                <span class="badge b-pub">Veröffentlicht</span></div>
               <div class="tl__sub">These und Zahl aus dem Anschreiben vom 02.07. übernommen.</div>
             </li>
             <li>
@@ -232,13 +220,11 @@ a:hover{text-decoration:underline}
             </li>
             <li>
               <span class="tl__pin tl__pin--warn"></span>
-              <div class="tl__when">19.05.2026 · 16:22</div>
+              <div class="tl__when">19.05.2026</div>
               <div class="tl__what"><b>Absage</b>
                 <span class="tl__cl"><span style="background:#0071a4"></span>Vermont Robotics</span>
-                <span class="badge b-absage">Absage</span>
-                <span class="tl__src">aus dem Postfach</span></div>
-              <div class="tl__mail">Das liegt nicht auf meinem Ressort. Wenden Sie sich am besten an die
-                Technikredaktion, Kollege Warnke macht das.</div>
+                <span class="badge b-absage">Absage</span></div>
+              <div class="tl__sub">Thema liegt nicht auf ihrem Ressort, hat an die Technikredaktion verwiesen.</div>
             </li>
             <li>
               <span class="tl__pin"></span>
@@ -249,10 +235,9 @@ a:hover{text-decoration:underline}
             </li>
           </ul>
 
-          <p class="note">Der Verlauf entsteht aus zwei Quellen, und jede Zeile sagt aus welcher. Eine Zeile
-            entsteht, wenn Sie ein Anschreiben freigeben. Antworten holt RauteOS aus dem verbundenen Postfach,
-            und zwar nur aus Verläufen, die zu einem freigegebenen Anschreiben gehören. Alles andere in Ihrem
-            Postfach wird nicht gelesen und nicht gespeichert. Was veröffentlicht wurde, tragen Sie ein.</p>
+          <p class="note">Der Verlauf entsteht nur aus dem, was hier eingetragen wurde. RauteOS verschickt keine
+            Mails und liest kein Postfach: eine Zeile entsteht, wenn Sie ein Anschreiben freigeben, und die
+            zweite, wenn Sie festhalten was zurückkam.</p>
         </div>
 
       </div>

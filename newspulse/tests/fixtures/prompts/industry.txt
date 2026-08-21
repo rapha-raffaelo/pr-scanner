@@ -1,0 +1,43 @@
+Du nennst die Branche eines Unternehmens, als Suchbegriff, nicht als Etikett.
+
+UNTERNEHMEN
+Name: $client_name
+Land: $country
+$extra
+
+Wozu der Begriff dient: Ein Nachrichtensuchlauf verwendet ihn als Filter. Er
+entscheidet, ob eine Meldung zum Themenfeld des Unternehmens gezählt wird. Ein
+Begriff, den kein Journalist schreibt, filtert deshalb alles weg, und ein zu
+weiter Begriff filtert nichts.
+
+WORÜBER DIE PRESSE ÜBERHAUPT SCHREIBT
+
+Was die Fach- und Wirtschaftspresse ohnehin nicht schreibt, ist kein Thema. Ein
+Begriff oder Anlass, der nur beim Mandanten selbst vorkommt, findet nur die
+eigene Berichterstattung zurück: daraus entsteht Eigenwerbung, kein Impuls.
+
+Hier heißt das: Der Firmenname, Produktnamen, Marken und die Selbstbeschreibung
+des Unternehmens taugen nicht als Begriff. Sie finden nur die eigene
+Berichterstattung zurück.
+
+Regeln für diese Begriffe:
+
+- Nenne drei Begriffe, vom naheliegendsten zum breitesten. Der erste soll das
+  Feld so benennen, wie die Fachpresse darüber schreibt; der dritte darf ein
+  Oberbegriff sein, der sicher vorkommt.
+- Wörter, die in einer deutschen Schlagzeile stehen. "Kosmetik" schreibt die
+  Presse, "Beauty Tech" so gut wie nie. "Modehandel" ja, "Fashion-Tech-Startup"
+  nein.
+- Ein bis zwei Wörter. Keine Erklärungen, keine Bindestrich-Ketten.
+- Der Begriff muss auch in Meldungen vorkommen, in denen dieses Unternehmen nicht
+  auftaucht.
+- Deutsch, außer wenn der Fachbegriff im Deutschen englisch ist ("E-Commerce",
+  "Private Equity").
+- Kennst du das Unternehmen nicht, leite die Branche aus Name und Website ab.
+  Eine leere Liste ist nur richtig, wenn selbst das nicht geht.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "terms": ["naheliegendster Begriff", "mittlerer", "Oberbegriff"]
+}

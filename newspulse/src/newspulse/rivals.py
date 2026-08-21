@@ -18,7 +18,7 @@ import logging
 from importlib import resources
 from string import Template
 
-from . import config
+from . import brain, config
 from .analyzer import AnalyzerError, ParseError, invoke_with_fallback, strip_code_fence
 from .models import Client
 from .schemas import RivalSuggestion, RivalSuggestions
@@ -57,7 +57,7 @@ _NAME_JOINERS = frozenset({"&", "und", "and", "of", "for", "de", "van"})
 
 def _prompt_template() -> Template:
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text("utf-8")
-    return Template(text)
+    return Template(brain.compose(text))
 
 
 def _parse(raw: str) -> RivalSuggestions:

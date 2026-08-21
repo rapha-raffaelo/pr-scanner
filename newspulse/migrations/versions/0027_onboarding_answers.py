@@ -8,8 +8,8 @@ call, and only a separate, deliberate accept turns any of it into policy.
 distinct in the schema itself — answered, deliberately passed over, and never
 asked (no row at all).
 
-Revision ID: 0024_onboarding_answers
-Revises: 0017_client_facts
+Revision ID: 0027_onboarding_answers
+Revises: 0026_proposal_discarded
 Create Date: 2026-08-21
 """
 from __future__ import annotations
@@ -19,10 +19,10 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0024_onboarding_answers"
+revision: str = "0027_onboarding_answers"
 # The revision id follows the story's numbering; the parent is whatever is
 # actually at head, so the chain stays contiguous even though the numbers do not.
-down_revision: str | None = "0017_client_facts"
+down_revision: str | None = "0026_proposal_discarded"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

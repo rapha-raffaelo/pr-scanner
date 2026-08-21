@@ -1,4 +1,6 @@
-Du nennst die Branche eines Unternehmens — als Suchbegriff, nicht als Etikett.
+#blocks: press_relevance
+
+Du nennst die Branche eines Unternehmens, als Suchbegriff, nicht als Etikett.
 
 UNTERNEHMEN
 Name: $client_name
@@ -7,10 +9,16 @@ $extra
 
 Wozu der Begriff dient: Ein Nachrichtensuchlauf verwendet ihn als Filter. Er
 entscheidet, ob eine Meldung zum Themenfeld des Unternehmens gezählt wird. Ein
-Begriff, den kein Journalist schreibt, filtert deshalb alles weg — und ein zu
+Begriff, den kein Journalist schreibt, filtert deshalb alles weg, und ein zu
 weiter Begriff filtert nichts.
 
-Regeln:
+{{brain:press_relevance}}
+
+Hier heißt das: Der Firmenname, Produktnamen, Marken und die Selbstbeschreibung
+des Unternehmens taugen nicht als Begriff. Sie finden nur die eigene
+Berichterstattung zurück.
+
+Regeln für diese Begriffe:
 
 - Nenne drei Begriffe, vom naheliegendsten zum breitesten. Der erste soll das
   Feld so benennen, wie die Fachpresse darüber schreibt; der dritte darf ein
@@ -19,8 +27,8 @@ Regeln:
   Presse, "Beauty Tech" so gut wie nie. "Modehandel" ja, "Fashion-Tech-Startup"
   nein.
 - Ein bis zwei Wörter. Keine Erklärungen, keine Bindestrich-Ketten.
-- Keine Selbstbeschreibung des Unternehmens und kein Produktname. Der Begriff
-  muss auch in Meldungen vorkommen, in denen dieses Unternehmen nicht auftaucht.
+- Der Begriff muss auch in Meldungen vorkommen, in denen dieses Unternehmen nicht
+  auftaucht.
 - Deutsch, außer wenn der Fachbegriff im Deutschen englisch ist ("E-Commerce",
   "Private Equity").
 - Kennst du das Unternehmen nicht, leite die Branche aus Name und Website ab.

@@ -12,8 +12,8 @@ stands.
 Nullable/defaulted throughout, so every existing row upgrades to "nothing was
 superseded here" without a data migration.
 
-Revision ID: 0025_fact_superseded
-Revises: 0024_onboarding_answers
+Revision ID: 0028_fact_superseded
+Revises: 0027_onboarding_answers
 Create Date: 2026-08-21
 """
 from __future__ import annotations
@@ -23,8 +23,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0025_fact_superseded"
-down_revision: str | None = "0024_onboarding_answers"
+revision: str = "0028_fact_superseded"
+down_revision: str | None = "0027_onboarding_answers"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

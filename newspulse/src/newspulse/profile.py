@@ -39,7 +39,7 @@ _log = logging.getLogger(__name__)
 #: What a value the consultant typed himself is credited to. His own knowledge is
 #: the strongest provenance in the building and carries no source, so this is also
 #: what the page reads to decide whether to print a citation at all.
-FILLED_BY_HAND = "mensch"
+BY_HAND = "mensch"
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +108,19 @@ RESEARCHED: tuple[Field, ...] = tuple(f for f in FIELDS if f.researched)
 #: hardest three would read as fuller than the mandate is.
 FILLABLE = len(FIELDS)
 
+#: What :attr:`~newspulse.models.ClientFact.filled_by` holds for a value a person
+#: typed in, as opposed to the model that proposed it. Named because it is an
+#: authority level and not a label: a fact carrying this may be contradicted by
+#: the web and may never be overwritten by it.
+BY_HAND = "mensch"
+
+
+#: How old a check may be before the page prints its age instead of its date.
+#: Under two weeks a date still means something to the reader — he remembers the
+#: week. Past it "12.05.2026" is a number nobody subtracts today's date from, and
+#: "vor 84 Tagen" is the sentence that makes a stale profile look stale.
+AGE_AFTER = dt.timedelta(days=14)
+
 
 @dataclass(frozen=True, slots=True)
 class Proposal:
@@ -130,6 +143,14 @@ class Proposal:
     #: web research proposes into empty fields and corrects itself, and never
     #: overrules the consultant.
     supersedes: bool = False
+    #: The ``profile_proposals`` row this came from, when it came from one. The
+    #: research files rows and the page names them by id, because the 06:10
+    #: sweep can replace one between the page being drawn and the button being
+    #: pressed. A kick-off answer has no row: it is derived from the
+    #: questionnaire on every render, so it is named by field instead and this
+    #: stays None. The two live in one list because the consultant is answering
+    #: the same question about every line.
+    row_id: int | None = None
 
     @property
     def from_person(self) -> bool:
@@ -143,6 +164,56 @@ class Proposal:
         same distinction — only what a person said may overrule the file.
         """
         return self.supersedes
+
+
+@dataclass(frozen=True, slots=True)
+class Checked:
+    """When the profile was last looked at, in the shape a page prints it.
+
+    A value object rather than a formatted string, because the sentence itself is
+    interface and belongs in a template where :func:`newspulse.i18n.translate` can
+    reach it. What is decided here is the thing a template must not decide: how
+    old is old, and whether "never" is a state of its own.
+    """
+
+    at: dt.datetime | None
+    #: Calendar days since the check in the reader's zone, floored at zero.
+    #: ``None`` when never checked — distinct from ``0``, which is a profile
+    #: checked *today*, the sentence the page actually prints.
+    days: int | None
+
+    @property
+    def never(self) -> bool:
+        """No check on record. Said out loud on the page rather than left blank:
+        a blank reads as "fine" and this is the opposite of fine."""
+        return self.at is None
+
+    @property
+    def as_age(self) -> bool:
+        """Old enough that the age says more than the date."""
+        return self.days is not None and self.days >= AGE_AFTER.days
+
+
+def checked(at: dt.datetime | None, *, now: dt.datetime) -> Checked:
+    """Classify a check stamp against the clock it is handed.
+
+    ``now`` is a value rather than a default so the page's own rendering can be
+    driven from a frozen clock in a test, the same posture the due check takes.
+    A stamp from the future — a clock skew on a restored backup — counts as
+    today rather than as a negative age.
+
+    Counted in calendar days in the reader's zone, not in elapsed 24-hour spans.
+    The page says "Heute geprüft", and elapsed hours make that sentence a lie for
+    most of the following day: the 06:10 sweep checks a profile on Tuesday and the
+    consultant opening it at nine on Wednesday is told it was checked today. The
+    zone is the configured display one for the same reason ``de_date`` uses it —
+    the host is a UTC container and "today" is the day where the reader is.
+    """
+    if at is None:
+        return Checked(at=None, days=None)
+    zone = config.local_zone()
+    days = (now.astimezone(zone).date() - at.astimezone(zone).date()).days
+    return Checked(at=at, days=max(days, 0))
 
 
 def stored(session: Session, client_id: int) -> dict[str, ClientFact]:
@@ -196,7 +267,7 @@ def save(
     *,
     source_url: str = "",
     source_title: str = "",
-    filled_by: str = FILLED_BY_HAND,
+    filled_by: str = BY_HAND,
     supersede: bool = False,
 ) -> ClientFact | None:
     """Write one field. An empty value clears it rather than storing a blank.
@@ -232,7 +303,7 @@ def save(
     if existing is not None:
         if supersede:
             _supersede(row, value, filled_by)
-        elif filled_by == FILLED_BY_HAND and existing.value.strip() != value:
+        elif filled_by == BY_HAND and existing.value.strip() != value:
             _forget(row)
     row.value = value
     row.source_url = source_url.strip()
@@ -334,7 +405,15 @@ def research(client: Client, *, generate=None) -> list[Proposal]:
     # One source list for the whole answer is what the grounding API returns, so
     # the first source is attached to every field rather than pretending to a
     # per-field precision the provider does not give us.
+    #
+    # Resolved once, here, while the citation still works: what comes back is a
+    # click-tracking redirect that expires in weeks, and these links are stored —
+    # on a proposal waiting on the pile, and on every fact accepted from one. A
+    # source nobody can open months later fails the promise the source exists to
+    # keep. Anything that is not one of those redirects is untouched, so an
+    # injected ``generate`` never reaches the network.
     first = sources[0] if sources else ("", "")
+    first = (gemini.resolve_source(first[0]), first[1]) if first[0] else first
     out: list[Proposal] = []
     for key, value in found.items():
         # ``researched`` again on the way back: the prompt does not list these
@@ -353,5 +432,6 @@ def research(client: Client, *, generate=None) -> list[Proposal]:
     return out
 
 
-__all__ = ["FIELDS", "FIELDS_BY_KEY", "FILLABLE", "FILLED_BY_HAND", "RESEARCHED",
-           "Field", "Proposal", "forget_superseded", "research", "save", "stored"]
+__all__ = ["AGE_AFTER", "BY_HAND", "Checked", "FIELDS", "FIELDS_BY_KEY", "FILLABLE",
+           "Field", "Proposal", "RESEARCHED", "checked", "forget_superseded",
+           "research", "save", "stored"]

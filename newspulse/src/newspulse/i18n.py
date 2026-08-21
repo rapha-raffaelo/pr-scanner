@@ -235,7 +235,7 @@ _EN: dict[str, str] = {
     "Branche": "Industry",
     "Land": "Country",
     "Aliase": "Aliases",
-    "Von": "From",
+    "Von": "By",
     "Bis": "To",
     "Quelle": "Source",
     "Alle Quellen": "All sources",
@@ -245,7 +245,7 @@ _EN: dict[str, str] = {
     "Rolle": "Role",
     "Alerts": "Alerts",
     "Anteil": "Share",
-    "Wettbewerber": "Competitor",
+    "Wettbewerber": "Competitors",
     "entfernen": "remove",
     "Wettbewerber hinzufügen": "Add competitor",
     "Branche als Suchfilter": "Industry as a search filter",
@@ -277,7 +277,6 @@ _EN: dict[str, str] = {
     "keinem Mandanten": "no client",
     "Wird überwacht, aber keinem Mandanten zugeordnet — die Meldungen zählen nirgends.":
         "Monitored but linked to no client \u2014 its items count towards nothing.",
-    "Wettbewerber": "Competitors",
     "Wettbewerber für": "Competitors for",
     "In Einstellungen vorschlagen lassen": "Get suggestions under Settings",
     "Keine Wettbewerber vorgeschlagen — das Modell kennt dieses Unternehmen nicht sicher genug. Lieber keiner als ein erfundener.":
@@ -304,7 +303,7 @@ _EN: dict[str, str] = {
     "Wettbewerb links": "competitors left",
     "rechts": "right",
     "nach Ungleichgewicht sortiert": "sorted by imbalance",
-    "Wettbewerb": "Competitors",
+    "Wettbewerb": "Competition",
     "Vollständige Tabelle": "Full table",
     "Medien": "outlets",
     "Medium": "Outlet",
@@ -335,7 +334,6 @@ _EN: dict[str, str] = {
         "Generating — this takes about a minute. Reload the page.",
     "Lage": "Situation",
     "Erzeugt am": "Generated",
-    "aus": "from",
     "Artikeln.": "articles.",
     "Maßnahmen": "Actions",
     "Grundlage": "Based on",
@@ -368,6 +366,118 @@ _EN: dict[str, str] = {
         "Turns it into a finished letter for a trade desk of your choosing. The "
         "tool knows no names for this field yet.",
     "Personalisierte Nachrichten": "Personalised messages",
+    # --- The six formats (newspulse.assets.FORMATS) --------------------------
+    # Name and description per format, exactly as the definition holds them, so
+    # the registry stays the one place a format is described and the English
+    # reader is not shown a German card. Three of the names are the same word in
+    # both languages and are listed anyway: an entry that reads as a no-op is a
+    # decision, a missing one is indistinguishable from an oversight.
+    #
+    # Here rather than with the story that puts the format cards on the page,
+    # because the guard that keeps this honest is a test over ``assets.FORMATS``:
+    # it fails the moment a seventh format is defined without an English name.
+    # Landing the guard with the registry means the surface story inherits six
+    # translated formats instead of discovering six German ones.
+    "Pressemitteilung": "Press release",
+    "Die offizielle Meldung des Mandanten, zitierfähig und datiert.":
+        "The client's official announcement, quotable and dated.",
+    "Statement": "Statement",
+    "Drei bis fünf zitierfähige Sätze einer namentlichen Person.":
+        "Three to five quotable sentences from a named person.",
+    "Q&A": "Q&A",
+    "Die Fragen, die kommen, samt der unangenehmen.":
+        "The questions that will come, the uncomfortable ones included.",
+    "Talking Points": "Talking points",
+    "Was gesagt wird, was nicht, und der Weg zurück zur These.":
+        "What to say, what not to, and the way back to the thesis.",
+    "Gastbeitrag": "Guest article",
+    "Ein argumentierter Text in der ersten Person, ohne Nachrichtenaufhänger.":
+        "An argued piece in the first person, with no news hook.",
+    "Interview-Briefing": "Interview briefing",
+    "Wer fragt, was er zuletzt schrieb, und was gesagt werden soll.":
+        "Who is asking, what they wrote lately, and what to get said.",
+    # --- The package on an impulse (DEC-1) -----------------------------------
+    # One occasion, one package: the formats are a strip on the impulse, each
+    # carrying the state it is in. The four state names are the load-bearing ones
+    # here — "Entwurf" and "Geprüft" are the difference between a text a model
+    # wrote and a text something has read, and a reader shown the German for one
+    # and the English for the other would have to guess which is which.
+    "Das Paket zu diesem Anlass": "Everything for this occasion",
+    "Formate": "Formats",
+    "Formaten geschrieben": "formats written",
+    "noch nichts geschrieben": "nothing written yet",
+    "Alles kopieren": "Copy all",
+    "Fehlende schreiben": "Write the missing ones",
+    "Wird geschrieben": "Writing",
+    "Anschreiben": "Letter",
+    "Nicht geschrieben": "Not written",
+    "Entwurf": "Draft",
+    "Geprüft": "Checked",
+    "Freigegeben": "Released",
+    "Schreiben": "Write",
+    "Neu schreiben": "Write again",
+    "Gegenlesen lassen": "Have it read",
+    "Freigeben": "Release",
+    # "Bearbeiten" is not repeated here: the contact book already carries it
+    # further down this dict, and a second entry for the same German string is a
+    # key Python silently drops — the next person to reword one of them would
+    # reword the one that loses.
+    "Text": "Text",
+    "Titel": "Title",
+    "Schlagzeile": "Headline",
+    "Änderung speichern": "Save the change",
+    "Die Änderung wird gespeichert und als von Hand bearbeitet vermerkt. Danach "
+    "liest das Zweitmodell den Text noch einmal, bevor er freigegeben werden kann.":
+        "The change is stored and recorded as a human edit. The second model then "
+        "reads the text again before it can be released.",
+    "Der Text wurde nach der Prüfung von Hand geändert. Vor der Freigabe muss "
+    "ihn das Zweitmodell noch einmal lesen.":
+        "The text was edited by hand after it was checked. The second model has "
+        "to read it again before it can be released.",
+    "Es wird gerade ein anderer Text geschrieben — die Knöpfe sind so lange aus.":
+        "Another text is being written right now — the buttons are off until "
+        "it is done.",
+    "Das Zweitmodell konnte diesen Text nicht lesen. Er ist ungeprüft — "
+    "wer ihn jetzt freigibt, gibt ihn ungelesen frei.":
+        "The second model could not read this text. It is unchecked — "
+        "releasing it now means releasing it unread.",
+    "Ungeprüft: wer jetzt freigibt, gibt ungelesen frei.":
+        "Unchecked: releasing it now means releasing it unread.",
+    "Zu diesem Anlass gibt es eine These und noch keinen Text. Sieben Formate stehen bereit.":
+        "This occasion has a thesis and no text yet. Seven formats are ready.",
+    # The refusals the routes and the acts hold. Written in Python rather than in
+    # markup and rendered as ``asset_notes`` / ``slot.note`` / ``slot.hint``, which
+    # is why they were the ones missing: nothing that reads the template for German
+    # strings can see them.
+    "Es wird gerade ein Text geschrieben. Der Auftrag wurde nicht angenommen: "
+    "warten Sie, bis der laufende steht, sonst wird derselbe Aufruf zweimal "
+    "bezahlt.":
+        "A text is being written right now. The request was not accepted: wait "
+        "for the running one to finish, or the same call gets paid for twice.",
+    "Es läuft gerade ein Sammellauf. Der Auftrag wurde nicht angenommen: "
+    "warten Sie, bis er durch ist, und klicken Sie dann noch einmal.":
+        "A collection run is going on right now. The request was not accepted: "
+        "wait for it to finish and click again.",
+    "Dieser Text ist freigegeben. Freigegebene Texte werden weder geändert noch "
+    "ersetzt, weil sie festhalten, was tatsächlich hinausgegangen ist.":
+        "This text is released. Released texts are neither changed nor replaced, "
+        "because they record what actually went out.",
+    "Der Text wurde neu geschrieben, während dieses Formular offen war. Die "
+    "Änderung wurde nicht gespeichert, damit sie den neuen Text nicht "
+    "überschreibt. Bitte den jetzt angezeigten Text bearbeiten.":
+        "The text was written again while this form was open. The change was not "
+        "stored, so that it cannot overwrite the new text. Please edit the text "
+        "as it is shown now.",
+    "Paket schreiben": "Write the package",
+    "Noch nicht schreibbar.": "Not writable yet.",
+    "Profil ergänzen": "Fill in the profile",
+    "Guide hinterlegen": "Add the guide",
+    "Guide-Prüfung": "Guide check",
+    "geschrieben": "written",
+    "von Hand geändert": "edited by hand",
+    "zugeschrieben": "attributed to",
+    "freigegeben": "released",
+    "von": "of",
     "Gegengelesen von": "Second read by",
     "Zweitmodell rät ab": "Second model advises against",
     "gelesen von": "read by",
@@ -375,6 +485,147 @@ _EN: dict[str, str] = {
     "Nicht gegengelesen — es ist kein Zweitmodell hinterlegt.":
         "Not cross-checked: no second model is configured.",
     "Bezieht sich auf": "Refers to",
+    # --- The ledger: the release, and what came back --------------------------
+    # The five states a letter can be in. "Verschickt" rather than "Freigegeben"
+    # because the consultant did both, and the record is about the letter having
+    # left the house. "Ohne Reaktion" is not one of them: it is "verschickt" plus
+    # fourteen days, derived rather than stored, and it sits beside the badge
+    # instead of replacing it.
+    "Verschickt": "Sent",
+    "Antwort": "Reply",
+    "Absage": "Declined",
+    "Veröffentlicht": "Published",
+    "Ohne Reaktion": "No response",
+    "Freigegeben am": "Released on",
+    "Ergebnis am": "Outcome on",
+    "Tagen still": "days now",
+    "Geschrieben": "Written",
+    "noch nicht freigegeben": "not released yet",
+    "Freigegeben und verschickt": "Released and sent",
+    # One string, not fragments: "von X freigegeben" glued from three t() calls
+    # would produce English words in German word order ("by X released and sent").
+    "von %(who)s freigegeben und verschickt": "released and sent by %(who)s",
+    "Ergebnis eingetragen": "Outcome recorded",
+    # The other half of the same line, and the reason there are two: since the
+    # mailbox is read, an outcome can be the sync's own entry, and "Ergebnis
+    # eingetragen" would then name an act nobody performed.
+    "Antwort im Postfach gelesen": "Reply read from the mailbox",
+    "Was kam zurück": "What came back",
+    "Bitte wählen": "Please choose",
+    "In einem Satz: was kam zurück.": "In one sentence: what came back.",
+    "Eintragen": "Record",
+    "Nichts geht von hier aus raus. Der Knopf hält fest, dass Sie das Anschreiben gelesen, freigegeben und selbst verschickt haben.":
+        "Nothing leaves from here. The button records that you read the letter, "
+        "released it and sent it yourself.",
+    # --- The letter goes out through Gmail (DEC-4 option C) -------------------
+    # The strip above the impulses, and the warning that belongs with it. The
+    # warning is not boilerplate: with the send scope granted, the product's own
+    # founding sentence no longer holds, and the screen where that is exercised
+    # is where it has to be readable.
+    "Postfach verbunden": "Mailbox connected",
+    # One string, not fragments — same reason as the release trail below: "lesen
+    # und" plus "senden" is two English words that only happen to fall in this
+    # order, and "senden" alone is generic enough to be reused later for a
+    # different verb and pick up the wrong translation.
+    "lesen und senden": "read and send",
+    #: What the same strip says on a connection that was never granted the send
+    #: permission — every mailbox connected before DEC-4's send path.
+    "nur lesen": "read only",
+    "Diese Variante ändert die Grundannahme.":
+        "This variant changes the founding assumption.",
+    "Bisher gilt: keine Engine verschickt etwas an einen Journalisten. Mit Sendrecht verlässt ein Text das Haus, weil in RauteOS ein Knopf gedrückt wurde, nicht weil jemand in seinem eigenen Postfach auf Senden geht. Der Unterschied ist klein am Bildschirm und groß, wenn eine Nachricht falsch war.":
+        "Until now the rule was: no engine sends anything to a journalist. With "
+        "the send permission, a text leaves the building because a button was "
+        "pressed in RauteOS, not because somebody hit send in their own mailbox. "
+        "The difference is small on screen and large when a message was wrong.",
+    "Freigeben und senden": "Release and send",
+    "Ja, senden": "Yes, send",
+    # ("Abbrechen", the confirmation's second control, is already translated
+    # further down with the form that first needed it.)
+    "Diese Nachricht geht jetzt an": "This message now goes to",
+    "Sie ist danach nicht mehr zurückzuholen. Gegengelesen wurde sie von einem zweiten Modell, nicht von einem Menschen.":
+        "It cannot be recalled afterwards. It was checked by a second model, not "
+        "by a human.",
+    "Zwei Klicks statt einem, weil der erste in einer vollen Woche schnell passiert.":
+        "Two clicks instead of one, because in a busy week the first one happens "
+        "quickly.",
+    "Von RauteOS gesendet am": "Sent by RauteOS on",
+    "Verlauf in Gmail öffnen": "Open the thread in Gmail",
+    # The chip on the answer box, and it says the mock's sentence rather than the
+    # timeline's: on the card the point is *which* conversation this came out of
+    # — the one this letter opened — because that is what makes it this letter's
+    # answer rather than a mail that mentions the same subject.
+    "Antwort im selben Verlauf": "Reply in the same thread",
+    "Nicht verschickt.": "Not sent.",
+    "Freigegeben und von RauteOS über Gmail verschickt":
+        "Released, and sent by RauteOS through Gmail",
+    # One string, not fragments — same reason as the release trail above.
+    "von %(who)s freigegeben, von RauteOS über Gmail verschickt":
+        "released by %(who)s, sent by RauteOS through Gmail",
+    # Why the send is not on offer. Three reasons, because they need three
+    # different answers, and none of them is ever "we guessed an address".
+    "Kein Name zu diesem Anschreiben — nur die Redaktion.":
+        "No name on this letter, only the desk.",
+    "Nicht im Kontaktbuch. RauteOS leitet keine Adresse aus Name oder Medium ab.":
+        "Not in the contact book. RauteOS derives no address from a name or an "
+        "outlet.",
+    "Im Kontaktbuch, aber ohne E-Mail-Adresse.":
+        "In the contact book, but with no email address.",
+    # The fourth reason, and the only one that is not about the recipient: the
+    # mailbox itself was connected without the permission to compose and send.
+    "Dieses Postfach ist nur zum Lesen verbunden.":
+        "This mailbox is connected for reading only.",
+    "Postfach neu verbinden": "Reconnect the mailbox",
+    # ("Kontakt hinterlegen" is already translated further down, with the pitch
+    # list that first needed it.)
+    # --- The relationship file: one journalist, across all mandates -----------
+    # The contact book's right-hand pane (DEC-2). "Anschreiben" is the tally of
+    # letters, not the verb, so it counts things: "Letters".
+    "Verlauf": "History",
+    "Anschreiben gesamt": "Letters",
+    "Antworten": "Replies",
+    "ohne Reaktion": "no response",
+    "zuletzt angeschrieben heute": "last written to today",
+    "zuletzt angeschrieben gestern": "last written to yesterday",
+    # One string rather than "vor" + n + "Tagen": glued fragments come out in
+    # German word order once translated. Same reason as the release trail above.
+    "zuletzt angeschrieben vor %(days)s Tagen": "last written to %(days)s days ago",
+    "Anschreiben verschickt": "Letter sent",
+    "freigegeben von Mensch": "released by a human",
+    "freigegeben von %(who)s": "released by %(who)s",
+    # Where a timeline line came from. The set matters more than any one of them:
+    # a sentence somebody typed, a timestamp the machine took when a button was
+    # pressed, and a journalist's own words read out of the mailbox are three
+    # different kinds of claim, and the page has to say which it is making.
+    "von Hand eingetragen": "typed by hand",
+    "bei der Freigabe festgehalten": "recorded at release",
+    "aus dem Postfach gelesen": "read from the mailbox",
+    # One string rather than "Antwort von" + name: glued fragments come out in
+    # German word order once translated.
+    "Antwort von %(who)s": "Reply from %(who)s",
+    # A file long enough to be shortened says so, because the four tallies above
+    # it are counted off the rows that are actually shown.
+    "Es werden die letzten %(n)s Anschreiben gezeigt; ältere stehen nicht auf dieser Seite.":
+        "Showing the most recent %(n)s letters; older ones are not on this page.",
+    "Noch kein Anschreiben freigegeben. Sobald eines an diesen Kontakt rausgeht, steht es hier.":
+        "No letter released yet. The moment one goes out to this contact, it "
+        "shows up here.",
+    # Since the mailbox is connected the old note ("RauteOS sends no mail and
+    # reads no mailbox") is simply false. What is still true, and worth saying on
+    # the page that holds somebody else's words, is how narrow the read is.
+    "Der Verlauf entsteht aus drei Quellen, und jede Zeile sagt, aus welcher: aus der Freigabe eines Anschreibens, aus dem, was Sie selbst festhalten, und aus den Antworten der Journalistinnen und Journalisten. Aus dem Postfach liest RauteOS dabei nur die Verläufe, die es selbst begonnen hat — alles andere wird nicht abgefragt.":
+        "This history comes from three sources, and every line says which: the "
+        "release of a letter, what you record yourself, and the journalists' own "
+        "replies. Of the mailbox, RauteOS reads only the conversations it started "
+        "itself; nothing else is ever requested.",
+    # The mark on a pitch target that was already written to about this very
+    # angle. Not a block — the consultant may have a reason — but the date, so
+    # the second approach is a decision rather than an accident.
+    "schon angeschrieben am": "already written to on",
+    "Zu diesem Impuls ging an diese Adresse bereits ein freigegebenes Anschreiben raus. Ein zweites zum selben Thema ist das, was eine Beziehung kostet.":
+        "A released letter about this very opening already went to this "
+        "recipient. A second one on the same subject is what costs you the "
+        "relationship.",
     "Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.":
         "Written from headlines and feed snippets, not from the articles "
         "themselves. Check it against the item before sending.",
@@ -421,7 +672,6 @@ _EN: dict[str, str] = {
     "reaktiv": "reactive",
     "proaktiv": "proactive",
     "beobachten": "monitor",
-    "heute": "today",
     "diese woche": "this week",
     "laufend": "ongoing",
     # --- Settings ------------------------------------------------------------
@@ -448,13 +698,11 @@ _EN: dict[str, str] = {
     "Zuordnungen entfernen": "links",
     "Start": "Start",
     "Status": "Status",
-    "Fehler": "Errors",
+    "Fehler": "Error",
     "Clients": "Clients",
     "+ Client hinzufügen": "+ Add client",
     "Name": "Name",
     "Aliasse": "Aliases",
-    "Suchbegriffe": "Search terms",
-    "Alarm-Themen": "Alert topics",
     "Website": "Website",
     "Andere Schreibweisen des Unternehmens: „Zalando SE“, „About You“.":
         "Other spellings of the company: \u201cZalando SE\u201d, \u201cAbout You\u201d.",
@@ -483,7 +731,6 @@ _EN: dict[str, str] = {
     "Gemessen an der echten Suche: so viele Marktmeldungen brächte jedes Thema in 90 Tagen. Ein Klick übernimmt es und sucht sofort.":
         "Measured against the real search: that is how many market items each theme "
         "would bring in over 90 days. One click adopts it and searches straight away.",
-    "Wettbewerber vorschlagen": "Suggest competitors",
     "Wettbewerber werden vorgeschlagen — das dauert einen Moment.":
         "Competitors are being proposed \u2014 this takes a moment.",
     "Vorschlag fehlgeschlagen": "Proposal failed",
@@ -502,10 +749,9 @@ _EN: dict[str, str] = {
         "The journalists you know. The tool proposes who to approach from what the "
         "press published; how to reach them lives here, and only what you put in it.",
     "Noch kein Eintrag für": "No entry yet for",
-    "unten ausfüllen und speichern.": "fill in below and save.",
+    "jetzt ausfüllen und speichern.": "fill it in and save.",
     "Eintrag bearbeiten": "Edit entry",
     "Neuer Kontakt": "New contact",
-    "Medium": "Outlet",
     "E-Mail": "Email",
     "Telefon": "Phone",
     "Themengebiet": "Beat",
@@ -585,7 +831,6 @@ _EN: dict[str, str] = {
     # --- Assistant drawer ----------------------------------------------------
     "Captain Comms": "Captain Comms",
     # Streaming status and failure text, read inside the drawer.
-    "Kontext": "Context",
     "verbunden": "connected",
     "denkt nach": "thinking",
     "Keine Frage gestellt.": "No question asked.",
@@ -597,7 +842,6 @@ _EN: dict[str, str] = {
     "Unerwarteter Fehler": "Unexpected error",
     "Antwort zu lang, abgebrochen.": "Answer too long, stopped.",
     "Keine Antwort erhalten.": "No answer received.",
-    "Fehler": "Error",
     "Verbindung unterbrochen.": "Connection lost.",
     "Kommunikationsstrategie zur Berichterstattung auf dieser Seite":
         "Communication strategy for the coverage on this page",
@@ -616,7 +860,6 @@ _EN: dict[str, str] = {
     "Was übersehen wir gerade?": "What are we missing?",
     "Portfolio": "Portfolio",
     "Profil": "Profile",
-    "Wettbewerb": "Competition",
     "Mit KI ausfüllen": "Fill with AI",
     "Liest das offene Netz und schlägt Werte vor — mit Quelle, und ohne etwas zu speichern. Was hier steht, entscheiden Sie.":
         "Reads the open web and proposes values, with the source, storing nothing. "
@@ -625,8 +868,54 @@ _EN: dict[str, str] = {
         "Researching — the page will refresh itself once the proposals are ready.",
     "Keine Recherche.": "No research.",
     "Vorschläge aus dem Netz": "proposals from the web",
-    "Ausgewählte übernehmen": "Accept selected",
+    "Feld(er) von Hand gefüllt — das Netz sagt etwas anderes":
+        "field(s) filled in by hand — the web says otherwise",
+    # --- The review pile: what changed, and who decided it --------------------
+    "Was Sie übernehmen, wird als Ihre Angabe gespeichert — mit Quelle, aber unter Ihrem Namen, weil Sie es entschieden haben. Was Sie verwerfen, wird beim nächsten Abgleich nicht erneut vorgeschlagen.":
+        "What you accept is stored as your entry, with its source but under your "
+        "name, because you are the one who decided it. What you discard is not "
+        "proposed again at the next check.",
+    "Regel: Eine Angabe von Hand wird nie überschrieben. Das Netz widerspricht hier nur — ändern können Sie den Wert selbst, unten im Feld.":
+        "Rule: an entry you made by hand is never overwritten. The web only "
+        "contradicts it here; only you can change the value, in the field below.",
+    "Verwerfen heißt: Dieser Widerspruch wird beim nächsten Abgleich nicht erneut gemeldet.":
+        "Discarding means this contradiction is not reported again at the next "
+        "check.",
+    "Diese Vorschläge gab es nicht mehr — der Abgleich hatte sie inzwischen ersetzt. Nichts wurde geändert; unten steht der aktuelle Stand.":
+        "Those proposals were already gone; the check had replaced them in the "
+        "meantime. Nothing was changed, and what you see below is current.",
+    "bisher nicht gefüllt": "previously empty",
+    "Ihre Angabe": "Your entry",
+    # The profile's own field names. Every review row is labelled with one, and
+    # the labels live in ``profile.FIELDS`` rather than in a template, so no
+    # ``t("...")`` in the markup names them and the string sweep never saw them.
+    # "Positionierung" and "Wettbewerber" are further up, from the pages that
+    # used them first. ``test_every_german_string_on_the_review_pages_is_
+    # translated`` now reads ``profile.FIELDS`` directly for exactly this reason.
+    "Geschäftsfeld": "Line of business",
+    "Geschäftsführung": "Management",
+    "Pressekontakt": "Press contact",
+    "Gegründet": "Founded",
+    "Sitz": "Headquarters",
+    "Mitarbeitende": "Employees",
+    "Umsatz / Finanzierung": "Revenue / funding",
+    "Eigentümer": "Owners",
+    "Zielgruppe": "Target audience",
+    "Produkte": "Products",
+    "Öffentliche Themen": "Public debates",
+    "Reputationsrisiken": "Reputation risks",
+    "Das Netz sagt": "The web says",
+    # "Übernehmen" itself is further down, where the guide page's adopt button
+    # put it. One German string, one English word: two entries for it would
+    # silently make the later one win on both pages.
+    "Alle übernehmen": "Apply all",
+    "Alle verwerfen": "Discard all",
     "Verwerfen": "Discard",
+    # The check stamp, shared by the profile page and the portfolio. "Never
+    # checked" is a state of its own and is said out loud: a blank reads as fine.
+    "Noch nie geprüft": "Never checked",
+    "Heute geprüft": "Checked today",
+    "Zuletzt geprüft vor %(days)s Tagen": "Last checked %(days)s days ago",
     "Profil speichern": "Save profile",
     "Was Sie hier ändern, gilt als Ihre Angabe und wird von der KI nicht mehr überschrieben.":
         "What you change here counts as yours and the AI will not overwrite it.",
@@ -635,10 +924,6 @@ _EN: dict[str, str] = {
     # sentence no longer counts them: a number in prose beside the live figure
     # next to it is one of them being wrong.
     "Felder gefüllt": "fields filled",
-    "Von": "By",
-    "Quelle": "Source",
-    "Unternehmen": "Company",
-    "Anteil": "Share",
     "Noch keine Vergleichsgruppe.": "No peer group yet.",
     "Ein Anteil ohne Vergleich ist immer 100 % und sagt nichts. Unten lässt sich ein Wettbewerber hinzufügen.":
         "A share with nothing to compare against is always 100% and says nothing. "
@@ -688,7 +973,6 @@ _EN: dict[str, str] = {
     "Vorschlag aus den Unterlagen — noch nicht gespeichert":
         "Proposal from the documents — not saved yet",
     "Übernehmen": "Apply",
-    "Verwerfen": "Discard",
     "Quellen": "Sources",
     "Zeichen": "characters",
     "Vorschlag erzeugen": "Propose a guide",
@@ -698,7 +982,6 @@ _EN: dict[str, str] = {
     "PDF, TXT oder Markdown · höchstens": "PDF, TXT or Markdown · at most",
     "Gespeichert wird der extrahierte Text, nicht die Datei.":
         "The extracted text is stored, not the file.",
-    "Speichern": "Save",
     "Wirkt auf": "Feeds into",
     "Kurz halten: der Guide wird jedem erzeugten Text vorangestellt.":
         "Keep it short: the guide precedes every generated text.",
@@ -726,8 +1009,6 @@ _EN: dict[str, str] = {
         "Coverage from the client's subject area — items that do not name them. "
         "This is the material the openings are drafted from, and it shows who "
         "writes about the subject.",
-    "Letzte": "Last",
-    "in": "in",
     "Das Themen-Radar hat in diesem Zeitraum nichts gefunden.":
         "The topic radar found nothing in this period.",
     "Die hinterlegten Themen sind womöglich zu eng gefasst — zwei bis drei "
@@ -996,6 +1277,148 @@ _EN: dict[str, str] = {
     # The competitors the client named, offered for the comparison set.
     "Im Kickoff genannt": "Named in the kick-off",
     "In die Vergleichsgruppe": "Add to the comparison set",
+    # --- The brain: the standards every prompt composes from -------------------
+    # "Maßstäbe" and not "Gehirn": the panel holds what a text is measured
+    # against, and the architecture's name for the layer is not what the person
+    # editing a sentence about tone is looking for.
+    "Maßstäbe": "Standards",
+    "Was das Haus für gut hält. Jeder Text, den das Werkzeug schreibt, setzt sich "
+    "hieraus zusammen: Ändert sich ein Block, ändert sich jeder Prompt, der ihn einbindet.":
+        "What the house holds to be good. Every text the tool writes is composed "
+        "from these: change a block and every prompt that includes it changes with it.",
+    "Fassung": "Version",
+    # The three states a block can be in, and they must read as three different
+    # things: the shipped wording, a wording the agency wrote over it, and a
+    # wording that overrides a block the repository no longer has.
+    "Vorgabe": "Shipped",
+    "Überschrieben": "Overridden",
+    "Verwaist": "Orphaned",
+    "Überschrieben, aber nicht mehr ausgeliefert: Der Block wurde umbenannt oder "
+    "entfernt. Die Überschreibung gilt weiter, wo ein Prompt sie einbindet — "
+    "Zurücksetzen entfernt sie.":
+        "Overridden but no longer shipped: the block was renamed or removed. The "
+        "override still applies wherever a prompt includes it; reverting removes it.",
+    "Zuletzt geändert": "Last changed",
+    "Noch nie geändert": "Never changed",
+    "Wortlaut": "Wording",
+    "Auf Vorgabe zurücksetzen": "Restore the shipped wording",
+    "Auf die Vorgabe zurückgesetzt": "Restored the shipped wording",
+    "Noch keine Änderung aufgezeichnet. Der Block ist der ausgelieferte Wortlaut.":
+        "No change recorded yet. The block is the shipped wording.",
+    # Why an empty edit is refused. It reaches the page as a value rather than as
+    # chrome — the route hands `brain.EMPTY_BLOCK_MESSAGE` to the template — and
+    # is translated anyway, because a German sentence in a red box on an
+    # otherwise English panel is the mixed-language failure the suite forbids.
+    "Ein Block darf nicht leer sein: ein Prompt, der einen leeren Maßstab "
+    "einsetzt, lässt ihn stillschweigend weg.":
+        "A block must not be empty: a prompt that inserts an empty standard "
+        "silently drops it.",
+    # A revert to a block the repository no longer ships: the row says a wording
+    # was restored, and there is no longer a wording to show for it.
+    "Auf die Vorgabe zurückgesetzt — der ausgelieferte Wortlaut existiert nicht mehr.":
+        "Restored the shipped wording — the shipped wording no longer exists.",
+    # Who a change is recorded as when the installation has no named user. Same
+    # word ClientFact.filled_by uses, and translated for the same reason: it is a
+    # value the interface renders, not a stored German noun the reader must parse.
+    "mensch": "human",
+    # --- The stamp: which standards a generated text was written under ---------
+    # Two states and they must not blur. A number is a version somebody can open
+    # and read; "unbekannt" is a text from before the tool recorded any, and it
+    # is deliberately not rendered as version zero — zero is a true claim (the
+    # standards have never been changed here) that an old row cannot make.
+    "unbekannt": "unknown",
+    # Only ever rendered when the cross-check read different standards from the
+    # letter it read: two model calls, and a block edited between them.
+    "gegengelesen unter": "cross-checked under",
+    "vor der Aufzeichnung der Maßstäbe entstanden":
+        "written before the standards were recorded",
+    # What the reader is looking at after following a stamp. The version counts
+    # changes across the whole house and resolves to the single change that
+    # produced it, so this page answers the question for one block and shows the
+    # others as they are today. Said outright, because a page that let the reader
+    # believe it was showing "the standards at version N" would be a better lie
+    # than no link at all.
+    "Von einem Text hierher gekommen:": "Followed here from a text:",
+    "ist die unten markierte Änderung an diesem Block.":
+        "is the change marked below, on this block.",
+    # A revert is a change too, and a text stamped with one was written under the
+    # shipped wording rather than under an override. Same sentence otherwise.
+    "ist die unten markierte Rücksetzung: der Text entstand unter der "
+    "ausgelieferten Vorgabe dieses Blocks.":
+        "is the reset marked below: the text was written under this block's "
+        "shipped default.",
+    "Die Fassung zählt alle Änderungen am ganzen Haus — die übrigen Blöcke "
+    "stehen in ihrem heutigen Wortlaut, nicht in dem von damals.":
+        "The version counts every change across the whole house, so the other "
+        "blocks are shown as they read today and not as they read then.",
+    # --- The mailbox connection (OUT-03) -------------------------------------
+    # "Postfach" rather than "Gmail": the panel is about the mailbox the letters
+    # go out through, and the provider is an implementation detail of it.
+    "Postfach": "Mailbox",
+    "Postfach verbinden": "Connect mailbox",
+    "Postfach trennen": "Disconnect mailbox",
+    "Verbunden als": "Connected as",
+    "seit": "since",
+    "seit %(days)s Tagen still": "silent for %(days)s days",
+    "Kein Postfach verbunden.": "No mailbox connected.",
+    "Nachrichten lesen": "Read messages",
+    # What DEC-4's send path actually needs: gmail.compose, because every
+    # drafts.* call refuses gmail.send. The next three are grants this tool never
+    # asks for — the send scope a connection made before that change still
+    # carries, and two wider ones a Workspace account may already have — and the
+    # panel renders what was granted rather than what was requested.
+    "Nachrichten verfassen und senden": "Compose and send messages",
+    "Nachrichten senden": "Send messages",
+    "Nachrichten verwalten": "Manage messages",
+    "Vollzugriff auf das Postfach": "Full access to the mailbox",
+    # Never asked for either, but Google adds them to a grant on its own when the
+    # consent screen is an OpenID one.
+    "Anmeldung bei Google": "Sign-in with Google",
+    "E-Mail-Adresse des Kontos": "The account's email address",
+    "Name des Kontos": "The account's name",
+    "Google fragt genau diese beiden Rechte ab, mehr wird nicht angefordert:":
+        "Google asks for exactly these two permissions and nothing more:",
+    "Dieses Postfach ist nur zum Lesen verbunden. Zum Verschicken von Anschreiben einmal trennen und neu verbinden — Google vergibt die Rechte beim Zustimmen und erweitert sie später nicht.":
+        "This mailbox is connected for reading only. To send letters, disconnect "
+        "and connect it once more — Google grants the permissions at consent time "
+        "and never widens them afterwards.",
+    "Die Adresse stammt aus dem Gmail-Profil dieses Kontos, nicht aus einer Eingabe.":
+        "The address comes from this account's Gmail profile, not from anything typed in.",
+    "ohne OAuth-Client bei Google lässt sich kein Postfach verbinden. "
+    "NEWSPULSE_GMAIL_CLIENT_ID und NEWSPULSE_GMAIL_CLIENT_SECRET setzen.":
+        "without an OAuth client at Google no mailbox can be connected. Set "
+        "NEWSPULSE_GMAIL_CLIENT_ID and NEWSPULSE_GMAIL_CLIENT_SECRET.",
+    "Einrichtung in der Deployment-Notiz": "Setup in the deployment note",
+    "Der Zugang liegt als Datei neben der Datenbank, nur für den Eigentümer lesbar, "
+    "und nie in einer Tabelle — damit ihn weder eine Datenbankkopie noch der "
+    "Excel-Export aus der Maschine trägt.":
+        "The credential lives in a file beside the database, readable by its owner "
+        "only, and never in a table — so that neither a database copy nor the Excel "
+        "export can carry it off the machine.",
+    "Postfach verbunden.": "Mailbox connected.",
+    "Postfach getrennt und der Zugriff bei Google widerrufen.":
+        "Mailbox disconnected and the access revoked at Google.",
+    "Der Zugang wurde hier gelöscht, der Widerruf bei Google ließ sich aber nicht "
+    "bestätigen. Bitte im Google-Konto unter „Drittanbieter-Apps“ nachsehen.":
+        "The credential was deleted here, but the revocation at Google could not be "
+        "confirmed. Please check the Google account under \"Third-party apps\".",
+    "Es war kein Postfach verbunden, also gab es auch nichts zu widerrufen.":
+        "No mailbox was connected, so there was nothing to revoke.",
+    "Dieses Postfach ist noch verbunden, aber der OAuth-Client fehlt in der "
+    "Konfiguration: neu verbinden geht erst wieder mit NEWSPULSE_GMAIL_CLIENT_ID "
+    "und NEWSPULSE_GMAIL_CLIENT_SECRET. Trennen und widerrufen geht jederzeit.":
+        "This mailbox is still connected, but the OAuth client is missing from the "
+        "configuration: reconnecting needs NEWSPULSE_GMAIL_CLIENT_ID and "
+        "NEWSPULSE_GMAIL_CLIENT_SECRET again. Disconnecting and revoking works at "
+        "any time.",
+    "Die Freigabe wurde bei Google abgebrochen. Es wurde nichts gespeichert.":
+        "Consent was cancelled at Google. Nothing was stored.",
+    "Die Rückmeldung von Google gehörte nicht zu dieser Anfrage. Es wurde nichts verbunden.":
+        "Google's answer did not belong to this request. Nothing was connected.",
+    "Die Verbindung mit Google ist fehlgeschlagen. Es wurde nichts gespeichert.":
+        "The connection to Google failed. Nothing was stored.",
+    "Der Zugriff wurde bei Google entzogen, die Verbindung wurde deshalb beendet.":
+        "Access was withdrawn at Google, so the connection was ended.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

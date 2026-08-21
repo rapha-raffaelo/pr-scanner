@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from ... import gnews
 from ... import angles
-from ... import onboarding
+from ... import onboarding, profile as profiles
 from ...models import Analysis, Angle, Article, Category, Client, TopicHit, visible_coverage
 from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
@@ -368,46 +368,68 @@ class PortfolioRow:
     # look exactly like a calm week until you notice nobody ever asked it the
     # twenty questions.
     kickoff: onboarding.Completeness
+    # When the mandate profile was last re-read. On the roster because a profile
+    # decays quietly: nothing about a card says its facts are two years old, and
+    # the consultant picks the mandate to work on from exactly this screen.
+    profile_checked: profiles.Checked
 
 
 @dataclass(frozen=True, slots=True)
 class _PortfolioCounts:
-    """The four per-client figures behind the cards, each keyed by client id.
+    """The four per-client numbers a portfolio card carries, each keyed by id.
 
-    A named group rather than four loose dicts threaded through the view: they
-    are fetched together, they are read together, and the one thing a reader of
-    :func:`clients_index` needs to know about them is that none of them is a
-    per-card query.
+    One object rather than four loose dicts so the aggregation can leave the view
+    entirely: what the page does with them is assemble rows, and the SQL is a
+    separate job from the assembly.
     """
 
-    total: dict[int, int]
+    totals: dict[int, int]
     today: dict[int, int]
     alerts_today: dict[int, int]
     open_impulses: dict[int, int]
 
 
 def _portfolio_counts(
-    session: Session, start: dt.datetime, end: dt.datetime
+    session: Session, *, start: dt.datetime, end: dt.datetime
 ) -> _PortfolioCounts:
-    """Everything the cards count, in four grouped queries rather than per client.
+    """Everything the roster counts, in four grouped queries.
 
-    The page then costs a fixed number of round trips whatever the portfolio
-    size, which is the whole reason these are not properties on ``Client``.
+    Grouped rather than per client: the page renders every mandate, and sixty
+    mandates asking the same question sixty times is sixty round trips for an
+    answer a GROUP BY gives once.
     """
     relevant = visible_coverage()
-    by_client = select(Analysis.client_id, func.count()).group_by(Analysis.client_id)
     today_window = (
-        by_client.join(Article, Article.id == Analysis.article_id)
-        .where(relevant, Article.published_at >= start, Article.published_at < end)
+        relevant,
+        Article.published_at >= start,
+        Article.published_at < end,
     )
     # A draft stands for a week (angles.COLUMN_DAYS); past that it is history, not
     # something waiting to be sent.
     impulse_since = dt.datetime.now(dt.UTC) - dt.timedelta(days=angles.COLUMN_DAYS)
     return _PortfolioCounts(
-        total=dict(session.execute(by_client.where(relevant)).all()),
-        today=dict(session.execute(today_window).all()),
+        totals=dict(
+            session.execute(
+                select(Analysis.client_id, func.count())
+                .where(relevant)
+                .group_by(Analysis.client_id)
+            ).all()
+        ),
+        today=dict(
+            session.execute(
+                select(Analysis.client_id, func.count())
+                .join(Article, Article.id == Analysis.article_id)
+                .where(*today_window)
+                .group_by(Analysis.client_id)
+            ).all()
+        ),
         alerts_today=dict(
-            session.execute(today_window.where(Analysis.is_alert.is_(True))).all()
+            session.execute(
+                select(Analysis.client_id, func.count())
+                .join(Article, Article.id == Analysis.article_id)
+                .where(*today_window, Analysis.is_alert.is_(True))
+                .group_by(Analysis.client_id)
+            ).all()
         ),
         open_impulses=dict(
             session.execute(
@@ -430,15 +452,17 @@ def clients_index(
 ) -> HTMLResponse:
     """Mandanten: the whole portfolio at a glance, each row a way into its archive.
 
-    Composition only. The counting is :func:`_portfolio_counts`, and the kick-off
-    figure is one grouped query beside it, so no part of this page costs a query
-    per card.
+    Fetch, assemble, render. The counting is :func:`_portfolio_counts`, which
+    keeps this to the shape of the page rather than to the shape of the SQL.
     """
     day = dt.datetime.now(_local_tz()).date()
     start, end = _day_bounds_utc(day)
-    counts = _portfolio_counts(session, start, end)
+    counts = _portfolio_counts(session, start=start, end=end)
 
     clients = session.scalars(select(Client).order_by(Client.name)).all()
+    # One clock for the whole list, so two cards checked the same morning cannot
+    # be rendered a day apart by a render that straddles midnight.
+    now = dt.datetime.now(dt.UTC)
     # One query for the whole portfolio rather than one per card.
     kickoffs = onboarding.completeness_by_client(session, [c.id for c in clients])
     rows = [
@@ -454,10 +478,11 @@ def clients_index(
             is_competitor=c.is_competitor,
             logo_url=c.logo_url,
             today_count=counts.today.get(c.id, 0),
-            total_count=counts.total.get(c.id, 0),
+            total_count=counts.totals.get(c.id, 0),
             alerts_today=counts.alerts_today.get(c.id, 0),
             open_impulses=counts.open_impulses.get(c.id, 0),
             kickoff=kickoffs[c.id],
+            profile_checked=profiles.checked(c.profile_checked_at, now=now),
         )
         for c in clients
     ]

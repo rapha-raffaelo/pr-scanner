@@ -114,6 +114,71 @@ class RunStatus(StrEnum):
     FAILED = "failed"
 
 
+class AssetKind(StrEnum):
+    """The formats an impulse can become, beside the letter.
+
+    Named here so the six are spelled once rather than quoted in five modules and
+    three templates. What this is *not* is the authority on which formats exist:
+    that is the registry in :mod:`newspulse.assets`, and ``assets.kind`` is a
+    plain string column for exactly that reason. A CHECK constraint here would
+    make a seventh format a schema migration, when the whole point of holding a
+    format as data is that a seventh is a definition and a prompt file.
+
+    The letter is deliberately not in here. It has a recipient and its own
+    ledger, and it stays in :class:`Outreach`.
+    """
+
+    PRESSEMITTEILUNG = "pressemitteilung"
+    STATEMENT = "statement"
+    QA = "qa"
+    TALKING_POINTS = "talking_points"
+    GASTBEITRAG = "gastbeitrag"
+    INTERVIEW_BRIEFING = "interview_briefing"
+
+
+class CheckState(StrEnum):
+    """Where a generated text stands with the two models that read it.
+
+    Three states rather than a boolean, for the reason the outreach review
+    columns exist: "nothing objected" and "nothing looked" must never render
+    alike. The second is the one that ships a fabricated quote.
+    """
+
+    UNGEPRUEFT = "ungeprueft"
+    EINWAND = "einwand"
+    GEPRUEFT = "geprueft"
+
+
+class OutreachState(StrEnum):
+    """Where one letter stands between being written and having produced something.
+
+    The list is short on purpose, and one obvious member is missing: there is no
+    "ohne Reaktion". Silence is not something anybody enters — it is ``RAUS`` plus
+    time, derived at read (:func:`newspulse.outreach.is_silent`), so the ledger
+    never claims a fact nobody recorded. Storing it would mean a nightly job that
+    rewrites rows to assert an absence, and a row that says "no answer" on a day
+    the answer arrived.
+
+    ``ENTWURF`` is the only state a machine may set; the other four are a person's
+    reading of what came back. That is why ``ABSAGE`` and ``VEROEFFENTLICHT`` are
+    separate from ``ANTWORT``: "danke, nichts für uns" and "schicken Sie mehr" are
+    the same event to a matcher and opposite events to a consultant.
+    """
+
+    ENTWURF = "entwurf"
+    RAUS = "raus"
+    ANTWORT = "antwort"
+    ABSAGE = "absage"
+    VEROEFFENTLICHT = "veroeffentlicht"
+
+
+#: How long a released letter may go unanswered before the card calls it still.
+#: Two weeks: a journalist who has not replied inside one is busy, and one who has
+#: not replied inside three was never going to. It is a display threshold, not a
+#: stored state — see :class:`OutreachState`.
+SILENT_AFTER_DAYS = 14
+
+
 def _utcnow() -> dt.datetime:
     """Timezone-aware UTC now, used as a Python-side column default."""
     return dt.datetime.now(dt.UTC)
@@ -260,6 +325,24 @@ class Client(Base):
     impulse_note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     impulse_checked_at: Mapped[dt.datetime | None] = mapped_column(
         UTCDateTime(), nullable=True
+    )
+    # When the deep-dive profile was last re-read from the web, whatever that read
+    # produced. Same reasoning as ``impulse_checked_at`` above: the answer is
+    # produced by an unattended sweep and read by a person hours later, so it has
+    # to be on the client rather than in the process that produced it. NULL means
+    # never checked, which the page says out loud — a profile that has aged for a
+    # year and one that was checked this morning must not look alike.
+    profile_checked_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+    #: Why the last profile check produced nothing, empty when it produced
+    #: something or found nothing to change. The stamp above is set on every
+    #: attempt including a failed one, which is right — an attempt happened — and
+    #: on its own it makes a mandate whose research broke read as "geprüft: heute"
+    #: while quieting its age trigger for sixty days. Exactly the hole
+    #: ``impulse_note`` was added to close, so it is closed the same way.
+    profile_note: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
     )
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1")
@@ -518,6 +601,59 @@ class Setting(Base):
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class BrainOverride(Base):
+    """One recorded change to what the house believes, block by block.
+
+    The repository ships the blocks (``newspulse/blocks/*.txt``) and they stay
+    the default underneath, so a fresh install thinks correctly on day one and
+    git keeps the lineage. This table is what the agency writes on top of them,
+    because what good PR looks like is the agency's judgement and not the
+    developer's, and a consultant should not need a deployment to change a
+    sentence about tone.
+
+    Append-only: a row is an *event*, not the current state. The override in
+    force for a block is its newest row, and a revert is a row of its own rather
+    than the deletion of one — "we went back to the shipped wording in September"
+    is a decision somebody made, and a letter written the week before was written
+    under a different standard. Deleting the row would make the revert look like
+    it never happened, which is exactly the history this table exists to keep.
+
+    ``text`` is NULL on precisely those revert rows. NULL and ``""`` are
+    different answers: the empty string is refused at write time (see
+    :func:`newspulse.brain.edit`), because a prompt composing an empty standard
+    drops it in silence rather than complaining.
+    """
+
+    __tablename__ = "brain_overrides"
+    __table_args__ = (
+        # One version per recorded change, enforced rather than assumed: BRN-03
+        # stamps generated texts with a version and reads the standards back out
+        # of this table, so two rows sharing a number would make that lookup
+        # ambiguous in the one conversation where it matters.
+        UniqueConstraint("version", name="uq_brain_overrides_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    #: The block's stable key — the same one a prompt's ``{{brain:…}}`` names.
+    #: Deliberately not a foreign key to anything: the blocks are files, and an
+    #: override whose file was renamed away has to stay findable (the settings
+    #: panel shows it as orphaned) rather than vanish with it.
+    key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    #: The overriding text, or NULL for "back to the shipped default".
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edited_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: Who changed it. One shared Basic-auth credential is the only identity this
+    #: tool has, so this is that user name or ``"mensch"`` — never a name nobody
+    #: supplied.
+    edited_by: Mapped[str] = mapped_column(String(80), nullable=False, default="mensch")
+    #: The portfolio-wide brain version this change produced, counting every
+    #: recorded change across every block. One number for the whole house, so a
+    #: text can say which standards it was written under with a single integer.
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class Advisory(Base):
     """One generated set of suggested PR actions for a client.
 
@@ -547,6 +683,14 @@ class Advisory(Base):
         default=list,
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
+    )
+    #: The standards this brief was written under, on the same terms as
+    #: :attr:`Angle.brain_version`. Stamped even though the advisor has no page
+    #: of its own any more: it composes the same blocks and stores what a model
+    #: wrote, and a stamp that is only on the convenient generators is a stamp
+    #: nobody can trust the absence of.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
     )
 
 
@@ -699,6 +843,20 @@ class Angle(Base):
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
     )
+    #: Which standards this draft was written under: the portfolio-wide brain
+    #: version (:func:`newspulse.brain.version`) as it stood when the *prompt* was
+    #: composed, not when the row was saved. A consultant editing a standard while
+    #: a sweep is running must not retroactively change what a finished text
+    #: claims to have been written under.
+    #:
+    #: NULL means "unknown", which is a different answer from ``0``. Zero is a
+    #: true statement — the standards have never been changed on this install —
+    #: and a row written before this column existed cannot make it. So the column
+    #: is nullable with no server default, and the interface says "unbekannt"
+    #: rather than claiming standards that were never recorded.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
 
 
 class ClientFact(Base):
@@ -825,6 +983,125 @@ class OnboardingAnswer(Base):
     skipped: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
+#: What :attr:`Outreach.outcome_by` holds when the mailbox sync recorded the
+#: outcome rather than a person. A token and not a name, the way
+#: ``ClientFact.filled_by`` and ``Outreach.released_by`` store "mensch": the only
+#: distinction the ledger has to keep is whether a human or the machine said it.
+#: Stored rather than inferred from state, note and timestamp — an inference is
+#: re-derived on every render and breaks the day a retention rule deletes the
+#: reply row it was reading, which would silently redraw a machine's line as a
+#: sentence a consultant typed.
+OUTCOME_BY_MAILBOX = "postfach"
+
+
+class ProfileProposal(Base):
+    """One "this looks different now", waiting for a yes.
+
+    The background refresh proposes and never writes (see
+    :mod:`newspulse.profile_refresh`), so its output has to live somewhere between
+    the sweep that produced it and the person who decides on it. That used to be a
+    dict in the web process, which was defensible while only a button wrote to it
+    and is not now: the 06:10 sweep would produce a pile of findings and a restart
+    — a deploy, a crash, a machine going to sleep — would silently drop them, and
+    nobody would ever know what the tool had found.
+
+    ``previous_value`` is copied at proposal time rather than read back at render
+    time. It is what the proposal is *about*: "Umsatz: 84 Mio. (2025)" is not a
+    decision anyone can make without the number it replaces beside it. Copying it
+    also keeps the row honest if the fact changes underneath — the proposal still
+    says which value it was arguing against.
+
+    Keyed on (client, key) while it is outstanding: a mandate has one CEO field,
+    and a second refresh replaces that client's open proposals rather than
+    stacking a fresh guess beside last week's.
+
+    A discarded row stays, stamped rather than deleted. It is the only record that
+    the consultant already said no to this exact value, and without it the next
+    refresh would read the same about page, find the same sentence and put the
+    same rejected proposal back on the page — which is how a review pile becomes
+    something nobody opens. The one exception is a row the profile has caught up
+    with: the field already holds the value being proposed, so there is no claim
+    left to refuse and stamping one would suppress that field's next real
+    correction (see :func:`newspulse.profile_refresh.discard`).
+
+    Which is why the uniqueness is *partial*, over the open rows only. A refusal
+    is of a sentence and not of a field — "not this CEO" must not mean "never ask
+    about the CEO again" — so a field accumulates one row per value that was
+    refused, plus at most one still waiting for an answer. A whole-table UNIQUE
+    would force the refresh to delete last month's "no" in order to file this
+    month's different finding, and the value it said no to would be back on the
+    page the next time a website repeated it.
+    """
+
+    __tablename__ = "profile_proposals"
+    __table_args__ = (
+        Index(
+            "uq_profile_proposals_key",
+            "client_id",
+            "key",
+            unique=True,
+            sqlite_where=text("discarded_at IS NULL"),
+        ),
+        # AUTOINCREMENT, so an id is never handed out twice. The review page's
+        # buttons carry row ids — "the rows I was looking at" — and a refresh
+        # replaces a client's proposals by deleting and re-inserting them. A
+        # plain SQLite rowid is reused after the delete, so yesterday's id could
+        # come back attached to this morning's finding and a stale tab's
+        # "übernehmen" would write a value nobody had read. Measured, not
+        # theorised: the test for that promise failed on reused ids.
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: A key from :data:`newspulse.profile.FIELDS`, exactly as ``client_facts``
+    #: holds it — a proposal is a candidate value for one of those rows.
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Every text column below carries ``server_default`` as well as ``default``:
+    # migration 0022 emits one, so a schema built by ``Base.metadata.create_all``
+    # (what the tests use) without it is a *different* schema, and an INSERT that
+    # omits a column would then pass in production and fail in a test.
+    value: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: Where it was read. A proposal without one is a machine asserting something
+    #: it cannot back up, and the review page does not show it at all.
+    source_url: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    source_title: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: What the profile said when this was proposed. Empty when the field was
+    #: blank, which is the "found something new" case rather than a contradiction.
+    #: Re-read from the profile when the row is refused, because a refusal is
+    #: always said *against* something: "not Bob, the CEO is Anna". That is what
+    #: lets the refusal expire when Anna turns out to be wrong and is cleared —
+    #: see :func:`newspulse.profile_refresh._refused`.
+    previous_value: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    proposed_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The model that read the web for it. Never "mensch": a human does not
+    #: propose to himself, he types the value in.
+    proposed_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default="", server_default=""
+    )
+    #: When the consultant said no, and the whole reason a discarded row is kept
+    #: instead of deleted: the refresh reads it before proposing, so a value that
+    #: was refused once is not offered again the next morning. An accepted row is
+    #: deleted rather than stamped — the fact it became is its own memory, and a
+    #: "no" recorded against a value the profile now holds would suppress a real
+    #: correction later.
+    discarded_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, default=None
+    )
+
+
 class Outreach(Base):
     """One personalised message: an impulse, written at a named recipient.
 
@@ -841,6 +1118,12 @@ class Outreach(Base):
 
     ``journalist`` may be empty: a feed carries a byline about one time in ten,
     and an outlet with no name attached is still a valid address for a pitch.
+
+    From the release ledger on, a row is also a record of a human act. The text of
+    a released letter is frozen — a redraft for the same recipient becomes a new
+    row rather than overwriting the one that went out — because the point of the
+    ledger is to say what was actually sent, and an upsert would destroy exactly
+    that.
     """
 
     __tablename__ = "outreach"
@@ -873,11 +1156,309 @@ class Outreach(Base):
     reviewed_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     #: The checker's own send/hold flag. True unless it objected.
     review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: The standards this letter was written under, on the same terms as
+    #: :attr:`Angle.brain_version`: captured with the prompt, NULL for a letter
+    #: from before there was anything to stamp. Its own column rather than a read
+    #: through ``angle_id`` — a letter is written days after the impulse it comes
+    #: from, and the house may have changed its mind in between.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    #: The standards the *cross-check* was composed under, which is not always the
+    #: letter's. :func:`newspulse.outreach.crosscheck` builds its own brain prompt
+    #: seconds after the letter, and an edit landing between the two model calls
+    #: would otherwise file the checker's text under a version it never read.
+    #: NULL for an unchecked letter and for every row from before the column.
+    review_brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    # --- The ledger: the human act, and what came back --------------------------
+    #: The contact book entry this went to, resolved once at release rather than
+    #: matched again on every read. Nullable and ``SET NULL`` on delete: the
+    #: recipient is also written into ``journalist``/``outlet`` on this row, so a
+    #: deleted contact costs the link but never the record of who was written to.
+    contact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    state: Mapped[OutreachState] = mapped_column(
+        SAEnum(
+            OutreachState,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+        ),
+        nullable=False,
+        default=OutreachState.ENTWURF,
+        server_default=OutreachState.ENTWURF.value,
+    )
+    #: When a person released it. Null while it is a draft, and the one field that
+    #: answers "did this leave the house": the state can be moved on by an
+    #: outcome, this cannot go backwards.
+    released_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, index=True
+    )
+    #: Who released it. No user accounts exist in this tool, so it defaults to
+    #: "mensch" the way :attr:`ClientFact.filled_by` does — the point of the field
+    #: is that a human, rather than the machine, is the accountable party.
+    released_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    #: When the outcome was recorded, which is not when it happened: a reply read
+    #: on Monday may have arrived on Saturday, and the ledger says what it knows.
+    outcome_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: What came back, in the consultant's own words. Stored as typed: this is the
+    #: one text on the row a human wrote, so the house rules that police generated
+    #: prose have no business touching it.
+    outcome_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: Who recorded the outcome — "mensch" for a line somebody typed,
+    #: :data:`OUTCOME_BY_MAILBOX` for the one the daily sync wrote off a reply.
+    #: Empty exactly while there is no outcome. The counterpart to
+    #: :attr:`released_by`, and for the same reason: "wer hat das gesagt" is the
+    #: first question anybody asks of a ledger line, and both pages that draw an
+    #: outcome have to answer it without guessing.
+    outcome_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+
+    # --- The thread in Gmail --------------------------------------------------
+    #
+    # DEC-4 locked option C: RauteOS puts the letter into Gmail and sends it. The
+    # saved copy-paste is not the point — the *thread* is. Because this tool put
+    # the outgoing message into it, a reply arriving days later belongs to this
+    # letter as a fact rather than as a guess from a subject line, which is what
+    # OUT-05's matching stands on and what lets DEC-6 option A ask Gmail for
+    # nothing but the threads RauteOS started.
+    #
+    # All three ids are Google's, echoed back from the API response and never
+    # constructed here: a locally built id would point at a thread that does not
+    # exist and would be indistinguishable from one that does.
+    #: The draft Gmail created before it was sent. Kept after the send, because it
+    #: is the idempotency key on the way there: a second push updates *this* draft
+    #: rather than composing a second one at the same journalist.
+    gmail_draft_id: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    #: The conversation the letter opened. The one column OUT-05 reads.
+    gmail_thread_id: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    #: The sent message itself. Set only once the message actually left, so it —
+    #: not the draft id — is what "this letter went out through Gmail" means.
+    gmail_message_id: Mapped[str] = mapped_column(
+        String(120), nullable=False, default=""
+    )
+
+    @property
+    def sent_through_gmail(self) -> bool:
+        """Whether RauteOS itself put this letter into the recipient's inbox.
+
+        Keyed on the message id rather than on the thread id: a draft that was
+        composed but never sent already has a thread, and a card that read that
+        as "sent" would claim an act nobody performed.
+        """
+        return bool(self.gmail_message_id)
+
+    @property
+    def out_through_gmail(self) -> bool:
+        """Sent by RauteOS itself, and nothing back yet — the mock's red badge.
+
+        The state is part of the question, so the red "gesendet" colouring can
+        never overpaint the green an answer or a publication earns. Computed
+        here rather than in the template because that is where
+        :class:`OutreachState` is in scope: a card comparing against the bare
+        string ``"raus"`` would quietly stop colouring anything the day the enum
+        value is renamed.
+        """
+        return self.sent_through_gmail and self.state == OutreachState.RAUS
+
+    @property
+    def outcome_from_mailbox(self) -> bool:
+        """Whether the outcome standing on this row was written by the sync.
+
+        Both pages that draw an outcome ask this, because both used to draw
+        every outcome as something a person recorded — and for the one line the
+        mailbox writes itself that is a sentence nobody said. Read off the stored
+        author rather than compared against a token in a template, so a renamed
+        value cannot quietly turn every machine line back into a human's.
+        """
+        return self.outcome_by == OUTCOME_BY_MAILBOX
+
+    #: What the journalist wrote back, oldest first — the order a conversation
+    #: is read in. ``delete-orphan`` beside the database's own ``ON DELETE
+    #: CASCADE``: a deleted letter takes its replies with it either way, so no
+    #: journalist's words outlive the letter they answered, whether the row goes
+    #: through the ORM or through a raw ``DELETE``.
+    replies: Mapped[list["OutreachReply"]] = relationship(
+        back_populates="letter",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="OutreachReply.received_at",
+    )
+
+
+class OutreachReply(Base):
+    """One message a journalist sent back, filed against the letter it answers.
+
+    Its own table rather than a column on :class:`Outreach`, because one letter
+    can collect several: an answer, a follow-up question, the note two weeks
+    later that the piece is running. A column would hold the last one and lose
+    the rest, and the rest is the conversation.
+
+    Everything here is stored as it arrived and **nothing is interpreted**. There
+    is no "kind" or "sentiment" column: "danke, nichts für uns" and "schicken Sie
+    mehr" are the same event to a matcher and opposite events to a PR consultant,
+    so the only state a reply may set is ``ANTWORT`` — a human answered — and
+    Absage or Veröffentlicht stay the consultant's reading (see
+    :func:`newspulse.outreach.record_reply`).
+
+    ``gmail_message_id`` is UNIQUE across the table rather than per letter: it is
+    Google's id for one message in one mailbox, so a second row carrying it would
+    be the same mail filed twice. That constraint is what makes the daily sync
+    idempotent — a sweep that runs twice over the same mailbox stores nothing new
+    and moves no timestamp.
+
+    This is somebody else's data: a journalist's own words about a person who
+    never agreed to be in RauteOS. Hence ``fetched_at`` beside ``received_at`` —
+    when the mail was written and when this tool took a copy are two different
+    facts, and a retention rule later needs the second one.
+    """
+
+    __tablename__ = "outreach_replies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    outreach_id: Mapped[int] = mapped_column(
+        ForeignKey("outreach.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Google's id for this message. The idempotency key of the whole sync.
+    gmail_message_id: Mapped[str] = mapped_column(
+        String(120), nullable=False, unique=True
+    )
+    #: The display name off the ``From`` header; empty when the sender used none.
+    from_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    from_email: Mapped[str] = mapped_column(String(320), nullable=False, default="")
+    #: Gmail's own moment for the message, not this machine's clock: the reply
+    #: that arrived on Saturday is dated Saturday even when it was read on Monday.
+    received_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    #: The plain-text body, as sent. No HTML is ever stored — see
+    #: ``gmail_link._plain_text``.
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    fetched_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    letter: Mapped["Outreach"] = relationship(back_populates="replies")
+
+    @property
+    def sender(self) -> str:
+        """Who wrote it, in one line: the name when the header carried one, the
+        address otherwise. Never both invented — an empty ``From`` reads as an
+        empty line rather than as a guessed name."""
+        return self.from_name or self.from_email
+
+
+class Asset(Base):
+    """One generated text in one format: a release, a statement, a Q&A, a briefing.
+
+    A new table rather than six more columns on :class:`Outreach`, and the
+    reason is what those columns *are*. A letter's ``journalist`` and ``outlet``
+    are its recipient; five of the six formats here have no recipient at all. On
+    one shared table most rows would carry mostly empty columns and every query
+    would have to guess which shape it was reading. The letter keeps its table
+    and its ledger, and the two are read together where both belong.
+
+    ``angle_id`` is not decoration: it is what makes a text traceable back to
+    the position it argues and the coverage under that position. A stored text
+    whose impulse is unknown cannot be checked by anyone.
+
+    ``kind`` names the format definition this row was written against. It is a
+    string rather than a DB enum on purpose: the registry in
+    :mod:`newspulse.assets` decides which formats exist, and a CHECK constraint
+    here would turn every new format into a schema migration. A kind the registry
+    does not know fails loudly at the lookup, which is where it should.
+    """
+
+    __tablename__ = "assets"
+    __table_args__ = (
+        # One unreleased draft per format per impulse, enforced rather than
+        # assumed. newspulse.assets.store() looks for the draft it replaces and
+        # then inserts, and the daily run writes formats from a background
+        # worker: two writes that interleave between the read and the insert
+        # leave two drafts of the same release on one impulse, and the page
+        # renders both with no way to tell which one anybody meant. Partial, so
+        # the released rows beside them stay untouched: those are the record of
+        # what went out, and there can be several.
+        Index(
+            "ux_assets_angle_kind_unreleased",
+            "angle_id",
+            "kind",
+            unique=True,
+            sqlite_where=text("released_at IS NULL"),
+            postgresql_where=text("released_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    angle_id: Mapped[int] = mapped_column(
+        ForeignKey("angles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    # Indexed for the same reason as the letter's: a day's texts are asked for
+    # on every render of the Today column.
+    generated_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow, index=True
+    )
+    #: Headline, subject line or briefing title, depending on the format. Empty
+    #: for the formats that have no title of their own.
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Who the text is attributed to, for the formats that quote a person. Never
+    #: invented: :func:`newspulse.assets.write` copies it out of the profile field
+    #: the format named and discards whatever the model answered, and a format that
+    #: needs it will not be written without it.
+    speaker: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    #: When a human last changed the text. ``None`` means the model's words are
+    #: still exactly as they came back, which is a different artefact from one a
+    #: person has been through.
+    edited_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: The second model's verdict, one concern per line. The three columns mirror
+    #: :class:`Outreach` exactly, so a letter and a release mean the same thing by
+    #: "gegengelesen".
+    review: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    reviewed_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: The same three for the check against the mandate's own guide. Kept apart
+    #: from the crosscheck because a No-Go is not a judgement about the world:
+    #: the client wrote it down, and it must never be averaged into a style note.
+    guide_review: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    guide_reviewed_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default=""
+    )
+    guide_review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: The human release. Grade F, without exception: nothing leaves this tool
+    #: because a model was content with it.
+    released_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+    released_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+
+    @property
+    def released(self) -> bool:
+        return self.released_at is not None
+
+    @property
+    def check_state(self) -> CheckState:
+        """Unchecked, objected to, or clean. Never clean by omission.
+
+        Both checkers silent means nothing has read this text, and that is the
+        one state the page must not draw as a clean bill of health.
+        """
+        if not (self.reviewed_by or self.guide_reviewed_by):
+            return CheckState.UNGEPRUEFT
+        if not self.review_ok or not self.guide_review_ok:
+            return CheckState.EINWAND
+        return CheckState.GEPRUEFT
 
 
 __all__ = [
     "Base",
     "Category",
+    "CheckState",
+    "AssetKind",
     "RunStatus",
     "Tonality",
     "TriageState",
@@ -887,10 +1468,20 @@ __all__ = [
     "Analysis",
     "Advisory",
     "Angle",
+    "BrainOverride",
     "ClientFact",
     "OnboardingAnswer",
     "ANSWERED_BY_DEFAULT",
+    "Contact",
+    "OUTCOME_BY_MAILBOX",
+    "ProfileProposal",
     "Outreach",
+    "Asset",
+
+
+    "OutreachReply",
+    "OutreachState",
+    "SILENT_AFTER_DAYS",
     "TopicHit",
     "GuideSource",
     "Run",
