@@ -231,6 +231,45 @@ def test_the_schema_itself_refuses_a_second_row_for_one_question(session):
     session.rollback()
 
 
+def test_a_save_whose_read_missed_the_winning_row_stores_the_answer_anyway(
+    session, monkeypatch
+):
+    """The losing half of two concurrent first saves of the same question.
+
+    The routes are sync, so FastAPI runs them in a threadpool and two requests
+    genuinely interleave: two open tabs, or "Speichern" and "Übergehen" clicked in
+    turn, which htmx does not serialise because they are different elements. The
+    loser reads before the winner's insert commits, sees nothing, and inserts
+    straight into ``uq_onboarding_answers_key``. Unhandled that is an HTTP 500 and
+    a sentence transcribed from a call that exists nowhere else.
+
+    The missed read is injected rather than raced for: the interleaving is the
+    whole behaviour under test, and a barrier between two threads would prove it
+    on a quiet machine and flake on a busy one. The constraint doing the rejecting
+    is the real one.
+    """
+    client = _client(session)
+    onboarding.save_answer(session, client, "satz", "Was der andere Tab getippt hat.")
+
+    real_stored = onboarding._stored
+    reads: list[int] = []
+
+    def _misses_the_first_read(*args):
+        reads.append(1)
+        return None if len(reads) == 1 else real_stored(*args)
+
+    monkeypatch.setattr(onboarding, "_stored", _misses_the_first_read)
+
+    row = onboarding.save_answer(session, client, "satz", "Meine eigene Antwort.")
+
+    assert row is not None
+    assert row.value == "Meine eigene Antwort."
+    assert session.scalar(
+        select(func.count()).select_from(OnboardingAnswer)
+        .where(OnboardingAnswer.client_id == client.id)
+    ) == 1
+
+
 def test_an_unknown_key_stores_nothing(session):
     client = _client(session)
 
@@ -289,6 +328,28 @@ def test_a_list_answer_grows_one_entry_at_a_time(session):
     assert onboarding.entries(row.value) == [
         "Dr. Anna Verhoeven, CEO", "Milan Roth, CTO",
     ]
+
+
+def test_the_same_entry_submitted_twice_stays_one_entry(session):
+    """A double submit is not a second spokesperson. Two identical chips cannot be
+    told apart, and the delete button on either one removes whichever index it
+    happens to carry."""
+    client = _client(session)
+    onboarding.add_entry(session, client, "sprecher", "Dr. Anna Verhoeven, CEO")
+    onboarding.add_entry(session, client, "sprecher", "  dr. anna verhoeven, ceo ")
+
+    row = onboarding.answers(session, client.id)["sprecher"]
+    assert onboarding.entries(row.value) == ["Dr. Anna Verhoeven, CEO"]
+
+
+def test_an_entry_holding_a_newline_stays_one_entry(session):
+    """Entries are separated by newlines, so one holding a newline would come back
+    as two on the next render: a name nobody typed as a name."""
+    client = _client(session)
+    onboarding.add_entry(session, client, "sprecher", "Anna Verhoeven\nMilan Roth")
+
+    row = onboarding.answers(session, client.id)["sprecher"]
+    assert onboarding.entries(row.value) == ["Anna Verhoeven Milan Roth"]
 
 
 def test_removing_one_entry_leaves_its_siblings(session):
@@ -512,7 +573,12 @@ def test_an_answered_question_offers_the_deliberate_way_back_to_unanswered(web, 
     web.post(f"/client/{client.id}/kickoff/satz", data={"value": "Roboterarme."})
 
     body = web.get(f"/client/{client.id}/kickoff").text
-    assert f'action="/client/{client.id}/kickoff/satz/clear"' in body
+    block = body.split('id="q-satz"')[1].split('id="q-sprecher"')[0]
+    assert f'action="/client/{client.id}/kickoff/satz/clear"' in block
+    # And the one-click path that would have destroyed the same answer is not
+    # offered beside it: skipping drops the value, so from answered the way to
+    # passed over runs through the delete button and is two deliberate acts.
+    assert f'action="/client/{client.id}/kickoff/satz/skip"' not in block
 
     web.post(f"/client/{client.id}/kickoff/satz/clear")
     assert "satz" not in onboarding.answers(session, client.id)
@@ -567,6 +633,40 @@ def test_the_page_renders_in_english(web, session):
     assert "Which sentence should we never write about you?" in body
     assert "<b>Profile · Line of business</b>" in body
     assert "Welchen Satz sollen wir über Sie nie schreiben?" not in body
+
+
+def test_a_malformed_entry_index_changes_nothing_and_still_answers_in_html(web, session):
+    """Every failure on this page is a 404 or a no-op, and every response is HTML.
+    A missing or non-numeric ``index`` used to be FastAPI's raw 422 JSON body."""
+    client = _client(session)
+    web.post(f"/client/{client.id}/kickoff/sprecher",
+             data={"value": "Dr. Anna Verhoeven, CEO"})
+
+    for bad in ({}, {"index": "abc"}):
+        response = web.post(f"/client/{client.id}/kickoff/sprecher/remove", data=bad)
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html")
+
+    assert onboarding.entries(
+        onboarding.answers(session, client.id)["sprecher"].value
+    ) == ["Dr. Anna Verhoeven, CEO"]
+
+
+def test_the_page_carries_the_placeholders_the_locked_mock_specifies(web, session):
+    """The mock's placeholders state the *shape* of the answer where the help line
+    states why the question is asked, so dropping them is not a duplicate removed
+    but guidance removed."""
+    client = _client(session)
+
+    body = web.get(f"/client/{client.id}/kickoff").text
+
+    for expected in (
+        "Weitere Person, Rolle, Themen",
+        "Unternehmen, und in einem Halbsatz warum",
+        "Thema, und ob Schweigen oder eine Sprachregelung gilt",
+        "Behauptung, und womit Sie dagegenhalten können",
+    ):
+        assert f'placeholder="{expected}"' in body, expected
 
 
 def test_an_unknown_question_is_a_404_not_a_silent_no_op(web, session):
