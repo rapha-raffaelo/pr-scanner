@@ -740,6 +740,48 @@ class ClientFact(Base):
     )
 
 
+class OnboardingAnswer(Base):
+    """One answer from the kick-off questionnaire, as it was given.
+
+    Deliberately *not* a ``client_facts`` row and deliberately not a paragraph on
+    ``clients.comms_guide``. What the client said in the kick-off call and what
+    the tool has adopted as policy are two different things, and collapsing them
+    is how a sentence nobody approved becomes the rule every future text is
+    checked against. This table is the raw answer; adopting it is a separate,
+    deliberate act (ONB-02).
+
+    Keyed on (client, key): a mandate answers each question once, and answering
+    it again replaces what was there rather than growing a pile of versions.
+
+    ``skipped`` exists because "asked and deliberately passed over" and "never
+    got to it" are different states of the same foundation, and only one of them
+    is a reason to go back to the client. A row with ``skipped`` set carries no
+    value; a question with no row at all is simply still open.
+    """
+
+    __tablename__ = "onboarding_answers"
+    __table_args__ = (
+        UniqueConstraint("client_id", "key", name="uq_onboarding_answers_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: A key from :data:`newspulse.onboarding.QUESTIONS`. Free-form in the schema
+    #: so rewording the question set is a code change, not a migration.
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    answered_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: Who put it there. The consultant transcribing a call today; the client
+    #: itself once DEC-1 option B is built, which is why this is a name and not a
+    #: boolean.
+    answered_by: Mapped[str] = mapped_column(String(80), nullable=False, default="Berater")
+    skipped: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
 class Outreach(Base):
     """One personalised message: an impulse, written at a named recipient.
 
@@ -803,6 +845,7 @@ __all__ = [
     "Advisory",
     "Angle",
     "ClientFact",
+    "OnboardingAnswer",
     "Outreach",
     "TopicHit",
     "GuideSource",
