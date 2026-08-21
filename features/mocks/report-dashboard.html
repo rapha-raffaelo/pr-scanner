@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report als lebende Seite · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --neutral:#a1a1aa;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px; --t-large:32px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7);border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+
+/* one filter row, above everything it scopes */
+.filters{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;margin-bottom:var(--s5);
+  padding-bottom:var(--s4);border-bottom:1px solid var(--line)}
+.seg{display:inline-flex;background:var(--fill);border-radius:var(--radius-s);padding:2px}
+.seg button{font:inherit;font-size:var(--t-footnote);font-weight:500;background:none;border:0;
+  padding:5px 12px;border-radius:4px;cursor:pointer;color:var(--ink-2)}
+.seg button.is-on{background:var(--card);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.filters select{font:inherit;font-size:var(--t-footnote);padding:6px 10px;border:1px solid var(--line);
+  border-radius:var(--radius-s);background:var(--card)}
+.filters__r{margin-left:auto;display:flex;gap:var(--s2);align-items:center}
+.filters__note{font-size:var(--t-caption);color:var(--muted)}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:var(--s3);margin-bottom:var(--s5)}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:var(--s4)}
+.tile__n{font-size:var(--t-large);font-weight:700;letter-spacing:-.03em;line-height:1.05}
+.tile__d{font-size:var(--t-footnote);color:var(--muted);margin-top:2px}
+.tile__c{font-size:var(--t-footnote);font-weight:600;margin-top:4px}
+.up{color:var(--good)} .down{color:var(--alert)} .flat{color:var(--muted)}
+.spark{margin-top:var(--s2)}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:var(--s4);margin-bottom:var(--s5)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:var(--s4)}
+.card__h{display:flex;align-items:baseline;gap:var(--s2);margin-bottom:var(--s3);flex-wrap:wrap}
+.card__t{font-size:var(--t-subhead);font-weight:600}
+.card__v{margin-left:auto;font-size:var(--t-caption);color:var(--tint);cursor:pointer;text-decoration:underline}
+.chart{width:100%;overflow-x:auto}
+svg{display:block}
+.grid line{stroke:var(--line);stroke-width:1}
+.axis text{font-size:10px;fill:rgba(60,60,67,.58);font-variant-numeric:tabular-nums}
+.blab{font-size:11px;fill:var(--ink-2)}
+.bval{font-size:11px;font-weight:600;fill:var(--ink);font-variant-numeric:tabular-nums}
+.bval--mut{fill:var(--muted);font-weight:400}
+.legend{display:flex;gap:var(--s4);flex-wrap:wrap;margin-top:var(--s3);font-size:var(--t-footnote);color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:9px;height:9px;border-radius:2px}
+.hint{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s2)}
+.tone{display:flex;height:24px;border-radius:var(--radius-s);overflow:hidden;gap:2px}
+.tone div{display:grid;place-items:center;font-size:var(--t-caption);font-weight:600;color:#fff;white-space:nowrap}
+.export{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:var(--s4);
+  display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap}
+.export p{font-size:var(--t-footnote);color:var(--muted);max-width:56ch}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto}
+  .tbar,.content{padding-left:var(--s4);padding-right:var(--s4)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <div class="side__sect">Übersicht</div>
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandanten<span class="side__count">4</span></div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#8944ab"></span>Nordlicht Energie</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#0071a4"></span>Vermont Robotics</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#d30f45"></span>Haaner Pharma</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="tbar">
+      <div>
+        <h1 class="tbar__title">Ergebnisse · Nordlicht Energie</h1>
+        <div class="tbar__sub">Variante B · lebende Seite, immer aktuell</div>
+      </div>
+      <button class="btn">Aktualisieren</button>
+    </header>
+
+    <main class="content">
+
+      <div class="filters">
+        <div class="seg">
+          <button>30 Tage</button><button class="is-on">Juli</button><button>Quartal</button><button>12 Monate</button>
+        </div>
+        <select><option>Vergleichsgruppe: die vier aus dem Kickoff</option><option>nur Leitmedien</option></select>
+        <span class="filters__r">
+          <span class="filters__note">Stand heute 06:14</span>
+          <button class="btn btn--ghost">Tabellenansicht</button>
+        </span>
+      </div>
+
+      <div class="tiles">
+        <div class="tile">
+          <div class="tile__n">31%</div><div class="tile__d">Share of Voice</div>
+          <div class="tile__c up">+9 Punkte gegenüber Juni</div>
+          <svg class="spark" viewBox="0 0 140 28" width="140" height="28" aria-label="Verlauf Share of Voice, steigend">
+            <polyline fill="none" stroke="#0071e3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              points="2,22 30,24 58,18 86,20 114,14 138,4"/>
+          </svg>
+        </div>
+        <div class="tile"><div class="tile__n">24</div><div class="tile__d">Beiträge</div>
+          <div class="tile__c up">+7</div></div>
+        <div class="tile"><div class="tile__n">6</div><div class="tile__d">Leitmedien</div>
+          <div class="tile__c flat">unverändert</div></div>
+        <div class="tile"><div class="tile__n">3</div><div class="tile__d">aus eigener Ansprache</div>
+          <div class="tile__c up">+2</div></div>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card__h"><span class="card__t">Anteil an der Debatte</span>
+            <span class="card__v">als Tabelle</span></div>
+          <div class="chart">
+          <svg viewBox="0 0 400 168" width="400" height="168" role="img" aria-label="Beiträge je Unternehmen: Nordlicht 24, Stadtwerke Union 21, Baltic Power 18, Enerwest 14.">
+            <g class="grid"><line x1="150" y1="6" x2="150" y2="140"/><line x1="212" y1="6" x2="212" y2="140"/>
+              <line x1="275" y1="6" x2="275" y2="140"/><line x1="337" y1="6" x2="337" y2="140"/><line x1="400" y1="6" x2="400" y2="140"/></g>
+            <text class="blab" x="0" y="22">Nordlicht</text>
+            <rect x="150" y="12" width="150" height="13" rx="4" fill="#0071e3"/><text class="bval" x="308" y="22">24</text>
+            <text class="blab" x="0" y="54">Stadtwerke Union</text>
+            <rect x="150" y="44" width="131" height="13" rx="4" fill="#a1a1aa"/><text class="bval bval--mut" x="289" y="54">21</text>
+            <text class="blab" x="0" y="86">Baltic Power</text>
+            <rect x="150" y="76" width="113" height="13" rx="4" fill="#a1a1aa"/><text class="bval bval--mut" x="271" y="86">18</text>
+            <text class="blab" x="0" y="118">Enerwest</text>
+            <rect x="150" y="108" width="88" height="13" rx="4" fill="#a1a1aa"/><text class="bval bval--mut" x="246" y="118">14</text>
+            <g class="axis"><line x1="150" y1="140" x2="400" y2="140" stroke="rgba(60,60,67,.22)"/>
+              <text x="150" y="156" text-anchor="middle">0</text><text x="275" y="156" text-anchor="middle">20</text>
+              <text x="400" y="156" text-anchor="end">40</text></g>
+          </svg>
+          </div>
+          <div class="legend"><span><i style="background:#0071e3"></i>Nordlicht Energie</span>
+            <span><i style="background:#a1a1aa"></i>Vergleichsgruppe</span></div>
+        </div>
+
+        <div class="card">
+          <div class="card__h"><span class="card__t">Verlauf</span><span class="card__v">als Tabelle</span></div>
+          <div class="chart">
+          <svg viewBox="0 0 400 168" width="400" height="168" role="img" aria-label="Beiträge je Monat: Februar 11, März 9, April 14, Mai 12, Juni 17, Juli 24.">
+            <g class="grid"><line x1="30" y1="16" x2="390" y2="16"/><line x1="30" y1="56" x2="390" y2="56"/>
+              <line x1="30" y1="96" x2="390" y2="96"/><line x1="30" y1="136" x2="390" y2="136"/></g>
+            <polyline fill="none" stroke="#0071e3" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+              points="55,114 122,130 190,110 257,118 324,98 390,40"/>
+            <circle cx="390" cy="40" r="5" fill="#0071e3" stroke="#fff" stroke-width="2"/>
+            <text class="bval" x="390" y="30" text-anchor="end">24</text>
+            <g class="axis"><line x1="30" y1="136" x2="390" y2="136" stroke="rgba(60,60,67,.22)"/>
+              <text x="24" y="20" text-anchor="end">30</text><text x="24" y="60" text-anchor="end">20</text>
+              <text x="24" y="100" text-anchor="end">10</text><text x="24" y="140" text-anchor="end">0</text>
+              <text x="55" y="156" text-anchor="middle">Feb</text><text x="122" y="156" text-anchor="middle">Mär</text>
+              <text x="190" y="156" text-anchor="middle">Apr</text><text x="257" y="156" text-anchor="middle">Mai</text>
+              <text x="324" y="156" text-anchor="middle">Jun</text><text x="390" y="156" text-anchor="middle">Jul</text></g>
+          </svg>
+          </div>
+          <p class="hint">Eine Reihe, kein zweiter Maßstab. Wer den Vergleich will, wechselt oben die Gruppe.</p>
+        </div>
+
+        <div class="card">
+          <div class="card__h"><span class="card__t">Tonalität</span><span class="card__v">als Tabelle</span></div>
+          <div class="tone">
+            <div style="flex:14;background:var(--good)">14 positiv</div>
+            <div style="flex:8;background:var(--neutral)">8 neutral</div>
+            <div style="flex:2;background:var(--alert)">2 negativ</div>
+          </div>
+          <div class="legend"><span><i style="background:var(--good)"></i>positiv 14</span>
+            <span><i style="background:var(--neutral)"></i>neutral 8</span>
+            <span><i style="background:var(--alert)"></i>negativ 2</span></div>
+          <p class="hint">Jedes Segment trägt seine Zahl, damit die Farbe nichts allein tragen muss.</p>
+        </div>
+
+        <div class="card">
+          <div class="card__h"><span class="card__t">Woraus die Beiträge entstanden</span></div>
+          <div class="chart">
+          <svg viewBox="0 0 400 130" width="400" height="130" role="img" aria-label="Herkunft der Beiträge: eigene Ansprache 3, Wettbewerbsthema 8, allgemeine Berichterstattung 13.">
+            <g class="grid"><line x1="190" y1="6" x2="190" y2="102"/><line x1="260" y1="6" x2="260" y2="102"/>
+              <line x1="330" y1="6" x2="330" y2="102"/><line x1="400" y1="6" x2="400" y2="102"/></g>
+            <text class="blab" x="0" y="22">aus eigener Ansprache</text>
+            <rect x="190" y="12" width="45" height="13" rx="4" fill="#0071e3"/><text class="bval" x="243" y="22">3</text>
+            <text class="blab" x="0" y="54">Wettbewerbsthema</text>
+            <rect x="190" y="44" width="120" height="13" rx="4" fill="#a1a1aa"/><text class="bval bval--mut" x="318" y="54">8</text>
+            <text class="blab" x="0" y="86">allgemeine Lage</text>
+            <rect x="190" y="76" width="195" height="13" rx="4" fill="#a1a1aa"/><text class="bval bval--mut" x="393" y="86">13</text>
+            <g class="axis"><line x1="190" y1="102" x2="400" y2="102" stroke="rgba(60,60,67,.22)"/>
+              <text x="190" y="118" text-anchor="middle">0</text><text x="330" y="118" text-anchor="middle">10</text>
+              <text x="400" y="118" text-anchor="end">15</text></g>
+          </svg>
+          </div>
+          <p class="hint">Die erste Zeile ist die, für die der Mandant zahlt. Sie stammt aus dem Ledger.</p>
+        </div>
+      </div>
+
+      <div class="export">
+        <div>
+          <strong style="font-size:var(--t-subhead)">Daraus einen Bericht machen</strong>
+          <p>Diese Seite ist immer aktuell und intern. Was ein Mandant bekommt, ist ein Dokument mit Datum,
+            Einordnung und Freigabe.</p>
+        </div>
+        <span style="margin-left:auto;display:flex;gap:var(--s2)">
+          <button class="btn btn--ghost">Excel</button>
+          <button class="btn">Bericht erzeugen</button>
+        </span>
+      </div>
+
+    </main>
+  </div>
+</div>
+<script>
+document.querySelectorAll('.seg button').forEach(function(b){
+  b.addEventListener('click',function(){
+    b.parentElement.querySelectorAll('button').forEach(function(x){x.classList.remove('is-on')});
+    b.classList.add('is-on');
+  });
+});
+</script>
+</body>
+</html>

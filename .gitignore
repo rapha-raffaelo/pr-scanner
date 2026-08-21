@@ -8,3 +8,9 @@
 newspulse/.env
 newspulse/claude/
 newspulse/data/
+
+# Per-story visual artefacts from a Remy run: a mock, its screenshot and the
+# measurements taken off it. Regenerated whenever the story runs, and nothing
+# else in the tree tracks a rendered PNG — the mock that is meant to be kept
+# lives in features/mocks/ as HTML.
+OUT-*/
