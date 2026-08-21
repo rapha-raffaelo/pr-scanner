@@ -16,8 +16,9 @@ Two kinds of object live here and it is worth keeping them distinct:
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from .models import SCORE_MAX as _SCORE_MAX
 from .models import SCORE_MIN as _SCORE_MIN
@@ -240,6 +241,11 @@ class MessageReview(BaseModel):
 #: come back saying "not checked".
 MAX_BREACHES = 5
 
+#: A quote that can actually be looked up: whitespace-only is the same as absent,
+#: so it is stripped first and then required to have survived. Stripping is what
+#: the reader does anyway when they search the letter for the sentence.
+_Quote = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
 
 class GuideBreach(BaseModel):
     """One collision between a sentence in the draft and a line of the guide.
@@ -256,14 +262,18 @@ class GuideBreach(BaseModel):
     yields the honest not-checked state; keeping the breach and dropping the quote
     would show an unanswerable one, and silently dropping the breach could turn an
     objection into an approval, which is the direction that ends a mandate.
+
+    Non-empty is measured *after* stripping, because ``"   "`` and ``"\\n\\t"``
+    render exactly like ``""`` — an empty blockquote under a red heading — and a
+    bare ``min_length=1`` would wave them through.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     #: The sentence from the letter, verbatim.
-    draft: str = Field(min_length=1)
+    draft: _Quote
     #: The line of the stored guide it breaks, verbatim.
-    guide: str = Field(min_length=1)
+    guide: _Quote
 
 
 class GuideVerdict(BaseModel):
@@ -277,10 +287,19 @@ class GuideVerdict(BaseModel):
     ``ok`` is recomputed in code from ``breaches`` (see
     :func:`newspulse.guide.check_guide`) rather than believed, the way the
     analyzer recomputes ``is_alert``: a reply that lists a breach and calls itself
-    fine would otherwise render as an approval.
+    fine would otherwise render as an approval. The recompute only ever moves
+    ``ok`` toward False; the opposite direction is a ParseError, not a correction.
+
+    ``extra="forbid"`` here, against this module's usual stance (see
+    :class:`ArticleVerdict`, where a stray key must not cost a whole batch). The
+    prompt is German end to end and its only English tokens are these two keys, so
+    a reply that lists its breaches under ``verstoesse`` or ``violations`` is the
+    likely miss — and under ``extra="ignore"`` it arrives as an empty list, which
+    is byte-identical to a clean letter. Losing one verdict to a stray key costs an
+    honest "nicht geprüft"; keeping it costs an approval over an objection.
     """
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     ok: bool = True
     #: Empty is the good case and must stay possible — a check that always finds
