@@ -40,6 +40,8 @@ from newspulse.models import (
     Tonality,
 )
 from newspulse.report import (
+    Finding,
+    ReportDraft,
     ReportReleased,
     build_prompt,
     citable_figures,
@@ -452,6 +454,40 @@ def test_a_risk_finding_and_a_visibility_finding_are_distinguishable_unread(
     assert kinds[0] is not kinds[1]
 
 
+def test_one_sloppy_finding_is_dropped_alone_rather_than_losing_the_report(
+    session, mandate, caplog
+):
+    """Reject-whole is reserved for a bad ``kind``, because it costs the four good
+    findings beside the bad one and nothing above retries. A finding that omits its
+    claim, or names its reference by number, is the model being sloppy about one
+    sentence and goes the way every other unusable finding goes: out, with a line
+    in the log."""
+    client, _ = mandate
+    figures = citable_figures(session, client, JULY)
+    coverage = _ref(figures, MetricKey.COVERAGE)
+
+    with caplog.at_level(logging.INFO, logger="newspulse.report"):
+        draft = findings(
+            session,
+            client,
+            JULY,
+            generate=_reply(
+                _finding([coverage], claim="Vier Beiträge im Juli."),
+                # No ``claim`` key at all, and the reference given as the number it
+                # was printed under rather than as its name.
+                {
+                    "kind": "risiko",
+                    "consequence": "Das wird teurer.",
+                    "figures": [int(coverage[1:])],
+                },
+            ),
+        )
+
+    (kept,) = draft.findings
+    assert kept.claim == "Vier Beiträge im Juli."
+    assert "no claim" in caplog.text
+
+
 def test_a_kind_outside_the_closed_set_is_not_parsed_into_a_report(session, mandate):
     client, _ = mandate
     figures = citable_figures(session, client, JULY)
@@ -519,6 +555,48 @@ def test_a_key_message_in_the_clients_own_wording_may_be_named_in_a_finding(sess
     assert "Reichweite in der Zielgruppe" in kept.claim
 
 
+def test_a_key_message_does_not_excuse_a_reach_claim_in_another_finding(session):
+    """The carve-out is for the claim that quotes the message, not for the report.
+    A mandate whose guide legitimately names a forbidden term in a key message
+    would otherwise switch the RPT-01 guard off for every sentence beside it, and
+    a sichtbarkeit finding citing only the coverage figure could invent a reach
+    number under cover of a botschaft it never mentioned."""
+    client = Client(
+        name="Delta AG",
+        industry="Medien",
+        comms_guide="Kernbotschaften: Reichweite in der Zielgruppe\n",
+    )
+    session.add(client)
+    session.flush()
+    _piece(
+        session,
+        client,
+        "D1",
+        summary="Der Anbieter erzielt Reichweite in der Zielgruppe.",
+    )
+    session.commit()
+
+    figures = citable_figures(session, client, JULY)
+    assert _ref(figures, MetricKey.MESSAGE, "Reichweite in der Zielgruppe")
+
+    draft = findings(
+        session,
+        client,
+        JULY,
+        generate=_reply(
+            _finding(
+                # The coverage figure, not the message: this finding has no claim
+                # on the client's own wording.
+                [_ref(figures, MetricKey.COVERAGE)],
+                kind="sichtbarkeit",
+                claim="Die Reichweite in der Zielgruppe erreichte 1,2 Millionen Kontakte.",
+            )
+        ),
+    )
+
+    assert draft.findings == ()
+
+
 def test_a_reference_echoed_in_the_brackets_it_was_shown_in_is_read(session, mandate):
     """The prompt renders every figure as ``[F1]``. A model handing the form back
     has invented nothing, and reject-whole is for a reference that does not exist,
@@ -580,6 +658,48 @@ def test_deleting_every_cited_article_leaves_the_finding_unsupported(session, ma
     assert view.unsupported is True
     assert view.weakened is True
     assert view.evidence == ()
+
+
+def test_resolve_reads_a_row_written_outside_the_generation_path_honestly(
+    session, mandate
+):
+    """``store`` and ``_accept`` are not the only ways a finding row comes to exist:
+    a restore, or the edit route this feature gets next, writes straight to the
+    table. Two shapes that cannot arrive from a draft must still read correctly —
+    a claim with no ids at all is not intact, and one id cited twice is one piece
+    of evidence, not two."""
+    client, _ = mandate
+    cited = session.scalars(
+        select(Analysis).where(Analysis.client_id == client.id)
+    ).first()
+    row = store(session, client, ReportDraft(client_id=client.id, period=JULY))
+    row.findings.append(
+        ReportFinding(
+            kind=ReportFindingKind.SICHTBARKEIT,
+            claim="Nichts darunter.",
+            evidence_ids=[],
+        )
+    )
+    row.findings.append(
+        ReportFinding(
+            kind=ReportFindingKind.SICHTBARKEIT,
+            claim="Zweimal derselbe Beleg.",
+            evidence_ids=[cited.id, cited.id],
+        )
+    )
+    session.commit()
+
+    groundless, duplicated = resolve(session, row)
+
+    # Nothing failed to resolve, because nothing was cited. That must not read as
+    # a claim standing on the whole of its ground.
+    assert groundless.missing == 0
+    assert groundless.unsupported is True
+    assert groundless.weakened is True
+    # One headline, printed once, and no phantom loss counted against it.
+    assert len(duplicated.evidence) == 1
+    assert duplicated.missing == 0
+    assert duplicated.weakened is False
 
 
 def test_an_untouched_finding_resolves_to_the_coverage_it_was_drafted_on(
@@ -765,6 +885,61 @@ def test_a_report_carrying_a_release_stamp_is_never_replaced(session, mandate):
         store(session, client, findings(session, client, AUGUST, generate=_refuse))
 
 
+def test_a_report_labelled_released_is_never_replaced(session, mandate):
+    """The other half of the torn release. ``released_at`` without ``state`` is
+    caught above; this is the label without the stamp, which is the worse of the
+    two because the label is what a consultant sees. Overwriting it would leave a
+    document reading *freigegeben* whose sentences changed underneath it."""
+    client, _ = mandate
+    figures = citable_figures(session, client, JULY)
+    first = store(
+        session,
+        client,
+        findings(
+            session,
+            client,
+            JULY,
+            generate=_reply(_finding([_ref(figures, MetricKey.COVERAGE)])),
+        ),
+    )
+    assert len(first.findings) == 1
+    first.state = ReportState.FREIGEGEBEN
+    first.released_at = None
+    session.commit()
+
+    with pytest.raises(ReportReleased):
+        store(session, client, findings(session, client, JULY, generate=_reply()))
+
+    kept = for_period(session, client.id, JULY)
+    assert len(kept.findings) == 1
+    assert kept.state is ReportState.FREIGEGEBEN
+
+
+def test_a_finding_without_evidence_cannot_be_stored(session, mandate):
+    """``ReportFinding.evidence_ids`` says it is never empty, and that sentence is
+    the safety argument of the feature. The discard rule keeps one out of a
+    generated draft; this is the boundary the table itself is behind."""
+    client, _ = mandate
+    draft = ReportDraft(
+        client_id=client.id,
+        period=JULY,
+        findings=(
+            Finding(
+                kind=ReportFindingKind.SICHTBARKEIT,
+                claim="Behauptung ohne Beleg.",
+                consequence="",
+                evidence_ids=(),
+                figures=(),
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError):
+        store(session, client, draft)
+
+    assert for_period(session, client.id, JULY) is None
+
+
 def test_a_draft_generated_for_another_mandate_is_not_filed_under_this_one(
     session, mandate
 ):
@@ -890,19 +1065,27 @@ def test_a_dash_in_a_claim_is_rewritten_before_it_is_stored(session, mandate):
     assert "Vier Beiträge, mehr als im Juni." == kept.claim
 
 
-def test_a_report_carries_at_most_the_handful_it_is_worth(session, mandate):
+def test_a_report_carries_at_most_the_handful_it_is_worth(session, mandate, caplog):
+    """And says so in the log. The cap is a drop like any other, and these are
+    findings that passed every guard: a consultant looking for the sixth statement
+    he expected has nowhere else to find out what happened to it."""
     client, _ = mandate
     figures = citable_figures(session, client, JULY)
     coverage = _ref(figures, MetricKey.COVERAGE)
 
-    draft = findings(
-        session,
-        client,
-        JULY,
-        generate=_reply(*[_finding([coverage], claim=f"Aussage {i}.") for i in range(8)]),
-    )
+    with caplog.at_level(logging.INFO, logger="newspulse.report"):
+        draft = findings(
+            session,
+            client,
+            JULY,
+            generate=_reply(
+                *[_finding([coverage], claim=f"Aussage {i}.") for i in range(8)]
+            ),
+        )
 
     assert len(draft.findings) == report_module.MAX_FINDINGS
+    assert "keeps 5 of 8" in caplog.text
+    assert "Aussage 7." in caplog.text
 
 
 # --- The migrated schema ------------------------------------------------------------------

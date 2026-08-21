@@ -130,12 +130,25 @@ class ProposedFinding(BaseModel):
 
     Note what is *not* here: evidence ids. The model names figures; the code
     attaches the rows. A field for ids would be a field for invented ids.
+
+    Only ``kind`` is required, and that is the whole design of this schema. Every
+    other field is lenient because a schema failure here is not local: pydantic
+    raises for the *reply*, so one sloppy finding takes the four good ones beside
+    it down with it. ``kind`` is the one fault worth paying that for — see
+    :func:`_parse`. The looseness costs nothing, because none of it is trusted:
+    a finding that arrives without a claim, or citing nothing, meets exactly the
+    same discard rule in :func:`_accept` as one that arrived complete and empty.
     """
 
-    model_config = ConfigDict(extra="ignore")
+    #: ``coerce_numbers_to_str`` is for ``"figures": [1, 3]``, which pydantic v2
+    #: otherwise refuses outright. A model that answered with the number of the
+    #: reference instead of its name made a formatting slip about one finding, and
+    #: ``F1`` is reconstructed from it below; it has not invented a figure, which
+    #: is what the reject-whole rule in :func:`_accept` is for.
+    model_config = ConfigDict(extra="ignore", coerce_numbers_to_str=True)
 
     kind: ReportFindingKind
-    claim: str
+    claim: str = ""
     consequence: str = ""
     #: References into the figure set the prompt offered, e.g. ``["F1", "F3"]``.
     figures: list[str] = Field(default_factory=list)
@@ -200,12 +213,14 @@ def _own_evidence(
     silently, and narrowing early also means the prompt's "N belegende Zeilen" is
     the count of what could actually be cited.
 
-    The trade this makes: what :func:`citable_figures` returns is a *citation* view
-    and no longer a recomputable one, so it must not be handed to
-    :func:`newspulse.reporting.recompute` — a share of voice re-derived from the
-    mandate's rows alone comes back as 100 %, having lost its denominator. Take
-    metrics for that check from :func:`newspulse.reporting.period_metrics`, which
-    is where they keep it.
+    The trade this makes: a value that was narrowed is a *citation* view and no
+    longer a recomputable one, because a share of voice re-derived from the
+    mandate's rows alone comes back as 100 %, having lost its denominator. The
+    narrowed value says so — :attr:`newspulse.reporting.MetricValue.citation_only`,
+    which :func:`newspulse.reporting.recompute` refuses — rather than leaving the
+    warning in this docstring where a caller would have to have read it. Metrics
+    for that check come from :func:`newspulse.reporting.period_metrics`, which
+    keeps the whole comparison set.
     """
     cited = {row for value in values for row in value.analysis_ids}
     if not cited:
@@ -223,6 +238,7 @@ def _own_evidence(
         else replace(
             value,
             analysis_ids=tuple(row for row in value.analysis_ids if row in mine),
+            citation_only=True,
         )
         for value in values
     ]
@@ -386,13 +402,20 @@ def _parse(raw: str) -> Proposal:
 
     Note where the line falls, because it is not where the discard rule falls. A
     finding with a bad *kind* fails here and takes the whole reply with it, while a
-    finding with a bad figure reference is dropped alone by :func:`_accept`. The
-    difference is what the fault says about the reply: a figure reference is a
-    judgement the model made about one sentence and can be wrong about once, but
-    ``kind`` is a closed four-member set spelled out in the prompt, and a reply
-    that invents a fifth was not answering the question that was asked. The coach
-    draws the same line for the same reason; a retry costs one call, and a report
-    quietly missing the finding that did not fit the schema costs more.
+    finding with a bad figure reference, or no claim, or no figures at all, is
+    dropped alone by :func:`_accept`. The difference is what the fault says about
+    the reply: a missing field or a wrong reference is the model being sloppy about
+    one sentence, but ``kind`` is a closed four-member set spelled out in the
+    prompt, and a reply that invents a fifth was not answering the question that
+    was asked. The coach draws the same line for the same reason.
+
+    Which is why :class:`ProposedFinding` requires ``kind`` and nothing else. Every
+    lenient field there is this rule, expressed where pydantic can act on it:
+    reject-whole is expensive — nothing above retries, so the whole report is lost
+    for one call — and it must therefore be spent only on the fault that says the
+    rest of the reply cannot be trusted either. A report quietly missing four good
+    findings because the fifth omitted a claim is the worse outcome, and the one
+    nobody would have seen.
     """
     try:
         payload = json.loads(strip_code_fence(raw))
@@ -402,6 +425,20 @@ def _parse(raw: str) -> Proposal:
         return Proposal.model_validate(payload)
     except ValidationError as exc:
         raise ParseError(f"report findings did not match the schema: {exc}") from exc
+
+
+def _normalise_ref(ref: str) -> str:
+    """One figure reference as the prompt offered it.
+
+    Two habits are read rather than rejected, because neither invents anything.
+    ``[F1]`` is the exact form :func:`_render_figures` prints, and a bare ``1`` is a
+    model answering with a reference's number instead of its name. Both still have
+    to name a figure that is in the set; the reject-whole rule in :func:`_accept`
+    is for the one that is not, and emptying a report over a formatting habit is
+    not what it is for.
+    """
+    text = ref.strip().strip("[]").strip().upper()
+    return f"{_FIGURE_PREFIX}{text}" if text.isdigit() else text
 
 
 def _evidence_for(
@@ -418,8 +455,8 @@ def _evidence_for(
     )
 
 
-def _without_own_wording(text: str, figures: dict[str, MetricValue]) -> str:
-    """``text`` with the mandate's own key messages taken out of it.
+def _without_own_wording(text: str, cited: Sequence[MetricValue]) -> str:
+    """``text`` with the key messages *this finding cites* taken out of it.
 
     The carve-out :class:`newspulse.reporting.MetricValue` already makes for a
     MESSAGE subject, extended to the sentence that cites it. A guide whose key
@@ -429,21 +466,28 @@ def _without_own_wording(text: str, figures: dict[str, MetricValue]) -> str:
     ``botschaft`` finding about — and without this, the finding the prompt asked
     for is thrown away by the same guard that let the figure exist.
 
+    Scoped to ``cited`` rather than to the whole figure set, which is the
+    difference between a carve-out and a hole. One mandate whose guide happens to
+    name a forbidden term in a key message would otherwise turn the guard off for
+    every claim in its report, including a ``sichtbarkeit`` finding that never went
+    near the message and is free to invent a reach number. A finding that does not
+    cite the message figure has no claim on the client's own wording.
+
     Removed rather than whitelisted: what is checked afterwards is everything the
     model wrote *around* the quote, so "die Reichweite lag bei 1,2 Millionen"
     beside the message is still refused.
     """
-    for value in figures.values():
+    for value in cited:
         subject = value.subject.strip()
         if value.key is MetricKey.MESSAGE and subject:
             text = re.sub(re.escape(subject), " ", text, flags=re.IGNORECASE)
     return text
 
 
-def _states_forbidden_figure(text: str, figures: dict[str, MetricValue]) -> str:
-    """The forbidden figure ``text`` states, or ``""`` — the mandate's own key
-    messages not counting against it."""
-    terms = reporting.forbidden_terms(_without_own_wording(text, figures))
+def _states_forbidden_figure(text: str, cited: Sequence[MetricValue]) -> str:
+    """The forbidden figure ``text`` states, or ``""`` — the key messages this
+    finding cites not counting against it."""
+    terms = reporting.forbidden_terms(_without_own_wording(text, cited))
     return ", ".join(terms)
 
 
@@ -465,14 +509,13 @@ def _accept(
         _log.info("report finding for %r discarded: no claim", client_name)
         return None
 
-    # ``[F1]`` normalises to ``F1``: the prompt renders every figure inside brackets
-    # and a model echoing the form it was shown has not invented anything. The
-    # reject-whole rule below is for a reference that does not exist, not for a
-    # formatting habit that would otherwise empty a whole report.
     refs = tuple(
-        dict.fromkeys(ref.strip().strip("[]").upper() for ref in proposed.figures if ref)
+        dict.fromkeys(
+            normalised
+            for normalised in (_normalise_ref(ref) for ref in proposed.figures)
+            if normalised
+        )
     )
-    refs = tuple(ref for ref in refs if ref)
     unknown = [ref for ref in refs if ref not in figures]
     if unknown:
         # Rejected whole, not filtered down: the sentence was written about a
@@ -486,8 +529,12 @@ def _accept(
             claim,
         )
         return None
-    stated = _states_forbidden_figure(claim, figures) or _states_forbidden_figure(
-        consequence, figures
+    # Only the figures this finding actually stands on: the key-message carve-out
+    # below is the mandate's own wording quoted back inside the claim that quotes
+    # it, not a licence the report carries everywhere.
+    cited = [figures[ref] for ref in refs]
+    stated = _states_forbidden_figure(claim, cited) or _states_forbidden_figure(
+        consequence, cited
     )
     if stated:
         # The term is named rather than implied: the matcher is deliberately blunt
@@ -543,8 +590,15 @@ def findings(
     Raises :class:`newspulse.analyzer.ParseError` on an unusable reply and
     :class:`newspulse.analyzer.BackendError` on a failed call, because "nothing to
     say about this month" and "the generation failed" must not look alike to the
-    person about to send a document.
+    person about to send a document. Raises :class:`ReportReleased` for a period
+    already released — :func:`store` is where that rule is enforced, but refusing
+    here as well means a regeneration nobody could have filed does not first cost a
+    model call, which is the most expensive thing in this path.
     """
+    released = for_period(session, client.id, period)
+    if released is not None and _is_released(released):
+        raise _released(period)
+
     metrics = reporting.period_metrics(session, client, period)
     if metrics.empty:
         # No model call at all. There is nothing to interpret, and asking anyway
@@ -566,6 +620,18 @@ def findings(
         )
         if finding is not None
     ]
+    if len(accepted) > MAX_FINDINGS:
+        # The cap is a drop like any other, and the rule is that a drop is logged
+        # rather than shown. These are findings that passed every guard, so a
+        # consultant wondering why a sixth statement he expected is not in the
+        # document has nowhere else to look for the answer.
+        _log.info(
+            "report for %r keeps %d of %d accepted findings; dropped: %s",
+            client.name,
+            MAX_FINDINGS,
+            len(accepted),
+            "; ".join(finding.claim for finding in accepted[MAX_FINDINGS:]),
+        )
     return ReportDraft(
         client_id=client.id,
         period=period,
@@ -586,6 +652,27 @@ def for_period(session: Session, client_id: int, period: Period) -> Report | Non
             Report.period_end == period.end,
         )
     ).first()
+
+
+def _is_released(report: Report) -> bool:
+    """Whether this row is a document that went out, by either fact that says so.
+
+    Both, and either is enough. ``released_at`` is the fact and ``state`` is the
+    label the interface renders it under; :func:`release` writes the two together,
+    but a restore or a route somebody writes next can set one without the other and
+    both directions have to fail closed. The label alone is the worse half: a row
+    reading ``freigegeben`` is what a consultant sees, so replacing its content
+    leaves a released document whose sentences changed underneath it.
+    """
+    return report.released_at is not None or report.state is ReportState.FREIGEGEBEN
+
+
+def _released(period: Period) -> ReportReleased:
+    """The refusal, worded once for the two places that raise it."""
+    return ReportReleased(
+        f"Der Bericht für {_period_text(period)} ist freigegeben und wird nicht "
+        "überschrieben."
+    )
 
 
 def store(
@@ -610,21 +697,27 @@ def store(
     draft carries the id it was measured for, and filing it under a different
     client would produce a document about one company built on another's coverage —
     exactly the failure this feature exists to make impossible.
+
+    Raises :class:`ValueError` too for a finding with no evidence. The discard rule
+    in :func:`_accept` already keeps one out of a generated draft, but this is the
+    boundary the table is behind, and :class:`newspulse.models.ReportFinding` says
+    of its ``evidence_ids`` that they are never empty. A hand-built draft, a future
+    route, or an edit path must not be able to make that sentence false: what is
+    stored without evidence is a claim standing on nothing, and no reader
+    downstream can tell it apart from one whose ground merely moved.
     """
     if draft.client_id != client.id:
         raise ValueError(
             f"report draft belongs to client {draft.client_id}, not {client.id}"
         )
-    existing = for_period(session, client.id, draft.period)
-    # The timestamp rather than the label: ``state`` is what the interface shows,
-    # ``released_at`` is the fact it shows, and a row carrying one without the other
-    # must fail closed. The two are written together by ``release`` and could still
-    # come apart in a restore or in a route somebody writes next.
-    if existing is not None and existing.released_at is not None:
-        raise ReportReleased(
-            f"Der Bericht für {_period_text(draft.period)} ist freigegeben und "
-            "wird nicht überschrieben."
+    groundless = [finding for finding in draft.findings if not finding.evidence_ids]
+    if groundless:
+        raise ValueError(
+            f"report finding carries no evidence: {groundless[0].claim!r}"
         )
+    existing = for_period(session, client.id, draft.period)
+    if existing is not None and _is_released(existing):
+        raise _released(draft.period)
     row = existing or Report(
         client_id=client.id,
         period_start=draft.period.start,
@@ -632,6 +725,12 @@ def store(
     )
     row.note = draft.note
     row.generated_at = now or dt.datetime.now(dt.UTC)
+    # Asserted on every path rather than left to the column default, which only
+    # applies on insert. The guard above means a row reaching here is not released,
+    # so this is belt and braces — but the state and the content are one fact, and
+    # writing them together is what keeps a redrafted row from ever carrying a
+    # label that describes sentences it no longer holds.
+    row.state = ReportState.ENTWURF
     # delete-orphan takes the previous findings with it, so a regenerated draft
     # cannot leave a claim from the last reading standing beside the new ones.
     row.findings.clear()
@@ -702,12 +801,22 @@ class FindingView:
 
     @property
     def weakened(self) -> bool:
-        """Whether some of what this claim stood on is gone."""
-        return self.missing > 0
+        """Whether this claim is standing on less than the whole of its ground.
+
+        ``unsupported`` is part of the answer rather than a separate case, because
+        of how a consumer uses this: a render path gating on ``weakened`` is asking
+        "may I print this plainly?", and the one finding it must never print
+        plainly is the one with nothing under it at all. Counting only ``missing``
+        would answer *yes* for a row whose ``evidence_ids`` were empty to begin
+        with — nothing failed to resolve, so nothing was lost — which is the wrong
+        answer given in the most confident possible way.
+        """
+        return self.missing > 0 or self.unsupported
 
     @property
     def unsupported(self) -> bool:
-        """Whether *all* of it is. A claim with nothing left is not weak, it is out."""
+        """Whether *all* of it is gone. A claim with nothing left is not weak, it
+        is out — the render path drops it rather than weakening it."""
         return not self.evidence
 
 
@@ -756,22 +865,30 @@ def resolve(session: Session, report: Report) -> list[FindingView]:
 
     One query for the whole report rather than one per finding: a report carries a
     handful of findings and a document renders all of them at once.
+
+    A finding whose evidence has gone entirely comes back too, marked ``weakened``
+    and ``unsupported``. Dropping it here would be this module deciding what a
+    document contains; the render path is where "not weak, it is out" is applied,
+    and a caller reviewing a report is entitled to see that one of its claims lost
+    its ground rather than to find a sentence quietly absent.
     """
     kept = [finding for finding in report.findings if finding.kept]
+    # Deduped per finding. ``evidence_ids`` is a citation list, and one piece of
+    # coverage cited twice is one piece of evidence: undeduped it prints the same
+    # headline twice under a single claim and makes ``missing`` count one dismissed
+    # article as two losses. :func:`_evidence_for` dedups at generation, but a row
+    # written by hand or by a later edit route never passes through it.
+    cited = [tuple(dict.fromkeys(finding.evidence_ids)) for finding in kept]
     rows = _evidence_rows(
-        session,
-        report.client_id,
-        [row for finding in kept for row in finding.evidence_ids],
+        session, report.client_id, [row for ids in cited for row in ids]
     )
     return [
         FindingView(
             finding=finding,
-            evidence=tuple(
-                rows[row] for row in finding.evidence_ids if row in rows
-            ),
-            missing=sum(1 for row in finding.evidence_ids if row not in rows),
+            evidence=tuple(rows[row] for row in ids if row in rows),
+            missing=sum(1 for row in ids if row not in rows),
         )
-        for finding in kept
+        for finding, ids in zip(kept, cited, strict=True)
     ]
 
 
