@@ -955,6 +955,9 @@ _EN: dict[str, str] = {
         "letters and Captain Comms, and every line says where it came from.",
     "Kickoff-Fragebogen": "Kick-off questionnaire",
     "Angabe des Mandanten": "The client's own statement",
+    # A researched value the grounding API returned no source for. It stays on
+    # offer and says so, rather than borrowing the line above it.
+    "Recherche ohne Quelle": "Research with no source",
     "ersetzt die bisherige Angabe, die sichtbar bleibt":
         "replaces the current value, which stays visible",
     # DEC-2 option A: the answer wins, and the disagreement stays legible.
@@ -970,6 +973,12 @@ _EN: dict[str, str] = {
     "kein Fragebogen": "no questionnaire",
     # The guide drafted from the answers.
     "Entwurf aus dem Kickoff": "Draft from the kick-off",
+    # The refusal when the button is pressed for a mandate that has answered
+    # nothing. It reaches the page as a caught exception rather than as a literal
+    # in a template, which is why the page-scanning test cannot see it.
+    "Noch keine Antwort aus dem Kickoff — ohne Antworten gibt es nichts zu "
+    "destillieren.":
+        "No answer from the kick-off yet, so there is nothing to distil.",
     "Entwurf aus dem Kickoff — noch nicht gespeichert":
         "Draft from the kick-off, not saved yet",
     "Ohne Antwort im Kickoff, deshalb nicht im Entwurf":

@@ -120,8 +120,15 @@
               {{ t("Quelle") }}:
               {% if p.source_url %}
                 <a href="{{ p.source_url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ p.source_title or p.source_url }}</a>
+              {% elif p.source_title %}
+                {{ t(p.source_title) }}
+              {% elif p.from_person %}
+                {{ t("Angabe des Mandanten") }}
               {% else %}
-                {{ t(p.source_title) if p.source_title else t("Angabe des Mandanten") }}
+                {# The research came back without a source, which the grounding
+                   API does. Naming the client here would put the strongest
+                   provenance on the page under its weakest value. #}
+                {{ t("Recherche ohne Quelle") }}
               {% endif %}
               {% if p.supersedes and facts.get(p.key) %}
                 · {{ t("ersetzt die bisherige Angabe, die sichtbar bleibt") }}

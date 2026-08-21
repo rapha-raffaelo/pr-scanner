@@ -131,6 +131,19 @@ class Proposal:
     #: overrules the consultant.
     supersedes: bool = False
 
+    @property
+    def from_person(self) -> bool:
+        """Whether somebody said this, rather than a machine having read it.
+
+        The page asks, because "Angabe des Mandanten" is the strongest provenance
+        it can print and the research does come back without a source sometimes:
+        the grounding API returns none, and a proposal with an empty title would
+        otherwise fall through to that line and dress a machine's weakest guess
+        as the client's own words. Read off ``supersedes`` because that is the
+        same distinction — only what a person said may overrule the file.
+        """
+        return self.supersedes
+
 
 def stored(session: Session, client_id: int) -> dict[str, ClientFact]:
     """Everything on file for this mandate, keyed by field."""

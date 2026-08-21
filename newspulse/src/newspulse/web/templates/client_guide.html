@@ -78,7 +78,11 @@
 </p>
 
 {% if saved %}<div class="notice notice--ok">{{ t("Guide gespeichert.") }}</div>{% endif %}
-{% if guide_error %}<div class="notice notice--error">{{ guide_error }}</div>{% endif %}
+{# Through the table like every other line on the page: these are fixed sentences
+   raised as exceptions rather than written into the template, and a German
+   refusal on an English page is the mixed UI the table exists to prevent. One
+   carrying a message from the model is untranslated and degrades to itself. #}
+{% if guide_error %}<div class="notice notice--error">{{ t(guide_error) }}</div>{% endif %}
 
 {% if proposal %}
   {# The preview step. Nothing from a document or a kick-off call is applied
