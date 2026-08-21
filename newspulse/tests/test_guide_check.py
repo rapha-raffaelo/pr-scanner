@@ -26,7 +26,7 @@ from sqlalchemy.pool import StaticPool
 from newspulse import guide, outreach
 from newspulse.analyzer import ParseError
 from newspulse.models import Angle, Base, Client, Outreach
-from newspulse.schemas import PersonalMessage
+from newspulse.schemas import MAX_BREACHES, PersonalMessage
 from newspulse.web.app import create_app, get_db
 
 #: A guide with one no-go a letter can visibly break, written the way the
@@ -269,6 +269,48 @@ def test_unparseable_output_raises_rather_than_reading_as_clean(session):
         guide.check_guide(client, _letter(), generate=lambda *a, **k: "Klingt gut!")
 
 
+def test_more_breaches_than_fit_are_cut_rather_than_thrown_away(session, caplog):
+    """The draft that draws six objections is the last one allowed to come back
+    as "not checked": a cap that voids the verdict makes the worst letter the
+    quietest one."""
+    client, _ = _mandate(session)
+    reported = [
+        {"draft": f"Satz {n}.", "guide": "No-Gos: Keine Renditeversprechen."}
+        for n in range(MAX_BREACHES + 1)
+    ]
+
+    with caplog.at_level(logging.INFO, logger="newspulse.guide"):
+        verdict, model = guide.check_guide(
+            client,
+            _letter(_OFFENDING),
+            generate=lambda *a, **k: _verdict(ok=False, breaches=reported),
+        )
+
+    assert verdict is not None
+    assert verdict.ok is False
+    assert len(verdict.breaches) == MAX_BREACHES
+    assert verdict.breaches[0].draft == "Satz 0."  # the gravest, as the prompt asks
+    assert model
+    assert "keeping the first" in caplog.text  # and the cut is never silent
+
+
+def test_a_breach_with_an_empty_quote_is_refused_like_a_missing_one(session):
+    """An empty side renders as an accusation with nothing under it, and it would
+    still flip ``ok``. Discarding the verdict yields the honest not-checked state;
+    dropping the breach could turn an objection into an approval."""
+    client, _ = _mandate(session)
+
+    with pytest.raises(ParseError):
+        guide.check_guide(
+            client,
+            _letter(_OFFENDING),
+            generate=lambda *a, **k: _verdict(
+                ok=False,
+                breaches=[{"draft": "", "guide": "No-Gos: Keine Renditeversprechen."}],
+            ),
+        )
+
+
 def test_a_reply_that_misses_the_schema_raises(session):
     """A breach with only one side quoted is not checkable, and a half-parsed
     verdict is discarded rather than shown."""
@@ -325,6 +367,52 @@ def test_a_failed_check_returns_the_not_checked_state_and_logs_at_error(
     assert "guide check failed" in caplog.text
 
 
+def test_no_second_model_is_a_warning_rather_than_an_error(
+    session, monkeypatch, caplog
+):
+    """Nothing failed. A key is not set, on every letter this deployment writes,
+    and the crosscheck already puts that sentence on the page — at ERROR it would
+    be noise over a defect that is not there."""
+    from newspulse import config
+    from newspulse.web.routes import advisory
+
+    client, _ = _mandate(session)
+    monkeypatch.setattr(config, "review_configured", lambda: False)
+
+    with caplog.at_level(logging.DEBUG, logger="newspulse.web.routes.advisory"):
+        result = advisory._guide_check(client, _letter())
+
+    assert result == guide.NOT_CHECKED
+    levels = [
+        r.levelno for r in caplog.records if r.name == "newspulse.web.routes.advisory"
+    ]
+    assert levels == [logging.WARNING]
+    assert "guide check failed" not in caplog.text
+
+
+def test_the_letter_is_checked_in_the_form_it_will_be_stored_in(session, monkeypatch):
+    """A breach quotes the draft's sentence so it can be found in the letter
+    beside it, and ``outreach.store`` writes the dash-free text. Checking the
+    draft before that step would quote a sentence that is nowhere on the page."""
+    from newspulse import gemini
+    from newspulse.web.routes import advisory
+
+    client, _ = _mandate(session)
+    seen: list[str] = []
+
+    def _capture(prompt: str, **kwargs) -> str:
+        seen.append(prompt)
+        return _verdict()
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(gemini, "generate", _capture)
+
+    advisory._guide_check(client, _letter("Die Verwahrkette — geprüft — steht offen."))
+
+    assert "Die Verwahrkette — geprüft — steht offen." not in seen[0]
+    assert "Die Verwahrkette, geprüft, steht offen." in seen[0]
+
+
 def test_a_failing_guide_check_leaves_the_crosscheck_and_the_letter_intact(
     factory, web, monkeypatch, caplog, no_background_message
 ):
@@ -346,8 +434,16 @@ def test_a_failing_guide_check_leaves_the_crosscheck_and_the_letter_intact(
         finally:
             s.close()
 
+    prompts: list[str] = []
+
     def _fake_generate(prompt: str, **kwargs) -> str:
-        if "DER KOMMUNIKATIONS-GUIDE DES MANDANTEN" in prompt:
+        # Routed on the guide's own text rather than on a heading: this test's
+        # guide reaches exactly one of the two prompts (the drafting call is
+        # patched out below, and the crosscheck template has no guide slot), while
+        # a heading is one word away from the one guide.for_prompt() writes and
+        # would send the failure to the wrong check without saying so.
+        prompts.append(prompt)
+        if "Keine Renditeversprechen." in prompt:
             raise BackendError("Gemini unreachable")
         return json.dumps({"send": True, "concerns": [], "fix": ""})
 
@@ -363,6 +459,7 @@ def test_a_failing_guide_check_leaves_the_crosscheck_and_the_letter_intact(
         no_background_message(client_id, angle_id, "Jason Nelson", "Börsen-Zeitung")
     advisory._last_message_error.pop(client_id, None)
 
+    assert len(prompts) == 2, "both checks were asked, and asked separately"
     with factory() as check:
         stored = check.scalars(select(Outreach)).one()
         assert "acht Prozent Rendite" in stored.message

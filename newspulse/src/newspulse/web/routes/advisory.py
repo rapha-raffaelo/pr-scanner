@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import angles, guide, job, outreach, pitch
+from ... import angles, guide, job, outreach, pitch, prose
 from ...db import get_session
 from ..runlock import guard as _run_guard
 from .. import themework
@@ -289,6 +289,29 @@ def _target_for(
     )
 
 
+def _as_stored(message: PersonalMessage) -> PersonalMessage:
+    """The letter as :func:`newspulse.outreach.store` will write it down.
+
+    A breach quotes the draft's sentence verbatim so it can be found in the letter
+    beside it, and ``store`` runs every letter through :func:`newspulse.prose.plain`
+    first. Checking the text before that step would let a breach quote a sentence
+    with an em dash in it — the one artefact ``plain`` exists to remove, and the
+    one the models relapse into — which is then nowhere to be found in the stored
+    letter, and a quote that cannot be located is the thing this pair of quotes
+    exists to prevent.
+
+    Only the guide check reads this. The crosscheck above deliberately keeps the
+    raw draft: it reports the dash *itself* as a concern, and normalising first
+    would take away the very thing it is looking for.
+    """
+    return message.model_copy(
+        update={
+            "subject": prose.plain(message.subject),
+            "message": prose.plain(message.message),
+        }
+    )
+
+
 def _guide_check(
     client: Client, message: PersonalMessage
 ) -> tuple[GuideVerdict | None, str]:
@@ -299,12 +322,19 @@ def _guide_check(
     must leave the other's answer standing. The letter is written by this point
     and it is worth more than any verdict on it.
 
-    A failed or unusable check returns :data:`newspulse.guide.NOT_CHECKED` — the
-    same pair a client with no stored guide gets — and says so at ERROR, because
-    the two are indistinguishable to a reader and only one of them is a defect.
+    Every outcome is :data:`newspulse.guide.NOT_CHECKED` — the same pair a client
+    with no stored guide gets — but the log tells the two apart: a provider that
+    failed or answered with nonsense is a defect and says so at ERROR, while a
+    deployment with no second model configured is a setting nobody made, is not
+    news at ERROR on every letter written, and is already on the page in the
+    crosscheck's own words (it fails first, on the same missing key, and writes
+    the sentence the consultant actually reads).
     """
     try:
-        return guide.check_guide(client, message)
+        return guide.check_guide(client, _as_stored(message))
+    except guide.NoSecondModel as exc:
+        _log.warning("guide check skipped for %r: %s", client.name, exc)
+        return guide.NOT_CHECKED
     except Exception as exc:  # noqa: BLE001 — any backend or parse failure is one state
         _log.error("guide check failed for %r: %s", client.name, exc)
         return guide.NOT_CHECKED
@@ -347,10 +377,11 @@ def _run_outreach(client_id: int, angle_id: int, journalist: str, outlet: str) -
                         f"gegengelesen: {exc}"
                     )
                     _log.warning("crosscheck skipped: %s", exc)
-                # And the same letter against the client's own written rules, as
-                # a second pass with its own verdict. After the crosscheck and
-                # isolated from it: a No-Go is not a style note, and neither
-                # check may cost the other its answer.
+                # And the same letter — as it will be stored — against the
+                # client's own written rules, as a second pass with its own
+                # verdict. After the crosscheck and isolated from it: a No-Go is
+                # not a style note, and neither check may cost the other its
+                # answer.
                 guide_verdict, guide_checked_by = _guide_check(client, message)
                 outreach.store(
                     session, client, angle, message, target,
