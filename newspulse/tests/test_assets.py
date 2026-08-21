@@ -704,6 +704,7 @@ def test_both_checks_run_over_a_format_and_are_stored_with_it(session):
     seen: list[str] = []
 
     checked = assets.check(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda prompt, **k: seen.append(prompt) or _review(),
@@ -725,6 +726,7 @@ def test_the_crosscheck_sees_the_text_and_what_it_may_claim(session):
     seen: list[str] = []
 
     assets.crosscheck(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda prompt, **k: seen.append(prompt) or _review(),
@@ -747,6 +749,7 @@ def test_the_crosscheck_is_shown_the_profile_the_format_was_written_from(session
     seen: list[str] = []
 
     assets.crosscheck(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda prompt, **k: seen.append(prompt) or _review(),
@@ -769,6 +772,7 @@ def test_both_checkers_read_the_text_the_reader_will_see(session):
     seen: list[str] = []
 
     assets.check(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda *a, **k: _review(),
@@ -791,6 +795,7 @@ def test_an_asset_carrying_an_objection_never_renders_as_checked(session):
     )
 
     checked = assets.check(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda *a, **k: _review(send=True),
@@ -809,6 +814,7 @@ def test_a_guide_breach_is_stored_with_both_halves_quoted(session):
     draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     checked = assets.check(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda *a, **k: _review(),
@@ -838,6 +844,7 @@ def test_a_mandate_without_a_guide_is_told_the_check_could_not_run(session):
     guide_calls: list[str] = []
 
     checked = assets.check(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda *a, **k: _review(),
@@ -896,6 +903,7 @@ def test_a_dash_is_caught_even_if_the_checker_misses_it(session):
     )
 
     review, _ = assets.crosscheck(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda *a, **k: _review(),
@@ -917,6 +925,7 @@ def test_the_checker_reads_the_text_that_will_be_stored(session):
     seen: list[str] = []
 
     assets.crosscheck(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda prompt, **k: seen.append(prompt) or _review(),
@@ -938,6 +947,7 @@ def test_the_mechanical_finding_survives_a_full_concern_list(session):
     )
 
     review, _ = assets.crosscheck(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda *a, **k: _review(concerns=[f"Einwand {i}." for i in range(5)]),
@@ -955,6 +965,7 @@ def test_more_concerns_than_the_cap_are_truncated_rather_than_rejected(session):
     draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
 
     review, _ = assets.crosscheck(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda *a, **k: _review(
@@ -972,6 +983,7 @@ def test_rewriting_clears_the_verdicts_of_the_text_they_replace(session):
     fmt = assets.definition(AssetKind.STATEMENT)
     draft = assets.write(session, fmt, client, angle, invoke=lambda *a, **k: _drafted(fmt))
     checked = assets.check(
+        session,
         client,
         assets.checkable(session, fmt, angle, draft),
         generate=lambda *a, **k: _review(send=False, concerns=["Zu werblich."]),
@@ -1003,7 +1015,7 @@ def test_without_a_second_model_the_check_refuses_rather_than_passes(
     monkeypatch.setattr(config, "review_configured", lambda: False)
 
     with pytest.raises(RuntimeError, match="Zweitmodell"):
-        assets.crosscheck(client, assets.checkable(session, fmt, angle, draft))
+        assets.crosscheck(session, client, assets.checkable(session, fmt, angle, draft))
 
 
 # --- The structural contract, format by format ----------------------------------

@@ -98,6 +98,50 @@ def background_locks_are_free():
 
 
 @pytest.fixture(autouse=True)
+def brain_composes_the_shipped_blocks(monkeypatch):
+    """Compose prompts against the repository's blocks, not against a database.
+
+    ``brain.current()`` resolves the stored overrides in front of the shipped
+    text, and it does that by opening its own session — a prompt render has no
+    session to be handed one. In a test run that means every generator test would
+    create a SQLite file in whatever directory pytest was started from and read a
+    table that fixture databases build separately anyway.
+
+    So the override source is pinned to "nothing overridden" here, which is the
+    state every test that is not about the brain assumes. The tests that *are*
+    about it install a source over the top of this one (``test_brain.py``).
+
+    That leaves ``brain._stored_overrides`` — the only source a running
+    installation ever uses — pinned away everywhere, so ``test_brain.py`` has a
+    ``live_override_source`` fixture that opts back out of this one, narrowly,
+    for the handful of tests that exercise it against a fixture database.
+    """
+    from newspulse import brain
+
+    monkeypatch.setattr(brain, "_override_source", dict)
+def no_real_mailbox(tmp_path, monkeypatch):
+    """Keep the daily sweep away from a mailbox somebody actually connected.
+
+    ``job.run`` reads the replies to released letters, and whether a mailbox is
+    connected is answered by a token file beside ``config.DATABASE_PATH`` — which
+    defaults to the working directory. On a machine where the app has been run
+    for real, every test that drives a sweep would then reach Google. Pointing
+    the database at a tmp directory means the sync finds no connection and does
+    nothing, which is also the state it has to work in.
+
+    The tests that *are* about the mailbox set the same attribute themselves and
+    win, because pytest sets up autouse fixtures of a scope before the ones the
+    test asked for by name, and the later ``monkeypatch.setattr`` is the one that
+    stands. Both point inside the same per-test ``tmp_path``, so the token file
+    is the same file either way — the ordering decides which database name sits
+    beside it, not whether the two fixtures agree.
+    """
+    from newspulse import config
+
+    monkeypatch.setattr(config, "DATABASE_PATH", tmp_path / "newspulse.db")
+
+
+@pytest.fixture(autouse=True)
 def no_theme_settling(monkeypatch):
     """Stop the sweep from proposing themes in a test run.
 

@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import branding, config, gnews, i18n
 from ..db import get_session
-from . import navigation, runlock
+from . import google_auth, navigation, runlock
 from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
 
 # The web package ships its own templates/ and static/ next to this module, so
@@ -119,6 +119,18 @@ def de_datetime(value: dt.datetime) -> str:
     return _local(value).strftime("%d.%m.%Y %H:%M")
 
 
+def de_date(value: dt.datetime) -> str:
+    """Date alone in the reader's zone: ``22.07.2026``.
+
+    For the places where the clock time is noise rather than information — a
+    relationship timeline reads as a sequence of days, and "12.08.2026 09:41" on
+    a line about last month invites the reader to weigh a minute that means
+    nothing. The letter card keeps :func:`de_datetime`: there the hour is part of
+    the release record.
+    """
+    return _local(value).strftime("%d.%m.%Y")
+
+
 def de_short_date(value: dt.datetime) -> str:
     """Day and month in the reader's zone, as coverage lists cite it: ``22.07.``"""
     return _local(value).strftime("%d.%m.")
@@ -202,6 +214,7 @@ templates.env.filters["de_long_date"] = de_long_date
 # applied once, in one place, instead of per template (see _local).
 templates.env.filters["de_time"] = de_time
 templates.env.filters["de_datetime"] = de_datetime
+templates.env.filters["de_date"] = de_date
 templates.env.filters["de_short_date"] = de_short_date
 # Client identity: a monogram + stable colour stand in wherever no logo is set,
 # so the portfolio never looks half-configured.
@@ -225,6 +238,10 @@ templates.env.globals["LANGUAGES"] = i18n.LANGUAGES
 # the same reason ``run_active`` is: the shared layout needs it and no route
 # should have to remember to pass it.
 templates.env.globals["nav_clients"] = navigation.nav_clients
+# Who is signed in, for the sidebar footer. A global for the same reason as the
+# roster: the shared layout needs it and no route should have to pass it.
+templates.env.globals["signed_in_as"] = lambda request: request.scope.get("user_email")
+templates.env.globals["google_login_active"] = google_auth.is_configured
 templates.env.filters["monogram"] = branding.monogram
 templates.env.filters["brand_colour"] = branding.colour
 
@@ -264,10 +281,12 @@ def create_app() -> FastAPI:
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
         advisory, archive, assets_view, assistant, client, contacts, guide_routes,
-        language, profile as profile_routes, rivals_view, runstatus, settings,
-        today, triage,
+        language, login, profile as profile_routes, rivals_view, runstatus,
+        settings, today, triage,
     )
 
+    # First, so the sign-in pages exist before anything that needs a session.
+    app.include_router(login.router)
     app.include_router(today.router)
     app.include_router(client.router)
     app.include_router(archive.router)

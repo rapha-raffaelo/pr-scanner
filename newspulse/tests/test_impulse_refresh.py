@@ -85,6 +85,10 @@ def _draft(**over):
             context="c",
             thesis="t",
             evidence=[0] if numbered else [],
+            # Stamped, as the real generator stamps it: ``store`` refuses a draft
+            # with no version rather than writing a NULL, which the interface
+            # renders as "older than the recorded standards".
+            brain_version=0,
         )
         return (draft, numbered) if draft.worth_sending else None
 

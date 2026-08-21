@@ -24,8 +24,8 @@ The revision number skips ahead of the current head: numbers are handed out per
 feature so two features in flight cannot collide, and the chain, not the number,
 is what orders a migration.
 
-Revision ID: 0025_assets
-Revises: 0017_client_facts
+Revision ID: 0024_assets
+Revises: 0023_brain_version
 Create Date: 2026-08-20
 """
 from __future__ import annotations
@@ -35,8 +35,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0025_assets"
-down_revision: str | None = "0017_client_facts"
+revision: str = "0024_assets"
+down_revision: str | None = "0023_brain_version"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

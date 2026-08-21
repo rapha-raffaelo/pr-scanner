@@ -171,6 +171,7 @@ def test_a_failing_guide_check_leaves_the_crosscheck_intact(session):
     client = _client(session)
 
     checked = assets.check(
+        session,
         client,
         _checkable(),
         generate=lambda *a, **k: _review(send=False, concerns=["Zu werblich."]),
@@ -191,6 +192,7 @@ def test_an_unparseable_guide_reply_leaves_the_crosscheck_intact(session):
     client = _client(session)
 
     checked = assets.check(
+        session,
         client,
         _checkable(),
         generate=lambda *a, **k: _review(),
@@ -209,6 +211,7 @@ def test_a_failed_guide_check_is_logged_at_error(session, caplog):
 
     with caplog.at_level("ERROR"):
         assets.check(
+            session,
             client,
             _checkable(),
             generate=lambda *a, **k: _review(),
@@ -239,6 +242,7 @@ def test_a_failed_guide_check_stores_as_not_clean(session):
 
     fmt = assets.definition("statement")
     checked = assets.check(
+        session,
         client,
         _checkable(),
         generate=lambda *a, **k: _review(),
@@ -266,6 +270,7 @@ def test_a_mandate_without_a_guide_still_reads_as_checked_not_broken(session):
     client = _client(session, comms_guide="")
 
     checked = assets.check(
+        session,
         client,
         _checkable(),
         generate=lambda *a, **k: _review(),

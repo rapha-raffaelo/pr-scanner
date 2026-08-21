@@ -33,7 +33,15 @@ from sqlalchemy.orm import Session
 
 from . import contacts as contactbook
 from .matching import on_theme, radar_matcher
-from .models import Analysis, Angle, Article, Client, TopicHit, visible_coverage
+from .models import (
+    Analysis,
+    Angle,
+    Article,
+    Client,
+    Outreach,
+    TopicHit,
+    visible_coverage,
+)
 from .outlets import tier_for
 
 # How far back the field's journalists are read. The impulse window, so the people
@@ -43,6 +51,13 @@ LOOKBACK_DAYS = 90
 # Kept short on purpose. A pitch list of twenty is a research project; the value
 # here is "these four, and here is why".
 MAX_TARGETS = 6
+
+# How long a released letter keeps marking its recipient on this angle's list. A
+# journalist pitched on the same subject within a quarter remembers it, and the
+# second identical approach is the one that costs the relationship. The same span
+# the list itself reads (LOOKBACK_DAYS), so the mark and the material age out
+# together.
+ALREADY_PITCHED_DAYS = 90
 
 # An outlet that wrote about the field once is not a beat. Two is the same floor
 # the coverage map uses for its gap list, for the same reason.
@@ -73,6 +88,11 @@ class PitchTarget:
     #: Never derived — see the module docstring — only looked up.
     contact_id: int | None = None
     contact_email: str = ""
+    #: When a *released* letter for this same angle last went to this recipient,
+    #: within :data:`ALREADY_PITCHED_DAYS`. ``None`` when none did. The mark that
+    #: stops the list proposing someone who was already written to about the
+    #: same thing last week.
+    already_pitched_at: dt.datetime | None = None
 
     @property
     def is_new_contact(self) -> bool:
@@ -190,6 +210,108 @@ def _field_outlets(
     )
 
 
+def _fold(value: str | None) -> str:
+    """One spelling of "the same name, however it was typed", used on both sides
+    of every comparison in this module — the way the contact book folds it."""
+    return (value or "").strip().casefold()
+
+
+@dataclass(frozen=True, slots=True)
+class _Pitched:
+    """Released letters for one angle, indexed the two ways a recipient can be
+    recognised — and both indexes are needed.
+
+    The ledger links a letter to a contact row when the book knew the byline at
+    release (``Outreach.contact_id``), and that link is the *stronger* fact: it
+    survives the two feed spellings of one masthead — "Handelsblatt" and
+    "Handelsblatt Online" — that make the byline key miss. So the contact is
+    asked first and the byline second, which is what keeps an unlinked letter,
+    written before the contact existed, still marking its recipient.
+    """
+
+    by_contact: dict[int, dt.datetime]
+    by_byline: dict[tuple[str, str], dt.datetime]
+
+    def when(
+        self, contact_id: int | None, journalist: str | None, outlet: str
+    ) -> dt.datetime | None:
+        """When a released letter for this angle last reached this recipient."""
+        if contact_id is not None and contact_id in self.by_contact:
+            return self.by_contact[contact_id]
+        return self.by_byline.get((_fold(journalist), _fold(outlet)))
+
+
+def _already_pitched(
+    session: Session, angle: Angle | None, reference: dt.datetime
+) -> _Pitched:
+    """When a released letter for this angle last went to each recipient, within
+    :data:`ALREADY_PITCHED_DAYS`.
+
+    Only released letters count: a draft reached nobody, and marking one would
+    claim a contact that never happened. Keyed case-insensitively the way the
+    contact book matches, because the feed writes "Maria Berg" and the letter may
+    carry "maria berg" — and keyed by the linked contact as well, because two
+    spellings of one masthead are the ordinary case and must not hide the letter
+    that already went out.
+    """
+    if angle is None:
+        return _Pitched(by_contact={}, by_byline={})
+    since = reference - dt.timedelta(days=ALREADY_PITCHED_DAYS)
+    rows = session.execute(
+        select(
+            Outreach.contact_id,
+            Outreach.journalist,
+            Outreach.outlet,
+            Outreach.released_at,
+        ).where(
+            Outreach.angle_id == angle.id,
+            Outreach.released_at.is_not(None),
+            Outreach.released_at >= since,
+        )
+    ).all()
+    by_contact: dict[int, dt.datetime] = {}
+    by_byline: dict[tuple[str, str], dt.datetime] = {}
+
+    def _keep_latest(index: dict, key: object, released: dt.datetime) -> None:
+        """The mark carries a date, so the newest letter is the one that counts."""
+        if key not in index or released > index[key]:
+            index[key] = released
+
+    for contact_id, journalist, outlet, released in rows:
+        _keep_latest(by_byline, (_fold(journalist), _fold(outlet)), released)
+        if contact_id is not None:
+            _keep_latest(by_contact, contact_id, released)
+    return _Pitched(by_contact=by_contact, by_byline=by_byline)
+
+
+def _enrich(
+    session: Session,
+    target: PitchTarget,
+    pitched: _Pitched,
+) -> PitchTarget:
+    """What the book and the ledger already know about this byline.
+
+    Two lookups, both of them recorded facts rather than inferences: what the
+    consultant typed into the contact book — the only source of contact details in
+    the tool — and whether this angle already went to this person, released and
+    dated, so the list warns before proposing the same subject to them twice.
+
+    Order matters: the book is consulted first so the ledger can be asked about
+    the *contact* it resolved, not only about the two strings on the row.
+    """
+    known = (
+        contactbook.find(session, target.journalist, target.outlet)
+        if target.journalist
+        else None
+    )
+    if known is not None:
+        target = replace(target, contact_id=known.id, contact_email=known.email)
+    written = pitched.when(target.contact_id, target.journalist, target.outlet)
+    if written is not None:
+        target = replace(target, already_pitched_at=written)
+    return target
+
+
 def targets_for(
     session: Session,
     client: Client,
@@ -206,26 +328,17 @@ def targets_for(
     reference = now or dt.datetime.now(dt.UTC)
     since = reference - dt.timedelta(days=LOOKBACK_DAYS)
     covered = _covered_client(session, client, since)
+    pitched = _already_pitched(session, angle, reference)
 
     targets: list[PitchTarget] = []
     seen: set[tuple[str, str | None]] = set()
 
     def _add(target: PitchTarget) -> None:
-        key = (target.outlet.casefold(), (target.journalist or "").casefold() or None)
+        key = (_fold(target.outlet), _fold(target.journalist) or None)
         if key in seen or len(targets) >= MAX_TARGETS:
             return
         seen.add(key)
-        # What the consultant already recorded about this byline, if anything.
-        # Looked up, never inferred: the book is the only source of contact
-        # details in the tool, and it is filled in by hand.
-        known = (
-            contactbook.find(session, target.journalist, target.outlet)
-            if target.journalist
-            else None
-        )
-        if known is not None:
-            target = replace(target, contact_id=known.id, contact_email=known.email)
-        targets.append(target)
+        targets.append(_enrich(session, target, pitched))
 
     # 1. The bylines on the very stories this draft answers.
     if angle is not None:
@@ -334,6 +447,7 @@ def recent_headlines(
 
 
 __all__ = [
+    "ALREADY_PITCHED_DAYS",
     "LOOKBACK_DAYS",
     "MAX_RECENT_HEADLINES",
     "MAX_TARGETS",

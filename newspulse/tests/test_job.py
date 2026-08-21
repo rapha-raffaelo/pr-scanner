@@ -921,6 +921,10 @@ def _draft_for(material):
         overclaim="Zentrale Börsen verschwinden.",
         statements=["Liquidität ist Infrastruktur."],
         evidence=[0],
+        # Stamped, as the real generator stamps it: ``store`` refuses a draft
+        # with no version rather than writing a NULL, which the interface
+        # renders as "older than the recorded standards".
+        brain_version=0,
     )
     return draft, numbered
 

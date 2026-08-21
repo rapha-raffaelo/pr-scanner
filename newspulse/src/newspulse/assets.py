@@ -62,11 +62,17 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config, gemini, guide, pitch, profile, prose
+from . import brain, config, gemini, guide, pitch, profile, prose
 from .analyzer import AnalyzerError, ParseError, invoke_with_fallback, strip_code_fence
 from .models import Angle, Article, Asset, AssetKind, CheckState, Client, ClientFact
 from .pitch import PitchTarget
-from .schemas import MAX_CONCERNS, AssetDraft, GuideVerdict, MessageReview
+from .schemas import (
+    MAX_CONCERNS,
+    AssetDraft,
+    GuideVerdict,
+    MessageReview,
+    without_provenance,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -192,7 +198,11 @@ def _template(resource: str) -> Template:
     a running process, so re-reading them is a syscall per model call for a
     string that is already known.
     """
-    return Template(resources.files("newspulse").joinpath(resource).read_text("utf-8"))
+    # Composed, not just read: a prompt names the standards it is written under
+    # in a `#blocks:` line, and brain.compose expands them (with any override
+    # the agency has stored). Reading the file raw would send that line to the
+    # model as text.
+    return Template(brain.compose(resources.files("newspulse").joinpath(resource).read_text("utf-8")))
 
 
 class Source(StrEnum):
@@ -2059,6 +2069,7 @@ class Checked:
 
 
 def crosscheck(
+    session: Session,
     client: Client,
     item: Checkable,
     *,
@@ -2092,12 +2103,17 @@ def crosscheck(
         title=title,
         body=body,
     )
+    written_under = brain.version(session)
     raw = generate(prompt)
     try:
-        payload = json.loads(strip_code_fence(raw))
+        # Provenance is not the model's to state: a reply that volunteers a
+        # brain_version would otherwise be validated into the field, or fail
+        # validation and cost the whole check.
+        payload = without_provenance(json.loads(strip_code_fence(raw)))
         review = MessageReview.model_validate(payload)
     except Exception as exc:  # noqa: BLE001 — pydantic and json raise their own
         raise ParseError(f"crosscheck did not match the schema: {exc}") from exc
+    review = review.model_copy(update={"brain_version": written_under})
 
     # One thing the checker cannot be trusted to catch, because it is mechanical:
     # the house rule on dashes. Read off the draft rather than the rewritten text,
@@ -2112,6 +2128,7 @@ def crosscheck(
 
 
 def check(
+    session: Session,
     client: Client,
     item: Checkable,
     *,
@@ -2136,7 +2153,7 @@ def check(
     because a second one failed would spend a model call to end up with less than
     the caller had a line earlier.
     """
-    review, reviewed_by = crosscheck(client, item, generate=generate)
+    review, reviewed_by = crosscheck(session, client, item, generate=generate)
     # The same strings the crosscheck read, and the same ones store() will write.
     # A breach quotes the sentence it objects to and that quote is stored verbatim,
     # so a guide check reading the raw reply produces an objection whose quoted
@@ -2335,6 +2352,7 @@ def produce(
     checked: Checked | None = None
     try:
         checked = check(
+            session,
             client,
             checkable(session, fmt, angle, draft),
             generate=generate,
@@ -2563,7 +2581,8 @@ def recheck(
     try:
         _apply_checks(
             asset,
-            check(client, item, generate=generate, guide_generate=guide_generate),
+            check(session, client, item, generate=generate,
+                  guide_generate=guide_generate),
         )
     except _CHECK_FAULTS as exc:
         _log.warning("re-check of %s for %r failed: %s", asset.kind, client.name, exc)

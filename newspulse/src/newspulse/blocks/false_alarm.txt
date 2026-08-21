@@ -1,0 +1,4 @@
+WANN EIN BEFUND KEINER IST
+
+Eine Prüfung, die immer etwas findet, wird nach dem dritten Mal ignoriert und
+ist dann schlechter als keine. Ist etwas in Ordnung, sag das.
