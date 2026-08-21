@@ -224,8 +224,10 @@ def test_a_client_without_a_guide_is_not_checked_and_no_model_is_called(session)
     clean bill of health on a letter nothing read."""
     client, _ = _mandate(session, comms_guide="")
 
-    assert guide.check_guide(client, _letter(), generate=_never_called) == (None, "")
-    assert guide.check_guide(client, _letter(), generate=_never_called) == guide.NOT_CHECKED
+    result = guide.check_guide(client, _letter(), generate=_never_called)
+
+    assert result == (None, "")
+    assert result == guide.NOT_CHECKED
 
 
 def test_a_guide_of_only_whitespace_counts_as_no_guide(session):
@@ -233,7 +235,9 @@ def test_a_guide_of_only_whitespace_counts_as_no_guide(session):
     model would otherwise be asked to check a text against a blank page."""
     client, _ = _mandate(session, comms_guide="   \n  ")
 
-    assert guide.check_guide(client, _letter(), generate=_never_called) == guide.NOT_CHECKED
+    result = guide.check_guide(client, _letter(), generate=_never_called)
+
+    assert result == guide.NOT_CHECKED
 
 
 # --- What the reply is trusted with ----------------------------------------------
@@ -249,7 +253,9 @@ def test_a_listed_breach_is_never_reported_as_ok(session):
         _letter(_OFFENDING),
         generate=lambda *a, **k: _verdict(
             ok=True,
-            breaches=[{"draft": "Acht Prozent Rendite.", "guide": "Keine Renditeversprechen."}],
+            breaches=[
+                {"draft": "Acht Prozent Rendite.", "guide": "Keine Renditeversprechen."}
+            ],
         ),
     )
 
@@ -278,7 +284,9 @@ def test_a_reply_that_misses_the_schema_raises(session):
         )
 
 
-def test_without_a_second_model_the_check_refuses_rather_than_passes(session, monkeypatch):
+def test_without_a_second_model_the_check_refuses_rather_than_passes(
+    session, monkeypatch
+):
     """Same posture as the crosscheck: a check that silently did not run is worse
     than none, because the page would show a letter with no objections."""
     from newspulse import config

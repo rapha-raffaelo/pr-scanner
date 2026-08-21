@@ -289,7 +289,9 @@ def _target_for(
     )
 
 
-def _guide_check(client: Client, message: PersonalMessage) -> tuple[GuideVerdict | None, str]:
+def _guide_check(
+    client: Client, message: PersonalMessage
+) -> tuple[GuideVerdict | None, str]:
     """Read the letter against this client's own guide, and never raise.
 
     Fault-isolated exactly like the crosscheck above, and separately from it: the

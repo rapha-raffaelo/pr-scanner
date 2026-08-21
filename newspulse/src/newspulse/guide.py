@@ -32,6 +32,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import resources
 from string import Template
@@ -251,7 +252,7 @@ def _check_template() -> Template:
     return Template(text)
 
 
-def _second_model():
+def _second_model() -> Callable[..., str]:
     """The configured second provider, as a ``generate(prompt) -> str``.
 
     Deliberately not :func:`newspulse.analyzer.invoke_with_fallback`: falling back
@@ -304,7 +305,7 @@ def check_guide(
     client: Client,
     message: PersonalMessage,
     *,
-    generate=None,
+    generate: Callable[..., str] | None = None,
 ) -> tuple[GuideVerdict | None, str]:
     """Read one finished text against this client's stored guide.
 
