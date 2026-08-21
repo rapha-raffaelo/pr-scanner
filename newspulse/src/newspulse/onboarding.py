@@ -956,6 +956,22 @@ def _closing_block(verbatim: tuple[str, ...], missing: tuple[Section, ...]) -> s
 _JOIN = "\n\n"
 
 
+def _clip(text: str, budget: int) -> str:
+    """``text`` inside ``budget`` characters, cut at a word boundary.
+
+    The distilled prose is what gives when the draft runs long, and a draft that
+    breaks off mid-word reads as a broken feature rather than as a budget the
+    consultant can edit against.
+    """
+    if budget <= 0:
+        return ""
+    if len(text) <= budget:
+        return text.rstrip()
+    cut = text[:budget]
+    at = max(cut.rfind(" "), cut.rfind("\n"))
+    return (cut[:at] if at > 0 else cut).rstrip()
+
+
 def _fit(
     distilled: str, verbatim: tuple[str, ...], missing: tuple[Section, ...]
 ) -> tuple[str, tuple[str, ...]]:
@@ -980,10 +996,10 @@ def _fit(
     while True:
         block = _closing_block(tuple(kept), missing)
         if not block:
-            return distilled[: guide.GUIDE_MAX_CHARS].strip(), tuple(dropped)
+            return _clip(distilled.strip(), guide.GUIDE_MAX_CHARS), tuple(dropped)
         if len(block) <= guide.GUIDE_MAX_CHARS:
             budget = guide.GUIDE_MAX_CHARS - len(block) - len(_JOIN)
-            prose = distilled[:budget].rstrip() if budget > 0 else ""
+            prose = _clip(distilled, budget)
             return _JOIN.join(part for part in (prose, block) if part), tuple(dropped)
         if not kept:
             # No rule left to drop: the line naming the unanswered sections is

@@ -237,13 +237,26 @@ def distill(
     return proposed[:GUIDE_MAX_CHARS]
 
 
+def _lf(text: str) -> str:
+    """Form newlines counted the way the rest of the tool counts them.
+
+    A browser posts every newline inside a ``<textarea>`` as CRLF, whatever the
+    page put in it. Unnormalised, a draft built to sit exactly on
+    :data:`GUIDE_MAX_CHARS` comes back one character per line too long, and the
+    trim below takes that overshoot off the *end* — which is where the client's
+    own no-gos are, verbatim, and where the note naming the unanswered sections
+    is. A rule cut mid-clause is a rule nobody wrote.
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def save(session: Session, client: Client, text: str) -> str:
     """Store the guide, trimmed to the budget. Returns what was stored.
 
     Trimmed rather than rejected: a consultant pasting a long passage should get a
     saved guide and a visible counter, not a lost edit and an error page.
     """
-    cleaned = (text or "").strip()[:GUIDE_MAX_CHARS]
+    cleaned = _lf(text or "").strip()[:GUIDE_MAX_CHARS]
     client.comms_guide = cleaned
     session.commit()
     return cleaned
