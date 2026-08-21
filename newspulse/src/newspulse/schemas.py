@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import SCORE_MAX as _SCORE_MAX
 from .models import SCORE_MIN as _SCORE_MIN
@@ -263,6 +263,24 @@ class PersonalMessage(BaseModel):
     brain_version: int | None = None
 
 
+#: How many objections one check may raise, for the crosscheck and the guide check
+#: alike: past five it is an audit, not a check, and a list nobody reads to the end
+#: is a list that gets clicked away whole.
+MAX_CONCERNS = 5
+
+
+def _capped(value: object) -> object:
+    """Keep the worst five and drop the rest, rather than rejecting the reply.
+
+    A ``max_length`` alone would make a sixth objection a validation error, so the
+    most thorough read of the worst draft would be the one that produced no verdict
+    at all. Truncating is what the cap was always meant to do.
+    """
+    if isinstance(value, list):
+        return value[:MAX_CONCERNS]
+    return value
+
+
 class MessageReview(BaseModel):
     """A second model's read of a letter the first one wrote.
 
@@ -281,7 +299,7 @@ class MessageReview(BaseModel):
     send: bool = True
     #: One line per concern, in the consultant's language. Empty is the good case
     #: and must stay possible: a checker that always finds something is noise.
-    concerns: list[str] = Field(default_factory=list, max_length=5)
+    concerns: list[str] = Field(default_factory=list, max_length=MAX_CONCERNS)
     #: The one thing to change first, if anything.
     fix: str = ""
     #: See "Provenance" above. Set by :func:`newspulse.outreach.crosscheck`, and
@@ -289,6 +307,78 @@ class MessageReview(BaseModel):
     #: after the letter is already written, so the two can land on either side of
     #: an edit.
     brain_version: int | None = None
+
+    @field_validator("concerns", mode="before")
+    @classmethod
+    def _cap_concerns(cls, value: object) -> object:
+        return _capped(value)
+
+
+# --- Assets: every other format an agency delivers -------------------------------
+
+
+class AssetDraft(BaseModel):
+    """One generated text in one format, as the model hands it back.
+
+    Deliberately the same three fields for all seven formats. What differs
+    between a press release and a set of talking points is the *structure inside*
+    ``body``, and that belongs to the format definition, not to the envelope: a
+    schema per format would mean a writer per format, which is the thing this
+    feature exists to avoid.
+
+    ``speaker`` is the person a quote is attributed to. The model is asked for it
+    and its answer is not what is kept: :func:`newspulse.assets.write` replaces it
+    with the profile fact the format named, because the worst artefact this feature
+    can produce is a press release quoting a CEO who never said it, and a name that
+    only a prompt guarantees is a name nothing guarantees.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: Headline, subject line or briefing title. Empty for the formats that have
+    #: no title of their own.
+    title: str = ""
+    body: str
+    speaker: str = ""
+
+
+class GuideBreach(BaseModel):
+    """One collision between a draft and the client's own rules.
+
+    Both halves are quoted, because a breach that names only the verdict has to
+    be taken on faith, and an objection nobody can check in ten seconds is an
+    objection that gets clicked away.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: The sentence in the draft.
+    sentence: str
+    #: The line of the guide it collides with.
+    rule: str
+
+
+class GuideVerdict(BaseModel):
+    """The guide check's read of one finished text.
+
+    Kept apart from :class:`MessageReview` on purpose. Invention and overclaiming
+    are judgements about the world and a model weighs them; a No-Go is not a
+    judgement, the client wrote it down. Averaging the two into one verdict is
+    how a written rule ends up diluted into a style note.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool = True
+    # Capped like the crosscheck's concerns, and truncated rather than rejected for
+    # the same reason: the draft that breaks six rules is the one whose verdict
+    # matters most, and it must not be the one that fails to parse.
+    breaches: list[GuideBreach] = Field(default_factory=list, max_length=MAX_CONCERNS)
+
+    @field_validator("breaches", mode="before")
+    @classmethod
+    def _cap_breaches(cls, value: object) -> object:
+        return _capped(value)
 
 
 # --- Coach: does the guide hold up against the actual coverage? ------------------

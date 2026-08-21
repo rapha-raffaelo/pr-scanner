@@ -62,7 +62,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
-from . import brain, config, contacts, gemini, guide, prose
+from . import assets, brain, config, contacts, gemini, guide, prose
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import (
     OUTCOME_BY_MAILBOX,
@@ -260,7 +260,27 @@ def draft(
     return message.model_copy(update={"brain_version": written_under})
 
 
-_CROSSCHECK_RESOURCE = "prompts/crosscheck.txt"
+#: How the checker is told to think of a letter, as against the six other
+#: formats that go through the same prompt.
+_KIND = "ein Anschreiben an eine namentliche Journalistin"
+
+
+def _evidence_block(
+    session: Session, client: Client, target: PitchTarget | None
+) -> str:
+    """Everything the letter was allowed to claim, as one block for the checker.
+
+    Each part carries its own heading, like the two that already did. The
+    recipient block is several lines, and behind an inline label the first of them
+    joined the label and the rest lost their heading entirely.
+    """
+    return "\n".join(
+        (
+            f"EMPFÄNGER\n{_recipient_block(target)}\n",
+            _recipient_work(target) or "Keine belegten Schlagzeilen dieser Person.\n",
+            _own_coverage_block(session, client.id),
+        )
+    )
 
 
 def crosscheck(
@@ -274,11 +294,12 @@ def crosscheck(
 ) -> tuple[MessageReview, str]:
     """Have a *different* model read the letter, and say which one did.
 
-    The model that wrote a pitch cannot judge whether it oversells: it chose every
-    word for a reason it still believes, and asking it to review its own work
-    reliably produces "looks good". So this runs on the configured second provider
-    — Gemini, with its own key — and is asked one narrow question: would this
-    embarrass the sender.
+    The reading itself is :func:`newspulse.assets.crosscheck`, which every format
+    goes through: what a check needs is a text, the position behind it and the
+    evidence that was provable, and a letter has those like a press release does.
+    What stays here is the part that is specific to a letter, which is what
+    counts as its evidence: who it is addressed to, what that person has written,
+    and what the press has said about the mandate.
 
     Returns the review and the name of the model that gave it. Raises
     :class:`RuntimeError` when no second model is configured, because a check that
@@ -286,70 +307,32 @@ def crosscheck(
     letter with no objections and the reader would take that for a verdict.
 
     ``generate`` is injectable so the tests drive the whole path without a network
-    call; by default it is :func:`newspulse.gemini.generate`, which is deliberately
-    *not* the fallback-wrapped invoker the drafting side uses — falling back to
-    Claude here would quietly turn the cross-check into a self-check.
+    call; by default it is the configured second provider, deliberately *not* the
+    fallback-wrapped invoker the drafting side uses, since falling back to Claude
+    here would quietly turn the cross-check into a self-check.
 
-    The review carries its own brain version and not the letter's. This composes a
-    second prompt out of the same blocks, seconds after :func:`draft` composed the
-    first, and an edit landing between the two model calls belongs to the check
-    and not to the letter. Filing both under one number would make the row say
-    something about the checker's text that is not true of it.
+    The reading, the prompt's composition from the shared standards and the
+    version stamp all happen in :func:`newspulse.assets.crosscheck`, so the six
+    other formats get them without repeating any of it. The review carries its
+    own brain version and not the letter's: it composes a second prompt seconds
+    after :func:`draft` composed the first, and an edit landing between the two
+    model calls belongs to the check rather than to the text it read.
     """
-    if generate is None:
-        if not config.review_configured():
-            raise RuntimeError(
-                "Kein Zweitmodell hinterlegt: GEMINI_API_KEY (oder "
-                "NEWSPULSE_GEMINI_API_KEY) in der .env setzen, damit ein anderes "
-                "Modell die Nachricht gegenliest."
-            )
-
-        def generate(prompt: str, **kwargs) -> str:
-            return gemini.generate(
-                prompt,
-                model=config.review_model(),
-                api_key=config.review_api_key(),
-                **kwargs,
-            )
-
-    written_under = brain.version(session)
-    template = Template(
-        brain.compose(
-            resources.files("newspulse")
-            .joinpath(_CROSSCHECK_RESOURCE)
-            .read_text("utf-8")
-        )
+    item = assets.Checkable(
+        kind=_KIND,
+        title_label="Betreff",
+        title=message.subject,
+        body=message.message,
+        thesis=angle.thesis,
+        overclaim=angle.overclaim,
+        evidence=_evidence_block(session, client, target),
+        # Exactly what the drafting prompt was told about the mandate, no more.
+        # The letter is written without the deep-dive profile, so handing the
+        # checker that profile would let a claim the writer could not have made
+        # from anywhere read as backed.
+        profile_facts=_client_profile(client),
     )
-    prompt = template.substitute(
-        client=client.name,
-        thesis=angle.thesis or "—",
-        overclaim=angle.overclaim or "—",
-        recipient=_recipient_block(target),
-        recipient_work=_recipient_work(target) or "Keine belegten Schlagzeilen.",
-        own_coverage=_own_coverage_block(session, client.id),
-        subject=message.subject,
-        message=message.message,
-    )
-    raw = generate(prompt)
-    try:
-        payload = without_provenance(json.loads(strip_code_fence(raw)))
-        review = MessageReview.model_validate(payload)
-    except Exception as exc:  # noqa: BLE001 — pydantic and json raise their own
-        raise ParseError(f"crosscheck did not match the schema: {exc}") from exc
-    review = review.model_copy(update={"brain_version": written_under})
-
-    # One thing the checker cannot be trusted to catch, because it is mechanical:
-    # the house rule on dashes. Checked here rather than believed.
-    if prose.has_dash(message.message) or prose.has_dash(message.subject):
-        review = review.model_copy(
-            update={
-                "concerns": [
-                    *review.concerns,
-                    "Gedankenstrich im Text: verrät maschinelles Schreiben.",
-                ][:5]
-            }
-        )
-    return review, config.review_model()
+    return assets.crosscheck(session, client, item, generate=generate)
 
 
 def _message_fields(

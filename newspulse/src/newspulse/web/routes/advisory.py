@@ -33,6 +33,7 @@ from ..runlock import guard as _run_guard
 from .. import themework
 from ...models import Angle, Article, Client, Contact, Outreach, TopicHit
 from ..app import get_db, templates
+from . import assets_view
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -265,6 +266,12 @@ def _advice_context(session: Session, client: Client) -> dict:
         ),
         "last_run": _fetch_last_run(session),
         "header_date": dt.datetime.now(_local_tz()).date(),
+        # DEC-1: one occasion, one package. Every format for each impulse with
+        # the state it is in, built from the registry crossed with what is
+        # stored, so a seventh format appears in the strip without this route
+        # learning its name. Handed the recipients and letters this function
+        # already looked up rather than fetching them again.
+        **assets_view.page_context(session, client, drafts, targets, messages),
     }
 
 

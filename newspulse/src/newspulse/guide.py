@@ -30,7 +30,9 @@ copied on every deploy is worth more than being able to hand the original back.
 from __future__ import annotations
 
 import io
+import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import resources
 from string import Template
@@ -38,9 +40,10 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import brain, config
+from . import brain, config, gemini
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Client, GuideSource
+from .schemas import GuideVerdict
 
 _log = logging.getLogger(__name__)
 
@@ -216,6 +219,71 @@ def save(session: Session, client: Client, text: str) -> str:
     return cleaned
 
 
+_CHECK_RESOURCE = "prompts/guide_check.txt"
+
+#: What a client with no guide gets told, instead of a clean bill of health.
+#: "Nothing objected" and "nothing to object with" must not read alike.
+NO_GUIDE = "Kein Guide hinterlegt, gegen den geprüft werden könnte."
+
+#: What is stored when the check was attempted and broke. A third sentence rather
+#: than either of the other two: the guide exists, the check ran, and it produced
+#: nothing, which is not the same as a mandate that has no guide to check against.
+CHECK_FAILED = "Die Guide-Prüfung ist fehlgeschlagen. Der Text ist ungeprüft."
+
+
+def check_guide(
+    client: Client,
+    *,
+    title: str,
+    body: str,
+    kind: str = "Text",
+    generate: Callable[..., str] | None = None,
+) -> tuple[GuideVerdict, str] | None:
+    """Read a finished text against this client's own rules.
+
+    Returns the verdict and the model that gave it, or ``None`` when the mandate
+    has no guide on file. ``None`` is not a pass: the caller stores
+    :data:`NO_GUIDE` so the page can say the check could not run, which is a
+    different sentence from "nothing to object to".
+
+    A separate pass rather than five more lines in the crosscheck prompt, for
+    the reason a No-Go is a different kind of thing: invention and overclaiming
+    are judgements about the world, and a model weighs them. A No-Go is not a
+    judgement. The client wrote it down, and a written rule that gets averaged
+    against a tone remark has been diluted rather than checked.
+
+    Runs on the second provider, like every other check here, so the model that
+    wrote the text is never the one that clears it.
+    """
+    rules = (client.comms_guide or "").strip()
+    if not rules:
+        return None
+    if generate is None:
+        generate = gemini.reviewer()
+
+    template = Template(
+        resources.files("newspulse").joinpath(_CHECK_RESOURCE).read_text("utf-8")
+    )
+    prompt = template.substitute(
+        client=client.name,
+        guide=rules,
+        kind=kind,
+        title=title or "(ohne Titel)",
+        body=body,
+    )
+    raw = generate(prompt)
+    try:
+        payload = json.loads(strip_code_fence(raw))
+        verdict = GuideVerdict.model_validate(payload)
+    except Exception as exc:  # noqa: BLE001 — pydantic and json raise their own
+        raise ParseError(f"guide check did not match the schema: {exc}") from exc
+    # The model's own flag is not trusted against its own findings: a verdict
+    # that lists a breach and still says ok would clear a text nobody cleared.
+    if verdict.breaches:
+        verdict = verdict.model_copy(update={"ok": False})
+    return verdict, config.review_model()
+
+
 def for_prompt(client: Client) -> str:
     """The guide as a labelled prompt block, or nothing at all.
 
@@ -234,10 +302,13 @@ def for_prompt(client: Client) -> str:
 
 
 __all__ = [
+    "CHECK_FAILED",
     "ExtractionError",
     "GUIDE_MAX_CHARS",
     "MAX_UPLOAD_BYTES",
+    "NO_GUIDE",
     "SUPPORTED_SUFFIXES",
+    "check_guide",
     "delete_source",
     "distill",
     "extract_text",

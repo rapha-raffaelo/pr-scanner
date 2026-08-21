@@ -366,6 +366,118 @@ _EN: dict[str, str] = {
         "Turns it into a finished letter for a trade desk of your choosing. The "
         "tool knows no names for this field yet.",
     "Personalisierte Nachrichten": "Personalised messages",
+    # --- The six formats (newspulse.assets.FORMATS) --------------------------
+    # Name and description per format, exactly as the definition holds them, so
+    # the registry stays the one place a format is described and the English
+    # reader is not shown a German card. Three of the names are the same word in
+    # both languages and are listed anyway: an entry that reads as a no-op is a
+    # decision, a missing one is indistinguishable from an oversight.
+    #
+    # Here rather than with the story that puts the format cards on the page,
+    # because the guard that keeps this honest is a test over ``assets.FORMATS``:
+    # it fails the moment a seventh format is defined without an English name.
+    # Landing the guard with the registry means the surface story inherits six
+    # translated formats instead of discovering six German ones.
+    "Pressemitteilung": "Press release",
+    "Die offizielle Meldung des Mandanten, zitierfähig und datiert.":
+        "The client's official announcement, quotable and dated.",
+    "Statement": "Statement",
+    "Drei bis fünf zitierfähige Sätze einer namentlichen Person.":
+        "Three to five quotable sentences from a named person.",
+    "Q&A": "Q&A",
+    "Die Fragen, die kommen, samt der unangenehmen.":
+        "The questions that will come, the uncomfortable ones included.",
+    "Talking Points": "Talking points",
+    "Was gesagt wird, was nicht, und der Weg zurück zur These.":
+        "What to say, what not to, and the way back to the thesis.",
+    "Gastbeitrag": "Guest article",
+    "Ein argumentierter Text in der ersten Person, ohne Nachrichtenaufhänger.":
+        "An argued piece in the first person, with no news hook.",
+    "Interview-Briefing": "Interview briefing",
+    "Wer fragt, was er zuletzt schrieb, und was gesagt werden soll.":
+        "Who is asking, what they wrote lately, and what to get said.",
+    # --- The package on an impulse (DEC-1) -----------------------------------
+    # One occasion, one package: the formats are a strip on the impulse, each
+    # carrying the state it is in. The four state names are the load-bearing ones
+    # here — "Entwurf" and "Geprüft" are the difference between a text a model
+    # wrote and a text something has read, and a reader shown the German for one
+    # and the English for the other would have to guess which is which.
+    "Das Paket zu diesem Anlass": "Everything for this occasion",
+    "Formate": "Formats",
+    "Formaten geschrieben": "formats written",
+    "noch nichts geschrieben": "nothing written yet",
+    "Alles kopieren": "Copy all",
+    "Fehlende schreiben": "Write the missing ones",
+    "Wird geschrieben": "Writing",
+    "Anschreiben": "Letter",
+    "Nicht geschrieben": "Not written",
+    "Entwurf": "Draft",
+    "Geprüft": "Checked",
+    "Freigegeben": "Released",
+    "Schreiben": "Write",
+    "Neu schreiben": "Write again",
+    "Gegenlesen lassen": "Have it read",
+    "Freigeben": "Release",
+    # "Bearbeiten" is not repeated here: the contact book already carries it
+    # further down this dict, and a second entry for the same German string is a
+    # key Python silently drops — the next person to reword one of them would
+    # reword the one that loses.
+    "Text": "Text",
+    "Titel": "Title",
+    "Schlagzeile": "Headline",
+    "Änderung speichern": "Save the change",
+    "Die Änderung wird gespeichert und als von Hand bearbeitet vermerkt. Danach "
+    "liest das Zweitmodell den Text noch einmal, bevor er freigegeben werden kann.":
+        "The change is stored and recorded as a human edit. The second model then "
+        "reads the text again before it can be released.",
+    "Der Text wurde nach der Prüfung von Hand geändert. Vor der Freigabe muss "
+    "ihn das Zweitmodell noch einmal lesen.":
+        "The text was edited by hand after it was checked. The second model has "
+        "to read it again before it can be released.",
+    "Es wird gerade ein anderer Text geschrieben — die Knöpfe sind so lange aus.":
+        "Another text is being written right now — the buttons are off until "
+        "it is done.",
+    "Das Zweitmodell konnte diesen Text nicht lesen. Er ist ungeprüft — "
+    "wer ihn jetzt freigibt, gibt ihn ungelesen frei.":
+        "The second model could not read this text. It is unchecked — "
+        "releasing it now means releasing it unread.",
+    "Ungeprüft: wer jetzt freigibt, gibt ungelesen frei.":
+        "Unchecked: releasing it now means releasing it unread.",
+    "Zu diesem Anlass gibt es eine These und noch keinen Text. Sieben Formate stehen bereit.":
+        "This occasion has a thesis and no text yet. Seven formats are ready.",
+    # The refusals the routes and the acts hold. Written in Python rather than in
+    # markup and rendered as ``asset_notes`` / ``slot.note`` / ``slot.hint``, which
+    # is why they were the ones missing: nothing that reads the template for German
+    # strings can see them.
+    "Es wird gerade ein Text geschrieben. Der Auftrag wurde nicht angenommen: "
+    "warten Sie, bis der laufende steht, sonst wird derselbe Aufruf zweimal "
+    "bezahlt.":
+        "A text is being written right now. The request was not accepted: wait "
+        "for the running one to finish, or the same call gets paid for twice.",
+    "Es läuft gerade ein Sammellauf. Der Auftrag wurde nicht angenommen: "
+    "warten Sie, bis er durch ist, und klicken Sie dann noch einmal.":
+        "A collection run is going on right now. The request was not accepted: "
+        "wait for it to finish and click again.",
+    "Dieser Text ist freigegeben. Freigegebene Texte werden weder geändert noch "
+    "ersetzt, weil sie festhalten, was tatsächlich hinausgegangen ist.":
+        "This text is released. Released texts are neither changed nor replaced, "
+        "because they record what actually went out.",
+    "Der Text wurde neu geschrieben, während dieses Formular offen war. Die "
+    "Änderung wurde nicht gespeichert, damit sie den neuen Text nicht "
+    "überschreibt. Bitte den jetzt angezeigten Text bearbeiten.":
+        "The text was written again while this form was open. The change was not "
+        "stored, so that it cannot overwrite the new text. Please edit the text "
+        "as it is shown now.",
+    "Paket schreiben": "Write the package",
+    "Noch nicht schreibbar.": "Not writable yet.",
+    "Profil ergänzen": "Fill in the profile",
+    "Guide hinterlegen": "Add the guide",
+    "Guide-Prüfung": "Guide check",
+    "geschrieben": "written",
+    "von Hand geändert": "edited by hand",
+    "zugeschrieben": "attributed to",
+    "freigegeben": "released",
+    "von": "of",
     "Gegengelesen von": "Second read by",
     "Zweitmodell rät ab": "Second model advises against",
     "gelesen von": "read by",
@@ -379,7 +491,6 @@ _EN: dict[str, str] = {
     # left the house. "Ohne Reaktion" is not one of them: it is "verschickt" plus
     # fourteen days, derived rather than stored, and it sits beside the badge
     # instead of replacing it.
-    "Entwurf": "Draft",
     "Verschickt": "Sent",
     "Antwort": "Reply",
     "Absage": "Declined",
@@ -387,7 +498,6 @@ _EN: dict[str, str] = {
     "Ohne Reaktion": "No response",
     "Freigegeben am": "Released on",
     "Ergebnis am": "Outcome on",
-    "seit": "for",
     "Tagen still": "days now",
     "Geschrieben": "Written",
     "noch nicht freigegeben": "not released yet",
@@ -472,7 +582,7 @@ _EN: dict[str, str] = {
     # The contact book's right-hand pane (DEC-2). "Anschreiben" is the tally of
     # letters, not the verb, so it counts things: "Letters".
     "Verlauf": "History",
-    "Anschreiben": "Letters",
+    "Anschreiben gesamt": "Letters",
     "Antworten": "Replies",
     "ohne Reaktion": "no response",
     "zuletzt angeschrieben heute": "last written to today",
@@ -946,7 +1056,6 @@ _EN: dict[str, str] = {
     "Wortlaut": "Wording",
     "Auf Vorgabe zurücksetzen": "Restore the shipped wording",
     "Auf die Vorgabe zurückgesetzt": "Restored the shipped wording",
-    "Verlauf": "History",
     "Noch keine Änderung aufgezeichnet. Der Block ist der ausgelieferte Wortlaut.":
         "No change recorded yet. The block is the shipped wording.",
     # Why an empty edit is refused. It reaches the page as a value rather than as
@@ -1003,6 +1112,7 @@ _EN: dict[str, str] = {
     "Postfach trennen": "Disconnect mailbox",
     "Verbunden als": "Connected as",
     "seit": "since",
+    "seit %(days)s Tagen still": "silent for %(days)s days",
     "Kein Postfach verbunden.": "No mailbox connected.",
     "Nachrichten lesen": "Read messages",
     # What DEC-4's send path actually needs: gmail.compose, because every
