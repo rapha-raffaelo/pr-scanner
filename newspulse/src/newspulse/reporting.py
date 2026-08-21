@@ -425,6 +425,26 @@ class Direction(StrEnum):
     UNKNOWN = "unbekannt"
 
 
+def forbidden_terms(name: str) -> tuple[str, ...]:
+    """Which forbidden figures ``name`` states, in a stable order.
+
+    The matcher behind :func:`is_forbidden`, exposed because a caller that refuses
+    a whole sentence owes its log the word it tripped on. "Rejected: names a figure
+    this tool may not produce" sends a reader looking for a number; "rejected:
+    names 'auflage'" tells them in one line that the matcher caught the German for
+    *regulatory requirement* and the sentence needs rewording.
+    """
+    lowered = " ".join((name or "").casefold().split())
+    words = set(re.findall(r"\w+", lowered, re.UNICODE))
+    return tuple(
+        sorted(
+            term
+            for term in FORBIDDEN_FIGURES
+            if (term in lowered if len(term) >= _MIN_SUBSTRING_TERM else term in words)
+        )
+    )
+
+
 def is_forbidden(name: str) -> bool:
     """Whether ``name`` names a figure RauteOS may not produce.
 
@@ -434,12 +454,7 @@ def is_forbidden(name: str) -> bool:
     false negative costs a number in a client's document that the agency cannot
     defend from its own data.
     """
-    lowered = " ".join((name or "").casefold().split())
-    words = set(re.findall(r"\w+", lowered, re.UNICODE))
-    return any(
-        term in lowered if len(term) >= _MIN_SUBSTRING_TERM else term in words
-        for term in FORBIDDEN_FIGURES
-    )
+    return bool(forbidden_terms(name))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1126,6 +1141,7 @@ __all__ = [
     "VoiceShare",
     "attributed_coverage",
     "client_workbook",
+    "forbidden_terms",
     "is_forbidden",
     "message_pull_through",
     "period_metrics",

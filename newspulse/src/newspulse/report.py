@@ -44,12 +44,13 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+import re
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, replace
 from importlib import resources
 from string import Template
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -178,6 +179,46 @@ class ReportDraft:
 # --- The figures a finding may stand on --------------------------------------------
 
 
+def _own_evidence(
+    session: Session, client_id: int, values: Sequence[MetricValue]
+) -> list[MetricValue]:
+    """The same figures, with every id that is not this mandate's coverage removed.
+
+    A metric's ``analysis_ids`` are the rows it was *computed* from, and for share
+    of voice that is deliberately the whole comparison set — the denominator is
+    part of the figure, so a reader recomputing it needs the rivals' rows too. A
+    report cites something narrower: the rows a client may be shown as the ground
+    under a claim about themselves. Printing a competitor's headline there would be
+    wrong twice over, in the document and in :attr:`FindingView.weakened`, where a
+    rival's article being dismissed would report that this mandate's claim had lost
+    its footing.
+
+    Done here, once, for every figure rather than only for share of voice: the next
+    metric whose ids span mandates would otherwise reintroduce the same bug
+    silently, and narrowing early also means the prompt's "N belegende Zeilen" is
+    the count of what could actually be cited.
+    """
+    cited = {row for value in values for row in value.analysis_ids}
+    if not cited:
+        return list(values)
+    mine = set(
+        session.scalars(
+            select(Analysis.id).where(
+                Analysis.id.in_(list(cited)), Analysis.client_id == client_id
+            )
+        )
+    )
+    return [
+        value
+        if set(value.analysis_ids) <= mine
+        else replace(
+            value,
+            analysis_ids=tuple(row for row in value.analysis_ids if row in mine),
+        )
+        for value in values
+    ]
+
+
 def citable_figures(
     session: Session,
     client: Client,
@@ -195,6 +236,9 @@ def citable_figures(
     nothing to cite in "we hold no July", and a reference to it would let a claim
     be built on the absence of data.
 
+    What comes back is citable in both senses: the number exists, and the ids under
+    it are this mandate's own coverage — see :func:`_own_evidence`.
+
     ``metrics`` is passed in by :func:`findings`, which has already measured the
     period; on its own this recomputes, so a caller wanting only the citable set
     does not have to know the order of the calls.
@@ -202,14 +246,18 @@ def citable_figures(
     if metrics is None:
         metrics = reporting.period_metrics(session, client, period)
     stated = [
-        *metrics.values,
-        reporting.attributed_coverage(session, client, period),
-        *reporting.message_pull_through(session, client, period),
+        value
+        for value in (
+            *metrics.values,
+            reporting.attributed_coverage(session, client, period),
+            *reporting.message_pull_through(session, client, period),
+        )
+        if value.figure is not None
     ]
     return {
         f"{_FIGURE_PREFIX}{number}": value
         for number, value in enumerate(
-            (value for value in stated if value.figure is not None), start=1
+            _own_evidence(session, client.id, stated), start=1
         )
     }
 
@@ -577,15 +625,27 @@ class FindingView:
 
 
 def _evidence_rows(
-    session: Session, analysis_ids: Sequence[int]
+    session: Session, client_id: int, analysis_ids: Sequence[int]
 ) -> dict[int, EvidenceRow]:
-    """The cited rows that still exist and are still visible coverage."""
+    """The cited rows that still exist, are still visible coverage, and are this
+    mandate's own.
+
+    The mandate filter is a second lock on the same door :func:`_own_evidence`
+    holds shut at generation time. A row stored before that narrowing existed, or
+    written by hand, must still not be able to print another company's headline as
+    the ground under this client's claim — the one failure of this feature that
+    would be visible to the client rather than to us.
+    """
     if not analysis_ids:
         return {}
     found = session.execute(
         select(Analysis, Article)
         .join(Article, Article.id == Analysis.article_id)
-        .where(Analysis.id.in_(list(analysis_ids)), visible_coverage())
+        .where(
+            Analysis.id.in_(list(analysis_ids)),
+            Analysis.client_id == client_id,
+            visible_coverage(),
+        )
     ).all()
     return {
         analysis.id: EvidenceRow(
@@ -602,11 +662,19 @@ def _evidence_rows(
 def resolve(session: Session, report: Report) -> list[FindingView]:
     """The report's findings with their evidence as it stands today.
 
+    Only the findings a consultant kept. A dropped finding stays in the table on
+    purpose — what was proposed and rejected is part of how a report was arrived
+    at — but this is the render path, and the row surviving is not the sentence
+    surviving.
+
     One query for the whole report rather than one per finding: a report carries a
     handful of findings and a document renders all of them at once.
     """
+    kept = [finding for finding in report.findings if finding.kept]
     rows = _evidence_rows(
-        session, [row for finding in report.findings for row in finding.evidence_ids]
+        session,
+        report.client_id,
+        [row for finding in kept for row in finding.evidence_ids],
     )
     return [
         FindingView(
@@ -616,7 +684,7 @@ def resolve(session: Session, report: Report) -> list[FindingView]:
             ),
             missing=sum(1 for row in finding.evidence_ids if row not in rows),
         )
-        for finding in report.findings
+        for finding in kept
     ]
 
 
