@@ -990,6 +990,51 @@ def test_the_draft_stays_inside_the_guide_budget_and_keeps_the_rules_whole(sessi
     assert "Vermont ersetzt den Chirurgen." in draft.text
 
 
+def test_rules_longer_than_the_whole_guide_are_dropped_whole_and_named(session):
+    """The other half of the budget. Four free-text no-gos can outrun a guide on
+    their own, and the draft must then still be a guide: no rule cut mid-clause,
+    nothing over the ceiling for ``guide.save`` to trim off the end, and the ones
+    that did not fit named so the consultant can shorten them himself."""
+    client = _client(session)
+    long_rules = {
+        "nie_satz": "Vermont ersetzt den Chirurgen. " + "Nie. " * 150,
+        "schweigen": "Zum laufenden Verfahren schweigen wir. " + "Nie. " * 150,
+        "zahlen": "Umsatzzahlen werden nie genannt. " + "Nie. " * 150,
+        "schieflage": "Der Bericht von 2024 bleibt unkommentiert. " + "Nie. " * 150,
+    }
+    for key, value in long_rules.items():
+        _answer(session, client, key, value)
+
+    draft = onboarding.to_guide_draft(session, client, invoke=_distilled())
+
+    assert len(draft.text) <= guide.GUIDE_MAX_CHARS
+    assert draft.dropped, "a block this long cannot fit whole"
+    for rule in draft.dropped:
+        assert rule in draft.verbatim, "dropped rules are the client's, unchanged"
+        assert rule not in draft.text
+    kept = [r for r in draft.verbatim if r not in draft.dropped]
+    assert kept, "the budget still holds at least the first rule"
+    for rule in kept:
+        assert rule in draft.text, "kept rules are whole, never trimmed"
+
+
+def test_an_over_long_rule_block_survives_being_saved_as_a_guide(session):
+    """The failure the budget exists to prevent, checked at the far end: whatever
+    the draft carries reaches ``comms_guide`` untouched, so no rule is silently
+    cut off by the trim in :func:`guide.save`."""
+    client = _client(session)
+    for key in ("nie_satz", "schweigen", "zahlen", "schieflage"):
+        _answer(session, client, key, f"Regel {key}: " + "kein Wort dazu. " * 60)
+
+    draft = onboarding.to_guide_draft(session, client, invoke=_distilled())
+    saved = guide.save(session, client, draft.text)
+
+    assert saved == draft.text.strip()
+    for rule in draft.verbatim:
+        if rule not in draft.dropped:
+            assert rule in saved
+
+
 # --- The answers as a source of the guide --------------------------------------
 
 

@@ -42,6 +42,9 @@
   /* What the questionnaire had nothing to say about. Stated rather than filled
      in, because an invented section reads exactly like an answered one. */
   .proposal__gaps { font-size: var(--t-caption); color: var(--muted); margin-bottom: 10px; }
+  /* A rule that did not fit the budget is a louder problem than an unanswered
+     section: the client said it and the guide cannot carry it. */
+  .proposal__dropped { color: #b91c1c; }
   /* .btn and its variants come from app.css — declaring them again here is what
      let the two drift apart, and left every page that did not carry a copy with
      the browser's own button. */
@@ -95,6 +98,16 @@
       <p class="proposal__gaps">
         {{ t("Ohne Antwort im Kickoff, deshalb nicht im Entwurf") }}:
         {% for section in draft.missing %}{{ t(section.title) }}{% if not loop.last %}, {% endif %}{% endfor %}.
+      </p>
+    {% endif %}
+    {% if draft and draft.dropped %}
+      {# The guide has a hard character budget and the client's rules come first,
+         so a rule is only ever dropped whole and never trimmed mid-clause. When
+         even that is not enough, the rule is named here rather than lost: the
+         consultant shortens it himself or decides it can go. #}
+      <p class="proposal__gaps proposal__dropped">
+        {{ t("Zu lang für den Guide, deshalb nicht im Entwurf") }}:
+        {% for rule in draft.dropped %}„{{ rule }}“{% if not loop.last %}, {% endif %}{% endfor %}
       </p>
     {% endif %}
     <form method="post" action="/client/{{ client.id }}/guide">

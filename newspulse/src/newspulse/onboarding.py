@@ -875,6 +875,11 @@ class GuideDraft:
     missing: tuple[Section, ...]
     #: The ``GuideSource`` row recording that the kick-off is where this came from.
     source_id: int
+    #: The rules that did not fit the guide's character budget, in the order they
+    #: were asked. Almost always empty; when it is not, the page names them,
+    #: because a guide too small to hold what the client said is something the
+    #: consultant has to be told rather than discover.
+    dropped: tuple[str, ...] = ()
 
     @property
     def has_gaps(self) -> bool:
@@ -937,21 +942,46 @@ def _closing_block(verbatim: tuple[str, ...], missing: tuple[Section, ...]) -> s
     return "\n".join(lines)
 
 
-def _fit(distilled: str, block: str) -> str:
+#: What separates the distilled prose from the block of rules under it. Named
+#: because its length is part of the budget arithmetic below.
+_JOIN = "\n\n"
+
+
+def _fit(
+    distilled: str, verbatim: tuple[str, ...], missing: tuple[Section, ...]
+) -> tuple[str, tuple[str, ...]]:
     """The draft inside the guide's character budget, rules first.
 
     The budget is a real constraint — the guide is prepended to every prompt for
     every mandate every day — and something has to give when both halves are
-    long. It is never the client's own sentences: a no-go trimmed mid-clause is
-    a rule nobody wrote, which is the failure this whole path exists to avoid.
-    So the verbatim block is kept whole and the distilled prose is what shrinks.
+    long. It is never a *part* of the client's own sentences: a no-go trimmed
+    mid-clause is a rule nobody wrote, which is the failure this whole path
+    exists to avoid. So the distilled prose shrinks first and the block of rules
+    is kept whole.
+
+    Where the rules alone are longer than a whole guide, whole rules come off the
+    end — never a fragment of one — and are returned rather than dropped in
+    silence. The caller shows them, because "your guide cannot hold all of your
+    rules" is a decision for the consultant to make on the draft page, not
+    something to find out the first time a text is checked against a rule that
+    was quietly cut.
     """
-    if not block:
-        return distilled[: guide.GUIDE_MAX_CHARS].strip()
-    budget = guide.GUIDE_MAX_CHARS - len(block) - 2
-    if budget <= 0:
-        return block
-    return f"{distilled[:budget].rstrip()}\n\n{block}"
+    kept = list(verbatim)
+    dropped: list[str] = []
+    while True:
+        block = _closing_block(tuple(kept), missing)
+        if not block:
+            return distilled[: guide.GUIDE_MAX_CHARS].strip(), tuple(dropped)
+        if len(block) <= guide.GUIDE_MAX_CHARS:
+            budget = guide.GUIDE_MAX_CHARS - len(block) - len(_JOIN)
+            prose = distilled[:budget].rstrip() if budget > 0 else ""
+            return _JOIN.join(part for part in (prose, block) if part), tuple(dropped)
+        if not kept:
+            # No rule left to drop: the line naming the unanswered sections is
+            # over budget all by itself, which no questionnaire can produce and
+            # which costs no rule to trim.
+            return block[: guide.GUIDE_MAX_CHARS].strip(), tuple(dropped)
+        dropped.insert(0, kept.pop())
 
 
 def to_guide_draft(
@@ -993,11 +1023,13 @@ def to_guide_draft(
     distilled = guide.distill(session, client, invoke=invoke)
     verbatim = _nogos(stored)
     missing = _unanswered_sections(stored)
+    text, dropped = _fit(distilled, verbatim, missing)
     return GuideDraft(
-        text=_fit(distilled, _closing_block(verbatim, missing)),
+        text=text,
         verbatim=verbatim,
         missing=missing,
         source_id=source.id,
+        dropped=dropped,
     )
 
 

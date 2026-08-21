@@ -970,6 +970,8 @@ _EN: dict[str, str] = {
         "Draft from the kick-off, not saved yet",
     "Ohne Antwort im Kickoff, deshalb nicht im Entwurf":
         "Unanswered in the kick-off, and therefore not in the draft",
+    "Zu lang für den Guide, deshalb nicht im Entwurf":
+        "Too long for the guide, and therefore not in the draft",
     "Antworten aus dem Fragebogen. No-Gos übernimmt der Entwurf wörtlich; "
     "unbeantwortete Abschnitte bleiben leer.":
         "answers from the questionnaire. The draft takes no-gos verbatim; "
