@@ -124,6 +124,15 @@ def de_short_date(value: dt.datetime) -> str:
     return _local(value).strftime("%d.%m.")
 
 
+def de_date(value: dt.datetime) -> str:
+    """A calendar date in the reader's zone: ``22.07.2026``.
+
+    The report's dates need the year — a document is read months after it was
+    sent, which is exactly when ``22.07.`` stops being enough.
+    """
+    return _local(value).strftime("%d.%m.%Y")
+
+
 # Image types a stored logo may carry. Deliberately the raster set only: an SVG
 # is executable markup, and inlining one into the page would hand the site it
 # came from script execution in this origin.
@@ -203,6 +212,7 @@ templates.env.filters["de_long_date"] = de_long_date
 templates.env.filters["de_time"] = de_time
 templates.env.filters["de_datetime"] = de_datetime
 templates.env.filters["de_short_date"] = de_short_date
+templates.env.filters["de_date"] = de_date
 # Client identity: a monogram + stable colour stand in wherever no logo is set,
 # so the portfolio never looks half-configured.
 templates.env.filters["logo_src"] = logo_src
@@ -264,7 +274,8 @@ def create_app() -> FastAPI:
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
         advisory, archive, assistant, client, contacts, guide_routes, language,
-        profile as profile_routes, rivals_view, runstatus, settings, today, triage,
+        profile as profile_routes, report as report_routes, rivals_view, runstatus,
+        settings, today, triage,
     )
 
     app.include_router(today.router)
@@ -280,6 +291,7 @@ def create_app() -> FastAPI:
     app.include_router(contacts.router)
     app.include_router(profile_routes.router)
     app.include_router(rivals_view.router)
+    app.include_router(report_routes.router)
     return app
 
 

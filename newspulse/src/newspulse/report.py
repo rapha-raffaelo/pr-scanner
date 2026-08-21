@@ -46,7 +46,7 @@ import json
 import logging
 import re
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from importlib import resources
 from string import Template
 
@@ -287,19 +287,52 @@ def citable_figures(
     }
 
 
+def _number_text(key: MetricKey, figure: float) -> str:
+    """One figure of one metric, formatted the one way this tool prints it.
+
+    A single formatter for every consumer — the prompt, the document's tiles, the
+    frozen snapshot and the charts. The figure a document states is frozen at
+    release precisely so it cannot drift; a second format string somewhere else,
+    kept in step by nobody, is how it would drift anyway.
+    """
+    if key is MetricKey.SHARE_OF_VOICE:
+        return f"{figure * 100:.1f} %"
+    return f"{figure:g}"
+
+
+def share_text(share: float) -> str:
+    """A share of voice as the document prints it, ``0.4137`` -> ``41.4 %``.
+
+    Public because a chart also has to print a share the metric set never carried
+    as a figure of its own — the *rest* of the comparison set, which is one minus
+    the mandate's part of it. It goes through the same formatter as the number it
+    sits beside, so the two halves of one bar cannot be printed to different
+    precisions.
+    """
+    return _number_text(MetricKey.SHARE_OF_VOICE, share)
+
+
 def _figure_text(value: MetricValue) -> str:
     """The number as the document would print it."""
-    if value.key is MetricKey.SHARE_OF_VOICE:
-        return f"{value.figure * 100:.1f} %"
-    return f"{value.figure:g}"
+    return _number_text(value.key, value.figure)
+
+
+def _previous_number(value: MetricValue) -> str:
+    """The comparison period's number alone, without the words around it."""
+    return _number_text(value.key, value.previous)
 
 
 def _previous_text(value: MetricValue) -> str:
+    """The comparison, as the *prompt* states it: German, one line, with the word.
+
+    The document builds this sentence from its parts instead (see
+    :class:`Figure`), because its chrome translates and a pre-composed German
+    phrase is one an English reader would be handed untranslated. The prompt has
+    no such problem: it is always German and it is read by the model.
+    """
     if value.previous is None:
         return "kein Vergleichszeitraum"
-    if value.key is MetricKey.SHARE_OF_VOICE:
-        return f"vorher {value.previous * 100:.1f} %, {value.direction.value}"
-    return f"vorher {value.previous:g}, {value.direction.value}"
+    return f"vorher {_previous_number(value)}, {value.direction.value}"
 
 
 def _render_figures(figures: dict[str, MetricValue]) -> str:
@@ -596,7 +629,7 @@ def findings(
     model call, which is the most expensive thing in this path.
     """
     released = for_period(session, client.id, period)
-    if released is not None and _is_released(released):
+    if released is not None and is_released(released):
         raise _released(period)
 
     metrics = reporting.period_metrics(session, client, period)
@@ -643,6 +676,20 @@ def findings(
 # --- Storing, and what may not be overwritten ---------------------------------------
 
 
+def previous_month(now: dt.datetime | None = None) -> Period:
+    """The last month that has ended, in the reader's zone.
+
+    What a report is about when nobody named a period: the scheduled draft on the
+    first, and the surface's own default. A month still running would produce a
+    document that is wrong the day after it was written, and the reader's zone
+    rather than the host's because a piece published at 00:30 Berlin time on the
+    first belongs to the month a client would put it in.
+    """
+    local = (now or dt.datetime.now(dt.UTC)).astimezone(config.local_zone())
+    last_day = local.replace(day=1) - dt.timedelta(days=1)
+    return Period.month(last_day.year, last_day.month)
+
+
 def for_period(session: Session, client_id: int, period: Period) -> Report | None:
     """This mandate's report for exactly this window, if one exists."""
     return session.scalars(
@@ -654,7 +701,7 @@ def for_period(session: Session, client_id: int, period: Period) -> Report | Non
     ).first()
 
 
-def _is_released(report: Report) -> bool:
+def is_released(report: Report) -> bool:
     """Whether this row is a document that went out, by either fact that says so.
 
     Both, and either is enough. ``released_at`` is the fact and ``state`` is the
@@ -716,7 +763,7 @@ def store(
             f"report finding carries no evidence: {groundless[0].claim!r}"
         )
     existing = for_period(session, client.id, draft.period)
-    if existing is not None and _is_released(existing):
+    if existing is not None and is_released(existing):
         raise _released(draft.period)
     row = existing or Report(
         client_id=client.id,
@@ -755,19 +802,34 @@ def release(
     by: str = outreach.DEFAULT_RELEASED_BY,
     when: dt.datetime | None = None,
 ) -> Report:
-    """Record that a person put the agency's name on this report.
+    """Record that a person put the agency's name on this report, and freeze it.
 
     Releasing an already-released report leaves the first stamp alone, exactly as
     :func:`newspulse.outreach.release` does: the record is of the moment it went
     out, and a second click is not a second sending.
+
+    The freeze happens here rather than in the route, so there is no path that
+    releases without it. A draft renders from ids resolved against the archive as
+    it is, which is what lets a claim notice its ground moved; a released document
+    may not, because it is what a client was sent and a piece of coverage
+    dismissed next month must not change what this quarter's report said. So the
+    document is built once, at this moment, and copied into
+    :attr:`newspulse.models.Report.snapshot`.
     """
-    if report.released_at is None:
-        report.released_at = when or dt.datetime.now(dt.UTC)
-        report.released_by = (
-            by or outreach.DEFAULT_RELEASED_BY
-        ).strip() or outreach.DEFAULT_RELEASED_BY
-        report.state = ReportState.FREIGEGEBEN
-        session.commit()
+    if report.released_at is not None:
+        return report
+    client = session.get(Client, report.client_id)
+    if client is None:
+        raise ValueError(f"report {report.id} has no mandate to release it for")
+    report.released_at = when or dt.datetime.now(dt.UTC)
+    report.released_by = (
+        by or outreach.DEFAULT_RELEASED_BY
+    ).strip() or outreach.DEFAULT_RELEASED_BY
+    report.state = ReportState.FREIGEGEBEN
+    # Built *after* the stamp, so the frozen document carries the release it is
+    # the record of rather than an empty one.
+    report.snapshot = _payload(_live_document(session, client, report))
+    session.commit()
     return report
 
 
@@ -855,13 +917,17 @@ def _evidence_rows(
     }
 
 
-def resolve(session: Session, report: Report) -> list[FindingView]:
+def resolve(
+    session: Session, report: Report, *, kept_only: bool = True
+) -> list[FindingView]:
     """The report's findings with their evidence as it stands today.
 
-    Only the findings a consultant kept. A dropped finding stays in the table on
-    purpose — what was proposed and rejected is part of how a report was arrived
-    at — but this is the render path, and the row surviving is not the sentence
-    surviving.
+    Only the findings a consultant kept, unless ``kept_only`` is off. A dropped
+    finding stays in the table on purpose — what was proposed and rejected is part
+    of how a report was arrived at — but this is the render path, and the row
+    surviving is not the sentence surviving. The review surface is the one caller
+    that wants both, because that is the screen on which the dropping happens and
+    a finding that vanished on a click cannot be argued about afterwards.
 
     One query for the whole report rather than one per finding: a report carries a
     handful of findings and a document renders all of them at once.
@@ -872,7 +938,9 @@ def resolve(session: Session, report: Report) -> list[FindingView]:
     and a caller reviewing a report is entitled to see that one of its claims lost
     its ground rather than to find a sentence quietly absent.
     """
-    kept = [finding for finding in report.findings if finding.kept]
+    kept = [
+        finding for finding in report.findings if finding.kept or not kept_only
+    ]
     # Deduped per finding. ``evidence_ids`` is a citation list, and one piece of
     # coverage cited twice is one piece of evidence: undeduped it prints the same
     # headline twice under a single claim and makes ``missing`` count one dismissed
@@ -892,8 +960,276 @@ def resolve(session: Session, report: Report) -> list[FindingView]:
     ]
 
 
+# --- The document ------------------------------------------------------------------
+#
+# What a report *is* once it leaves the review surface: a dated page with the
+# period's figures on it, the findings a consultant kept, and the coverage under
+# each of them. Built here rather than in the route because it is also what gets
+# frozen — the same object serves the screen, the export and the snapshot, so a
+# released document cannot differ from the one that was approved.
+
+
+@dataclass(frozen=True, slots=True)
+class Figure:
+    """One printed number, already rendered to the words the document uses.
+
+    Rendered here rather than in the template because it is also what is frozen:
+    a share stored as ``0.4137`` and formatted at render time would come out of
+    next year's template with a different number of decimals, which is a released
+    document changing after the fact for a reason nobody would ever look for.
+    """
+
+    #: :class:`newspulse.reporting.MetricKey` as a string. A string rather than the
+    #: enum so the frozen form round-trips through JSON unchanged.
+    key: str
+    label: str
+    #: Which tonality this is, where the figure has one.
+    subject: str
+    #: The number as the document prints it, ``""`` when there is none.
+    text: str
+    #: The bare number, for the geometry of a chart. ``None`` where there is none.
+    value: float | None
+    #: The comparison period's number, formatted the same way and frozen for the
+    #: same reason. ``""`` where there is no comparison to make. Stored as the
+    #: number alone rather than as "vorher 12, gestiegen": the words around it are
+    #: chrome, and chrome translates, while the number may not move.
+    previous_value_text: str
+    #: ``gestiegen``/``gefallen``/``unverändert``, or ``unbekannt`` where there is
+    #: nothing to compare against. ``""`` where there is no figure at all — which
+    #: is what tells the two apart on the page.
+    direction: str
+    #: Why there is no number, or the qualification the reader needs with it.
+    note: str
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentFinding:
+    """One kept finding as the document prints it, with its evidence attached."""
+
+    kind: str
+    claim: str
+    consequence: str
+    #: Whether a person rewrote the sentence. A reviewer of the document is
+    #: entitled to know which claims are as generated.
+    edited: bool
+    #: Whether some of the ground under it had gone by the time this was built.
+    weakened: bool
+    evidence: tuple[EvidenceRow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Document:
+    """Everything the rendered report says, in one shape.
+
+    One object for three consumers — the page, the export and the snapshot — so
+    "the export carries the same content as the on-screen document" is true by
+    construction rather than by two templates being kept in step.
+    """
+
+    client_name: str
+    period_start: dt.datetime
+    period_end: dt.datetime
+    generated_at: dt.datetime
+    released_at: dt.datetime | None
+    released_by: str
+    #: The mandates the share of voice is measured against, named. A comparison set
+    #: that is not on the page is a denominator the reader cannot check.
+    comparison: tuple[str, ...]
+    figures: tuple[Figure, ...]
+    tonality: tuple[Figure, ...]
+    findings: tuple[DocumentFinding, ...]
+    note: str
+
+    @property
+    def tonality_total(self) -> float:
+        """The tonality split's denominator, for the chart's geometry."""
+        return sum(figure.value or 0.0 for figure in self.tonality)
+
+    @property
+    def period_last(self) -> dt.datetime:
+        """The last day the period contains.
+
+        ``period_end`` is exclusive, and a document headed "1.7. bis 1.8." reads as
+        covering a day it does not.
+        """
+        return self.period_end - dt.timedelta(days=1)
+
+
+def _stated_text(value: MetricValue) -> str:
+    """The number as the document prints it, or ``""`` where there is none."""
+    return "" if value.figure is None else _figure_text(value)
+
+
+def _figure(value: MetricValue) -> Figure:
+    return Figure(
+        key=value.key.value,
+        label=value.label,
+        subject=value.subject,
+        text=_stated_text(value),
+        value=value.figure,
+        previous_value_text=(
+            "" if value.figure is None or value.previous is None
+            else _previous_number(value)
+        ),
+        # Empty where there is no figure, so a tile with nothing on it says
+        # nothing about a comparison either. With a figure and no baseline the
+        # direction is ``unbekannt``, which is what the page renders as "no
+        # comparison period" rather than as a movement of zero.
+        direction="" if value.figure is None else value.direction.value,
+        note=value.note,
+    )
+
+
+def _document_finding(view: FindingView) -> DocumentFinding:
+    return DocumentFinding(
+        kind=view.finding.kind.value,
+        claim=view.finding.claim,
+        consequence=view.finding.consequence,
+        edited=view.finding.edited_at is not None,
+        weakened=view.weakened,
+        evidence=view.evidence,
+    )
+
+
+def _live_document(session: Session, client: Client, report: Report) -> Document:
+    """The document as the archive reads right now.
+
+    A claim whose evidence has gone entirely is absent here rather than weakened.
+    :func:`resolve` deliberately hands it over — the review surface must show that
+    a claim lost its ground — but this is the artefact, and a sentence with nothing
+    under it is not a thin finding, it is one this document may not make.
+    """
+    period = Period(report.period_start, report.period_end)
+    metrics = reporting.period_metrics(session, client, period)
+    stated = (
+        metrics.coverage,
+        metrics.lead_media,
+        reporting.attributed_coverage(session, client, period),
+        metrics.share_of_voice,
+    )
+    return Document(
+        client_name=client.name,
+        period_start=report.period_start,
+        period_end=report.period_end,
+        generated_at=report.generated_at,
+        released_at=report.released_at,
+        released_by=report.released_by,
+        comparison=tuple(rival.name for rival in client.competitors),
+        figures=tuple(_figure(value) for value in stated),
+        tonality=tuple(_figure(value) for value in metrics.tonality),
+        findings=tuple(
+            _document_finding(view)
+            for view in resolve(session, report)
+            if not view.unsupported
+        ),
+        note=report.note,
+    )
+
+
+def _json_default(value: object) -> str:
+    """Only what the document actually carries that JSON does not."""
+    if isinstance(value, dt.datetime):
+        return value.isoformat()
+    raise TypeError(f"a document may not carry {type(value).__name__}")
+
+
+def _payload(document: Document) -> dict:
+    """The document as the stored snapshot holds it."""
+    return json.loads(json.dumps(asdict(document), default=_json_default))
+
+
+def _moment(text: str | None) -> dt.datetime | None:
+    return dt.datetime.fromisoformat(text) if text else None
+
+
+def _thawed_figure(row: dict) -> Figure:
+    return Figure(
+        key=row.get("key", ""),
+        label=row.get("label", ""),
+        subject=row.get("subject", ""),
+        text=row.get("text", ""),
+        value=row.get("value"),
+        previous_value_text=row.get("previous_value_text", ""),
+        direction=row.get("direction", ""),
+        note=row.get("note", ""),
+    )
+
+
+def _thawed_finding(row: dict) -> DocumentFinding:
+    return DocumentFinding(
+        kind=row.get("kind", ""),
+        claim=row.get("claim", ""),
+        consequence=row.get("consequence", ""),
+        edited=bool(row.get("edited")),
+        weakened=bool(row.get("weakened")),
+        evidence=tuple(
+            EvidenceRow(
+                analysis_id=cited.get("analysis_id", 0),
+                headline=cited.get("headline", ""),
+                source=cited.get("source", ""),
+                url=cited.get("url", ""),
+                published_at=_moment(cited.get("published_at")),
+            )
+            for cited in row.get("evidence", ())
+        ),
+    )
+
+
+def _thaw(payload: dict) -> Document:
+    """A frozen document, read back.
+
+    Every field is read with a default rather than unpacked. A snapshot is written
+    once and read for years, and the failure this avoids is the worst one this
+    feature has: a released document that stops rendering because a field was
+    added to :class:`Document` after it was frozen.
+    """
+    return Document(
+        client_name=payload.get("client_name", ""),
+        period_start=_moment(payload.get("period_start")),
+        period_end=_moment(payload.get("period_end")),
+        generated_at=_moment(payload.get("generated_at")),
+        released_at=_moment(payload.get("released_at")),
+        released_by=payload.get("released_by", ""),
+        comparison=tuple(payload.get("comparison", ())),
+        figures=tuple(_thawed_figure(row) for row in payload.get("figures", ())),
+        tonality=tuple(_thawed_figure(row) for row in payload.get("tonality", ())),
+        findings=tuple(_thawed_finding(row) for row in payload.get("findings", ())),
+        note=payload.get("note", ""),
+    )
+
+
+def document(session: Session, client: Client, report: Report) -> Document:
+    """What this report says: off the snapshot if it has one, off the archive if not.
+
+    The whole immutability rule, in one branch. A draft is a reading of the archive
+    and re-reads it every time, so a dismissed article weakens the claim that cited
+    it. A released report has a snapshot, and from then on the archive is not
+    consulted at all — which is what makes the document a client was sent still say
+    next quarter what it said when it was sent.
+
+    The middle case is a released row with no snapshot, and it is not hypothetical:
+    :func:`release` returns early on an already-released report, and the column was
+    added after releasing existed, so any report released before this migration
+    would otherwise read off the live archive forever — unfrozen, silently, and for
+    exactly the reports that most need not to be. It is frozen here instead, on
+    first read, against the archive as it stands. That is later than release and
+    therefore imperfect; it is the only moment still available, and a document that
+    stops moving today is worth more than one that never does.
+    """
+    if report.snapshot:
+        return _thaw(report.snapshot)
+    built = _live_document(session, client, report)
+    if is_released(report):
+        report.snapshot = _payload(built)
+        session.commit()
+    return built
+
+
 __all__ = [
+    "Document",
+    "DocumentFinding",
     "EvidenceRow",
+    "Figure",
     "Finding",
     "FindingView",
     "MAX_FINDINGS",
@@ -904,9 +1240,13 @@ __all__ = [
     "ReportReleased",
     "build_prompt",
     "citable_figures",
+    "document",
     "findings",
     "for_period",
+    "is_released",
+    "previous_month",
     "release",
     "resolve",
+    "share_text",
     "store",
 ]
