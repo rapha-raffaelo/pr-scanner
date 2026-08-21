@@ -397,12 +397,25 @@ def review_api_key() -> str:
 
 
 def review_model() -> str:
-    """Which model does that reading."""
-    return (
-        os.environ.get(_ENV_GEMINI_MODEL)
-        or os.environ.get("GEMINI_MODEL")
-        or GEMINI_MODEL
-    ).strip()
+    """Which model does that reading.
+
+    Each candidate is stripped *before* it is weighed, not after the chain has
+    already settled on one. ``NEWSPULSE_GEMINI_MODEL="  "`` is a truthy string, so
+    stripping at the end let a set-but-blank variable win the chain and return
+    ``""`` — which reaches the provider as ``model=""`` and, since GDC-02, is
+    persisted and printed under the letter as the model that read it. A variable
+    someone set to whitespace means "I did not name one", so it falls through to
+    the one that is actually configured.
+    """
+    for candidate in (
+        os.environ.get(_ENV_GEMINI_MODEL),
+        os.environ.get("GEMINI_MODEL"),
+        GEMINI_MODEL,
+    ):
+        named = (candidate or "").strip()
+        if named:
+            return named
+    return ""
 
 
 def review_configured() -> bool:

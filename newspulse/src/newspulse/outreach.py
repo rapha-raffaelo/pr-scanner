@@ -54,6 +54,12 @@ _PROMPT_RESOURCE = "prompts/outreach.txt"
 _OWN_COVERAGE_DAYS = 60
 _MAX_OWN_COVERAGE = 6
 
+#: The width of ``Outreach.guide_reviewed_by``. SQLite does not enforce it, so an
+#: over-long model id would ride along here and be rejected or silently cut the
+#: day this database is anything else. Cut where the value is written instead, so
+#: the row says the same thing on every backend.
+_MODEL_NAME_MAX = 80
+
 
 def _prompt_template() -> Template:
     text = resources.files("newspulse").joinpath(_PROMPT_RESOURCE).read_text("utf-8")
@@ -292,7 +298,12 @@ def _apply_guide_verdict(
     one, so a verdict with no name would be stored as an objection nobody can see.
     It cannot happen through :func:`newspulse.guide.check_guide`, which names the
     model whenever it returns a verdict at all; if a caller manages it anyway the
-    verdict is attributed to an unnamed model rather than made invisible.
+    verdict is filed under :data:`newspulse.guide.UNNAMED_MODEL` rather than made
+    invisible. Deliberately not ``INJECTED_MODEL``: that names a provenance the
+    row cannot know, and this string is printed under the letter, where a guess
+    reads as fact. The name is cut to the column's own width for the same reason
+    it is never left empty — a value the database silently truncates is a value
+    nobody can trust to say what it says.
 
     ``ok`` is recomputed from the breaches rather than taken on faith, the same
     way :func:`newspulse.guide._parse_verdict` recomputes it, and for the same
@@ -309,7 +320,7 @@ def _apply_guide_verdict(
     row.guide_review = [
         {"draft": breach.draft, "guide": breach.guide} for breach in verdict.breaches
     ]
-    row.guide_reviewed_by = checked_by or guide.INJECTED_MODEL
+    row.guide_reviewed_by = (checked_by or guide.UNNAMED_MODEL)[:_MODEL_NAME_MAX]
     row.guide_ok = verdict.ok and not row.guide_review
 
 

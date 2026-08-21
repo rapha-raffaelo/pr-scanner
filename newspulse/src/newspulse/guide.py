@@ -66,6 +66,14 @@ NOT_CHECKED: Final[tuple[GuideVerdict | None, str]] = (None, "")
 #: :data:`NOT_CHECKED`, and a verdict that exists must not borrow its look.
 INJECTED_MODEL: Final = "(injiziertes Modell)"
 
+#: Who a verdict is attributed to when it arrives carrying no model name at all.
+#: Not :data:`INJECTED_MODEL`, which is a claim about provenance — *this came from
+#: a callable the caller brought* — and a name that is merely absent is not that
+#: claim. GDC-02 prints this string under the letter, where an attribution the
+#: page invented reads as fact; "not named" is the honest version and is still
+#: never ``""``, which belongs to :data:`NOT_CHECKED`.
+UNNAMED_MODEL: Final = "(Modell nicht genannt)"
+
 #: Hard ceiling on the stored guide. Every prompt carries it, so this is a cost
 #: and an attention budget at once: past a few hundred words it stops being a
 #: brief and starts competing with the question the model was asked.
@@ -426,6 +434,7 @@ __all__ = [
     "INJECTED_MODEL",
     "MAX_UPLOAD_BYTES",
     "NOT_CHECKED",
+    "UNNAMED_MODEL",
     "ExtractionError",
     "NoSecondModel",
     "SUPPORTED_SUFFIXES",
