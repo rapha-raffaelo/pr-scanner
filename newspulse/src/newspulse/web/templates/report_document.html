@@ -47,10 +47,10 @@
         <details class="tblview">
           <summary>{{ t("Tabelle anzeigen") }}</summary>
           <table>
-            <thead><tr><th>{{ t("Segment") }}</th><th>{{ t(c.unit) }}</th><th>{{ t("Anteil") }}</th></tr></thead>
+            <thead><tr><th>{{ t("Segment") }}</th><th>{{ t(c.unit) }}</th>{% if c.with_share %}<th>{{ t("Anteil") }}</th>{% endif %}</tr></thead>
             <tbody>
               {%- for s in c.segments %}
-              <tr><th scope="row">{{ t(s.label) }}</th><td>{{ s.text }}</td><td>{{ '%.1f'|format(s.share) }} %</td></tr>
+              <tr><th scope="row">{{ t(s.label) }}</th><td>{{ s.text }}</td>{% if c.with_share %}<td>{{ '%.1f'|format(s.share) }} %</td>{% endif %}</tr>
               {%- endfor %}
             </tbody>
           </table>

@@ -5,7 +5,8 @@ seeded in-memory database. Nothing here reaches a model — the one route that w
 (generating a draft) goes through the module's injected ``_generate``, so the
 whole path runs against a reply written in this file.
 
-The load-bearing test is :func:`test_a_released_report_renders_identically_after_the_archive_changes`.
+The load-bearing test is the one about a released report rendering identically
+after the archive changes.
 Everything else on the review surface is a control; that one is the promise the
 feature makes to a client, and it is the only one that can be broken by a change
 somewhere else entirely.
@@ -51,7 +52,7 @@ JULY = Period.month(2026, 7)
 #: The document body, which is what the screen and the export must agree on. The
 #: chrome around it — a back link on one, nothing on the other — is deliberately
 #: outside it.
-_DOC_BODY = re.compile(r'<article class="doc">.*</article>', re.S)
+_DOC_BODY = re.compile(r'<article class="doc">.*</article>', re.DOTALL)
 
 
 @pytest.fixture
@@ -128,7 +129,9 @@ def seeded(factory):
     session.flush()
     mandate.competitors.append(rival)
 
-    positive = _piece(session, mandate, "Arrakis liefert aus", tonality=Tonality.POSITIV)
+    positive = _piece(
+        session, mandate, "Arrakis liefert aus", tonality=Tonality.POSITIV
+    )
     negative = _piece(
         session, mandate, "Arrakis unter Druck", source="FAZ", tonality=Tonality.NEGATIV
     )
@@ -241,7 +244,10 @@ def test_editing_a_finding_stores_the_new_wording_and_stamps_it(http, seeded, fa
     http.post(
         f"/client/{seeded['client_id']}/berichte/{seeded['report_id']}"
         f"/befund/{seeded['kept_id']}",
-        data={"claim": "Arrakis war im Juli auffällig präsent.", "consequence": "Halten."},
+        data={
+            "claim": "Arrakis war im Juli auffällig präsent.",
+            "consequence": "Halten.",
+        },
         follow_redirects=False,
     )
     with factory() as session:
@@ -289,10 +295,15 @@ def test_the_berichte_tab_is_on_the_client_workspace(http, seeded):
 # --- Generating -------------------------------------------------------------------
 
 
+#: The claim the stubbed generator returns, named so the assertions can check for
+#: it without a copy of the sentence in each of them.
+_CLAIM = "Der Juli war ein sichtbarer Monat."
+
+
 def _reply(**overrides) -> str:
     finding = {
         "kind": "sichtbarkeit",
-        "claim": "Der Juli war ein sichtbarer Monat.",
+        "claim": _CLAIM,
         "consequence": "Die Frequenz halten.",
         "figures": ["F1"],
     }
@@ -313,7 +324,7 @@ def test_generating_stores_a_draft_for_the_chosen_period(
     with factory() as session:
         client = session.get(Client, seeded["client_id"])
         stored = reports.for_period(session, client.id, JULY)
-        assert [f.claim for f in stored.findings] == ["Der Juli war ein sichtbarer Monat."]
+        assert [f.claim for f in stored.findings] == [_CLAIM]
         assert stored.state is ReportState.ENTWURF
 
 
@@ -386,7 +397,9 @@ def test_the_export_carries_the_same_document_as_the_screen(http, seeded):
     assert _body(export.text) == _body(screen.text)
 
 
-def test_a_report_of_another_mandate_is_not_reachable_under_this_one(http, seeded, factory):
+def test_a_report_of_another_mandate_is_not_reachable_under_this_one(
+    http, seeded, factory
+):
     with factory() as session:
         other = Client(name="Giedi Prime GmbH")
         session.add(other)
@@ -535,7 +548,7 @@ def test_the_sweep_drafts_last_months_report_for_every_mandate(
         stored = reports.for_period(session, mandate.id, JULY)
         assert stored.state is ReportState.ENTWURF
         assert stored.released_at is None, "a scheduled draft released itself"
-        assert [f.claim for f in stored.findings] == ["Der Juli war ein sichtbarer Monat."]
+        assert [f.claim for f in stored.findings] == [_CLAIM]
 
 
 def test_the_scheduled_draft_does_not_replace_a_report_that_exists(
@@ -547,7 +560,7 @@ def test_the_scheduled_draft_does_not_replace_a_report_that_exists(
             session,
             [client],
             now=dt.datetime(2026, 8, 1, 6, 10, tzinfo=dt.UTC),
-            generate=lambda prompt, **kw: pytest.fail("an existing report was redrafted"),
+            generate=lambda prompt, **kw: pytest.fail("an existing report was redrafted"),  # noqa: E501
         )
         assert drafted == 0
 
@@ -613,6 +626,40 @@ def test_the_sweep_survives_a_broken_report_step(factory, monkeypatch):
 
 
 # --- Language ----------------------------------------------------------------------
+
+
+#: Every literal string the two new templates hand to ``t()``. The dynamic calls
+#: — a metric label, a finding kind, a tonality — are checked separately below,
+#: against the value sets they come from.
+_LITERAL_T = re.compile(r"""\bt\(\s*["'](.+?)["']\s*\)""", re.DOTALL)
+
+
+@pytest.mark.parametrize("name", ["report_review.html", "report_document.html"])
+def test_every_german_string_in_the_new_templates_is_translated(name):
+    """The criterion, checked against the templates rather than against a list
+    somebody has to remember to extend."""
+    from newspulse.web import app as web_app
+
+    source = (web_app._TEMPLATES_DIR / name).read_text("utf-8")
+    known = set(i18n.known_keys())
+    missing = [text for text in _LITERAL_T.findall(source) if text not in known]
+    assert not missing, missing
+
+
+def test_every_label_the_report_renders_dynamically_is_translated():
+    """The labels that reach ``t()`` as a value rather than as a literal: a new
+    metric or a fifth finding kind must not silently render as its German value."""
+    from newspulse.reporting import MetricKey, MetricValue
+
+    # Membership rather than "translates to something else": "neutral" is the same
+    # word in both languages, and a missing entry must still fail here.
+    known = set(i18n.known_keys())
+    for kind in ReportFindingKind:
+        assert report_routes._KIND_LABELS[kind.value] in known, kind
+    for key in MetricKey:
+        assert MetricValue(key=key, client_id=1, figure=1.0).label in known, key
+    for tone in Tonality:
+        assert tone.value in known, tone
 
 
 def test_every_new_german_string_has_an_english_entry(http, seeded):

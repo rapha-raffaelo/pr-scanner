@@ -36,7 +36,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ... import prose, report as reports, reporting
+from ... import prose
+from ... import report as reports
+from ... import reporting
 from ...analyzer import AnalyzerError, ParseError, invoke_with_fallback
 from ...models import Client, Report, ReportFinding
 from ...reporting import Period
@@ -144,6 +146,10 @@ class Chart:
     #: The column head over the numbers in the table view.
     unit: str
     segments: tuple[Segment, ...]
+    #: Whether the table adds a column for each block's part of the bar. Off where
+    #: the figure already *is* a share: two identical columns headed "Anteil" is a
+    #: table that looks like it lost one.
+    with_share: bool = True
 
 
 def _tonality_chart(document: reports.Document) -> Chart | None:
@@ -186,6 +192,7 @@ def _voice_chart(document: reports.Document) -> Chart | None:
     return Chart(
         title="Anteil am Marktgespräch",
         unit="Anteil",
+        with_share=False,
         segments=(
             Segment(
                 label=document.client_name,
@@ -400,7 +407,10 @@ def edit_finding(
     if not written:
         return _render(
             request, session, client, row, period_key,
-            error="Ein Befund ohne Aussage ist kein Befund. Der Text bleibt wie er war.",
+            error=(
+                "Ein Befund ohne Aussage ist kein Befund. Der Text bleibt wie "
+                "er war."
+            ),
         )
     stated = reporting.forbidden_terms(f"{written}\n{follows}")
     if stated:
