@@ -99,6 +99,35 @@ def test_a_key_outside_the_field_list_is_dropped(session):
     assert [f.key for f in found] == ["ceo"]
 
 
+def test_the_kickoff_only_fields_are_never_asked_of_the_web(session):
+    """Who may be quoted and who picks up the phone at seven in the evening are
+    kick-off answers. A grounded model asked for them returns a switchboard
+    number or a plausible name, and both are used as if somebody had checked."""
+    client = _client(session)
+    seen: list[str] = []
+
+    profiles.research(client, generate=lambda p: (seen.append(p), _answer(ceo="x"))[1])
+
+    for key in ("sprecher", "zielmedien", "krisenkontakt"):
+        assert key not in seen[0], key
+
+
+def test_a_kickoff_only_field_offered_by_the_model_anyway_is_dropped(session):
+    """The prompt does not list them, but a model that was not asked can still
+    volunteer — and a guessed after-hours number is dialled the one evening it
+    matters."""
+    client = _client(session)
+
+    found = profiles.research(
+        client,
+        generate=lambda p: _answer(
+            ceo="A. Prot", krisenkontakt="Zentrale: +49 30 000000", sprecher="Der CEO"
+        ),
+    )
+
+    assert [f.key for f in found] == ["ceo"]
+
+
 def test_a_reply_that_is_not_json_is_a_parse_error(session):
     client = _client(session)
 

@@ -48,6 +48,13 @@ class Field:
     hint: str
     #: Long answers get a text area and a full-width row; the rest sit two to a row.
     long: bool = False
+    #: Whether the web research may fill this field. False for the ones only the
+    #: kick-off can answer: a search-grounded model asked for an after-hours
+    #: crisis number will return a switchboard, and the consultant would dial it
+    #: during the one hour of the year it matters. Filtered out of the prompt
+    #: *and* out of what comes back, because a model that was not asked can still
+    #: volunteer.
+    researched: bool = True
 
 
 #: The profile, in the order it is read. Chosen from what the drafting prompts
@@ -74,14 +81,26 @@ FIELDS: tuple[Field, ...] = (
     # answers exist in the kick-off call, and ONB-01 already asks for them. A
     # question naming a profile slot the profile does not have would be a promise
     # the tool cannot keep, so the slots exist here.
-    Field("sprecher", "Sprecher", "Wer zitiert werden darf, und wozu.", long=True),
-    Field("zielmedien", "Zielmedien", "Die Titel, in denen dieses Unternehmen vorkommen muss.", long=True),
-    Field("krisenkontakt", "Krisenkontakt", "Wer abends erreichbar ist, mit Nummer."),
+    #
+    # ``researched=False`` is that same sentence enforced rather than commented:
+    # asked for these, the model would answer, plausibly and wrongly, and a
+    # guessed spokesperson goes into every outreach letter while a guessed crisis
+    # number is dialled the one evening it counts.
+    Field("sprecher", "Sprecher", "Wer zitiert werden darf, und wozu.", long=True, researched=False),
+    Field("zielmedien", "Zielmedien", "Die Titel, in denen dieses Unternehmen vorkommen muss.", long=True, researched=False),
+    Field("krisenkontakt", "Krisenkontakt", "Wer abends erreichbar ist, mit Nummer.", researched=False),
 )
 
 FIELDS_BY_KEY = {f.key: f for f in FIELDS}
 
-#: What a filled profile looks like, for the progress line on the page.
+#: The fields the web may be asked about. The rest are the kick-off's, and a
+#: research run neither asks for them nor accepts them back.
+RESEARCHED: tuple[Field, ...] = tuple(f for f in FIELDS if f.researched)
+
+#: What a filled profile looks like, for the progress line on the page. All of
+#: them, including the three only the kick-off can answer: the line says how much
+#: of this mandate's file exists, and a denominator that quietly left out the
+#: hardest three would read as fuller than the mandate is.
 FILLABLE = len(FIELDS)
 
 
@@ -239,7 +258,7 @@ def _prompt_for(client: Client) -> str:
         extra.append(f"Auch bekannt als: {', '.join(client.aliases[:4])}")
     if client.country:
         extra.append(f"Land: {client.country}")
-    fields = "\n".join(f"- {f.key}: {f.label}. {f.hint}" for f in FIELDS)
+    fields = "\n".join(f"- {f.key}: {f.label}. {f.hint}" for f in RESEARCHED)
     return (
         _PROMPT.replace("{extra}", "\n".join(extra) or "Keine weiteren Angaben.")
         .replace("$name", client.name)
@@ -277,7 +296,11 @@ def research(client: Client, *, generate=None) -> list[Proposal]:
     first = sources[0] if sources else ("", "")
     out: list[Proposal] = []
     for key, value in found.items():
-        if key in FIELDS_BY_KEY and isinstance(value, str) and value.strip():
+        # ``researched`` again on the way back: the prompt does not list these
+        # fields, and a model that answers a question it was not asked must not
+        # be the one that decides whether the answer lands on the profile.
+        field = FIELDS_BY_KEY.get(key)
+        if field is not None and field.researched and isinstance(value, str) and value.strip():
             out.append(
                 Proposal(
                     key=key,
@@ -289,5 +312,5 @@ def research(client: Client, *, generate=None) -> list[Proposal]:
     return out
 
 
-__all__ = ["FIELDS", "FIELDS_BY_KEY", "FILLABLE", "Field", "Proposal",
+__all__ = ["FIELDS", "FIELDS_BY_KEY", "FILLABLE", "RESEARCHED", "Field", "Proposal",
            "forget_superseded", "research", "save", "stored"]
