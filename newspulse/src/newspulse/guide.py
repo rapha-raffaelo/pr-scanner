@@ -29,6 +29,7 @@ copied on every deploy is worth more than being able to hand the original back.
 
 from __future__ import annotations
 
+import datetime as dt
 import io
 import logging
 from dataclasses import dataclass
@@ -138,6 +139,31 @@ def store_source(session: Session, client: Client, filename: str, text: str) -> 
     return source
 
 
+def replace_source(
+    session: Session, client: Client, filename: str, text: str
+) -> GuideSource:
+    """Store a source that has one current version, replacing the last of its name.
+
+    An uploaded file is a document with a date, and two versions of a brand book
+    are two documents. The kick-off questionnaire is not: it is a snapshot of
+    something that keeps being answered, and a fresh copy on every regeneration
+    would push the real documents out of the distillation's character budget with
+    six near-identical versions of itself.
+    """
+    existing = session.scalars(
+        select(GuideSource).where(
+            GuideSource.client_id == client.id, GuideSource.filename == filename
+        )
+    ).first()
+    source = existing or GuideSource(client_id=client.id, filename=filename)
+    source.text = text
+    source.characters = len(text)
+    source.uploaded_at = dt.datetime.now(dt.UTC)
+    session.add(source)
+    session.commit()
+    return source
+
+
 def sources(session: Session, client_id: int) -> list[GuideSource]:
     """This client's source documents, newest first."""
     return list(
@@ -242,6 +268,7 @@ __all__ = [
     "distill",
     "extract_text",
     "for_prompt",
+    "replace_source",
     "save",
     "sources",
     "store_source",

@@ -738,6 +738,38 @@ class ClientFact(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
     )
+    #: What this field said before a kick-off answer replaced it, and where *that*
+    #: came from. DEC-2 option A: the person who knows the company outranks the
+    #: page written about it, so the answer wins — but the disagreement stays
+    #: legible instead of being erased, because a researched value that a client
+    #: contradicts is a fact about the coverage even after it stops being a fact
+    #: about the company. Empty on almost every row: it fills only where an answer
+    #: and the web actually disagree.
+    superseded_value: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    superseded_source_url: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    superseded_source_title: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    superseded_filled_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default="", server_default=""
+    )
+    superseded_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+
+    @property
+    def is_disputed(self) -> bool:
+        """Whether an older value is still standing beside this one.
+
+        Read by the profile page rather than having it compare a string against
+        the empty one: "there is a superseded value" is the question being asked,
+        and the timestamp is what says a supersession actually happened.
+        """
+        return bool(self.superseded_value.strip())
 
 
 #: Who a hand-typed kick-off answer is attributed to. DEC-1 option A: the

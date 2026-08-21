@@ -68,6 +68,15 @@ FIELDS: tuple[Field, ...] = (
     Field("wettbewerber", "Wettbewerber", "Die meistgenannten Vergleichsunternehmen.", long=True),
     Field("themen", "Öffentliche Themen", "Debatten, in denen das Unternehmen vorkommt.", long=True),
     Field("risiken", "Reputationsrisiken", "Was in der Berichterstattung gegen es verwendet wird.", long=True),
+    # The three the kick-off questionnaire feeds and the web cannot. A company's
+    # site never says who may be quoted on what, which trade title its buyers
+    # actually read, or who picks up the phone at seven in the evening — those
+    # answers exist in the kick-off call, and ONB-01 already asks for them. A
+    # question naming a profile slot the profile does not have would be a promise
+    # the tool cannot keep, so the slots exist here.
+    Field("sprecher", "Sprecher", "Wer zitiert werden darf, und wozu.", long=True),
+    Field("zielmedien", "Zielmedien", "Die Titel, in denen dieses Unternehmen vorkommen muss.", long=True),
+    Field("krisenkontakt", "Krisenkontakt", "Wer abends erreichbar ist, mit Nummer."),
 )
 
 FIELDS_BY_KEY = {f.key: f for f in FIELDS}
@@ -78,12 +87,25 @@ FILLABLE = len(FIELDS)
 
 @dataclass(frozen=True, slots=True)
 class Proposal:
-    """One proposed value, with the page it was read from."""
+    """One proposed value, with the page it was read from.
+
+    Or with no page at all: a kick-off answer names the questionnaire as its
+    source, and there is no URL to link because nobody published it. That is the
+    strongest provenance a value can have here, not a missing one.
+    """
 
     key: str
     value: str
     source_url: str = ""
     source_title: str = ""
+    #: Who to record as the author when this is accepted. Empty means the research
+    #: model, which is what proposes everything else on this page.
+    filled_by: str = ""
+    #: Whether accepting this may overrule a value already on file, keeping the
+    #: old one visible beside it (DEC-2). True only for what a person said: the
+    #: web research proposes into empty fields and corrects itself, and never
+    #: overrules the consultant.
+    supersedes: bool = False
 
 
 def stored(session: Session, client_id: int) -> dict[str, ClientFact]:
@@ -92,6 +114,22 @@ def stored(session: Session, client_id: int) -> dict[str, ClientFact]:
         select(ClientFact).where(ClientFact.client_id == client_id)
     ).all()
     return {row.key: row for row in rows}
+
+
+def _supersede(row: ClientFact, value: str) -> None:
+    """Move what this field says now into the slot behind it (DEC-2 option A).
+
+    Only where the two actually disagree. Accepting an answer that says what the
+    field already said is not a contradiction, and recording it as one would put a
+    "die Recherche sagte" line under a value nothing ever contradicted.
+    """
+    if not row.value.strip() or row.value.strip() == value:
+        return
+    row.superseded_value = row.value
+    row.superseded_source_url = row.source_url
+    row.superseded_source_title = row.source_title
+    row.superseded_filled_by = row.filled_by
+    row.superseded_at = dt.datetime.now(dt.UTC)
 
 
 def save(
@@ -103,12 +141,18 @@ def save(
     source_url: str = "",
     source_title: str = "",
     filled_by: str = "mensch",
+    supersede: bool = False,
 ) -> ClientFact | None:
     """Write one field. An empty value clears it rather than storing a blank.
 
     Clearing matters: a consultant who deletes a wrong machine-filled answer means
     "this is not known", and a row holding an empty string would keep claiming the
     field had been dealt with.
+
+    ``supersede`` keeps the replaced value visible instead of overwriting it, for
+    the one case DEC-2 is about: a kick-off answer that contradicts what the web
+    said. The answer wins, and what the web said stays on the page with its own
+    provenance until somebody drops it.
     """
     if key not in FIELDS_BY_KEY:
         return None
@@ -124,12 +168,37 @@ def save(
             session.commit()
         return None
     row = existing or ClientFact(client_id=client.id, key=key)
+    if supersede and existing is not None:
+        _supersede(row, value)
     row.value = value
     row.source_url = source_url.strip()
     row.source_title = source_title.strip()
     row.filled_by = filled_by
     row.updated_at = dt.datetime.now(dt.UTC)
     session.add(row)
+    session.commit()
+    return row
+
+
+def forget_superseded(session: Session, client_id: int, key: str) -> ClientFact | None:
+    """Drop the old value standing beside this field, ending the disagreement.
+
+    The way out of a permanent second line: once the consultant has seen that the
+    web said something else and decided it no longer matters, keeping it on the
+    page forever would turn provenance into clutter.
+    """
+    row = session.scalars(
+        select(ClientFact).where(
+            ClientFact.client_id == client_id, ClientFact.key == key
+        )
+    ).first()
+    if row is None:
+        return None
+    row.superseded_value = ""
+    row.superseded_source_url = ""
+    row.superseded_source_title = ""
+    row.superseded_filled_by = ""
+    row.superseded_at = None
     session.commit()
     return row
 
@@ -221,4 +290,4 @@ def research(client: Client, *, generate=None) -> list[Proposal]:
 
 
 __all__ = ["FIELDS", "FIELDS_BY_KEY", "FILLABLE", "Field", "Proposal",
-           "research", "save", "stored"]
+           "forget_superseded", "research", "save", "stored"]

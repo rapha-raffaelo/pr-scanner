@@ -21,9 +21,12 @@ question cannot be added without saying where it goes.
 
 **Nothing here adopts anything.** This module writes to ``onboarding_answers``
 and to nothing else. Turning an answer into a profile fact, a no-go or a
-comparison set is a separate, deliberate act (ONB-02), because an onboarding that
-silently writes a client's own words into a guide is how a wrong sentence becomes
-policy.
+comparison set is a separate, deliberate act, because an onboarding that silently
+writes a client's own words into a guide is how a wrong sentence becomes policy.
+The conversion at the bottom of this file therefore *offers*: profile proposals,
+a guide draft and named competitors. Every one of them is a return value; the
+only thing it writes is the record that the kick-off is where the material came
+from.
 """
 
 from __future__ import annotations
@@ -36,13 +39,22 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import guide, profile, rivals
+from .analyzer import invoke_with_fallback
 from .models import ANSWERED_BY_DEFAULT, Client, OnboardingAnswer
+from .schemas import RivalSuggestion
 
 #: List answers are stored as one text column, one entry per line. A child table
 #: for two or three names per mandate would buy nothing that ``splitlines`` does
 #: not, and it would put the questionnaire's shape into the schema, where the
 #: whole point is that the shape is editable code.
 _ENTRY_SEPARATOR = "\n"
+
+#: What the profile and the guide name as the origin of an adopted answer, and
+#: the filename the answers are filed under as a guide source. Not a URL: nobody
+#: published the kick-off call, and a provenance line linking nowhere is exactly
+#: right — the person who said it is the source.
+SOURCE_NAME = "Kickoff-Fragebogen"
 
 
 class Target(StrEnum):
@@ -348,6 +360,23 @@ QUESTIONS: tuple[Question, ...] = (
 QUESTIONS_BY_KEY: dict[str, Question] = {q.key: q for q in QUESTIONS}
 SECTIONS_BY_KEY: dict[str, Section] = {s.key: s for s in SECTIONS}
 
+#: Which profile column each named profile slot fills. The questionnaire names
+#: its targets in words — the page says "Profil · Geschäftsfeld" to a consultant —
+#: and this is the one place those words become a key in ``profile.FIELDS``.
+#:
+#: Two questions may name the same slot (who may be quoted, and on what) and both
+#: answers then land in that one field, in the order they are asked. That is the
+#: honest result: the profile has one line for spokespeople, and a consultant
+#: reading it wants both halves of what the client said.
+_PROFILE_SLOTS: dict[str, str] = {
+    "Geschäftsfeld": "geschaeftsfeld",
+    "Sprecher": "sprecher",
+    "Zielgruppe": "zielgruppe",
+    "Zielmedien": "zielmedien",
+    "Pressekontakt": "pressekontakt",
+    "Krisenkontakt": "krisenkontakt",
+}
+
 #: What a finished questionnaire looks like, for the progress figure.
 TOTAL = len(QUESTIONS)
 
@@ -372,6 +401,16 @@ def _check_question_set() -> None:
             # thing the declaration is for.
             if not isinstance(feed, Feed) or not isinstance(feed.target, Target):
                 raise ValueError(f"question {question.key!r} feeds no known target")
+            # A profile slot with no column behind it is the same failure one
+            # level down: the page would promise "Füllt Profil · Sprecher" and
+            # the answer would go nowhere.
+            if feed.target is Target.PROFIL:
+                field = _PROFILE_SLOTS.get(feed.slot)
+                if field is None or field not in profile.FIELDS_BY_KEY:
+                    raise ValueError(
+                        f"question {question.key!r} names the profile slot "
+                        f"{feed.slot!r}, which fills no profile field"
+                    )
 
 
 _check_question_set()
@@ -665,7 +704,31 @@ def completeness(
     A caller that already holds :func:`answers` — every render on the page does —
     passes it in rather than making the same twenty rows come back a second time.
     """
-    stored = answers(session, client_id) if stored is None else stored
+    return _completeness(answers(session, client_id) if stored is None else stored)
+
+
+def completeness_by_client(
+    session: Session, client_ids: list[int]
+) -> dict[int, Completeness]:
+    """The same figure for a whole portfolio, in one query rather than per row.
+
+    The client list shows it on every card, and twenty mandates asking for their
+    own answers separately would be twenty round trips to render one line each.
+    A mandate with no questionnaire at all is present in the result with
+    everything at zero, because "nothing answered" is a state the list must state
+    rather than a row it can leave out.
+    """
+    grouped: dict[int, dict[str, OnboardingAnswer]] = {cid: {} for cid in client_ids}
+    if client_ids:
+        rows = session.scalars(
+            select(OnboardingAnswer).where(OnboardingAnswer.client_id.in_(client_ids))
+        ).all()
+        for row in rows:
+            grouped.setdefault(row.client_id, {})[row.key] = row
+    return {cid: _completeness(stored) for cid, stored in grouped.items()}
+
+
+def _completeness(stored: dict[str, OnboardingAnswer]) -> Completeness:
     sections = tuple(
         SectionProgress(
             section=section,
@@ -693,9 +756,251 @@ def completeness(
     )
 
 
+# --- Turning answers into offers -----------------------------------------------
+#
+# Everything below returns; nothing below adopts. The one write is the guide
+# source that records where the material came from, which is provenance rather
+# than policy: it says the kick-off is a source of this mandate's guide, exactly
+# as an uploaded brand book is, and the guide itself stays untouched until a
+# person saves one.
+
+
+def _answered(
+    stored: dict[str, OnboardingAnswer], question: Question
+) -> OnboardingAnswer | None:
+    """The row for this question if it holds an answer; ``None`` otherwise.
+
+    A skipped question is *not* an answer. It is a recorded "we asked and there
+    is nothing to get", and adopting it would put an empty rule in a guide.
+    """
+    row = stored.get(question.key)
+    return row if row is not None and _is_answered(row) else None
+
+
+def _feeding(target: Target) -> tuple[Question, ...]:
+    return tuple(q for q in QUESTIONS if any(f.target is target for f in q.feeds))
+
+
+def to_proposals(
+    session: Session,
+    client_id: int,
+    *,
+    stored: dict[str, OnboardingAnswer] | None = None,
+) -> list[profile.Proposal]:
+    """Answers that map to a profile field, as proposals on that field.
+
+    Proposals, not writes: they arrive on the profile page beside the ones the
+    web research produces and are accepted the same way, with one difference the
+    page makes visible. A researched value is never allowed over something a
+    person typed; a kick-off answer is, because the person who runs the company
+    outranks the page written about it — and what it replaces stays legible
+    beside it (DEC-2 option A).
+
+    The source is the questionnaire by name and never a URL. Nobody published
+    the kick-off call, and a citation that links nowhere would be a worse lie
+    than no link at all.
+    """
+    stored = answers(session, client_id) if stored is None else stored
+    by_field: dict[str, list[str]] = {}
+    for question in _feeding(Target.PROFIL):
+        row = _answered(stored, question)
+        if row is None:
+            continue
+        for feed in question.feeds:
+            if feed.target is Target.PROFIL:
+                by_field.setdefault(_PROFILE_SLOTS[feed.slot], []).append(
+                    row.value.strip()
+                )
+    return [
+        profile.Proposal(
+            key=key,
+            value="\n".join(values),
+            source_title=SOURCE_NAME,
+            filled_by=SOURCE_NAME,
+            supersedes=True,
+        )
+        for key, values in by_field.items()
+    ]
+
+
+def to_rivals(
+    session: Session,
+    client: Client,
+    *,
+    stored: dict[str, OnboardingAnswer] | None = None,
+) -> list[RivalSuggestion]:
+    """The competitors the client named, offered for the comparison set.
+
+    Through :func:`newspulse.rivals.from_named`, so a named competitor takes the
+    same path as a suggested one and ends in the same click. Nothing is created
+    and nothing is linked here: a wrong competitor does not merely look odd, it
+    lands in the share-of-voice arithmetic and quietly changes a number the
+    agency reports.
+    """
+    stored = answers(session, client.id) if stored is None else stored
+    named = [
+        row.value
+        for question in _feeding(Target.VERGLEICHSGRUPPE)
+        if (row := _answered(stored, question)) is not None
+    ]
+    return rivals.from_named(client, named)
+
+
+#: Re-exported so a caller that generates a draft can catch the refusal without
+#: importing the guide module for one exception type.
+ExtractionError = guide.ExtractionError
+
+#: The heading the client's own no-go sentences sit under in the draft. They are
+#: repeated under it verbatim even where the distillation already worked them in,
+#: because a rule that has been reworded is a different rule.
+_NOGO_HEADING = "No-Gos, wörtlich aus dem Kickoff:"
+
+#: What the draft says instead of inventing a section nobody answered.
+_MISSING_HEADING = "Im Kickoff nicht beantwortet:"
+_MISSING_NOTE = "Zu diesen Punkten liegt nichts vor. Nichts ergänzen."
+
+
+@dataclass(frozen=True, slots=True)
+class GuideDraft:
+    """A proposed guide, and what the questionnaire had to say about it.
+
+    ``text`` is what the consultant edits and may save; nothing here has been
+    stored as a guide. ``verbatim`` and ``missing`` are the two things the draft
+    must be able to prove: every no-go is in it word for word, and the sections
+    nobody answered are named rather than filled in.
+    """
+
+    text: str
+    verbatim: tuple[str, ...]
+    missing: tuple[Section, ...]
+    #: The ``GuideSource`` row recording that the kick-off is where this came from.
+    source_id: int
+
+    @property
+    def has_gaps(self) -> bool:
+        return bool(self.missing)
+
+
+def _source_text(stored: dict[str, OnboardingAnswer]) -> str:
+    """The questionnaire as the distillation reads it: question, then answer.
+
+    Unanswered and skipped questions are written out as such rather than left
+    out. The prompt forbids inventing what is not in the documents, and a
+    question visibly standing there without an answer is the strongest possible
+    version of that instruction.
+    """
+    blocks: list[str] = []
+    for section, questions in by_section():
+        lines = [f"## {section.title}"]
+        for question in questions:
+            lines.append(f"F: {question.text}")
+            row = stored.get(question.key)
+            if row is None:
+                lines.append("A: (nicht beantwortet)")
+            elif row.skipped:
+                lines.append("A: (übergangen — es gibt dazu keine Antwort)")
+            else:
+                lines.append(f"A: {row.value.strip()}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+def _nogos(stored: dict[str, OnboardingAnswer]) -> tuple[str, ...]:
+    """Every answer that becomes a rule, exactly as it was given."""
+    return tuple(
+        row.value.strip()
+        for question in _feeding(Target.NOGO)
+        if (row := _answered(stored, question)) is not None
+    )
+
+
+def _unanswered_sections(stored: dict[str, OnboardingAnswer]) -> tuple[Section, ...]:
+    """The sections that produced nothing at all — skipped counts as nothing."""
+    return tuple(
+        section
+        for section, questions in by_section()
+        if not any(_answered(stored, q) for q in questions)
+    )
+
+
+def _closing_block(verbatim: tuple[str, ...], missing: tuple[Section, ...]) -> str:
+    """The part of the draft that is not the model's to write."""
+    lines: list[str] = []
+    if verbatim:
+        lines.append(_NOGO_HEADING)
+        lines.extend(f"· {rule}" for rule in verbatim)
+    if missing:
+        if lines:
+            lines.append("")
+        titles = ", ".join(section.title for section in missing)
+        lines.append(f"{_MISSING_HEADING} {titles}. {_MISSING_NOTE}")
+    return "\n".join(lines)
+
+
+def _fit(distilled: str, block: str) -> str:
+    """The draft inside the guide's character budget, rules first.
+
+    The budget is a real constraint — the guide is prepended to every prompt for
+    every mandate every day — and something has to give when both halves are
+    long. It is never the client's own sentences: a no-go trimmed mid-clause is
+    a rule nobody wrote, which is the failure this whole path exists to avoid.
+    So the verbatim block is kept whole and the distilled prose is what shrinks.
+    """
+    if not block:
+        return distilled[: guide.GUIDE_MAX_CHARS].strip()
+    budget = guide.GUIDE_MAX_CHARS - len(block) - 2
+    if budget <= 0:
+        return block
+    return f"{distilled[:budget].rstrip()}\n\n{block}"
+
+
+def to_guide_draft(
+    session: Session,
+    client: Client,
+    *,
+    stored: dict[str, OnboardingAnswer] | None = None,
+    invoke=invoke_with_fallback,
+) -> GuideDraft:
+    """Draft a communications guide from the kick-off answers. Saves no guide.
+
+    Through :func:`newspulse.guide.distill`, which already exists for uploaded
+    brand books and already ends in a proposal the consultant edits. Feeding it
+    the answers keeps one path to a guide rather than two, and keeps the rule
+    that dictated material is never applied directly.
+
+    The answers are filed as a ``GuideSource`` first, both because the
+    distillation reads its sources from there and because the guide's provenance
+    should say the kick-off is one of them, alongside the documents. That record
+    survives a failed distillation, which is right: it describes where the
+    material came from, not what came of it.
+
+    Raises :class:`newspulse.guide.ExtractionError` when nothing has been
+    answered, so "no answers yet" and "the model failed" stay distinguishable.
+    """
+    stored = answers(session, client.id) if stored is None else stored
+    if not any(_answered(stored, question) for question in QUESTIONS):
+        raise ExtractionError(
+            "Noch keine Antwort aus dem Kickoff — ohne Antworten gibt es nichts "
+            "zu destillieren."
+        )
+    source = guide.replace_source(session, client, SOURCE_NAME, _source_text(stored))
+    distilled = guide.distill(session, client, invoke=invoke)
+    verbatim = _nogos(stored)
+    missing = _unanswered_sections(stored)
+    return GuideDraft(
+        text=_fit(distilled, _closing_block(verbatim, missing)),
+        verbatim=verbatim,
+        missing=missing,
+        source_id=source.id,
+    )
+
+
 __all__ = [
     "ANSWERED_BY_DEFAULT",
     "Completeness",
+    "ExtractionError",
+    "GuideDraft",
+    "SOURCE_NAME",
     "Feed",
     "InputKind",
     "Progress",
@@ -712,8 +1017,12 @@ __all__ = [
     "answers",
     "by_section",
     "completeness",
+    "completeness_by_client",
     "entries",
     "remove_entry",
     "save_answer",
     "skip",
+    "to_guide_draft",
+    "to_proposals",
+    "to_rivals",
 ]
