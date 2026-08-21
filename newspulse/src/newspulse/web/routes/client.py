@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from ... import gnews
 from ... import angles
+from ... import onboarding
 from ...models import Analysis, Angle, Article, Category, Client, TopicHit, visible_coverage
 from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
@@ -362,6 +363,60 @@ class PortfolioRow:
     # a front door.
     alerts_today: int
     open_impulses: int
+    # How much of its own foundation this mandate has. On the front door because a
+    # thinly set-up client is otherwise merely quiet: no alerts and no impulses
+    # look exactly like a calm week until you notice nobody ever asked it the
+    # twenty questions.
+    kickoff: onboarding.Completeness
+
+
+@dataclass(frozen=True, slots=True)
+class _PortfolioCounts:
+    """The four per-client figures behind the cards, each keyed by client id.
+
+    A named group rather than four loose dicts threaded through the view: they
+    are fetched together, they are read together, and the one thing a reader of
+    :func:`clients_index` needs to know about them is that none of them is a
+    per-card query.
+    """
+
+    total: dict[int, int]
+    today: dict[int, int]
+    alerts_today: dict[int, int]
+    open_impulses: dict[int, int]
+
+
+def _portfolio_counts(
+    session: Session, start: dt.datetime, end: dt.datetime
+) -> _PortfolioCounts:
+    """Everything the cards count, in four grouped queries rather than per client.
+
+    The page then costs a fixed number of round trips whatever the portfolio
+    size, which is the whole reason these are not properties on ``Client``.
+    """
+    relevant = visible_coverage()
+    by_client = select(Analysis.client_id, func.count()).group_by(Analysis.client_id)
+    today_window = (
+        by_client.join(Article, Article.id == Analysis.article_id)
+        .where(relevant, Article.published_at >= start, Article.published_at < end)
+    )
+    # A draft stands for a week (angles.COLUMN_DAYS); past that it is history, not
+    # something waiting to be sent.
+    impulse_since = dt.datetime.now(dt.UTC) - dt.timedelta(days=angles.COLUMN_DAYS)
+    return _PortfolioCounts(
+        total=dict(session.execute(by_client.where(relevant)).all()),
+        today=dict(session.execute(today_window).all()),
+        alerts_today=dict(
+            session.execute(today_window.where(Analysis.is_alert.is_(True))).all()
+        ),
+        open_impulses=dict(
+            session.execute(
+                select(Angle.client_id, func.count())
+                .where(Angle.generated_at >= impulse_since)
+                .group_by(Angle.client_id)
+            ).all()
+        ),
+    )
 
 
 # The portfolio is the front door now. A consultant does not open this tool to
@@ -375,54 +430,17 @@ def clients_index(
 ) -> HTMLResponse:
     """Mandanten: the whole portfolio at a glance, each row a way into its archive.
 
-    Counts are aggregated in two grouped queries rather than per client, so the
-    page stays one round trip regardless of portfolio size.
+    Composition only. The counting is :func:`_portfolio_counts`, and the kick-off
+    figure is one grouped query beside it, so no part of this page costs a query
+    per card.
     """
     day = dt.datetime.now(_local_tz()).date()
     start, end = _day_bounds_utc(day)
-
-    relevant = visible_coverage()
-    totals = dict(
-        session.execute(
-            select(Analysis.client_id, func.count())
-            .where(relevant)
-            .group_by(Analysis.client_id)
-        ).all()
-    )
-    today_counts = dict(
-        session.execute(
-            select(Analysis.client_id, func.count())
-            .join(Article, Article.id == Analysis.article_id)
-            .where(relevant, Article.published_at >= start, Article.published_at < end)
-            .group_by(Analysis.client_id)
-        ).all()
-    )
-
-    alerts_today = dict(
-        session.execute(
-            select(Analysis.client_id, func.count())
-            .join(Article, Article.id == Analysis.article_id)
-            .where(
-                relevant,
-                Analysis.is_alert.is_(True),
-                Article.published_at >= start,
-                Article.published_at < end,
-            )
-            .group_by(Analysis.client_id)
-        ).all()
-    )
-    # A draft stands for a week (angles.COLUMN_DAYS); past that it is history, not
-    # something waiting to be sent.
-    impulse_since = dt.datetime.now(dt.UTC) - dt.timedelta(days=angles.COLUMN_DAYS)
-    open_impulses = dict(
-        session.execute(
-            select(Angle.client_id, func.count())
-            .where(Angle.generated_at >= impulse_since)
-            .group_by(Angle.client_id)
-        ).all()
-    )
+    counts = _portfolio_counts(session, start, end)
 
     clients = session.scalars(select(Client).order_by(Client.name)).all()
+    # One query for the whole portfolio rather than one per card.
+    kickoffs = onboarding.completeness_by_client(session, [c.id for c in clients])
     rows = [
         PortfolioRow(
             id=c.id,
@@ -435,10 +453,11 @@ def clients_index(
             active=c.active,
             is_competitor=c.is_competitor,
             logo_url=c.logo_url,
-            today_count=today_counts.get(c.id, 0),
-            total_count=totals.get(c.id, 0),
-            alerts_today=alerts_today.get(c.id, 0),
-            open_impulses=open_impulses.get(c.id, 0),
+            today_count=counts.today.get(c.id, 0),
+            total_count=counts.total.get(c.id, 0),
+            alerts_today=counts.alerts_today.get(c.id, 0),
+            open_impulses=counts.open_impulses.get(c.id, 0),
+            kickoff=kickoffs[c.id],
         )
         for c in clients
     ]

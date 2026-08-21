@@ -30,6 +30,14 @@
             <span class="pname">{{ row.name }}</span>
             <span class="pind">
               {{ row.industry or t('Ohne Branche') }}{% if not row.active %} · {{ t("inaktiv") }}{% endif %}{% if not row.keywords and not row.alert_topics %} · {{ t("kein Themen-Radar") }}{% endif %}
+              {# How much of its own foundation this mandate has. A mandate nobody
+                 has asked the twenty questions says so plainly rather than showing
+                 a zero that reads like a bad week. #}
+              {% if row.kickoff.started %}
+                · {{ t("Fundament") }} {{ row.kickoff.settled }}/{{ row.kickoff.total }}
+              {% else %}
+                · {{ t("kein Fragebogen") }}
+              {% endif %}
             </span>
           </span>
         </span>

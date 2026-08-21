@@ -630,9 +630,10 @@ _EN: dict[str, str] = {
     "Profil speichern": "Save profile",
     "Was Sie hier ändern, gilt als Ihre Angabe und wird von der KI nicht mehr überschrieben.":
         "What you change here counts as yours and the AI will not overwrite it.",
-    "Was dieses Unternehmen ist, in vierzehn Zeilen. Jede Zeile speist die Impulse, die Anschreiben und Captain Comms — und jede sagt, woher sie stammt.":
-        "What this company is, in fourteen lines. Every line feeds the openings, "
-        "the letters and Captain Comms, and every line says where it came from.",
+    # The lead used to say "in vierzehn Zeilen". The kick-off feeds three fields
+    # the web cannot answer, so the profile is no longer fourteen lines and the
+    # sentence no longer counts them: a number in prose beside the live figure
+    # next to it is one of them being wrong.
     "Felder gefüllt": "fields filled",
     "Von": "By",
     "Quelle": "Source",
@@ -650,9 +651,13 @@ _EN: dict[str, str] = {
     "Noch keine: dafür braucht es Medien, die mehrfach über den Wettbewerb geschrieben haben.":
         "None yet: that needs outlets which have written about the competition "
         "more than once.",
+    # The lead is split around the mandate's name and the window, so the two
+    # fragments either side of it need entries of their own.
+    "Wie": "How",
     "gegen sein Feld steht — Anteil, Themen und die Medien, die über die anderen schreiben und nicht über ihn. Alle Zahlen aus den letzten":
         "stands against its field: share, subjects, and the outlets that write "
         "about the others and not about them. Every figure from the last",
+    "Tagen": "days",
     "Fragen": "Ask",
     "Frage stellen…": "Ask a question…",
     # --- Captain Comms: voice ------------------------------------------------
@@ -934,6 +939,63 @@ _EN: dict[str, str] = {
         "An answer is stored as you leave the field, a list entry when you add it. "
         "The questionnaire does not have to be finished in one sitting, and what "
         "is missing stays visibly open rather than guessed.",
+    # --- Client: what the kick-off answers become (ONB-02) --------------------
+    # The three profile fields the questionnaire feeds and the web cannot. Their
+    # labels are already above as target slots; only the hints are new here.
+    "Wer zitiert werden darf, und wozu.": "Who may be quoted, and on what.",
+    "Die Titel, in denen dieses Unternehmen vorkommen muss.":
+        "The titles this company has to appear in.",
+    "Wer abends erreichbar ist, mit Nummer.":
+        "Who can be reached in the evening, with a number.",
+    # The profile's proposal list, which now carries two kinds of proposal and
+    # says on every row which one it is.
+    "Vorschläge für das Profil": "Proposals for the profile",
+    "Was dieses Unternehmen ist, Zeile für Zeile. Jede Zeile speist die Impulse, die Anschreiben und Captain Comms — und jede sagt, woher sie stammt.":
+        "What this company is, line by line. Every line feeds the openings, the "
+        "letters and Captain Comms, and every line says where it came from.",
+    "Kickoff-Fragebogen": "Kick-off questionnaire",
+    "Angabe des Mandanten": "The client's own statement",
+    # A researched value the grounding API returned no source for. It stays on
+    # offer and says so, rather than borrowing the line above it.
+    "Recherche ohne Quelle": "Research with no source",
+    "ersetzt die bisherige Angabe, die sichtbar bleibt":
+        "replaces the current value, which stays visible",
+    # DEC-2 option A: the answer wins, and the disagreement stays legible.
+    "Vorher": "Previously",
+    "Alte Angabe verwerfen": "Discard the old value",
+    # The completeness line, on the profile and on the portfolio.
+    "Fragen aus dem Kickoff beantwortet oder übergangen":
+        "kick-off questions answered or passed over",
+    "Kein Fragebogen beantwortet — für dieses Mandat gibt es noch kein Fundament.":
+        "No questionnaire answered: this mandate has no foundation yet.",
+    "Zum Fragebogen": "To the questionnaire",
+    "Fundament": "Foundation",
+    "kein Fragebogen": "no questionnaire",
+    # The guide drafted from the answers.
+    "Entwurf aus dem Kickoff": "Draft from the kick-off",
+    # The refusal when the button is pressed for a mandate that has answered
+    # nothing. It reaches the page as a caught exception rather than as a literal
+    # in a template, which is why the page-scanning test cannot see it.
+    "Noch keine Antwort aus dem Kickoff — ohne Antworten gibt es nichts zu "
+    "destillieren.":
+        "No answer from the kick-off yet, so there is nothing to distil.",
+    "Entwurf aus dem Kickoff — noch nicht gespeichert":
+        "Draft from the kick-off, not saved yet",
+    "Ohne Antwort im Kickoff, deshalb nicht im Entwurf":
+        "Unanswered in the kick-off, and therefore not in the draft",
+    "Zu lang für den Guide, deshalb nicht im Entwurf":
+        "Too long for the guide, and therefore not in the draft",
+    "Antworten aus dem Fragebogen. No-Gos übernimmt der Entwurf wörtlich; "
+    "unbeantwortete Abschnitte bleiben leer.":
+        "answers from the questionnaire. The draft takes no-gos verbatim; "
+        "unanswered sections stay empty.",
+    "Der Kickoff-Fragebogen ist noch unbeantwortet — daraus lässt sich kein "
+    "Entwurf machen.":
+        "The kick-off questionnaire is still unanswered, so there is nothing to "
+        "draft from.",
+    # The competitors the client named, offered for the comparison set.
+    "Im Kickoff genannt": "Named in the kick-off",
+    "In die Vergleichsgruppe": "Add to the comparison set",
 }
 
 _TABLES = {"de": {}, "en": _EN}
