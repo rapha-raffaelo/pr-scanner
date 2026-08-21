@@ -105,6 +105,23 @@ class Category(StrEnum):
     SONSTIGES = "sonstiges"
 
 
+class OutreachState(StrEnum):
+    """Where one letter stands, from draft to whatever came back.
+
+    "Ohne Reaktion" is deliberately not a member: it is derived from ``RAUS`` plus
+    age, so the ledger never stores a fact nobody entered. The states past ``RAUS``
+    are filled in by the outreach ledger; what this module's release stamp needs is
+    the difference between a draft and a letter that left the house, because the
+    report may only attribute coverage to the second.
+    """
+
+    ENTWURF = "entwurf"
+    RAUS = "raus"
+    ANTWORT = "antwort"
+    ABSAGE = "absage"
+    VEROEFFENTLICHT = "veroeffentlicht"
+
+
 class RunStatus(StrEnum):
     """Outcome of a daily sweep. Kept typed so the dashboard and job code share one
     closed value set rather than passing raw strings around."""
@@ -802,11 +819,27 @@ class Outreach(Base):
     released_by: Mapped[str] = mapped_column(
         String(80), nullable=False, default="", server_default=""
     )
+    #: Draft until somebody releases it. Stored rather than derived from
+    #: ``released_at`` because everything past "raus" — a reply, a refusal, a
+    #: published piece — is a fact only a person can enter, and a column that means
+    #: two different things depending on the state would not survive the first one.
+    state: Mapped[OutreachState] = mapped_column(
+        SAEnum(
+            OutreachState,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="outreach_state",
+        ),
+        nullable=False,
+        default=OutreachState.ENTWURF,
+        server_default=OutreachState.ENTWURF.value,
+    )
 
 
 __all__ = [
     "Base",
     "Category",
+    "OutreachState",
     "RunStatus",
     "Tonality",
     "TriageState",
