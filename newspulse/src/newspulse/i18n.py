@@ -387,10 +387,12 @@ _EN: dict[str, str] = {
     # The same state for a mandate that *does* have a guide. Deliberately names
     # no cause: the worker reports a missing second model, an unreachable
     # provider and an unusable reply as one outcome, and a page that guesses
-    # between them sends the reader to fix the wrong thing.
-    "Nicht gegen den Guide geprüft — die Prüfung ist nicht durchgelaufen. Details stehen im Log.":
-        "Not checked against the guide: the check did not run. See the log for "
-        "details.",
+    # between them sends the reader to fix the wrong thing. It names no *log*
+    # either — a letter written before this feature existed has nothing in one —
+    # and offers the only remedy that holds for every letter in this state.
+    "Nicht gegen den Guide geprüft — für diesen Brief liegt kein Ergebnis vor. Erst ein neuer Entwurf wird wieder geprüft.":
+        "Not checked against the guide: no result is on file for this letter. "
+        "Only a new draft gets checked again.",
     "Die beanstandeten Stellen sind nicht mitgespeichert.":
         "The passages objected to were not stored with it.",
     "Guide hinterlegen": "Add a guide",
