@@ -788,6 +788,20 @@ class Outreach(Base):
     reviewed_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     #: The checker's own send/hold flag. True unless it objected.
     review_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: When a person put the agency's name on this letter. Null while it is a
+    #: draft, and that difference is load-bearing rather than cosmetic: the report
+    #: attributes coverage to outreach only through *released* letters, so a draft
+    #: nobody sent can never be claimed as the cause of a piece of press.
+    #: Indexed because the attribution join reads letters by release time.
+    released_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, index=True
+    )
+    #: Who released it. There are no user accounts in this tool, so this follows
+    #: the ``ClientFact.filled_by`` precedent and reads "mensch" unless a caller
+    #: names someone. Empty means never released.
+    released_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default="", server_default=""
+    )
 
 
 __all__ = [
