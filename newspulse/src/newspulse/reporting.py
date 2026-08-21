@@ -425,6 +425,26 @@ class Direction(StrEnum):
     UNKNOWN = "unbekannt"
 
 
+def forbidden_terms(name: str) -> tuple[str, ...]:
+    """Which forbidden figures ``name`` states, in a stable order.
+
+    The matcher behind :func:`is_forbidden`, exposed because a caller that refuses
+    a whole sentence owes its log the word it tripped on. "Rejected: names a figure
+    this tool may not produce" sends a reader looking for a number; "rejected:
+    names 'auflage'" tells them in one line that the matcher caught the German for
+    *regulatory requirement* and the sentence needs rewording.
+    """
+    lowered = " ".join((name or "").casefold().split())
+    words = set(re.findall(r"\w+", lowered, re.UNICODE))
+    return tuple(
+        sorted(
+            term
+            for term in FORBIDDEN_FIGURES
+            if (term in lowered if len(term) >= _MIN_SUBSTRING_TERM else term in words)
+        )
+    )
+
+
 def is_forbidden(name: str) -> bool:
     """Whether ``name`` names a figure RauteOS may not produce.
 
@@ -434,12 +454,7 @@ def is_forbidden(name: str) -> bool:
     false negative costs a number in a client's document that the agency cannot
     defend from its own data.
     """
-    lowered = " ".join((name or "").casefold().split())
-    words = set(re.findall(r"\w+", lowered, re.UNICODE))
-    return any(
-        term in lowered if len(term) >= _MIN_SUBSTRING_TERM else term in words
-        for term in FORBIDDEN_FIGURES
-    )
+    return bool(forbidden_terms(name))
 
 
 @dataclass(frozen=True, slots=True)
@@ -514,6 +529,13 @@ class MetricValue:
     subject: str = ""
     analysis_ids: tuple[int, ...] = ()
     outreach_ids: tuple[int, ...] = ()
+    #: Set when ``analysis_ids`` has been narrowed to what a reader may be *shown*
+    #: rather than what the figure was *computed* from — see
+    #: :func:`newspulse.report._own_evidence`, which drops other mandates' rows out
+    #: of a share of voice so a client's document cannot print a rival's headline.
+    #: Such a value is no longer recomputable, and :func:`recompute` refuses it
+    #: rather than returning the confident wrong answer 100 %.
+    citation_only: bool = False
 
     def __post_init__(self) -> None:
         # The guard. A figure exists only if it is in the closed set, so a future
@@ -1099,7 +1121,18 @@ def recompute(session: Session, metric: MetricValue) -> float | None:
     re-applies the rule that picked them rather than trusting that it still holds.
 
     Returns ``None`` for a metric that states no figure.
+
+    Raises :class:`ValueError` for a ``citation_only`` value. Its ids are the rows
+    a client may be shown, not the rows the number came from, and re-deriving a
+    share of voice from one mandate's own coverage returns 100 % — a disagreement
+    invented by the narrowing rather than found in the data, and the one answer a
+    check like this must never produce.
     """
+    if metric.citation_only:
+        raise ValueError(
+            f"{metric.key} was narrowed for citation and cannot be recomputed; "
+            "take it from period_metrics instead"
+        )
     if metric.figure is None:
         return None
     rows = _rows_by_id(session, metric.analysis_ids)
@@ -1126,6 +1159,7 @@ __all__ = [
     "VoiceShare",
     "attributed_coverage",
     "client_workbook",
+    "forbidden_terms",
     "is_forbidden",
     "message_pull_through",
     "period_metrics",
