@@ -461,4 +461,4 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
     return grouped
 
 
-__all__ = ["draft", "crosscheck", "store", "for_angle", "by_angle"]
+__all__ = ["draft", "crosscheck", "guide_check", "store", "for_angle", "by_angle"]
