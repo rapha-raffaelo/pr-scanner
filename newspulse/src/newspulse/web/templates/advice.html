@@ -254,27 +254,49 @@
                first and the guide's line under it, and the reader can settle it in
                a second instead of taking it on faith. #}
             {% if not msg.guide_reviewed_by %}
-              <p class="guidecheck guidecheck--none">
-                {{ t("Nicht gegen den Guide geprüft — für diesen Mandanten ist kein Guide hinterlegt.") }}
-                <a href="/client/{{ client.id }}/guide">{{ t("Guide hinterlegen") }} →</a>
-              </p>
-            {% elif msg.guide_ok %}
+              {# The worker reports every failure as this one state — no stored
+                 guide, no second model, an unreachable provider, an unusable
+                 reply — but the page must not name a cause it cannot know. A
+                 mandate that *has* a guide was not skipped for want of one, and
+                 offering a link to write the guide they already wrote sends the
+                 consultant to fix nothing. The guide itself is the one half the
+                 page can tell apart, so it says that much and no more. #}
+              {% if not (client.comms_guide or "").strip() %}
+                <p class="guidecheck guidecheck--none">
+                  {{ t("Nicht gegen den Guide geprüft — für diesen Mandanten ist kein Guide hinterlegt.") }}
+                  <a href="/client/{{ client.id }}/guide">{{ t("Guide hinterlegen") }} →</a>
+                </p>
+              {% else %}
+                <p class="guidecheck guidecheck--none">
+                  {{ t("Nicht gegen den Guide geprüft — die Prüfung ist nicht durchgelaufen. Details stehen im Log.") }}
+                </p>
+              {% endif %}
+            {% elif msg.guide_review or not msg.guide_ok %}
+              {# The objecting branch is entered on *either* signal, never on the
+                 flag alone. A row carrying breaches must not be printed as an
+                 approval, and a row flagged as a breach with nothing under it is
+                 an accusation the reader cannot check — so it says which of the
+                 two it is instead of rendering an empty list. #}
+              <div class="guidecheck guidecheck--breach">
+                <span class="impulse__label">{{ t("Verstößt gegen den Guide") }} — {{ t("gelesen von") }} {{ msg.guide_reviewed_by }}</span>
+                {% if msg.guide_review %}
+                  <ul>
+                    {% for breach in msg.guide_review %}
+                      <li>
+                        <span class="guidecheck__draft">„{{ breach["draft"] }}“</span>
+                        <span class="guidecheck__against">{{ t("verstößt gegen") }}</span>
+                        <span class="guidecheck__line">„{{ breach["guide"] }}“</span>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <span class="guidecheck__verdict">{{ t("Die beanstandeten Stellen sind nicht mitgespeichert.") }}</span>
+                {% endif %}
+              </div>
+            {% else %}
               <div class="guidecheck guidecheck--clean">
                 <span class="impulse__label">{{ t("Gegen den Guide geprüft von") }} {{ msg.guide_reviewed_by }}</span>
                 <span class="guidecheck__verdict">{{ t("kein Verstoß gegen den Guide") }}</span>
-              </div>
-            {% else %}
-              <div class="guidecheck guidecheck--breach">
-                <span class="impulse__label">{{ t("Verstößt gegen den Guide") }} — {{ t("gelesen von") }} {{ msg.guide_reviewed_by }}</span>
-                <ul>
-                  {% for breach in msg.guide_review or [] %}
-                    <li>
-                      <span class="guidecheck__draft">„{{ breach["draft"] }}“</span>
-                      <span class="guidecheck__against">{{ t("verstößt gegen") }}</span>
-                      <span class="guidecheck__line">„{{ breach["guide"] }}“</span>
-                    </li>
-                  {% endfor %}
-                </ul>
               </div>
             {% endif %}
             <p class="letter__caveat">

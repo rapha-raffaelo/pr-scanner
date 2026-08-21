@@ -384,6 +384,15 @@ _EN: dict[str, str] = {
     "verstößt gegen": "breaches",
     "Nicht gegen den Guide geprüft — für diesen Mandanten ist kein Guide hinterlegt.":
         "Not checked against the guide: no guide is stored for this client.",
+    # The same state for a mandate that *does* have a guide. Deliberately names
+    # no cause: the worker reports a missing second model, an unreachable
+    # provider and an unusable reply as one outcome, and a page that guesses
+    # between them sends the reader to fix the wrong thing.
+    "Nicht gegen den Guide geprüft — die Prüfung ist nicht durchgelaufen. Details stehen im Log.":
+        "Not checked against the guide: the check did not run. See the log for "
+        "details.",
+    "Die beanstandeten Stellen sind nicht mitgespeichert.":
+        "The passages objected to were not stored with it.",
     "Guide hinterlegen": "Add a guide",
     "Bezieht sich auf": "Refers to",
     "Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.":

@@ -21,6 +21,13 @@ its story gave it. It chains from ``0017_client_facts``, the head of this tree �
 the outreach-ledger revisions the numbering leaves room for live in their own
 feature and are not here.
 
+The gap is a trap for whoever lands 0018-0020: chaining any of them from
+``0017_client_facts`` — the natural reading of "branch off the same base" — makes
+two heads out of one tree, and ``alembic upgrade head`` then fails outright on the
+next deploy rather than at merge. Whichever of the two branches merges second must
+be re-pointed at the other's head. If this one is second, its ``down_revision``
+moves to ``0020_*`` and the number stops being a gap at all.
+
 Revision ID: 0021_guide_check
 Revises: 0017_client_facts
 Create Date: 2026-08-21

@@ -870,10 +870,12 @@ def test_a_clean_guide_check_renders_as_its_own_block(factory, web):
     assert "Gegen den Guide geprüft von" in body
 
 
-def test_the_two_clean_verdicts_do_not_share_a_look(factory, web):
+def test_the_two_clean_verdicts_do_not_share_a_look():
     """Two green boxes stacked are read as one box, and then the second verdict
-    has told the reader nothing."""
-    assert _background(".guidecheck") != _background(".crosscheck")
+    has told the reader nothing. Read off the stylesheet, not the markup: two
+    distinct class names that resolve to the same green would still be one box."""
+    assert _background(".guidecheck--clean") != _background(".crosscheck")
+    assert _background(".guidecheck--clean") == _background(".guidecheck")
 
 
 def test_a_breach_names_the_draft_sentence_before_the_guide_line(factory, web):
@@ -944,13 +946,104 @@ def test_a_client_without_a_guide_gets_the_not_checked_state_and_a_way_out(
     assert "kein Verstoß gegen den Guide" not in body
 
 
-def test_the_not_checked_state_is_styled_as_a_warning_not_as_an_approval(factory, web):
+def test_the_not_checked_state_is_styled_as_a_warning_not_as_an_approval():
     """A whole class of error was looked for by nothing at all. That is the
     stylesheet's warning look, not its clean one and not its neutral one."""
-    assert _background(".guidecheck--none") != _background(".guidecheck")
+    assert _background(".guidecheck--none") != _background(".guidecheck--clean")
     assert _background(".guidecheck--none") != _background(".crosscheck")
     # The same amber the page already uses when a verdict says "hold".
     assert _background(".guidecheck--none") == _background(".crosscheck--hold")
+
+
+def test_a_mandate_with_a_guide_is_not_told_its_guide_is_missing(factory, web):
+    """The worker folds four outcomes into the one not-checked state — no guide,
+    no second model, an unreachable provider, an unusable reply. Only the first
+    of them is the page's to name, and naming it for a mandate that *has* a guide
+    points the consultant at a page they already filled in."""
+    body = _render(factory=factory, web=web)  # _GUIDE is stored, nothing checked it
+
+    assert "Nicht gegen den Guide geprüft" in body
+    assert "kein Guide hinterlegt" not in body
+    assert "die Prüfung ist nicht durchgelaufen" in body
+    assert "guidecheck--none" in body
+
+
+def test_the_missing_guide_state_keeps_the_link_that_fixes_it(factory, web):
+    """The other half of the same branch: the one cause the page *can* know is
+    the one it names, and it is one click from the remedy."""
+    with factory() as session:
+        client, angle = _mandate(session, comms_guide="   \n  ")  # blank, like none
+        _stored(session, client, angle)
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "kein Guide hinterlegt" in body
+    assert f'href="/client/{client_id}/guide"' in body
+
+
+def test_a_verdict_that_approves_while_naming_a_breach_is_stored_as_a_breach(session):
+    """``store`` is public and takes the verdict as a keyword, so ``ok`` can
+    arrive from somewhere other than ``check_guide``, which recomputes it. Trusted
+    as given, this row would render the clean block over breaches nobody sees —
+    an approval printed on top of an objection."""
+    client, angle = _mandate(session)
+
+    row = _stored(
+        session,
+        client,
+        angle,
+        verdict=GuideVerdict(
+            ok=True, breaches=[_breach("Acht Prozent Rendite.", "Keine Versprechen.")]
+        ),
+        checked_by="gemini-2.5-flash",
+    )
+
+    assert row.guide_ok is False
+    assert row.guide_review[0]["draft"] == "Acht Prozent Rendite."
+
+
+def test_breaches_on_the_row_outrank_the_flag_on_the_page(factory, web):
+    """The render half of the same rule. Whichever way a stored row disagrees
+    with itself, the reader is shown the objection, never the approval."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = _stored(session, client, angle, body=_OFFENDING)
+        row.guide_reviewed_by = "gemini-2.5-flash"
+        row.guide_review = [
+            {"draft": "Acht Prozent Rendite.", "guide": "Keine Renditeversprechen."}
+        ]
+        row.guide_ok = True  # as a hand-edited database could leave it
+        session.commit()
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "Verstößt gegen den Guide" in body
+    assert "Acht Prozent Rendite." in body
+    assert "kein Verstoß gegen den Guide" not in body
+
+
+def test_a_breach_with_nothing_under_it_says_so_instead_of_accusing_blankly(
+    factory, web
+):
+    """The opposite disagreement: flagged, with no pair to show. An accusation
+    over an empty list is one the reader cannot settle by looking, which is the
+    single thing this block exists to let them do."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = _stored(session, client, angle, body=_OFFENDING)
+        row.guide_reviewed_by = "gemini-2.5-flash"
+        row.guide_review = []
+        row.guide_ok = False
+        session.commit()
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert "Die beanstandeten Stellen sind nicht mitgespeichert." in body
+    assert "kein Verstoß gegen den Guide" not in body
+    assert "verstößt gegen" not in body  # no half-empty pair rendered
 
 
 # --- Letters written before the migration ----------------------------------------
@@ -1050,6 +1143,9 @@ def test_a_letter_with_the_columns_at_their_defaults_renders_the_not_checked_sta
         "Verstößt gegen den Guide",
         "verstößt gegen",
         "Nicht gegen den Guide geprüft — für diesen Mandanten ist kein Guide hinterlegt.",
+        "Nicht gegen den Guide geprüft — die Prüfung ist nicht durchgelaufen. "
+        "Details stehen im Log.",
+        "Die beanstandeten Stellen sind nicht mitgespeichert.",
         "Guide hinterlegen",
     ],
 )

@@ -293,6 +293,13 @@ def _apply_guide_verdict(
     It cannot happen through :func:`newspulse.guide.check_guide`, which names the
     model whenever it returns a verdict at all; if a caller manages it anyway the
     verdict is attributed to an unnamed model rather than made invisible.
+
+    ``ok`` is recomputed from the breaches rather than taken on faith, the same
+    way :func:`newspulse.guide._parse_verdict` recomputes it, and for the same
+    reason: a verdict claiming ``ok`` while naming a breach would be stored as an
+    approval printed over an objection. ``store`` is public and ``guide_verdict``
+    is a keyword argument, so the flag can arrive from somewhere other than
+    ``check_guide``; the recompute can only ever move it toward False.
     """
     if verdict is None:
         row.guide_review = []
@@ -303,7 +310,7 @@ def _apply_guide_verdict(
         {"draft": breach.draft, "guide": breach.guide} for breach in verdict.breaches
     ]
     row.guide_reviewed_by = checked_by or guide.INJECTED_MODEL
-    row.guide_ok = verdict.ok
+    row.guide_ok = verdict.ok and not row.guide_review
 
 
 def store(

@@ -867,7 +867,11 @@ a:hover { text-decoration: underline; }
 
    Its "never checked" state is amber rather than the crosscheck's muted grey. A
    letter for a mandate with no stored guide has had a whole class of error looked
-   for by nothing at all, and grey reads as "nothing to report". */
+   for by nothing at all, and grey reads as "nothing to report".
+
+   Each of the three states carries its own colours in its own modifier rule; the
+   base holds the layout the three share. A modifier that exists only in the
+   markup is a hook nobody restyling the block would know is load-bearing. */
 .guidecheck {
   margin-top: 6px; padding: 8px 10px; border-radius: var(--radius);
   background: #eef2ff; border: 1px solid #c7d2fe; border-left: 3px solid #4f46e5;
@@ -877,6 +881,13 @@ a:hover { text-decoration: underline; }
 .guidecheck ul { list-style: none; margin: 4px 0 0; padding: 0; }
 .guidecheck li { margin-top: 6px; }
 .guidecheck__verdict { color: #4338ca; }
+/* The clean verdict. Blue where the crosscheck's clean verdict is green, and
+   spelled out here rather than left to the base so that restyling this one state
+   has an obvious home. */
+.guidecheck--clean {
+  background: #eef2ff; border-color: #c7d2fe; border-left-color: #4f46e5;
+  color: #312e81;
+}
 /* A breach is the one state here that is not advisory in tone: the client wrote
    the rule down. Red, and unmistakably not the crosscheck's amber "would hold". */
 .guidecheck--breach {

@@ -252,6 +252,14 @@ def _first_drafts(session: Session, client: Client) -> None:
                 )
             except Exception as exc:  # noqa: BLE001 — no key, no network, no loss
                 _log.info("first message for %r not cross-checked: %s", client.name, exc)
+            # No guide check here, and not an oversight: this runs once, on a
+            # mandate created moments ago by ``_parse_client_form``, which has no
+            # field for ``comms_guide`` — so there is no guide to read the letter
+            # against and ``guide.check_guide`` would return the not-checked state
+            # without calling a model. The letter is stored as not-checked, which
+            # is what it is. If a mandate ever arrives with a guide already on it
+            # (an import, a template, a re-onboarding), this call has to grow the
+            # same ``_guide_check`` the advisory worker runs.
             outreach.store(
                 session, client, first, message, target,
                 review=review, reviewed_by=reviewed_by or "",
