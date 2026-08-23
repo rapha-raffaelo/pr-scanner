@@ -128,7 +128,7 @@ def _letter(session, client, journalist, *, released):
     )
     session.add(row)
     session.flush()
-    ledger.release(session, row, when=released)
+    ledger.release(session, row, at=released)
     session.commit()
     return row
 

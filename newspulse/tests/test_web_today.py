@@ -310,8 +310,13 @@ def test_header_run_time_is_shown_in_the_reader_zone(factory, client, monkeypatc
 
     body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
-    assert "Letzter Lauf 10:00 Uhr" in body
+    # The clock is the reader's, which is what this test is about.
+    assert "10:00 Uhr" in body
     assert "08:00 Uhr" not in body
+    # And the day is named, because this run is not from today. A bare "10:00
+    # Uhr" under today's date is how a three-day-old sweep read as this
+    # morning's.
+    assert "30.07." in body
 
 
 # --- Category filter -----------------------------------------------------------
@@ -1032,3 +1037,46 @@ def test_the_recorded_reason_beats_the_generic_one(factory, client):
     body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
 
     assert "Aus 4 Marktmeldungen ergab sich kein Anlass." in body
+
+
+def test_a_run_from_today_still_shows_only_the_clock(factory, client, monkeypatch):
+    """The date is added because it is missing information, not as decoration.
+    On the morning after a sweep that worked, "06:15 Uhr" is exactly right and a
+    date beside it is noise."""
+    monkeypatch.setattr(config, "LOCAL_ZONE", ZoneInfo("Europe/Berlin"))
+    today = dt.datetime.now(ZoneInfo("Europe/Berlin")).replace(hour=6, minute=15)
+    with factory() as s:
+        s.add(
+            Run(
+                started_at=today.astimezone(dt.UTC),
+                finished_at=today.astimezone(dt.UTC),
+                status=RunStatus.OK,
+                articles_found=1,
+                errors=[],
+            )
+        )
+        s.commit()
+
+    body = client.get("/today").text
+
+    assert "Letzter Lauf 06:15 Uhr" in body
+    assert "kein Lauf" not in body, "and it is not flagged as stale"
+
+
+def test_a_stale_run_says_so_in_the_header(factory, client, monkeypatch):
+    """A portfolio of zeros under "Lauf ok" reads as a quiet week rather than as
+    a tool that stopped three days ago. The header is where that is read."""
+    monkeypatch.setattr(config, "LOCAL_ZONE", ZoneInfo("Europe/Berlin"))
+    stale = dt.datetime.now(dt.UTC) - dt.timedelta(days=3)
+    with factory() as s:
+        s.add(
+            Run(
+                started_at=stale, finished_at=stale,
+                status=RunStatus.OK, articles_found=84, errors=[],
+            )
+        )
+        s.commit()
+
+    body = client.get("/today").text
+
+    assert "seit 3 Tagen kein Lauf" in body

@@ -1,0 +1,8 @@
+# Repo tooling config. The app itself is configured through NEWSPULSE_* env
+# vars (see newspulse/src/newspulse/config.py), not through this file.
+
+# How a preview of the dashboard is started. Migrations first, the same shape as
+# the deployed start command in railway.json. The injected $PORT is honoured:
+# config.py resolves NEWSPULSE_WEB_PORT, then PORT, then the default 8000.
+[preview]
+cmd = "cd newspulse && uv run alembic upgrade head && uv run newspulse-web"

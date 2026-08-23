@@ -28,7 +28,128 @@
   .handover__why { font-size: var(--t-small); color: var(--muted); margin-bottom: var(--s3); max-width: 68ch; }
   .handover__act { font-size: var(--t-small); color: var(--muted); }
   .handover__act a { color: var(--accent); font-weight: 600; }
+
+  /* The package (DEC-1). Page-local because no other template renders it: a
+     class two pages share belongs in app.css, and one page's own layout does
+     not. Every name here is prefixed so it cannot collide with the system's.
+
+     Sizes come off the scale app.css actually defines, which the mock uses too.
+     The rules above this block ask for --t-small and --t-micro, which are on no
+     :root anywhere — an undefined custom property makes the declaration invalid
+     at computed-value time, so those font sizes silently inherit. That is older
+     than this package and is left where it is rather than fixed by halves; the
+     package itself does not join in. */
+  .pack { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--line); }
+  .pack__head { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
+  .pack__t { font-size: var(--t-subhead); font-weight: 600; }
+  .pack__st { font-size: var(--t-caption); color: var(--muted); }
+  .pack__acts { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
+  .pack__off { font-size: var(--t-caption); color: var(--muted); margin-bottom: var(--s2); }
+  /* The mock's empty state: an occasion with a thesis and no text is an
+     invitation, not an empty tab strip. */
+  .pack__empty { text-align: center; padding: var(--s5) 0; }
+  .pack__empty p { font-size: var(--t-subhead); color: var(--muted); margin-bottom: var(--s3); max-width: 54ch;
+                   margin-left: auto; margin-right: auto; }
+  .fmttabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: var(--s3); overflow-x: auto; }
+  .fmttab { font: inherit; font-size: var(--t-subhead); font-weight: 500; background: none; border: 0;
+            cursor: pointer; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent;
+            white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; }
+  .fmttab:hover { color: var(--ink); }
+  .fmttab.is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+  .fmttab__n { color: var(--muted); font-weight: 400; }
+  /* Four states, drawn apart: nothing written, a draft, a checked text, a
+     released one — plus the one modifier that overrides the rest, an objection
+     nobody has answered. A checked text and an unread one must never look alike. */
+  .fmt-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--faint); }
+  .fmt-dot--ungeschrieben { background: transparent; border: 1px dashed var(--faint); }
+  .fmt-dot--entwurf { background: var(--faint); }
+  .fmt-dot--geprueft, .fmt-dot--freigegeben { background: var(--good); }
+  .fmt-dot--freigegeben { box-shadow: 0 0 0 2px rgba(36, 138, 61, 0.22); }
+  .fmt-dot--einwand { background: var(--warn); border: 0; box-shadow: none; }
+  .fmtpane { display: none; }
+  .fmtpane.is-on { display: block; }
+  .fmtpane__bar { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s2); }
+  .fmtpane__when { font-size: var(--t-caption); color: var(--muted); }
+  .fmtpane__acts { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
+  .fmtsheet { background: var(--fill-2); border: 1px solid var(--line); border-radius: 8px;
+              padding: var(--s4); max-width: 72ch; }
+  .fmtsheet__title { font-size: var(--t-body); font-weight: 700; line-height: 1.3; margin-bottom: var(--s2); }
+  .fmtsheet__body { font-size: var(--t-footnote); line-height: 1.7; white-space: pre-wrap; }
+  .fmtpane__empty { max-width: 72ch; }
+  .fmtpane__what { font-size: var(--t-subhead); color: var(--muted); margin-bottom: var(--s3); }
+  .fmtedit { margin-top: var(--s3); max-width: 72ch; }
+  .fmtedit > summary { cursor: pointer; font-size: var(--t-caption); color: var(--accent); font-weight: 600; }
+  .fmtedit label { display: block; margin-top: var(--s3); }
+  .fmtedit label span { display: block; font-size: var(--t-caption); color: var(--muted); margin-bottom: 3px; }
+  .fmtedit input, .fmtedit textarea { width: 100%; font: inherit; font-size: var(--t-footnote);
+                                      line-height: 1.6; padding: 8px 10px; border: 1px solid var(--line-strong);
+                                      border-radius: 6px; background: var(--card); color: var(--ink); }
+  .fmtedit textarea { resize: vertical; }
+  /* Spacing only, and selected by element rather than by .btn: the button's own
+     look belongs to the system in app.css, and a page-local rule naming that
+     class would be a second definition that wins on this page alone. */
+  .fmtedit form > button { margin-top: var(--s3); }
+  .fmtedit .panel-hint { display: block; margin-top: var(--s2); }
+
+  /* --- The mailbox, and the one place a text leaves the house (DEC-4 C) ---
+     Page-local: this is the only screen that can send, so the strip, the
+     warning and the confirmation live with the card they belong to rather than
+     in the shared sheet. */
+  .mailbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+             background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+             padding: 10px var(--s4); margin-bottom: var(--s5); font-size: var(--t-footnote); color: var(--muted); }
+  .mailbar__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--alert); flex: none; }
+  .mailbar b { color: var(--ink-2); font-weight: 600; }
+  .mailbar__r { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  /* Red, and as loud as the button it explains. The Grundannahme says no engine
+     sends anything to a journalist; with the send scope granted, that sentence
+     no longer holds, and the screen has to say so rather than let the change
+     arrive silently as a new button. */
+  .warnband { background: rgba(215, 0, 21, .07); border: 1px solid rgba(215, 0, 21, .30);
+              border-radius: var(--radius); padding: 12px var(--s4); margin-bottom: var(--s5);
+              font-size: var(--t-footnote); color: #8a0010; max-width: 82ch; }
+  .warnband strong { color: #6b000c; }
+  .btn--send { background: var(--alert); color: #fff; }
+  .btn--send:hover:not(:disabled) { background: #b91c1c; }
+  /* "This letter left because a button here was pressed." Distinct from the blue
+     "verschickt" badge, which means a person sent it from their own client. */
+  .state__badge--gesendet { color: #8a0010; background: rgba(215, 0, 21, .08); border-color: rgba(215, 0, 21, .28); }
+  /* Two clicks, and no script behind them: the second click is the send, and an
+     action that cannot be undone must not depend on JavaScript having loaded. */
+  .gsend { margin-left: auto; }
+  .gsend[open] { flex: 1 1 100%; }
+  .gsend > summary { display: inline-block; list-style: none; cursor: pointer; }
+  .gsend > summary::-webkit-details-marker { display: none; }
+  .confirm { margin-top: 10px; padding: 12px; border: 1px solid rgba(215, 0, 21, .3);
+             background: rgba(215, 0, 21, .05); border-radius: var(--radius); }
+  .confirm p { font-size: var(--t-footnote); color: #8a0010; margin-bottom: 10px; max-width: 64ch; }
+  .confirm__row { display: flex; gap: 10px; align-items: center; }
+  /* Why the send is not on offer, beside the disabled button rather than instead
+     of it: the reader has to see that the action exists and what is missing. */
+  .state__why { font-size: var(--t-caption); color: var(--muted); }
+  .state__why a { color: var(--accent); font-weight: 600; }
+  /* The journalist's answer, in the box the locked mock gives it (.reply in
+     features/mocks/gmail-send.html): green-tinted and set apart from the letter
+     above it, because this is the only text on the card that somebody outside
+     the agency wrote. Page-local like the rest of this block — the contact's
+     file draws its own version inside the timeline (.tl__reply), where the
+     surrounding markup is a list row rather than a card. */
+  .reply { margin-top: 10px; border: 1px solid rgba(36, 138, 61, .30);
+           background: rgba(36, 138, 61, .06); border-radius: var(--radius); padding: 10px 12px; }
+  .reply__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .reply__from { font-size: var(--t-caption); font-weight: 600; color: #14532d; }
+  .reply__src { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+                letter-spacing: .04em; color: var(--muted); border: 1px solid var(--line);
+                border-radius: var(--radius); padding: 1px 7px; background: var(--card); }
+  .reply__when { font-size: var(--t-caption); color: var(--muted); margin-left: auto; }
+  /* pre-wrap beyond the mock: a mail body carries its own paragraphs, and
+     collapsing them turns a three-line answer into one run-on sentence. */
+  .reply__text { font-size: var(--t-footnote); line-height: 1.6; color: var(--ink-2); white-space: pre-wrap; }
 </style>
+
+{# Both cards on this page — the position and the letter — stamp themselves from
+   the shared partial, which the Today column imports too. #}
+{% import "partials/brain_stamp.html" as provenance %}
 
 <div class="client-profile">
   <h1>{{ t("Impulse") }}</h1>
@@ -37,6 +158,37 @@
     <strong>{{ t("Entwurf, keine Entscheidung") }}</strong> — {{ t("jede Aussage nennt die Meldungen, auf die sie sich stützt, damit die Begründung nachprüfbar bleibt.") }}
   </p>
 </div>
+
+{# The mailbox, and what it changes. Rendered only when one is actually
+   connected: with no mailbox this page is exactly what it was before — a letter,
+   a Kopieren button and a release the consultant records himself. #}
+{% set mailbox = gmail if gmail and gmail.is_connected else None %}
+{% if mailbox %}
+  <div class="mailbar">
+    <span class="mailbar__dot"></span>
+    {{ t("Postfach verbunden") }}: <b>{{ mailbox.email }}</b>
+    {# What this connection may actually do, read off the granted scopes rather
+       than off the fact that there is one. One string and not two glued
+       fragments: "lesen und" + "senden" translates into a pair of English words
+       that only happen to line up in this order. #}
+    <span class="dot">·</span> <b>{% if mailbox.may_send %}{{ t("lesen und senden") }}{% else %}{{ t("nur lesen") }}{% endif %}</b>
+    <span class="mailbar__r"><a href="/settings#gmail">{{ t("Einstellungen") }}</a></span>
+  </div>
+  {# Not decoration. DEC-4 option C is the one decision in this product that
+     contradicts its own founding sentence, and the screen where it is exercised
+     is where that has to be readable — but only where it is *exercised*: on a
+     mailbox that was never granted the send permission, nothing leaves the
+     house and the warning would be describing a power this build does not have. #}
+  {% if mailbox.may_send %}
+    <div class="warnband">
+      <strong>{{ t("Diese Variante ändert die Grundannahme.") }}</strong>
+      {{ t("Bisher gilt: keine Engine verschickt etwas an einen Journalisten. Mit Sendrecht verlässt ein Text das Haus, weil in RauteOS ein Knopf gedrückt wurde, nicht weil jemand in seinem eigenen Postfach auf Senden geht. Der Unterschied ist klein am Bildschirm und groß, wenn eine Nachricht falsch war.") }}
+    </div>
+  {% endif %}
+{% endif %}
+{% if gmail_error %}
+  <p class="sect__empty sect__refusal"><strong>{{ t("Nicht verschickt.") }}</strong> {{ gmail_error }}</p>
+{% endif %}
 
 {# --- Positioning: from the market ---------------------------------------- #}
 {# The id is the swap target for the poll below: while a draft is running this
@@ -98,6 +250,7 @@
         {% if angle.overclaim %}
           <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
         {% endif %}
+        {{ provenance.brain_stamp(angle.brain_version, t) }}
 
         {# The lead of this page promises that every claim names the coverage it
            rests on. This card — the *detailed* view of a draft, reached from the
@@ -133,13 +286,286 @@
           <p class="impulse__caveat">{{ t("Entwurf aus Schlagzeilen und Feed-Anrissen, nicht aus den vollständigen Artikeln. Vor dem Versand prüfen.") }}</p>
         </details>
 
-        {# The position is not the deliverable — the message is. This used to be a
-           second panel called "Empfehlungen", and nobody could say how it differed
-           from the one above it. It differed by being unsendable: it described
-           work instead of doing it. One button on the position itself, and the
-           mandate's own coverage does its work inside the text. #}
+        {# DEC-1, "ein Anlass, ein Paket": the formats are a strip on the impulse
+           rather than a folder somewhere else, because that is how a communication
+           occasion is actually handled. Every format is a tab whatever its state,
+           so the six that do not exist yet are as visible as the one that does —
+           a strip that listed only what was written would hide the work. #}
+        {% set pack = packages.get(angle.id) %}
         {% set written = messages.get(angle.id, []) %}
         {% set targets = pitch_targets.get(angle.id) or [] %}
+        {# Disabled while any text is being written, because the lock behind the
+           button is process-wide: a live button would take the click and refuse
+           it. The notice below is narrower — it belongs to the impulse whose
+           package is actually running. #}
+        {% set busy = asset_busy %}
+        {% set running = asset_progress and asset_progress.angle_id == angle.id %}
+        <div class="pack" id="pack-{{ angle.id }}">
+          <div class="pack__head">
+            <span class="pack__t">{{ t("Das Paket zu diesem Anlass") }}</span>
+            <span class="pack__st">
+              {% if pack.written %}
+                {{ pack.written }} {{ t("von") }} {{ pack.total }} {{ t("Formaten geschrieben") }}{% if pack.released %} <span class="dot">·</span> {{ pack.released }} {{ t("freigegeben") }}{% endif %}
+              {% else %}
+                {{ t("noch nichts geschrieben") }}
+              {% endif %}
+            </span>
+            <span class="pack__acts">
+              {% if pack.written %}
+                {# Takes the texts and nothing around them: every sheet is marked
+                   as a part, the checks and the buttons beside them are not. #}
+                <button type="button" class="linkbtn" data-copy-group="pack-{{ angle.id }}">{{ t("Alles kopieren") }}</button>
+              {% endif %}
+              {% if pack.missing %}
+                <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/assets">
+                  <button type="submit" class="btn"{% if busy %} disabled{% endif %}>{{ t("Fehlende schreiben") }}</button>
+                </form>
+              {% endif %}
+            </span>
+          </div>
+
+          {# The page reports what the worker is doing and swaps itself when it is
+             done: six formats in sequence is minutes, and a page that sat there
+             finished would look broken.
+
+             Two things narrower than the pollers above it, because this region
+             holds editable state and they do not. The target is this one package
+             rather than the whole #positioning section, so no other impulse's tab
+             strip or open edit form is replaced by a run it has nothing to do
+             with. And the poll pauses while an edit panel is open on *this*
+             package, because the swap would take the textarea and everything
+             typed into it with it. Editing in place is why this surface exists,
+             so it wins over the refresh; the spinner keeps saying what is
+             happening, and closing the panel resumes the poll. #}
+          {% if running %}
+            <div class="notice notice--ok"
+                 hx-get="/client/{{ client.id }}/advice"
+                 hx-trigger="every 3s [!npEditing({{ angle.id }})]"
+                 hx-select="#pack-{{ angle.id }}"
+                 hx-target="#pack-{{ angle.id }}"
+                 hx-swap="outerHTML">
+              <span class="spinner" aria-hidden="true"></span>
+              {{ t("Wird geschrieben") }}: {{ t(asset_progress.label) }}
+              {% if asset_progress.total > 1 %}({{ asset_progress.done + 1 }} {{ t("von") }} {{ asset_progress.total }}){% endif %}
+            </div>
+          {% elif busy %}
+            {# The lock is process-wide and the notice above is not, so without
+               this line a reader on a different impulse sees dead buttons and no
+               reason for them. #}
+            <p class="pack__off">{{ t("Es wird gerade ein anderer Text geschrieben — die Knöpfe sind so lange aus.") }}</p>
+          {% endif %}
+          {# Through the translator: the refusals the routes hold are fixed German
+             sentences written in Python, and an untranslated one is the only
+             German paragraph on an English page. A note built around an exception
+             message is not in the table and passes through as written, which is
+             the right answer for it. #}
+          {% if asset_notes.get(angle.id) %}
+            <p class="sect__empty sect__refusal">{{ t(asset_notes[angle.id]) }}</p>
+          {% endif %}
+
+          {% if not pack.written %}
+            {# The mock's empty package: an occasion that has a thesis and no text
+               is an invitation, and a full strip of seven empty tabs is not one.
+               The strip is still below it, so a single format can be picked. #}
+            <div class="pack__empty">
+              <p>{{ t("Zu diesem Anlass gibt es eine These und noch keinen Text. Sieben Formate stehen bereit.") }}</p>
+              {% if pack.missing %}
+                <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/assets">
+                  <button type="submit" class="btn btn--big"{% if busy %} disabled{% endif %}>{{ t("Paket schreiben") }}</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {# The strip. "+ Format" from the mock has no counterpart on purpose:
+             every format the registry knows is already a tab, and adding one is a
+             FormatDef and a prompt file rather than something a button can open. #}
+          <div class="fmttabs" id="fmttabs-{{ angle.id }}" role="tablist" aria-label="{{ t('Formate') }}">
+            {% for slot in pack.slots %}
+              <button type="button" class="fmttab{% if loop.first %} is-on{% endif %}"
+                      role="tab" id="tab-{{ angle.id }}-{{ slot.key }}"
+                      aria-selected="{{ 'true' if loop.first else 'false' }}"
+                      aria-controls="pane-{{ angle.id }}-{{ slot.key }}"
+                      tabindex="{{ '0' if loop.first else '-1' }}"
+                      data-pane="pane-{{ angle.id }}-{{ slot.key }}">
+                <span class="fmt-dot fmt-dot--{{ slot.state }}{% if slot.objected %} fmt-dot--einwand{% endif %}"
+                      aria-hidden="true"></span>{{ t(slot.fmt.name) }}
+              </button>
+            {% endfor %}
+            {# The letter is the seventh format of the package. It keeps its own
+               table and its own recipient, so the strip counts it rather than
+               owning it. #}
+            <button type="button" class="fmttab" role="tab"
+                    id="tab-{{ angle.id }}-anschreiben" aria-selected="false"
+                    aria-controls="pane-{{ angle.id }}-anschreiben" tabindex="-1"
+                    data-pane="pane-{{ angle.id }}-anschreiben">
+              <span class="fmt-dot fmt-dot--{{ 'entwurf' if written else 'ungeschrieben' }}" aria-hidden="true"></span>{{ t("Anschreiben") }}
+              {% if written %}<span class="fmttab__n">{{ written | length }}</span>{% endif %}
+            </button>
+          </div>
+
+          {% for slot in pack.slots %}
+            <div class="fmtpane{% if loop.first %} is-on{% endif %}"
+                 id="pane-{{ angle.id }}-{{ slot.key }}" role="tabpanel"
+                 aria-labelledby="tab-{{ angle.id }}-{{ slot.key }}" tabindex="0">
+              {% if slot.asset %}
+                {% set asset = slot.asset %}
+                <div class="fmtpane__bar">
+                  <span class="fmtpane__when">
+                    {{ t(slot.state_label) }}
+                    <span class="dot">·</span> {{ t("geschrieben") }} {{ asset.generated_at | de_datetime }}
+                    {% if asset.edited_at %}<span class="dot">·</span> {{ t("von Hand geändert") }} {{ asset.edited_at | de_datetime }}{% endif %}
+                    {% if asset.released_at %}<span class="dot">·</span> {{ t("freigegeben") }} {{ asset.released_at | de_datetime }}{% if asset.released_by %} ({{ asset.released_by }}){% endif %}{% endif %}
+                    {% if asset.speaker %}<span class="dot">·</span> {{ t("zugeschrieben") }}: {{ asset.speaker }}{% endif %}
+                  </span>
+                  <span class="fmtpane__acts">
+                    <button type="button" class="impulse__copy" data-copy-from="asset-text-{{ asset.id }}">{{ t("Kopieren") }}</button>
+                    {% if not asset.released %}
+                      <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/rewrite">
+                        <button type="submit" class="linkbtn"{% if busy %} disabled{% endif %}>{{ t("Neu schreiben") }}</button>
+                      </form>
+                      {# Offered for any unread text, not only an edited one: a
+                         draft whose crosscheck was down when it was written is
+                         unread through no fault of the reader's, and the only way
+                         back used to be "Neu schreiben" — a second full model call
+                         that throws away a text there was nothing wrong with. #}
+                      {% if slot.recheckable %}
+                        <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/recheck">
+                          <button type="submit" class="btn btn--ghost btn--sm"{% if busy %} disabled{% endif %}>{{ t("Gegenlesen lassen") }}</button>
+                        </form>
+                      {% endif %}
+                      {# Out while anything is being written, like every other
+                         control on this strip. A live one took the click, and a
+                         release landing while the worker for that same format was
+                         inside its model call left the worker's text standing
+                         beside a released row it knew nothing about. #}
+                      {% if slot.releasable %}
+                        <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/release">
+                          <button type="submit" class="btn btn--sm"{% if busy %} disabled{% endif %}>{{ t("Freigeben") }}</button>
+                        </form>
+                        {# Grade F is a human's decision, not a model's, and this
+                           is the state in which the human is the only reader the
+                           text has had. Said beside the button rather than only in
+                           the verdict block further down. #}
+                        {% if slot.unchecked %}
+                          <span class="panel-hint">{{ t("Ungeprüft: wer jetzt freigibt, gibt ungelesen frei.") }}</span>
+                        {% endif %}
+                      {% endif %}
+                    {% endif %}
+                  </span>
+                </div>
+
+                {# The text itself, and only the text: the copy button takes this
+                   element, so the checks and the attribution stay outside it. #}
+                <div class="fmtsheet" id="asset-text-{{ asset.id }}" data-copy-part>{% if asset.title %}<div class="fmtsheet__title">{{ asset.title }}</div>{% endif %}<div class="fmtsheet__body">{{ asset.body }}</div></div>
+
+                {# Both verdicts, and the state neither of them is. A text nothing
+                   has read must never draw like a text nothing objected to. #}
+                {% if asset.reviewed_by %}
+                  <div class="crosscheck{% if not asset.review_ok %} crosscheck--hold{% endif %}">
+                    <span class="impulse__label">
+                      {% if asset.review_ok %}{{ t("Gegengelesen von") }}{% else %}{{ t("Zweitmodell rät ab") }} — {{ t("gelesen von") }}{% endif %}
+                      {{ asset.reviewed_by }}
+                    </span>
+                    {% if asset.review %}
+                      <ul>{% for line in asset.review.split("\n") if line.strip() %}<li>{{ line }}</li>{% endfor %}</ul>
+                    {% else %}
+                      <span class="crosscheck__clean">{{ t("keine Einwände") }}</span>
+                    {% endif %}
+                  </div>
+                {% elif asset.review %}
+                  {# A check that ran and could not answer, which is not the same
+                     thing as no second model being configured — and saying the
+                     wrong one of the two sends the reader to a settings page that
+                     is already filled in. The sentence stored on the row says
+                     which, and that whoever releases now releases unread.
+
+                     Line by line through the translator: the first line is the
+                     stored sentence and is in the table, the line under it is
+                     whatever the backend said and is the operator's, not the
+                     consultant's. Printed as one interpolated string the lookup
+                     never matched and an English reader read the German. #}
+                  <p class="crosscheck crosscheck--hold">
+                    {% for line in asset.review.split("\n") if line.strip() %}{{ t(line) }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                  </p>
+                {% else %}
+                  <p class="crosscheck crosscheck--none">
+                    {{ t("Nicht gegengelesen — es ist kein Zweitmodell hinterlegt.") }}
+                    <a href="/settings">{{ t("Einstellungen") }} →</a>
+                  </p>
+                {% endif %}
+                {% if asset.guide_reviewed_by %}
+                  <div class="crosscheck{% if not asset.guide_review_ok %} crosscheck--hold{% endif %}">
+                    <span class="impulse__label">{{ t("Guide-Prüfung") }} · {{ asset.guide_reviewed_by }}</span>
+                    {% if asset.guide_review %}
+                      <ul>{% for line in asset.guide_review.split("\n") if line.strip() %}<li>{{ line }}</li>{% endfor %}</ul>
+                    {% else %}
+                      <span class="crosscheck__clean">{{ t("keine Einwände") }}</span>
+                    {% endif %}
+                  </div>
+                {% elif asset.guide_review %}
+                  <p class="crosscheck crosscheck--none">{{ asset.guide_review }}</p>
+                {% endif %}
+
+                {% if slot.hint %}
+                  <p class="crosscheck crosscheck--hold">{{ t(slot.hint) }}</p>
+                {% endif %}
+                {% if slot.note %}
+                  <p class="sect__empty sect__refusal">{{ t(slot.note) }}</p>
+                {% endif %}
+
+                {# Editing is why this surface exists and not a card with a copy
+                   button: a pitch is read once, a press release is worked on. #}
+                {% if not asset.released %}
+                  <details class="fmtedit">
+                    <summary>{{ t("Bearbeiten") }}</summary>
+                    <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/asset/{{ asset.id }}/edit">
+                      {# Which text this panel was opened on. A re-write replaces
+                         the draft in place, so without this a panel left open
+                         across one posts the old words back over the new ones and
+                         stamps them as a human's. #}
+                      <input type="hidden" name="seen" value="{{ slot.version }}">
+                      <label>
+                        <span>{{ t(slot.fmt.title_label) }}</span>
+                        <input type="text" name="title" value="{{ asset.title }}">
+                      </label>
+                      <label>
+                        <span>{{ t("Text") }}</span>
+                        <textarea name="body" rows="16">{{ asset.body }}</textarea>
+                      </label>
+                      <button type="submit" class="btn btn--ghost">{{ t("Änderung speichern") }}</button>
+                      <span class="panel-hint">{{ t("Die Änderung wird gespeichert und als von Hand bearbeitet vermerkt. Danach liest das Zweitmodell den Text noch einmal, bevor er freigegeben werden kann.") }}</span>
+                    </form>
+                  </details>
+                {% endif %}
+              {% else %}
+                <div class="fmtpane__empty">
+                  <p class="fmtpane__what">{{ t(slot.fmt.description) }}</p>
+                  {% if slot.writable %}
+                    <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/assets">
+                      <input type="hidden" name="kind" value="{{ slot.key }}">
+                      <button type="submit" class="btn btn--big"{% if busy %} disabled{% endif %}>{{ t("Schreiben") }}</button>
+                    </form>
+                  {% else %}
+                    {# DEC-2 on screen: nothing is written and the refusal names the
+                       field to go and fill, with the page that holds it. #}
+                    <p class="sect__empty sect__refusal">
+                      <strong>{{ t("Noch nicht schreibbar.") }}</strong> {{ slot.readiness.reason }}
+                      {% if slot.remedy %}
+                        <a href="/client/{{ client.id }}/{{ slot.remedy.path }}">{{ t(slot.remedy.label) }} →</a>
+                      {% endif %}
+                    </p>
+                  {% endif %}
+                  {% if slot.note %}
+                    <p class="sect__empty sect__refusal">{{ t(slot.note) }}</p>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+
+          <div class="fmtpane" id="pane-{{ angle.id }}-anschreiben" role="tabpanel"
+               aria-labelledby="tab-{{ angle.id }}-anschreiben" tabindex="0">
         <div class="makemsg">
           <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/message"
                 class="makemsg__form">
@@ -195,21 +621,45 @@
         {% endif %}
 
         {% for msg in written %}
+          {# The address this letter would go to, or why there is none. Resolved
+             once for the whole card: the head names it, the confirmation repeats
+             it, and the disabled action explains its absence. #}
+          {% set rec = recipients.get(msg.id) %}
+          {# Connected is not the same question as allowed to send: a mailbox
+             connected before DEC-4's send path — or one whose owner unticked the
+             permission on Google's consent screen — can read and nothing else,
+             and an enabled button on it 403s after the confirmation. #}
+          {% set may_send = mailbox and mailbox.may_send %}
+          {% set can_send = may_send and not msg.released_at and not msg.sent_through_gmail %}
           <article class="letter">
             <div class="letter__head">
               <span class="letter__to">
                 {{ t("An") }}:
                 {% if msg.journalist %}
-                  <a href="/contacts?name={{ msg.journalist | urlencode }}&outlet={{ msg.outlet | urlencode }}">{{ msg.journalist }}</a>
+                  {# Into the relationship file when the ledger resolved this
+                     recipient to a contact — everything ever sent to them, across
+                     all mandates (DEC-2). Only an unrecorded byline leads to the
+                     prefilled form instead. #}
+                  <a href="{% if msg.contact_id %}/contacts?id={{ msg.contact_id }}{% else %}/contacts?name={{ msg.journalist | urlencode }}&outlet={{ msg.outlet | urlencode }}{% endif %}">{{ msg.journalist }}</a>
                   <span class="dot">·</span>
                 {% endif %}
                 {{ msg.outlet or t("Fachredaktion") }}
+                {# The address, where there is one, so the reader sees what the
+                   send button would actually do before pressing it. #}
+                {% if rec and rec.email %}
+                  <span class="dot">·</span> {{ rec.email }}
+                {% endif %}
               </span>
-              <button type="button" class="impulse__copy" data-copy-from="letter-text-{{ msg.id }}">{{ t("Kopieren") }}</button>
+              {# Gone once RauteOS itself put the letter in the recipient's
+                 inbox: there is nothing left to paste anywhere, and a Kopieren
+                 button on a sent message invites a second, hand-sent copy. #}
+              {% if not msg.sent_through_gmail %}
+                <button type="button" class="impulse__copy" data-copy-from="letter-text-{{ msg.id }}">{{ t("Kopieren") }}</button>
+              {% endif %}
             </div>
             {# Subject and body inside the copy target, the reasoning outside it:
                the hook is for the consultant and must never reach an inbox. #}
-            <div class="letter__body" id="letter-text-{{ msg.id }}">{% if msg.subject %}<div class="letter__subject">{{ t("Betreff") }}: {{ msg.subject }}</div>{% endif %}{{ msg.message }}</div>
+            <div class="letter__body" id="letter-text-{{ msg.id }}" data-copy-part>{% if msg.subject %}<div class="letter__subject">{{ t("Betreff") }}: {{ msg.subject }}</div>{% endif %}{{ msg.message }}</div>
             {% if msg.hook %}
               <div class="letter__hook"><span class="impulse__label">{{ t("Warum diese:r") }}</span> {{ msg.hook }}</div>
             {% endif %}
@@ -231,13 +681,26 @@
             {% if msg.reviewed_by %}
               <div class="crosscheck{% if not msg.review_ok %} crosscheck--hold{% endif %}">
                 <span class="impulse__label">
-                  {% if msg.review_ok %}{{ t("Gegengelesen von") }}{% else %}{{ t("Zweitmodell rät ab") }} —{{ t("gelesen von") }}{% endif %}
+                  {% if msg.review_ok %}{{ t("Gegengelesen von") }}{% else %}{{ t("Zweitmodell rät ab") }} — {{ t("gelesen von") }}{% endif %}
                   {{ msg.reviewed_by }}
                 </span>
                 {% if msg.review %}
                   <ul>{% for line in msg.review.split("\n") if line.strip() %}<li>{{ line }}</li>{% endfor %}</ul>
                 {% else %}
                   <span class="crosscheck__clean">{{ t("keine Einwände") }}</span>
+                {% endif %}
+                {# Shown only when the check read a different set of standards
+                   from the ones the letter was written under, which happens when
+                   a block is edited in the seconds between the two model calls.
+                   Silent otherwise: one stamp per card is the normal case, and a
+                   second identical number beside it would be noise that teaches
+                   the reader to skip both. #}
+                {% if msg.review_brain_version is not none
+                      and msg.review_brain_version != msg.brain_version %}
+                  <span class="crosscheck__stamp">
+                    {{ t("gegengelesen unter") }}
+                    <a href="/settings/brain/version/{{ msg.review_brain_version }}">{{ t("Fassung") }} {{ msg.review_brain_version }}</a>
+                  </span>
                 {% endif %}
               </div>
             {% else %}
@@ -246,9 +709,321 @@
                 <a href="/settings">{{ t("Einstellungen") }} →</a>
               </p>
             {% endif %}
+            {# The guide check, under the crosscheck and never merged into it. The
+               same three states, and deliberately not the same colours: two green
+               boxes stacked are read as one box, and then the second verdict is
+               nobody's second look. A No-Go is not a style note — the client wrote
+               it down — so a breach is quoted on both sides, the draft's sentence
+               first and the guide's line under it, and the reader can settle it in
+               a second instead of taking it on faith. #}
+            {% if not msg.guide_reviewed_by %}
+              {# The worker reports every failure as this one state — no stored
+                 guide, no second model, an unreachable provider, an unusable
+                 reply — but the page must not name a cause it cannot know. A
+                 mandate that *has* a guide was not skipped for want of one, and
+                 offering a link to write the guide they already wrote sends the
+                 consultant to fix nothing. The guide itself is the one half the
+                 page can tell apart, so it says that much and no more.
+
+                 And it points at no log. The largest population in this state is
+                 letters written before the check existed: nothing ran for them,
+                 so nothing was ever logged about them, and sending the reader to
+                 search for a line that was never written is a second dead end on
+                 top of the first. A redraft is the one remedy that holds for
+                 every letter here — a stored letter never gains a verdict after
+                 the fact. #}
+              {% if not (client.comms_guide or "").strip() %}
+                <p class="guidecheck guidecheck--none">
+                  {{ t("Nicht gegen den Guide geprüft — für diesen Mandanten ist kein Guide hinterlegt.") }}
+                  <a href="/client/{{ client.id }}/guide">{{ t("Guide hinterlegen") }} →</a>
+                </p>
+              {% else %}
+                <p class="guidecheck guidecheck--none">
+                  {{ t("Nicht gegen den Guide geprüft — für diesen Brief liegt kein Ergebnis vor. Erst ein neuer Entwurf wird wieder geprüft.") }}
+                </p>
+              {% endif %}
+            {% elif msg.guide_review or not msg.guide_ok %}
+              {# The objecting branch is entered on *either* signal, never on the
+                 flag alone. A row carrying breaches must not be printed as an
+                 approval, and a row flagged as a breach with nothing under it is
+                 an accusation the reader cannot check — so it says which of the
+                 two it is instead of rendering an empty list.
+
+                 What is printed comes from ``guide_breaches``, which keeps only
+                 the pairs that have both halves. A pair with one quote missing
+                 renders as „…“ verstößt gegen „“ — the same unsettleable
+                 accusation, arrived at from the other side — so it falls back to
+                 the same sentence the empty list gets. #}
+              {% set breaches = msg.guide_breaches %}
+              <div class="guidecheck guidecheck--breach">
+                <span class="impulse__label">{{ t("Verstößt gegen den Guide") }} — {{ t("gelesen von") }} {{ msg.guide_reviewed_by }}</span>
+                {% if breaches %}
+                  <ul>
+                    {% for breach in breaches %}
+                      <li>
+                        <span class="guidecheck__draft">„{{ breach["draft"] }}“</span>
+                        <span class="guidecheck__against">{{ t("verstößt gegen") }}</span>
+                        <span class="guidecheck__line">„{{ breach["guide"] }}“</span>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <span class="guidecheck__verdict">{{ t("Die beanstandeten Stellen sind nicht mitgespeichert.") }}</span>
+                {% endif %}
+              </div>
+            {% else %}
+              <div class="guidecheck guidecheck--clean">
+                <span class="impulse__label">{{ t("Gegen den Guide geprüft von") }} {{ msg.guide_reviewed_by }}</span>
+                <span class="guidecheck__verdict">{{ t("kein Verstoß gegen den Guide") }}</span>
+              </div>
+            {% endif %}
             <p class="letter__caveat">
               {{ t("Aus Schlagzeilen und Feed-Anrissen geschrieben, nicht aus den Artikeln selbst. Vor dem Versand gegen die Meldung prüfen.") }}
             </p>
+            {# The letter's own stamp, not the impulse's. A message is written
+               days after the position it comes from, and the house may have
+               changed its mind in between. #}
+            {{ provenance.brain_stamp(msg.brain_version, t) }}
+
+            {# The state strip: the human act at the end of the pipeline, made a
+               record. Exactly one badge names where the letter stands; "ohne
+               Reaktion" sits beside it rather than replacing it, because silence
+               is not a state anybody entered — it is "verschickt" plus time, and
+               a badge that swallowed the release would claim otherwise. #}
+            {% set quiet_days = silent.get(msg.id) %}
+            <div class="state">
+              <span class="state__badge state__badge--{{ msg.state }}{% if msg.out_through_gmail %} state__badge--gesendet{% endif %}">{{ t(state_labels[msg.state]) }}</span>
+              {% if quiet_days %}
+                <span class="state__badge state__badge--still">{{ t("Ohne Reaktion") }}</span>
+              {% endif %}
+              <span class="state__when">
+                {% if msg.released_at %}
+                  {# Two different sentences, because two different things
+                     happened. "Von RauteOS gesendet" is a claim about this tool
+                     having put the message in the inbox; "freigegeben" alone
+                     says a person did it themselves and recorded it here.
+                     Not "Liegt in Gmail", which the story text asks for: that
+                     sentence belongs to DEC-4 option B, where the letter waits
+                     in the mailbox as a draft for a human to send. DEC-4 locked
+                     C, the letter is gone by the time this renders, and the
+                     locked mock (features/mocks/gmail-send.html) says exactly
+                     what stands here. The card follows the mock, which the
+                     story's own last criterion requires. #}
+                  {% if msg.sent_through_gmail %}
+                    {{ t("Von RauteOS gesendet am") }} {{ msg.released_at | de_datetime }},
+                    {% if msg.released_by == "mensch" %}
+                      {{ t("freigegeben von Mensch") }}
+                    {% else %}
+                      {{ t("freigegeben von %(who)s") | format(who=msg.released_by) }}
+                    {% endif %}
+                  {% else %}
+                    {{ t("Freigegeben am") }} {{ msg.released_at | de_short_date }}
+                  {% endif %}
+                  {% if msg.outcome_at %}
+                    <span class="dot">·</span> {{ t("Ergebnis am") }} {{ msg.outcome_at | de_short_date }}
+                  {% elif quiet_days %}
+                    <span class="dot">·</span> {{ t("seit %(days)s Tagen still") | format(days=quiet_days) }}
+                  {% endif %}
+                {% else %}
+                  {{ t("Geschrieben") }} {{ msg.generated_at | de_short_date }}
+                  <span class="dot">·</span> {{ t("noch nicht freigegeben") }}
+                {% endif %}
+              </span>
+              {# The send comes before the thread link, not after it: a draft that
+                 Gmail accepted but never sent already has a thread, and ordering
+                 these the other way would leave that letter showing a link to an
+                 unsent conversation with no way to try again. The link itself
+                 hangs on the message id (``sent_through_gmail``) rather than on
+                 the thread, for the same reason — a composed draft is not a sent
+                 letter, and one whose mailbox was disconnected afterwards has to
+                 fall through to the release form rather than to a dead end. #}
+              {% if can_send and rec and rec.is_reachable %}
+                {# The locked mock's two clicks, as a details/summary rather than
+                   a script: the second click is an irreversible send, and it must
+                   not depend on JavaScript having loaded. #}
+                <details class="gsend">
+                  <summary class="btn btn--send">{{ t("Freigeben und senden") }}</summary>
+                  <div class="confirm">
+                    <p>
+                      {{ t("Diese Nachricht geht jetzt an") }} <strong>{{ rec.email }}</strong>.
+                      {{ t("Sie ist danach nicht mehr zurückzuholen. Gegengelesen wurde sie von einem zweiten Modell, nicht von einem Menschen.") }}
+                    </p>
+                    {% if not msg.review_ok %}
+                      {# The objection, repeated at the point of no return. The
+                         verdict is advisory and the consultant may overrule it,
+                         which is the design — but overruling has to be a
+                         decision, and a warning two scrolls up that the reader
+                         has already passed is not one. #}
+                      <p class="confirm__hold">
+                        <strong>{{ t("Das Zweitmodell rät ab.") }}</strong>
+                        {{ t("Es hält etwas in diesem Text für unbelegt. Wenn Sie widersprechen, geht die Nachricht so hinaus.") }}
+                      </p>
+                    {% endif %}
+                    <div class="confirm__row">
+                      <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/gmail-draft">
+                        <button type="submit" class="btn btn--send">{{ t("Ja, senden") }}</button>
+                      </form>
+                      {# The mock's second choice, and it is a real control. The
+                         send must work without JavaScript and does — the summary
+                         closes the panel on its own — so this is the one thing
+                         here that may lean on a script. #}
+                      <button type="button" class="linkbtn" data-close-confirm>{{ t("Abbrechen") }}</button>
+                    </div>
+                  </div>
+                </details>
+              {% elif msg.sent_through_gmail %}
+                <span class="state__acts">
+                  <a class="linkbtn" href="{{ gmail_threads[msg.id] }}" target="_blank" rel="noopener noreferrer">{{ t("Verlauf in Gmail öffnen") }}</a>
+                </span>
+              {% elif not msg.released_at %}
+                <span class="state__acts">
+                  {% if mailbox %}
+                    {# Disabled, and never silently: an address is the one thing
+                       this tool will not derive, so the card says which of the
+                       reasons it is and where each one gets fixed. The mailbox's
+                       own missing permission comes first — it is not a fact about
+                       this recipient, and no contact entry would cure it. #}
+                    <button type="button" class="btn btn--send" disabled>{{ t("Freigeben und senden") }}</button>
+                    <span class="state__why">
+                      {% if not may_send %}
+                        {{ t(gmail_scope_reason) }}
+                        <a href="/settings#gmail">{{ t("Postfach neu verbinden") }} →</a>
+                      {% else %}
+                        {{ t(rec.reason) if rec else "" }}
+                        {% if msg.journalist %}
+                          <a href="{% if rec and rec.contact_id %}/contacts?id={{ rec.contact_id }}{% else %}/contacts?name={{ msg.journalist | urlencode }}&outlet={{ msg.outlet | urlencode }}{% endif %}">{{ t("Kontakt hinterlegen") }} →</a>
+                        {% endif %}
+                      {% endif %}
+                    </span>
+                  {% endif %}
+                  {% if msg.review_ok %}
+                    <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/release">
+                      <button type="submit" class="btn">{{ t("Freigegeben und verschickt") }}</button>
+                    </form>
+                  {% else %}
+                    {# Not blocked: the check is advisory and the person signing
+                       is accountable, not the model. But this button writes
+                       "wer hat das freigegeben" into the ledger, and doing that
+                       over a standing objection should cost a second click. #}
+                    <details class="gsend">
+                      <summary class="btn">{{ t("Freigegeben und verschickt") }}</summary>
+                      <div class="confirm">
+                        <p class="confirm__hold">
+                          <strong>{{ t("Das Zweitmodell rät ab.") }}</strong>
+                          {{ t("Sie halten fest, dass dieser Text hinausgegangen ist. Der Einwand oben bleibt daneben stehen.") }}
+                        </p>
+                        <div class="confirm__row">
+                          <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/release">
+                            <button type="submit" class="btn">{{ t("Ja, eintragen") }}</button>
+                          </form>
+                          <button type="button" class="linkbtn" data-close-confirm>{{ t("Abbrechen") }}</button>
+                        </div>
+                      </div>
+                    </details>
+                  {% endif %}
+                </span>
+              {% endif %}
+            </div>
+
+            {% if msg.released_at %}
+              {# The trail, under the badge: two lines at most, each one a thing a
+                 person did. It is the audit answer to "wer hat das freigegeben",
+                 which had none before this. #}
+              <div class="trail">
+                <ul>
+                  <li>
+                    <b>{{ msg.released_at | de_datetime }}</b>
+                    {# The default signer follows client_profile's filled_by
+                       precedent: "mensch" is a stored token, not a name, and is
+                       never shown. A named releaser renders through one
+                       interpolated string rather than glued fragments, so the
+                       English keeps its own word order instead of German's. #}
+                    {% if msg.sent_through_gmail %}
+                      {% if msg.released_by == "mensch" %}
+                        {{ t("Freigegeben und von RauteOS über Gmail verschickt") }}
+                      {% else %}
+                        {{ t("von %(who)s freigegeben, von RauteOS über Gmail verschickt") | format(who=msg.released_by) }}
+                      {% endif %}
+                    {% elif msg.released_by == "mensch" %}
+                      {{ t("Freigegeben und verschickt") }}
+                    {% else %}
+                      {{ t("von %(who)s freigegeben und verschickt") | format(who=msg.released_by) }}
+                    {% endif %}
+                  </li>
+                  {% if msg.outcome_at %}
+                    <li>
+                      <b>{{ msg.outcome_at | de_datetime }}</b>
+                      {# Not every outcome is a thing a person did any more: since
+                         the mailbox is read, ``antwort`` can be the sync's own
+                         entry. Drawing that one as "Ergebnis eingetragen" would
+                         put a consultant's name on a line the machine wrote, so
+                         the trail says which of the two it is — off the stored
+                         author, not off a guess. #}
+                      {% if msg.outcome_from_mailbox %}
+                        {{ t("Antwort im Postfach gelesen") }}
+                      {% else %}
+                        {{ t("Ergebnis eingetragen") }}{% if msg.outcome_note %}:
+                          <span class="trail__note">{{ msg.outcome_note }}</span>{% endif %}
+                      {% endif %}
+                    </li>
+                  {% endif %}
+                </ul>
+              </div>
+              {# What came back, where the letter is — the locked mock's .reply box
+                 (features/mocks/gmail-send.html), in the journalist's own words.
+                 Every one of them, not just the first: an answer, a follow-up
+                 question and the note two weeks later that the piece is running
+                 are three things, and a card showing only the newest would hide
+                 the two the consultant has to act on. Nothing here is
+                 interpreted — the text is rendered as it arrived, and Jinja
+                 escapes it, because it was written by somebody outside this
+                 house. #}
+              {% for reply in msg.replies %}
+                <div class="reply">
+                  <div class="reply__head">
+                    <span class="reply__from">{{ reply.sender }}</span>
+                    <span class="reply__src">{{ t("Antwort im selben Verlauf") }}</span>
+                    <span class="reply__when">{{ reply.received_at | de_datetime }}</span>
+                  </div>
+                  <div class="reply__text">{{ reply.body }}</div>
+                </div>
+              {% endfor %}
+              {# Only on a released letter: a result before there was anything to
+                 answer is refused by the route, so offering the form would be an
+                 invitation to a 400. #}
+              <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/outcome"
+                    class="state__form">
+                <label for="outcome-{{ msg.id }}">{{ t("Was kam zurück") }}</label>
+                <div class="state__row">
+                  <select name="state" id="outcome-{{ msg.id }}" required>
+                    {# On a letter with no outcome yet, nothing may be preselected:
+                       no option matches "raus", and the browser would quietly fall
+                       back to the first one — a stray "Eintragen" click would then
+                       record a reply nobody had. The placeholder is disabled and
+                       the select required, so an outcome has to be chosen on
+                       purpose before the form will go. #}
+                    <option value="" disabled{% if msg.state not in outcomes %} selected{% endif %}>{{ t("Bitte wählen") }}</option>
+                    {% for value in outcomes %}
+                      <option value="{{ value }}"{% if msg.state == value %} selected{% endif %}>{{ t(state_labels[value]) }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="text" name="note" value="{{ msg.outcome_note }}"
+                         placeholder="{{ t('In einem Satz: was kam zurück.') }}">
+                  <button type="submit" class="btn btn--ghost">{{ t("Eintragen") }}</button>
+                </div>
+              </form>
+            {% elif can_send and rec and rec.is_reachable %}
+              {# The honest note under an unreleased letter, and it says the
+                 opposite of what it used to. With the send scope granted this
+                 button really does put the text in a journalist's inbox. #}
+              <p class="state__note">
+                {{ t("Zwei Klicks statt einem, weil der erste in einer vollen Woche schnell passiert.") }}
+              </p>
+            {% else %}
+              <p class="state__note">
+                {{ t("Nichts geht von hier aus raus. Der Knopf hält fest, dass Sie das Anschreiben gelesen, freigegeben und selbst verschickt haben.") }}
+              </p>
+            {% endif %}
           </article>
         {% endfor %}
 
@@ -268,11 +1043,12 @@
               {% for target in targets %}
                 <li>
                   <span class="pitchlist__who">
-                    {# A name links into the contact book: onto the entry if one
-                       exists, otherwise onto a form prefilled with what the feed
-                       knew, one edit away from having it. #}
+                    {# A name links into the contact book: onto the journalist's
+                       file if the book has them — every letter ever released at
+                       them, with what came of it — otherwise onto a form
+                       prefilled with what the feed knew, one edit away. #}
                     {% if target.journalist %}
-                      <a href="/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}">{{ target.journalist }}</a>
+                      <a href="{% if target.contact_id %}/contacts?id={{ target.contact_id }}{% else %}/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}{% endif %}">{{ target.journalist }}</a>
                       <span class="dot">·</span>
                     {% endif %}{{ target.outlet }}
                   </span>
@@ -282,6 +1058,11 @@
                     <a class="pitchlist__add" href="/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}">{{ t("Kontakt hinterlegen") }}</a>
                   {% endif %}
                   {% if target.is_new_contact %}<span class="pitchlist__new" title="{{ t('Schreibt über das Themenfeld, aber noch nie über diesen Mandanten.') }}">{{ t("schreibt nie über den Mandanten") }}</span>{% endif %}
+                  {# The list stops proposing someone who was already written to
+                     about this very thing. Dated rather than hidden: the reader
+                     decides, and a second approach may well be the right call —
+                     it just must not happen by accident. #}
+                  {% if target.already_pitched_at %}<span class="pitchlist__seen" title="{{ t('Zu diesem Impuls ging an diese Adresse bereits ein freigegebenes Anschreiben raus. Ein zweites zum selben Thema ist das, was eine Beziehung kostet.') }}">{{ t("schon angeschrieben am") }} {{ target.already_pitched_at | de_date }}</span>{% endif %}
                   {# One recipient, one message: the same position reads
                      differently to the reporter who covered the story it answers
                      than to a trade title that never has. #}
@@ -312,6 +1093,8 @@
             </p>
           </div>
         {% endif %}
+          </div>{# /pane-anschreiben #}
+        </div>{# /pack #}
       </article>
     {% else %}
       {# Three reasons for an empty section, and they need different answers: the
@@ -418,34 +1201,154 @@
   });
 })();
 
+// Whether somebody is editing a text in this package right now. Read by the
+// progress poller's trigger: the swap would replace the textarea and take
+// everything typed into it, and editing in place is the reason this surface
+// exists rather than a card with a copy button.
+window.npEditing = function (angleId) {
+  var pack = document.getElementById("pack-" + angleId);
+  return !!(pack && pack.querySelector("details.fmtedit[open]"));
+};
+
+// The package strip: one occasion, one panel at a time. Delegated from the
+// document rather than bound per button, because the poller swaps the package
+// out from under these elements every three seconds while a text is being
+// written, and listeners bound to the old markup go with it.
+//
+// The full tab pattern, not half of it. The markup announces role="tablist" to a
+// screen reader, and an announced tablist that does not move under the arrow keys
+// is worse than plain buttons: the reader has been told how it works and it does
+// not work that way. So: one tab in the tab order at a time, arrows and Home/End
+// between them, and aria-selected following the selection.
 (function () {
-  document.querySelectorAll("[data-copy-from]").forEach(function (button) {
+  // Which pane each strip is showing, remembered across the poller's swaps —
+  // the fresh markup always marks the first tab, so without this a run of six
+  // formats would snap the reader back to the first tab every three seconds.
+  var showing = {};
+
+  var select = function (tab, focus) {
+    var strip = tab.parentElement;
+    if (strip.id) showing[strip.id] = tab.dataset.pane;
+    strip.querySelectorAll(".fmttab").forEach(function (other) {
+      var pane = document.getElementById(other.dataset.pane);
+      var on = other === tab;
+      other.classList.toggle("is-on", on);
+      other.setAttribute("aria-selected", on ? "true" : "false");
+      other.tabIndex = on ? 0 : -1;
+      if (pane) pane.classList.toggle("is-on", on);
+    });
+    if (focus) tab.focus();
+  };
+
+  document.addEventListener("click", function (event) {
+    var tab = event.target.closest && event.target.closest(".fmttab");
+    if (tab) select(tab, false);
+  });
+
+  var STEPS = { ArrowRight: 1, ArrowLeft: -1, Home: 0, End: 0 };
+  document.addEventListener("keydown", function (event) {
+    var tab = event.target.closest && event.target.closest(".fmttab");
+    if (!tab || !(event.key in STEPS)) return;
+    var tabs = Array.prototype.slice.call(
+      tab.parentElement.querySelectorAll(".fmttab")
+    );
+    var at = tabs.indexOf(tab);
+    var next =
+      event.key === "Home" ? 0
+      : event.key === "End" ? tabs.length - 1
+      : (at + STEPS[event.key] + tabs.length) % tabs.length;
+    event.preventDefault();
+    select(tabs[next], true);
+  });
+
+  // The poller replaces one package with fresh markup. Put the reader back on
+  // the tab they were reading rather than on the first one.
+  document.body.addEventListener("htmx:afterSwap", function () {
+    Object.keys(showing).forEach(function (stripId) {
+      var strip = document.getElementById(stripId);
+      if (!strip) return;
+      var tab = strip.querySelector('[data-pane="' + showing[stripId] + '"]');
+      if (tab) select(tab, false);
+    });
+  });
+})();
+
+(function () {
+  var flash = function (button) {
+    var previous = button.textContent;
+    button.textContent = "✓";
+    button.classList.add("impulse__copy--done");
+    setTimeout(function () {
+      button.textContent = previous;
+      button.classList.remove("impulse__copy--done");
+    }, 1400);
+  };
+
+  var put = function (text, button) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { flash(button); }, function () {});
+      return;
+    }
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    try { document.execCommand("copy"); flash(button); } catch (e) {}
+    document.body.removeChild(area);
+  };
+
+  // What the consultant pastes into Word, not the DOM's idea of the text.
+  // textContent is a plain concatenation of text nodes and puts nothing at an
+  // element boundary, so a headline and its first paragraph came out welded
+  // together: "19 Monate bis zum NetzanschlussDie Debatte über…". The blocks a
+  // sheet is drawn in are the paragraphs it is read in, so they are joined by the
+  // break they are drawn with. A target holding one run of text is unchanged.
+  var readable = function (node) {
+    var parts = [];
+    Array.prototype.forEach.call(node.childNodes, function (child) {
+      var text = (child.textContent || "").trim();
+      if (text) parts.push(text);
+    });
+    return parts.join("\n\n");
+  };
+
+  document.addEventListener("click", function (event) {
+    if (!event.target.closest) return;
+    // One text: the element the button points at, never the reasoning around it,
+    // which must not land in a client's inbox.
+    var one = event.target.closest("[data-copy-from]");
+    if (one) {
+      var source = document.getElementById(one.dataset.copyFrom);
+      if (source) put(readable(source), one);
+      return;
+    }
+    // The whole package: every sheet in it, in the order of the strip. Only the
+    // parts marked as text, so no button label or verdict travels with them.
+    var all = event.target.closest("[data-copy-group]");
+    if (!all) return;
+    var group = document.getElementById(all.dataset.copyGroup);
+    if (!group) return;
+    var parts = [];
+    group.querySelectorAll("[data-copy-part]").forEach(function (part) {
+      var text = readable(part);
+      if (text) parts.push(text);
+    });
+    if (parts.length) put(parts.join("\n\n\n"), all);
+  });
+})();
+
+// Abbrechen on the send confirmation. Deliberately the only part of that panel
+// that needs a script: the send itself is a plain form, and the summary closes
+// the panel unaided, so a page whose JavaScript never loaded still shows both a
+// working send and a working way out of it.
+(function () {
+  document.querySelectorAll("[data-close-confirm]").forEach(function (button) {
     button.addEventListener("click", function () {
-      var source = document.getElementById(button.dataset.copyFrom);
-      if (!source) return;
-      var text = source.textContent.trim();
-      var done = function () {
-        var previous = button.textContent;
-        button.textContent = "✓";
-        button.classList.add("impulse__copy--done");
-        setTimeout(function () {
-          button.textContent = previous;
-          button.classList.remove("impulse__copy--done");
-        }, 1400);
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, function () {});
-        return;
-      }
-      var area = document.createElement("textarea");
-      area.value = text;
-      area.setAttribute("readonly", "");
-      area.style.position = "fixed";
-      area.style.opacity = "0";
-      document.body.appendChild(area);
-      area.select();
-      try { document.execCommand("copy"); done(); } catch (e) {}
-      document.body.removeChild(area);
+      var panel = button.closest("details");
+      if (panel) panel.open = false;
     });
   });
 })();

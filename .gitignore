@@ -8,3 +8,14 @@
 newspulse/.env
 newspulse/claude/
 newspulse/data/
+
+# Per-story visual artefacts from a Remy run: a mock, its screenshot and the
+# measurements taken off it. Regenerated whenever the story runs, and nothing
+# else in the tree tracks a rendered PNG — the mock that is meant to be kept
+# lives in features/mocks/ as HTML.
+OUT-*/
+
+# The HMAC key that signs session cookies. Generated per installation beside
+# the database (web/google_auth.secret_path) and never shared: a committed one
+# lets anyone with repository access mint a cookie for an allow-listed address.
+.session-secret

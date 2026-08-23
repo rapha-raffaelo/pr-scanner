@@ -21,18 +21,27 @@
     <span class="runbusy"><span class="spinner" aria-hidden="true"></span>{{ t("Aktualisierung läuft…") }}</span>
     {% if last_run %}
       <span class="dot">·</span>
-      <span class="runstale">{{ t("Stand von") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}</span>
+      <span class="runstale">{{ t("Stand von") }} {{ last_run.ran_at | de_when }}</span>
     {% endif %}
   {% elif last_run and last_run.status == "import" %}
     {# Not a sweep: the archive was filled by a mandate's onboarding backfill.
        Saying "Letzter Lauf" here would name a thing that never happened, and
        saying "Noch kein Lauf" above thirty imported articles reads as broken. #}
-    {{ t("Erst-Import") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}
+    {{ t("Erst-Import") }} {{ last_run.ran_at | de_when }}
     <span class="dot">·</span> {{ last_run.articles_checked }} {{ t("Artikel") }}
     <span class="dot">·</span>
     <span class="runempty">{{ t("noch kein täglicher Lauf") }}</span>
   {% elif last_run %}
-    {{ t("Letzter Lauf") }} {{ last_run.ran_at | de_time }} {{ t("Uhr") }}
+    {{ t("Letzter Lauf") }} {{ last_run.ran_at | de_when }}
+    {# A sweep is meant to happen every morning. When one has not, that is the
+       most important thing on the page and the header is where it is read: a
+       portfolio of zeros under "Lauf ok" reads as a quiet week, not as a tool
+       that stopped. #}
+    {% set age = last_run.ran_at | run_age_days %}
+    {% if age >= 1 %}
+      <span class="dot">·</span>
+      <span class="runbad" title="{{ t('Der tägliche Lauf ist ausgeblieben. Die Zahlen auf dieser Seite sind so alt wie der letzte Lauf.') }}">{{ t("seit %(days)s Tagen kein Lauf") | format(days=age) }}</span>
+    {% endif %}
     <span class="dot">·</span>
     {# "Feed-Fehler" was the label on a count that also carries matching and
        analysis failures, so an unreachable model backend pointed the reader at

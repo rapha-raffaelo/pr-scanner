@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anmelden · RauteOS</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+{# Standalone rather than extending base.html: the shared layout renders the
+   sidebar, which lists the mandates, which needs the database and a session.
+   A sign-in page that leaks the client roster to anyone who loads it would
+   defeat the thing it is guarding. #}
+<body class="signin">
+  <main class="signin__card">
+    <span class="signin__mark">#</span>
+    <h1 class="signin__title">RauteOS</h1>
+
+    {% if configured %}
+      <p class="signin__lead">Anmeldung über das Google-Konto. RauteOS speichert kein Passwort.</p>
+
+      {% if error %}
+        {# Named causes, because they need different reactions: a declined
+           consent screen is retried, an address that is not on the list never
+           will be, and "nicht eingerichtet" is for whoever runs the server. #}
+        <p class="signin__err">
+          {% if error == "nicht_freigegeben" %}
+            Dieses Google-Konto ist für RauteOS nicht freigegeben.
+          {% elif error == "abgelaufen" %}
+            Die Anmeldung hat zu lange gedauert. Bitte noch einmal versuchen.
+          {% elif error == "abgebrochen" %}
+            Die Anmeldung wurde abgebrochen.
+          {% elif error == "nicht_eingerichtet" %}
+            Google-Anmeldung ist auf diesem Server nicht eingerichtet.
+          {% else %}
+            Die Anmeldung ist fehlgeschlagen. Bitte noch einmal versuchen.
+          {% endif %}
+        </p>
+      {% endif %}
+
+      <a class="signin__go" href="/auth/google/start?next={{ next | urlencode }}">
+        <svg class="signin__g" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+          <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
+          <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/>
+          <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
+        </svg>
+        Mit Google anmelden
+      </a>
+
+      <p class="signin__who">
+        Nur freigegebene Konten. Ist Ihres nicht dabei, sagt Ihnen das die
+        Anmeldung.
+      </p>
+    {% else %}
+      <p class="signin__lead">Google-Anmeldung ist auf diesem Server noch nicht eingerichtet.</p>
+      <p class="signin__note">
+        Es fehlen <code>NEWSPULSE_GOOGLE_CLIENT_ID</code> und
+        <code>NEWSPULSE_GOOGLE_CLIENT_SECRET</code> (oder die
+        <code>GMAIL_</code>-Variante) sowie mindestens eine Adresse in
+        <code>NEWSPULSE_ALLOWED_EMAILS</code>. Bis dahin gilt die bisherige
+        Anmeldung mit Benutzername und Passwort.
+      </p>
+    {% endif %}
+  </main>
+</body>
+</html>

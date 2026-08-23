@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report als Dokument · RauteOS</title>
+<style>
+:root{
+  --ground:#f7f7fa; --card:#fff; --paper:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000;
+  --neutral:#a1a1aa;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px; --t-large:34px; --t-hero:46px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px; --s8:48px;
+  --radius:10px; --radius-s:6px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+
+.bar{position:sticky;top:0;z-index:5;background:rgba(247,247,250,.95);border-bottom:1px solid var(--line);
+  padding:var(--s3) var(--s5);display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap}
+.bar__t{font-size:var(--t-subhead);font-weight:700}
+.bar__s{font-size:var(--t-caption);color:var(--muted)}
+.bar__r{margin-left:auto;display:flex;gap:var(--s2)}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:7px 15px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+
+.page{max-width:820px;margin:var(--s6) auto var(--s8);background:var(--paper);
+  border:1px solid var(--line);border-radius:var(--radius);padding:var(--s8) var(--s8) var(--s7)}
+
+.mast{border-bottom:2px solid var(--ink);padding-bottom:var(--s4);margin-bottom:var(--s6);
+  display:flex;align-items:flex-end;gap:var(--s4);flex-wrap:wrap}
+.mast__l{flex:1;min-width:200px}
+.mast__k{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.mast__h{font-size:var(--t-title1);font-weight:700;letter-spacing:-.025em;margin-top:var(--s1)}
+.mast__d{font-size:var(--t-footnote);color:var(--muted);text-align:right}
+
+h2{font-size:var(--t-title3);font-weight:700;letter-spacing:-.015em;margin:var(--s7) 0 var(--s3);
+  padding-bottom:var(--s2);border-bottom:1px solid var(--line)}
+h2:first-of-type{margin-top:0}
+p{font-size:var(--t-body);line-height:1.72;margin-bottom:var(--s4);max-width:66ch}
+.ed{background:var(--fill-2);border-left:2px solid var(--tint);border-radius:0 var(--radius-s) var(--radius-s) 0;
+  padding:var(--s3) var(--s4);margin-bottom:var(--s4)}
+.ed__l{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--tint);display:block;margin-bottom:var(--s1)}
+.ed p{margin-bottom:0;font-size:var(--t-subhead);color:var(--ink-2)}
+
+/* stat row */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s4);margin-bottom:var(--s5)}
+.tile__n{font-size:var(--t-large);font-weight:700;letter-spacing:-.03em;line-height:1.05}
+.tile__d{font-size:var(--t-footnote);color:var(--muted);margin-top:2px}
+.tile__c{font-size:var(--t-footnote);font-weight:600;margin-top:3px}
+.up{color:var(--good)} .down{color:var(--alert)} .flat{color:var(--muted)}
+
+/* figures */
+figure{margin:0 0 var(--s5)}
+figcaption{font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s2);max-width:64ch}
+.fig__t{font-size:var(--t-subhead);font-weight:600;margin-bottom:var(--s3)}
+.chart{width:100%;overflow-x:auto}
+svg{display:block}
+.grid line{stroke:var(--line);stroke-width:1}
+.axis text{font-size:10px;fill:rgba(60,60,67,.58);font-variant-numeric:tabular-nums}
+.blab{font-size:11px;fill:var(--ink-2)}
+.bval{font-size:11px;font-weight:600;fill:var(--ink);font-variant-numeric:tabular-nums}
+.bval--mut{fill:var(--muted);font-weight:400}
+
+/* tonality strip, hue never load-bearing: every segment is labelled */
+.tone{display:flex;height:26px;border-radius:var(--radius-s);overflow:hidden;gap:2px;margin-bottom:var(--s2)}
+.tone div{display:grid;place-items:center;font-size:var(--t-caption);font-weight:600;color:#fff;white-space:nowrap}
+.tone .pos{background:var(--good)} .tone .neu{background:var(--neutral)} .tone .neg{background:var(--alert)}
+.tone__key{font-size:var(--t-footnote);color:var(--muted);display:flex;gap:var(--s4);flex-wrap:wrap}
+.tone__key span{display:inline-flex;align-items:center;gap:6px}
+.tone__key i{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+table{width:100%;border-collapse:collapse;margin-bottom:var(--s4)}
+th{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+  text-align:left;padding:8px 10px;border-bottom:1px solid var(--line-strong)}
+td{font-size:var(--t-subhead);padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;
+  font-variant-numeric:tabular-nums}
+td.t{font-variant-numeric:normal}
+tr:last-child td{border-bottom:0}
+.src{font-size:var(--t-caption);color:var(--muted)}
+.src a{color:var(--tint)}
+.foot{margin-top:var(--s7);padding-top:var(--s4);border-top:1px solid var(--line);
+  font-size:var(--t-caption);color:var(--muted);max-width:66ch;line-height:1.6}
+@media print{.bar{display:none}.page{border:0;margin:0;max-width:none}}
+</style>
+</head>
+<body>
+  <div class="bar">
+    <span>
+      <span class="bar__t">Report · Nordlicht Energie</span><br>
+      <span class="bar__s">Entwurf, nicht freigegeben · erzeugt heute 07:02</span>
+    </span>
+    <span class="bar__r">
+      <button class="btn btn--ghost">Kommentar überarbeiten</button>
+      <button class="btn btn--ghost">Als PDF</button>
+      <button class="btn">Freigeben</button>
+    </span>
+  </div>
+
+  <article class="page">
+    <div class="mast">
+      <div class="mast__l">
+        <div class="mast__k">Kommunikationsbericht</div>
+        <div class="mast__h">Nordlicht Energie</div>
+      </div>
+      <div class="mast__d">Juli 2026<br>erstellt von RAUTE<br>18. August 2026</div>
+    </div>
+
+    <h2>Das Wichtigste</h2>
+    <div class="tiles">
+      <div><div class="tile__n">31<span style="font-size:var(--t-title3);font-weight:600">%</span></div>
+        <div class="tile__d">Share of Voice</div><div class="tile__c up">+9 Punkte</div></div>
+      <div><div class="tile__n">24</div>
+        <div class="tile__d">Beiträge</div><div class="tile__c up">+7</div></div>
+      <div><div class="tile__n">6</div>
+        <div class="tile__d">Leitmedien</div><div class="tile__c flat">unverändert</div></div>
+      <div><div class="tile__n">3</div>
+        <div class="tile__d">aus eigener Ansprache</div><div class="tile__c up">+2</div></div>
+    </div>
+    <div class="ed">
+      <span class="ed__l">Einordnung</span>
+      <p>Der Zuwachs kommt aus einem Thema, nicht aus mehr Aktivität. Die Auswertung zur Anschlussdauer
+        wurde in drei Leitmedien zitiert und hat Nordlicht damit erstmals als Quelle für Zahlen etabliert
+        statt als betroffenes Unternehmen. Das ist der Unterschied, auf den es ankommt.</p>
+    </div>
+
+    <h2>Anteil an der Debatte</h2>
+    <figure>
+      <div class="fig__t">Beiträge im Vergleichsfeld, Juli 2026</div>
+      <div class="chart">
+      <svg viewBox="0 0 640 190" width="640" height="190" role="img" aria-label="Beiträge je Unternehmen im Juli 2026: Nordlicht Energie 24, Stadtwerke Union 21, Baltic Power 18, Enerwest 14.">
+        <g class="grid">
+          <line x1="180" y1="10" x2="180" y2="160"/><line x1="295" y1="10" x2="295" y2="160"/>
+          <line x1="410" y1="10" x2="410" y2="160"/><line x1="525" y1="10" x2="525" y2="160"/>
+          <line x1="640" y1="10" x2="640" y2="160"/>
+        </g>
+        <text class="blab" x="0" y="27">Nordlicht Energie</text>
+        <rect x="180" y="16" width="276" height="14" rx="4" fill="#0071e3"/>
+        <text class="bval" x="466" y="27">24</text>
+        <text class="blab" x="0" y="63">Stadtwerke Union</text>
+        <rect x="180" y="52" width="241" height="14" rx="4" fill="#a1a1aa"/>
+        <text class="bval bval--mut" x="431" y="63">21</text>
+        <text class="blab" x="0" y="99">Baltic Power</text>
+        <rect x="180" y="88" width="207" height="14" rx="4" fill="#a1a1aa"/>
+        <text class="bval bval--mut" x="397" y="99">18</text>
+        <text class="blab" x="0" y="135">Enerwest</text>
+        <rect x="180" y="124" width="161" height="14" rx="4" fill="#a1a1aa"/>
+        <text class="bval bval--mut" x="351" y="135">14</text>
+        <g class="axis">
+          <line x1="180" y1="160" x2="640" y2="160" stroke="rgba(60,60,67,.22)"/>
+          <text x="180" y="176" text-anchor="middle">0</text><text x="295" y="176" text-anchor="middle">10</text>
+          <text x="410" y="176" text-anchor="middle">20</text><text x="525" y="176" text-anchor="middle">30</text>
+          <text x="640" y="176" text-anchor="end">40</text>
+        </g>
+      </svg>
+      </div>
+      <figcaption>Nordlicht hervorgehoben, die Vergleichsgruppe neutral. Die Vergleichsgruppe wurde beim
+        Kickoff benannt und nicht aus der Branche geraten.</figcaption>
+    </figure>
+
+    <h2>Verlauf</h2>
+    <figure>
+      <div class="fig__t">Beiträge über Nordlicht Energie, Februar bis Juli</div>
+      <div class="chart">
+      <svg viewBox="0 0 640 190" width="640" height="190" role="img" aria-label="Beiträge je Monat: Februar 11, März 9, April 14, Mai 12, Juni 17, Juli 24.">
+        <g class="grid">
+          <line x1="40" y1="20" x2="620" y2="20"/><line x1="40" y1="60" x2="620" y2="60"/>
+          <line x1="40" y1="100" x2="620" y2="100"/><line x1="40" y1="140" x2="620" y2="140"/>
+        </g>
+        <polyline fill="none" stroke="#0071e3" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+          points="70,118 180,134 290,114 400,122 510,102 620,44"/>
+        <circle cx="620" cy="44" r="5" fill="#0071e3" stroke="#fff" stroke-width="2"/>
+        <text class="bval" x="620" y="32" text-anchor="end">24</text>
+        <g class="axis">
+          <line x1="40" y1="140" x2="620" y2="140" stroke="rgba(60,60,67,.22)"/>
+          <text x="34" y="24" text-anchor="end">30</text><text x="34" y="64" text-anchor="end">20</text>
+          <text x="34" y="104" text-anchor="end">10</text><text x="34" y="144" text-anchor="end">0</text>
+          <text x="70" y="160" text-anchor="middle">Feb</text><text x="180" y="160" text-anchor="middle">Mär</text>
+          <text x="290" y="160" text-anchor="middle">Apr</text><text x="400" y="160" text-anchor="middle">Mai</text>
+          <text x="510" y="160" text-anchor="middle">Jun</text><text x="620" y="160" text-anchor="middle">Jul</text>
+        </g>
+      </svg>
+      </div>
+      <figcaption>Eine Reihe, ein Ton. Der Juli-Wert ist beschriftet, die übrigen stehen in der Tabelle.</figcaption>
+    </figure>
+
+    <h2>Tonalität</h2>
+    <div class="tone">
+      <div class="pos" style="flex:14">14 positiv</div>
+      <div class="neu" style="flex:8">8 neutral</div>
+      <div class="neg" style="flex:2">2 negativ</div>
+    </div>
+    <div class="tone__key">
+      <span><i style="background:var(--good)"></i>positiv 14</span>
+      <span><i style="background:var(--neutral)"></i>neutral 8</span>
+      <span><i style="background:var(--alert)"></i>negativ 2</span>
+    </div>
+    <p style="margin-top:var(--s3)">Jedes Segment trägt seine Zahl, die Farbe ist Zugabe. Die beiden negativen
+      Beiträge stehen unten namentlich in der Belegtabelle.</p>
+
+    <h2>Belege</h2>
+    <table>
+      <thead><tr><th>Datum</th><th>Medium</th><th>Beitrag</th><th>Ton</th></tr></thead>
+      <tbody>
+        <tr><td>09.07.</td><td class="t">Handelsblatt</td><td class="t">Der teure Weg ans Netz</td><td class="t">positiv</td></tr>
+        <tr><td>11.07.</td><td class="t">Süddeutsche Zeitung</td><td class="t">Industriestrom: die vergessene Wartezeit</td><td class="t">positiv</td></tr>
+        <tr><td>15.07.</td><td class="t">FAZ</td><td class="t">Netzentgelte, neu gerechnet</td><td class="t">neutral</td></tr>
+        <tr><td>22.07.</td><td class="t">Hamburger Abendblatt</td><td class="t">Anwohner kritisieren Trassenplanung</td><td class="t">negativ</td></tr>
+      </tbody>
+    </table>
+    <p class="src">Vollständige Liste aller 24 Beiträge im Anhang. Jede Zeile verlinkt auf die Quelle;
+      RauteOS speichert Schlagzeile, Anriss, Quelle und Datum, keine Artikeltexte.</p>
+
+    <p class="foot">Erstellt aus dem Medienmonitoring von RAUTE. Kennzahlen beziehen sich auf den Zeitraum
+      01.07. bis 31.07.2026 gegen die beim Kickoff festgelegte Vergleichsgruppe. Jede Zahl in diesem Bericht
+      lässt sich auf die zugrunde liegenden Beiträge zurückführen. Der Kommentar unter „Das Wichtigste“ wurde
+      von RauteOS vorgeschlagen und von der Beratung überarbeitet.</p>
+  </article>
+</body>
+</html>

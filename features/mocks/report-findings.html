@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report als belegter Befund · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --neutral:#a1a1aa;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px; --t-large:32px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7);border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.content{padding:var(--s6) var(--s7);max-width:calc(940px + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.btn--sm{font-size:var(--t-caption);padding:5px 12px}
+.linkbtn{font:inherit;font-size:var(--t-caption);background:none;border:0;color:var(--muted);
+  cursor:pointer;text-decoration:underline;padding:0}
+.linkbtn:hover{color:var(--tint)}
+
+.lede{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:var(--s5);margin-bottom:var(--s5)}
+.lede h1{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em;margin-bottom:var(--s2)}
+.lede p{font-size:var(--t-subhead);color:var(--muted);max-width:70ch}
+.lede__bar{display:flex;gap:var(--s2);margin-top:var(--s4);align-items:center;flex-wrap:wrap}
+.lede__st{font-size:var(--t-footnote);color:var(--muted);margin-right:auto}
+
+/* a finding */
+.find{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:var(--s4);overflow:hidden}
+.find--drop{opacity:.5}
+.find__top{padding:var(--s5) var(--s5) var(--s4);border-bottom:1px solid var(--line)}
+.find__k{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);margin-bottom:var(--s2);display:flex;align-items:center;gap:var(--s2)}
+.find__k b{color:var(--tint)}
+.find__claim{font-size:var(--t-title3);font-weight:600;line-height:1.45;letter-spacing:-.012em;max-width:64ch}
+.find__so{font-size:var(--t-subhead);color:var(--ink-2);line-height:1.7;margin-top:var(--s3);max-width:66ch}
+.find__body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:0}
+.find__ev{padding:var(--s4) var(--s5);border-right:1px solid var(--line);min-width:0}
+.find__viz{padding:var(--s4) var(--s5);min-width:0}
+.evl{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);margin-bottom:var(--s2)}
+.ev{font-size:var(--t-footnote);padding:6px 0;border-top:1px solid var(--line);line-height:1.55}
+.ev:first-of-type{border-top:0}
+.ev b{font-weight:600}
+.ev span{color:var(--muted)}
+.find__acts{padding:var(--s3) var(--s5);background:var(--fill-2);border-top:1px solid var(--line);
+  display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap}
+.find__acts .linkbtn{margin-right:var(--s2)}
+.kept{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--good)}
+.dropped{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+
+.chart{width:100%;overflow-x:auto}
+svg{display:block}
+.grid line{stroke:var(--line);stroke-width:1}
+.axis text{font-size:10px;fill:rgba(60,60,67,.58);font-variant-numeric:tabular-nums}
+.blab{font-size:10px;fill:var(--ink-2)}
+.bval{font-size:10px;font-weight:600;fill:var(--ink);font-variant-numeric:tabular-nums}
+.bval--mut{fill:var(--muted);font-weight:400}
+.legend{display:flex;gap:var(--s3);flex-wrap:wrap;margin-top:var(--s2);font-size:var(--t-caption);color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:8px;height:8px;border-radius:2px}
+.big{font-size:var(--t-large);font-weight:700;letter-spacing:-.03em;line-height:1.05}
+.big small{font-size:var(--t-title3);font-weight:600}
+.bigd{font-size:var(--t-footnote);color:var(--muted);margin-top:2px}
+.bigc{font-size:var(--t-footnote);font-weight:600;color:var(--good);margin-top:3px}
+.tone{display:flex;height:22px;border-radius:var(--radius-s);overflow:hidden;gap:2px;margin-top:var(--s2)}
+.tone div{display:grid;place-items:center;font-size:10px;font-weight:600;color:#fff;white-space:nowrap}
+.note{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s5);max-width:70ch;line-height:1.6}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto}
+  .find__body{grid-template-columns:1fr}.find__ev{border-right:0;border-bottom:1px solid var(--line)}
+  .tbar,.content{padding-left:var(--s4);padding-right:var(--s4)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <div class="side__sect">Übersicht</div>
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandanten<span class="side__count">4</span></div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#8944ab"></span>Nordlicht Energie</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#0071a4"></span>Vermont Robotics</a>
+      <a href="#" class="side__row"><span class="side__dot" style="background:#d30f45"></span>Haaner Pharma</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="tbar">
+      <div>
+        <h1 class="tbar__title">Bericht Juli · Nordlicht Energie</h1>
+        <div class="tbar__sub">Variante C · belegter Befund, dann Dokument</div>
+      </div>
+      <button class="btn btn--ghost">Zeitraum ändern</button>
+    </header>
+
+    <main class="content">
+
+      <div class="lede">
+        <h1>Fünf Befunde für den Juli</h1>
+        <p>RauteOS hat den Monat gelesen und schlägt vor, was dem Mandanten zu sagen ist. Jeder Befund ist
+          eine Behauptung mit den Beiträgen darunter, aus denen sie stammt. Sie behalten, ändern oder
+          streichen. Was übrig bleibt, wird der Bericht.</p>
+        <div class="lede__bar">
+          <span class="lede__st">4 von 5 behalten · zuletzt bearbeitet heute 08:40</span>
+          <button class="btn btn--ghost">Weiteren Befund suchen</button>
+          <button class="btn">Dokument erzeugen</button>
+        </div>
+      </div>
+
+      <!-- FINDING 1 -->
+      <article class="find">
+        <div class="find__top">
+          <div class="find__k"><b>Befund 1</b> · Sichtbarkeit</div>
+          <div class="find__claim">Nordlicht war im Juli erstmals das meistzitierte Unternehmen im
+            Vergleichsfeld.</div>
+          <p class="find__so">Der Zuwachs kommt aus einem Thema, nicht aus mehr Aktivität. Die Auswertung zur
+            Anschlussdauer wurde in drei Leitmedien zitiert. Damit ist Nordlicht in dieser Debatte erstmals
+            Quelle für Zahlen statt betroffenes Unternehmen, und das ist der Unterschied, der sich im nächsten
+            Quartal auszahlt.</p>
+        </div>
+        <div class="find__body">
+          <div class="find__ev">
+            <div class="evl">Worauf der Befund steht · 4 von 24 Beiträgen</div>
+            <div class="ev"><b>09.07. Handelsblatt</b> · „Der teure Weg ans Netz“ <span>· Zahl übernommen</span></div>
+            <div class="ev"><b>11.07. Süddeutsche</b> · „Industriestrom: die vergessene Wartezeit“ <span>· Zahl übernommen</span></div>
+            <div class="ev"><b>15.07. FAZ</b> · „Netzentgelte, neu gerechnet“ <span>· Nordlicht als Quelle genannt</span></div>
+            <div class="ev"><b>18.07. pv magazine</b> · „19 Monate“ <span>· Auswertung verlinkt</span></div>
+            <div class="ev" style="color:var(--muted)">Vergleichsgruppe: Stadtwerke Union, Baltic Power, Enerwest,
+              beim Kickoff benannt.</div>
+          </div>
+          <div class="find__viz">
+            <div class="chart">
+            <svg viewBox="0 0 260 132" width="260" height="132" role="img" aria-label="Beiträge im Juli: Nordlicht 24, Stadtwerke Union 21, Baltic Power 18, Enerwest 14.">
+              <g class="grid"><line x1="112" y1="4" x2="112" y2="104"/><line x1="186" y1="4" x2="186" y2="104"/>
+                <line x1="260" y1="4" x2="260" y2="104"/></g>
+              <text class="blab" x="0" y="18">Nordlicht</text>
+              <rect x="112" y="9" width="89" height="12" rx="4" fill="#0071e3"/><text class="bval" x="209" y="18">24</text>
+              <text class="blab" x="0" y="43">Stadtwerke U.</text>
+              <rect x="112" y="34" width="78" height="12" rx="4" fill="#a1a1aa"/><text class="bval bval--mut" x="198" y="43">21</text>
+              <text class="blab" x="0" y="68">Baltic Power</text>
+              <rect x="112" y="59" width="67" height="12" rx="4" fill="#a1a1aa"/><text class="bval bval--mut" x="187" y="68">18</text>
+              <text class="blab" x="0" y="93">Enerwest</text>
+              <rect x="112" y="84" width="52" height="12" rx="4" fill="#a1a1aa"/><text class="bval bval--mut" x="172" y="93">14</text>
+              <g class="axis"><line x1="112" y1="104" x2="260" y2="104" stroke="rgba(60,60,67,.22)"/>
+                <text x="112" y="120" text-anchor="middle">0</text><text x="186" y="120" text-anchor="middle">20</text>
+                <text x="260" y="120" text-anchor="end">40</text></g>
+            </svg>
+            </div>
+            <div class="legend"><span><i style="background:#0071e3"></i>Nordlicht</span>
+              <span><i style="background:#a1a1aa"></i>Vergleichsgruppe</span></div>
+          </div>
+        </div>
+        <div class="find__acts">
+          <span class="kept">behalten</span>
+          <button class="linkbtn">Text ändern</button>
+          <button class="linkbtn">Belege ändern</button>
+          <button class="linkbtn">streichen</button>
+        </div>
+      </article>
+
+      <!-- FINDING 2 -->
+      <article class="find">
+        <div class="find__top">
+          <div class="find__k"><b>Befund 2</b> · Wirkung der Ansprache</div>
+          <div class="find__claim">Drei der 24 Beiträge gehen direkt auf eigene Ansprache zurück.</div>
+          <p class="find__so">Sieben Anschreiben, vier Antworten, drei Veröffentlichungen. Das ist eine Quote,
+            die über dem liegt, was in diesem Feld üblich ist, und sie kommt fast ausschließlich von
+            Journalistinnen und Journalisten, die vorher schon zum Thema geschrieben hatten.</p>
+        </div>
+        <div class="find__body">
+          <div class="find__ev">
+            <div class="evl">Worauf der Befund steht · aus dem Kontaktverlauf</div>
+            <div class="ev"><b>Marlene Kühn, Handelsblatt</b> · angeschrieben 02.07., Antwort 04.07.,
+              Beitrag 09.07.</div>
+            <div class="ev"><b>Tobias Reh, Süddeutsche</b> · angeschrieben 05.07., Beitrag 11.07.</div>
+            <div class="ev"><b>Redaktion pv magazine</b> · angeschrieben 12.07., Beitrag 18.07.</div>
+            <div class="ev" style="color:var(--muted)">Vier weitere Anschreiben ohne Ergebnis, davon zwei ohne
+              Reaktion und eine Absage.</div>
+          </div>
+          <div class="find__viz">
+            <div class="big">3<small> von 7</small></div>
+            <div class="bigd">Anschreiben mit Veröffentlichung</div>
+            <div class="bigc">im Juni 1 von 5</div>
+            <div class="chart" style="margin-top:var(--s3)">
+            <svg viewBox="0 0 260 92" width="260" height="92" role="img" aria-label="Sieben Anschreiben: 3 veröffentlicht, 1 Antwort ohne Beitrag, 1 Absage, 2 ohne Reaktion.">
+              <g class="grid"><line x1="130" y1="4" x2="130" y2="70"/><line x1="195" y1="4" x2="195" y2="70"/>
+                <line x1="260" y1="4" x2="260" y2="70"/></g>
+              <text class="blab" x="0" y="16">veröffentlicht</text>
+              <rect x="130" y="8" width="56" height="11" rx="4" fill="#0071e3"/><text class="bval" x="194" y="17">3</text>
+              <text class="blab" x="0" y="38">nur Antwort</text>
+              <rect x="130" y="30" width="19" height="11" rx="4" fill="#a1a1aa"/><text class="bval bval--mut" x="157" y="39">1</text>
+              <text class="blab" x="0" y="60">Absage</text>
+              <rect x="130" y="52" width="19" height="11" rx="4" fill="#a1a1aa"/><text class="bval bval--mut" x="157" y="61">1</text>
+              <g class="axis"><line x1="130" y1="70" x2="260" y2="70" stroke="rgba(60,60,67,.22)"/>
+                <text x="130" y="86" text-anchor="middle">0</text><text x="260" y="86" text-anchor="end">7</text></g>
+            </svg>
+            </div>
+          </div>
+        </div>
+        <div class="find__acts">
+          <span class="kept">behalten</span>
+          <button class="linkbtn">Text ändern</button>
+          <button class="linkbtn">Belege ändern</button>
+          <button class="linkbtn">streichen</button>
+        </div>
+      </article>
+
+      <!-- FINDING 3, a negative one -->
+      <article class="find">
+        <div class="find__top">
+          <div class="find__k"><b>Befund 3</b> · Risiko</div>
+          <div class="find__claim">Die Trassenplanung in Dithmarschen ist als lokales Thema aufgetaucht und
+            noch nicht überregional.</div>
+          <p class="find__so">Zwei negative Beiträge, beide regional, beide mit denselben Anwohnerstimmen.
+            Solche Themen wandern erfahrungsgemäß nach oben, wenn ein Verband sie aufgreift. Eine
+            Sprachregelung sollte vorbereitet sein, bevor sie gebraucht wird.</p>
+        </div>
+        <div class="find__body">
+          <div class="find__ev">
+            <div class="evl">Worauf der Befund steht · 2 von 24 Beiträgen</div>
+            <div class="ev"><b>22.07. Hamburger Abendblatt</b> · „Anwohner kritisieren Trassenplanung“</div>
+            <div class="ev"><b>26.07. Dithmarscher Landeszeitung</b> · „Bürgerinitiative formiert sich“</div>
+          </div>
+          <div class="find__viz">
+            <div class="evl">Tonalität im Juli</div>
+            <div class="tone">
+              <div style="flex:14;background:var(--good)">14 positiv</div>
+              <div style="flex:8;background:var(--neutral)">8 neutral</div>
+              <div style="flex:2;background:var(--alert)">2 negativ</div>
+            </div>
+            <div class="legend"><span><i style="background:var(--good)"></i>positiv 14</span>
+              <span><i style="background:var(--neutral)"></i>neutral 8</span>
+              <span><i style="background:var(--alert)"></i>negativ 2</span></div>
+          </div>
+        </div>
+        <div class="find__acts">
+          <span class="kept">behalten</span>
+          <button class="linkbtn">Text ändern</button>
+          <button class="linkbtn">Belege ändern</button>
+          <button class="linkbtn">streichen</button>
+        </div>
+      </article>
+
+      <!-- FINDING 4, dropped -->
+      <article class="find find--drop">
+        <div class="find__top">
+          <div class="find__k"><b>Befund 4</b> · Reichweite</div>
+          <div class="find__claim">Die Reichweite der Berichterstattung ist gegenüber Juni um 40 Prozent
+            gestiegen.</div>
+        </div>
+        <div class="find__acts">
+          <span class="dropped">gestrichen</span>
+          <button class="linkbtn">zurückholen</button>
+          <span style="font-size:var(--t-caption);color:var(--muted)">Grund: Reichweitenzahlen liegen RauteOS
+            nicht vor, der Wert wäre geschätzt.</span>
+        </div>
+      </article>
+
+      <p class="note">Ein Befund ohne Belege wird nicht vorgeschlagen. Wo eine Zahl nicht aus dem Archiv oder
+        dem Kontaktverlauf kommt, sagt RauteOS das, statt sie zu schätzen. Der fertige Bericht enthält nur
+        die behaltenen Befunde, jeden mit seinen Belegen, und geht erst nach Freigabe an den Mandanten.</p>
+    </main>
+  </div>
+</div>
+</body>
+</html>

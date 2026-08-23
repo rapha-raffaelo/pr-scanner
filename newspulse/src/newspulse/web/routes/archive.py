@@ -146,18 +146,21 @@ def _available_months(session: Session, *, with_competitors: bool) -> list[Month
 
 def _available_sources(session: Session, *, with_competitors: bool) -> list[str]:
     """Distinct publishers within the current scope, for the filter dropdown."""
-    return list(
-        session.execute(
-            select(Article.source)
-            .join(Analysis, Analysis.article_id == Article.id)
-            .where(
-                visible_coverage(),
-                Analysis.client_id.in_(_monitored_scope(with_competitors)),
-            )
-            .distinct()
-            .order_by(Article.source)
-        ).scalars().all()
-    )
+    rows = session.execute(
+        select(Article.source, func.count())
+        .join(Analysis, Analysis.article_id == Article.id)
+        .where(
+            visible_coverage(),
+            Analysis.client_id.in_(_monitored_scope(with_competitors)),
+        )
+        .group_by(Article.source)
+    ).all()
+    commonest: dict[str, tuple[int, str]] = {}
+    for name, count in rows:
+        key = (name or "").casefold()
+        if count > commonest.get(key, (0, ""))[0]:
+            commonest[key] = (count, name)
+    return sorted((name for _, name in commonest.values()), key=str.casefold)
 
 
 def _monitored_scope(with_competitors: bool):

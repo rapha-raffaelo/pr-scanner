@@ -23,8 +23,8 @@ tree keeps a single head. Nothing here can detect that on its own — it appears
 merge, not in this branch — so ``test_the_migration_chain_has_exactly_one_head``
 asserts it, and the suite goes red instead of the deploy.
 
-Revision ID: 0028_reports
-Revises: 0018_outreach_ledger
+Revision ID: 0031_reports
+Revises: 0030_asset_brain_version
 Create Date: 2026-08-21
 """
 from __future__ import annotations
@@ -34,8 +34,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0028_reports"
-down_revision: str | None = "0018_outreach_ledger"
+revision: str = "0031_reports"
+down_revision: str | None = "0030_asset_brain_version"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

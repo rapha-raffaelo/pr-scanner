@@ -25,6 +25,9 @@
      the week's triage and the month's outreach were for. #}
   <a href="/client/{{ client.id }}/berichte"{% if active == 'reports' %} class="active" aria-current="page"{% endif %}>{{ t("Berichte") }}</a>
   <a href="/client/{{ client.id }}"{% if active == 'overview' %} class="active" aria-current="page"{% endif %}>{{ t("Archiv") }}</a>
+  {# Kickoff sits ahead of Profil and Guide because it is upstream of both: the
+     twenty questions are where a profile field and a no-go come from. #}
+  <a href="/client/{{ client.id }}/kickoff"{% if active == 'kickoff' %} class="active" aria-current="page"{% endif %}>{{ t("Kickoff") }}</a>
   <a href="/client/{{ client.id }}/profil"{% if active == 'profile' %} class="active" aria-current="page"{% endif %}>{{ t("Profil") }}</a>
   <a href="/client/{{ client.id }}/guide"{% if active == 'guide' %} class="active" aria-current="page"{% endif %}>{{ t("Guide") }}</a>
   <a href="/client/{{ client.id }}/market"{% if active == 'market' %} class="active" aria-current="page"{% endif %}>{{ t("Marktumfeld") }}</a>

@@ -15,8 +15,8 @@ frozen document that says nothing.
 that a dropped finding stays visible rather than disappearing. Visible without a
 reason invites the same claim to be argued down again next month.
 
-Revision ID: 0029_report_snapshot
-Revises: 0028_reports
+Revision ID: 0032_report_snapshot
+Revises: 0031_reports
 Create Date: 2026-08-21
 """
 from __future__ import annotations
@@ -26,8 +26,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0029_report_snapshot"
-down_revision: str | None = "0028_reports"
+revision: str = "0032_report_snapshot"
+down_revision: str | None = "0031_reports"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

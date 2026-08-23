@@ -64,6 +64,10 @@
 
 {% block content %}
 {% set t = translator(request) %}
+{# The same stamp the impulse page renders, from the same partial: this column is
+   where the drafts are read every morning, so it is the one page the provenance
+   line may not be missing from. #}
+{% import "partials/brain_stamp.html" as provenance %}
 {# Entered from a mandate's workspace, the day is that mandate's day and keeps the
    workspace around it. Reached from the portfolio it is everyone's, and the strip
    would be a lie. #}
@@ -206,7 +210,10 @@
         </div>
       </div>
     {% else %}
-      <p class="rail__empty">{{ t("Keine Warnungen heute.") }}</p>
+      <p class="rail__empty">
+        {% if day == header_date %}{{ t("Keine Warnungen heute.") }}
+        {% else %}{{ t("Keine Warnungen am") }} {{ day.strftime('%d.%m.%Y') }}.{% endif %}
+      </p>
     {% endfor %}
   </aside>
 
@@ -275,7 +282,16 @@
             {# Two very different situations wore the same sentence, and one of
                them was nonsense: a portfolio with three mandates was told to
                create mandates. What is missing is coverage, not clients. #}
-            {% if clients %}
+            {% if client_has_archive %}
+              {# Nothing recent is not nothing ever. The route already knows the
+                 difference and this branch used to ignore it, so a mandate with
+                 six archived articles was told its archive was empty and sent to
+                 run a backfill for coverage it already had. #}
+              <p class="empty-state-hint">
+                {{ t("In den letzten") }} {{ recent_days }} {{ t("Tagen nichts, aber im Archiv liegt ältere Berichterstattung:") }}
+                <a href="/archive{% if selected_client %}?client={{ selected_client }}{% endif %}">{{ t("im Archiv ansehen") }}</a>
+              </p>
+            {% elif clients %}
               <p class="empty-state-hint">
                 {{ t("Noch keine Berichterstattung im Archiv. Der tägliche Lauf holt nur Neues — ältere Meldungen brauchen einen Nachlauf:") }}
                 <a href="/settings">{{ t("Einstellungen") }}</a>
@@ -340,6 +356,7 @@
                into this sentence, it is the wrong message. #}
             <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
           {% endif %}
+          {{ provenance.brain_stamp(angle.brain_version, t) }}
 
           <details class="impulse__more">
             <summary>{{ t("Grundlage") }}{% if angle.sources %} · {{ angle.sources | length }} {{ t("Meldung(en)") }}{% endif %}</summary>

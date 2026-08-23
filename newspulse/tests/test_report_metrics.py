@@ -15,7 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import config
+from newspulse import brain, config
 from newspulse import outreach as ledger
 from newspulse.models import (
     Analysis,
@@ -118,7 +118,7 @@ def _letter(session, client, journalist, *, released=None, outlet="Handelsblatt"
     session.add(row)
     session.flush()
     if released is not None:
-        ledger.release(session, row, when=released)
+        ledger.release(session, row, at=released)
     session.commit()
     return row
 
@@ -649,7 +649,10 @@ def test_a_released_letter_is_not_overwritten_by_a_redraft(session, mandate):
         session,
         client,
         angle,
-        PersonalMessage(subject="Neuer Betreff", message="Neuer Text.", hook=""),
+        PersonalMessage(
+            subject="Neuer Betreff", message="Neuer Text.", hook="",
+            brain_version=brain.version(session),
+        ),
         target,
     )
 
@@ -663,7 +666,7 @@ def test_releasing_a_letter_twice_keeps_the_first_stamp(session, mandate):
     first = dt.datetime(2026, 7, 1, tzinfo=dt.UTC)
     row = _letter(session, client, "Anna Muster", released=first)
 
-    ledger.release(session, row, when=dt.datetime(2026, 7, 20, tzinfo=dt.UTC))
+    ledger.release(session, row, at=dt.datetime(2026, 7, 20, tzinfo=dt.UTC))
 
     assert row.released_at == first
     assert row.released_by == "mensch"
