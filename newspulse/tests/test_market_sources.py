@@ -387,6 +387,73 @@ def test_a_source_that_reissued_its_pages_is_recognised_on_the_title(session, se
     assert len(_signals(session, client)) == 3
 
 
+def test_a_conference_and_the_study_it_presents_may_share_a_headline(session):
+    """The stored uniqueness is ``(client, kind, title_hash)`` for exactly this
+    pair: the congress that presents a study runs under the study's headline, and
+    they are two different things a consultant does two different things with. A
+    title set that forgot the class dropped whichever arrived second — silently,
+    before the constraint that permits both was ever consulted."""
+    client = _client(session)
+    title = "Digitalisierung im deutschen Mittelstand 2027"
+    drafts = [
+        market_sources.SignalDraft(
+            kind=SignalKind.STUDIE,
+            title=title,
+            publisher="Institut fuer Wirtschaft",
+            url="https://institut.example.de/studie-2027",
+            origin=SignalOrigin.KURATIERT,
+        ),
+        market_sources.SignalDraft(
+            kind=SignalKind.VERANSTALTUNG,
+            title=title,
+            publisher="Kongress GmbH",
+            url="https://kongress.example.de/2027",
+            origin=SignalOrigin.KURATIERT,
+        ),
+    ]
+
+    written = market_sources.store(
+        session,
+        client,
+        drafts,
+        seen=market_sources.already_seen(session, client),
+        now=_NOW,
+    )
+
+    assert [signal.kind for signal in written] == [
+        SignalKind.STUDIE,
+        SignalKind.VERANSTALTUNG,
+    ]
+    assert len(_signals(session, client)) == 2
+
+
+def test_the_same_headline_twice_in_one_class_is_still_stored_once(session):
+    """The other half of the same rule: within a class the title identity is what
+    catches a source that re-issued its page under a new address."""
+    client = _client(session)
+    title = "Digitalisierung im deutschen Mittelstand 2027"
+    drafts = [
+        market_sources.SignalDraft(
+            kind=SignalKind.STUDIE,
+            title=title,
+            publisher="Institut fuer Wirtschaft",
+            url=f"https://institut.example.de/studie-2027{suffix}",
+            origin=SignalOrigin.KURATIERT,
+        )
+        for suffix in ("", "-neu")
+    ]
+
+    written = market_sources.store(
+        session,
+        client,
+        drafts,
+        seen=market_sources.already_seen(session, client),
+        now=_NOW,
+    )
+
+    assert len(written) == 1
+
+
 def test_a_study_already_in_the_clients_own_coverage_is_not_stored_twice(
     session, serve
 ):

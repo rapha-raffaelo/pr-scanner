@@ -501,10 +501,20 @@ class Seen:
     Mutable and carried across the three classes of one sweep on purpose: the URL
     uniqueness is per client, not per class, so a study and an event arriving from
     the same page would otherwise collide at the insert rather than at the check.
+
+    The two title sets differ in exactly the way the two identities do:
+
+    * ``titles`` holds ``(class, hash)``, because the stored uniqueness is
+      ``(client, kind, title_hash)`` — a conference and the study it presents share
+      a headline legitimately, and a flat set would drop whichever of them arrived
+      second, before it ever reached the constraint that allows it;
+    * ``article_titles`` holds bare hashes, because a headline already in the
+      mandate's own news is the same document whichever class would carry it.
     """
 
     urls: set[str] = field(default_factory=set)
-    titles: set[str] = field(default_factory=set)
+    titles: set[tuple[SignalKind, str]] = field(default_factory=set)
+    article_titles: set[str] = field(default_factory=set)
 
 
 def already_seen(session: Session, client: Client) -> Seen:
@@ -524,7 +534,7 @@ def already_seen(session: Session, client: Client) -> Seen:
     """
     seen = Seen()
     signals = session.execute(
-        select(MarketSignal.url, MarketSignal.title_hash).where(
+        select(MarketSignal.url, MarketSignal.title_hash, MarketSignal.kind).where(
             MarketSignal.client_id == client.id
         )
     ).all()
@@ -538,11 +548,16 @@ def already_seen(session: Session, client: Client) -> Seen:
         .join(TopicHit, TopicHit.article_id == Article.id)
         .where(TopicHit.client_id == client.id)
     ).all()
-    for url, hashed in (*signals, *coverage, *material):
+    for url, hashed, kind in signals:
         if url:
             seen.urls.add(canonical_url(url))
         if hashed:
-            seen.titles.add(hashed)
+            seen.titles.add((kind, hashed))
+    for url, hashed in (*coverage, *material):
+        if url:
+            seen.urls.add(canonical_url(url))
+        if hashed:
+            seen.article_titles.add(hashed)
     return seen
 
 
@@ -567,11 +582,15 @@ def store(
         title_key = dedup_title_hash(draft.title, draft.publisher)
         if not url_key or url_key in seen.urls:
             continue
-        if title_key is not None and title_key in seen.titles:
+        # Per class against the stored signals, kind-agnostic against the mandate's
+        # own news: the same split the two sets carry, for the reasons on ``Seen``.
+        if title_key is not None and (
+            (draft.kind, title_key) in seen.titles or title_key in seen.article_titles
+        ):
             continue
         seen.urls.add(url_key)
         if title_key is not None:
-            seen.titles.add(title_key)
+            seen.titles.add((draft.kind, title_key))
         written.append(
             MarketSignal(
                 client_id=client.id,
