@@ -635,6 +635,69 @@ def test_a_mandate_without_a_usable_field_gets_the_curated_sources_only(session)
     assert [s.origin for s in sources] == [SignalOrigin.KURATIERT]
 
 
+def test_a_search_entry_that_names_no_outlet_is_not_credited_to_the_search(
+    session, serve
+):
+    """The aggregator's own label is "Feldsuche studie: Arrakis Finance" — the
+    mandate's own name. Fallen back to, it would appear in the market view as the
+    institute that published the study. Publisher-unknown is "" and says so."""
+    client = _client(session, industry="Onchain-Liquidität")
+    search = StudyFetcher(sources=[]).sources_for(client)[-1]
+    fetch = serve({search.url: "market_field_search_unnamed.xml"})
+
+    _sweep(session, client, StudyFetcher(fetch=fetch, sources=[]), fetch)
+
+    stored = _signals(session, client)
+    assert [s.origin for s in stored] == [SignalOrigin.SUCHE]
+    assert stored[0].publisher == ""
+    assert client.name not in stored[0].publisher
+
+
+def test_a_curated_source_is_fetched_once_for_the_whole_portfolio(session, serve):
+    """destatis publishes one list of studies, not one per client of this agency.
+    Fetched per mandate, the twelve curated sources became twelve times the size of
+    the portfolio every morning — the same authority asked the same question ten
+    times from one address, which is what a 403 gets written for."""
+    fetch = serve({_STUDIES_URL: "market_studies.xml"})
+    asked: list[str] = []
+
+    def _counting(url, since, **kwargs):
+        asked.append(url)
+        return fetch(url, since, **kwargs)
+
+    fetcher = StudyFetcher(fetch=_counting, sources=[_STUDY_SOURCE])
+    portfolio = [_client(session, name) for name in ("Alpha AG", "Beta AG", "Gamma AG")]
+
+    for client in portfolio:
+        _sweep(session, client, fetcher, _counting)
+
+    assert asked == [_STUDIES_URL], "the curated list is the same list for everyone"
+    # And every mandate still got its own signals out of that one fetch.
+    assert all(len(_signals(session, client)) == 2 for client in portfolio)
+
+
+def test_a_dark_curated_source_is_asked_once_and_still_fails_every_mandate(
+    session, serve
+):
+    """Caching the answer must not soften the fault boundary: the class is dark for
+    each mandate, and each of them has to hear about it."""
+    serve({})  # nothing is reachable
+    asked: list[str] = []
+
+    def _counting(url, since, **kwargs):
+        asked.append(url)
+        return ingest.fetch_feed(url, since, **kwargs)
+
+    fetcher = StudyFetcher(fetch=_counting, sources=[_STUDY_SOURCE])
+    portfolio = [_client(session, name) for name in ("Alpha AG", "Beta AG")]
+
+    for client in portfolio:
+        with pytest.raises(urllib.error.URLError):
+            fetcher.collect(client, since=_SINCE, now=_NOW)
+
+    assert asked == [_STUDIES_URL]
+
+
 # --- Fault isolation, one guard per class --------------------------------------
 
 

@@ -337,6 +337,10 @@ class MarketFetcher:
     Exceptions are not caught here. A source that cannot be reached has to reach
     the sweep's per-class guard, which is the only place that knows the other two
     classes exist and can log at ERROR without stopping them.
+
+    One instance per sweep, not per mandate: the curated list is the same list for
+    every client, and the fetch is cached on the instance so it is issued once for
+    the whole portfolio. See :meth:`_items`.
     """
 
     kind: ClassVar[SignalKind]
@@ -356,6 +360,9 @@ class MarketFetcher:
             if sources is not None
             else [s for s in load_sources() if s.kind is self.kind]
         )
+        # What each source answered this sweep, by (url, label): the items, or the
+        # exception it raised. Lives as long as the instance, which is one sweep.
+        self._answered: dict[tuple[str, str], list[FeedItem] | Exception] = {}
 
     def sources_for(self, client: Client) -> list[MarketSource]:
         """The curated sources for this class, plus this mandate's field search."""
@@ -390,22 +397,52 @@ class MarketFetcher:
         """Fetch every source for this class and parse each item into a draft."""
         drafts: list[SignalDraft] = []
         for source in self.sources_for(client):
-            items = self._fetch(
-                source.url,
-                since,
-                source=source.name,
-                fetched_at=now,
-                per_entry_source=source.per_entry_source,
-                # The whole reason this class can be reported as failed: see
-                # ingest.fetch_feed.
-                strict=True,
-            )
+            items = self._items(source, since=since, now=now)
             drafts.extend(
                 self._draft(item, source, now)
                 for item in items
                 if item.title.strip() and item.link.strip()
             )
         return drafts
+
+    def _items(
+        self, source: MarketSource, *, since: dt.datetime, now: dt.datetime
+    ) -> list[FeedItem]:
+        """What one source answered, fetched at most once per sweep.
+
+        ``collect`` runs per mandate, but eleven of the twelve curated sources are
+        the *same* eleven for every mandate: destatis publishes one list of studies,
+        not one per client of this agency. Fetching per mandate multiplied the
+        curated list by the size of the portfolio — a ten-mandate portfolio asking
+        the same authority for the same feed ten times every morning, which is how
+        a well-behaved reader turns into something a 403 is written for. Only the
+        field search legitimately differs per client, and it differs in the URL, so
+        it caches to its own entry.
+
+        Failures are cached too, and re-raised. The class is still reported as dark
+        for every mandate — nothing about the fault boundary changes — but a source
+        that is down is asked once rather than once per client.
+        """
+        key = (source.url, source.name)
+        if key not in self._answered:
+            try:
+                self._answered[key] = self._fetch(
+                    source.url,
+                    since,
+                    source=source.name,
+                    fetched_at=now,
+                    per_entry_source=source.per_entry_source,
+                    # The whole reason this class can be reported as failed: see
+                    # ingest.fetch_feed.
+                    strict=True,
+                )
+            except Exception as exc:  # noqa: BLE001 — cached, then re-raised as-is
+                self._answered[key] = exc
+                raise
+        answer = self._answered[key]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
     def _draft(
         self, item: FeedItem, source: MarketSource, now: dt.datetime
@@ -415,7 +452,7 @@ class MarketFetcher:
         return SignalDraft(
             kind=self.kind,
             title=item.title.strip(),
-            publisher=(item.source or source.name).strip(),
+            publisher=self._publisher(item, source),
             url=item.link.strip(),
             origin=source.origin,
             summary=item.summary or "",
@@ -423,6 +460,23 @@ class MarketFetcher:
             effective_at=effective,
             deadline_at=deadline,
         )
+
+    @staticmethod
+    def _publisher(item: FeedItem, source: MarketSource) -> str:
+        """Who to credit: the institute, the authority, the organiser.
+
+        For a curated feed that is the source itself — the feed *is* the publisher.
+        For the field search it is whatever the entry named, and only that:
+        :func:`newspulse.ingest._entry_source` falls back to the feed's own label
+        when an aggregator entry carries no ``<source>``, and that label is the
+        search ("Feldsuche studie: Arrakis Finance"), which would put the mandate's
+        own name in the publisher column of a study it did not write. The column
+        documents "" as publisher-unknown, and unknown is what this is.
+        """
+        named = (item.source or "").strip()
+        if source.per_entry_source:
+            return "" if named == source.name.strip() else named
+        return named or source.name.strip()
 
     def read_dates(
         self, text: str, now: dt.datetime

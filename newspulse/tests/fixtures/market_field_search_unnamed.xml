@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Beispiel-Suche</title>
+    <link>https://suche.example.de/</link>
+    <description>Ein Aggregator, dessen Eintrag hier ausnahmsweise kein Medium nennt.</description>
+    <language>de</language>
+
+    <!-- No <source> element: rare from a news aggregator, but it happens, and the
+         feed's own label is then the search itself rather than a publisher. -->
+    <item>
+      <title>Auswertung zur Liquiditaet im deutschen Mittelstand veroeffentlicht</title>
+      <link>https://suche.example.de/rss/articles/CBMiSuche002</link>
+      <description>Eine Auswertung von Transaktionsdaten aus zwoelf Monaten.</description>
+      <pubDate>Sat, 22 Aug 2026 06:00:00 +0200</pubDate>
+      <guid>https://suche.example.de/rss/articles/CBMiSuche002</guid>
+    </item>
+  </channel>
+</rss>
