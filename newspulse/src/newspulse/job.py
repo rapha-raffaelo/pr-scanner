@@ -50,7 +50,16 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import angles, config, gnews, mailsync, notify, profile_refresh, themes
+from . import (
+    angles,
+    config,
+    gnews,
+    mailsync,
+    market_sources,
+    notify,
+    profile_refresh,
+    themes,
+)
 from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
 from .feeds import Feed, load_feeds
@@ -164,6 +173,12 @@ class RunReport:
     # so a caller constructing a report positionally — every existing test — keeps
     # working, and because zero is the honest value on a day with no opening.
     angles_written: int = 0
+    # Market signals stored this sweep: studies, regulatory dates and events
+    # (see newspulse.market_sources). Defaulted for the same reason as above, and
+    # reported separately from ``new_articles`` because a signal is deliberately
+    # not an article — counting the two together is exactly the mistake the
+    # separate table exists to prevent.
+    signals_written: int = 0
 
 
 def _utcnow() -> dt.datetime:
@@ -377,6 +392,64 @@ def _fetch_topics(
         feeds_ok += 1
         pairs.extend(Candidate(item=item, client=client) for item in batch)
     return pairs, feeds_ok
+
+
+def _sweep_market(
+    session: Session,
+    clients: Sequence[Client],
+    since: dt.datetime,
+    fetch: FetchFeed,
+    now: dt.datetime,
+    errors: list[str],
+) -> int:
+    """Fetch the three market classes for every mandate. One guard per class.
+
+    Per class rather than per sweep, because the three are independent sources of
+    independent things: the regulatory calendar going dark says nothing about
+    whether the institutes published a study this morning, and a shared boundary
+    would let one dead feed take the other two down with it.
+
+    Louder than the news sweep on purpose. A feed among forty being unreachable is
+    a WARNING (:func:`newspulse.ingest.fetch_feed`); a *class* being unreachable is
+    an ERROR, because a class has one or two sources and an empty regulatory
+    calendar is indistinguishable from a quiet fortnight — the one thing a forward
+    calendar must never be wrong about.
+
+    Competitors are skipped for the reason the topic radar skips them: a yardstick
+    is tracked to compare its share of the conversation, and nobody reads it a
+    market page.
+    """
+    written = 0
+    active = market_sources.fetchers(fetch=fetch)
+    for client in clients:
+        if client.is_competitor:
+            continue
+        try:
+            seen = market_sources.already_seen(session, client)
+        except Exception as exc:  # noqa: BLE001 — one mandate must not cost the rest
+            _log.error("market dedup set for %r failed: %s", client.name, exc)
+            errors.append(f"market {client.name!r}: {exc}")
+            session.rollback()
+            continue
+        for fetcher in active:
+            try:
+                drafts = fetcher.collect(client, since=since, now=now)
+                written += len(
+                    market_sources.store(session, client, drafts, seen=seen, now=now)
+                )
+            except Exception as exc:  # noqa: BLE001 — per-class fault boundary
+                _log.error(
+                    "market class %s for %r failed: %s; storing nothing for it",
+                    fetcher.kind.value,
+                    client.name,
+                    exc,
+                )
+                errors.append(f"market {fetcher.kind.value} for {client.name!r}: {exc}")
+                # A caught exception is not a clean session: ``store`` writes, so a
+                # failed flush would otherwise leave the transaction pending and
+                # kill the next class with an error about this one.
+                session.rollback()
+    return written
 
 
 def _on_theme(items: Sequence[FeedItem], client: Client) -> list[FeedItem]:
@@ -1398,6 +1471,13 @@ def _run_real(
     # journalist's answer is the one thing in this tool nobody can re-fetch
     # later by pressing a button.
     replies = _sync_mailbox(session, run, errors, now=now_fn())
+    # The three market classes, on the same footing as the mailbox above and for
+    # the same reason: they are their own sources of their own things, and
+    # whether this morning's *news* feeds answered says nothing about whether the
+    # regulatory calendar did. Outside the status gate below, so a failed news
+    # sweep does not also cost a consultation that closes in five weeks; after the
+    # run row is written, so nothing here can roll the sweep back.
+    signals_written = _sweep_market(session, clients, since, fetch, now_fn(), errors)
     # The run row may have been downgraded to partial by an unreadable mailbox;
     # the report has to say the same thing the stored row does. Never to failed,
     # so the post-run work below still runs — a dead Google says nothing about
@@ -1450,11 +1530,12 @@ def _run_real(
         profiles_refreshed = _refresh_profiles(session, now_fn())
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
-        "%d profile(s), %d repl(y/ies), %d error(s)",
+        "%d market signal(s), %d profile(s), %d repl(y/ies), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
         angles_written,
+        signals_written,
         # On the run's own line because a refresh that quietly returns zero for
         # weeks looks exactly like a portfolio where nothing was due, and the
         # difference is only visible here.
@@ -1477,6 +1558,7 @@ def _run_real(
         errors=list(errors),
         dry_run=False,
         angles_written=angles_written,
+        signals_written=signals_written,
     )
 
 

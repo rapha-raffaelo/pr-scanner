@@ -319,6 +319,7 @@ def fetch_feed(
     fetched_at: dt.datetime | None = None,
     timeout: float = _FEED_TIMEOUT_SECONDS,
     per_entry_source: bool = False,
+    strict: bool = False,
 ) -> list[FeedItem]:
     """Fetch and parse one feed, returning items published newer than ``since``.
 
@@ -334,6 +335,14 @@ def fetch_feed(
     Returns an empty list — never raises — when the feed is unreachable, times
     out, is oversized, or is unparseable, logging a WARNING so a single bad feed
     never aborts a multi-feed sweep.
+
+    ``strict`` inverts that last part and re-raises instead. The news sweep reads
+    forty publications and one of them being down is not the day's story, so it
+    takes the default. A market class (:mod:`newspulse.market_sources`) has one or
+    two sources, and a silent empty list from the regulatory calendar is
+    indistinguishable from a quiet fortnight — which is the one thing a forward
+    calendar must never be wrong about. Those callers ask for the failure so the
+    sweep's per-class guard can log it at ERROR.
     """
     # Normalize to tz-aware UTC up front so the ``published_at`` comparison (which
     # is always tz-aware) can never raise a naive/aware TypeError mid-sweep.
@@ -343,6 +352,8 @@ def fetch_feed(
     try:
         raw = _fetch_raw(url, timeout)
     except _FeedTooLargeError as exc:
+        if strict:
+            raise
         _log.warning("Feed %s is too large (%s); skipping", url, exc)
         return []
     except (
@@ -354,6 +365,8 @@ def fetch_feed(
     ) as exc:
         # Unreachable / timed out / connection reset / truncated or garbled
         # response (IncompleteRead, BadStatusLine) — isolate and move on.
+        if strict:
+            raise
         _log.warning("Feed %s could not be fetched (%s); skipping", url, exc)
         return []
 
@@ -370,6 +383,8 @@ def fetch_feed(
         # Any unexpected error while parsing or normalizing one feed must not
         # abort the sweep. This is the deliberate broad-catch the acceptance
         # criteria require; it always logs, never swallows silently.
+        if strict:
+            raise
         _log.warning("Feed %s could not be parsed (%s); skipping", url, exc)
         return []
 

@@ -105,6 +105,40 @@ class Category(StrEnum):
     SONSTIGES = "sonstiges"
 
 
+class SignalKind(StrEnum):
+    """The three market classes a news feed cannot carry.
+
+    Each breaks the shape of a news item in a way that matters to a consultant. A
+    ``studie`` has already been published but stays citable for months, which is
+    the opposite of a story whose value decays in days. A ``regulierung`` is dated
+    in the *future*, and its entire value is the lead time — a feed that reports
+    what already happened delivers it on the day it is too late to say anything.
+    A ``veranstaltung`` is a date and a stage, and the only class that carries a
+    deadline, because a call for speakers closes.
+
+    A closed set, so a fourth class is a deliberate migration rather than a string
+    somebody spelled two ways.
+    """
+
+    STUDIE = "studie"
+    REGULIERUNG = "regulierung"
+    VERANSTALTUNG = "veranstaltung"
+
+
+class SignalOrigin(StrEnum):
+    """Which half of the market radar produced a signal (DEC-1 B).
+
+    The curated list is the half that is what it says it is: a statistics office
+    publishes studies and nothing else. The per-mandate search is the half that
+    covers a field nobody curated for, and it will return things that are not
+    really studies. A reader has to be able to judge a search-found row as one, so
+    the provenance is stored rather than guessed from the publisher's name.
+    """
+
+    KURATIERT = "kuratiert"
+    SUCHE = "suche"
+
+
 class RunStatus(StrEnum):
     """Outcome of a daily sweep. Kept typed so the dashboard and job code share one
     closed value set rather than passing raw strings around."""
@@ -795,6 +829,103 @@ class TopicHit(Base):
     found_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
     )
+
+
+class MarketSignal(Base):
+    """One study, one regulatory date or one event, for one client.
+
+    Deliberately its own table rather than a flag on :class:`Article`. An article
+    is what a feed syndicated *about a company*: it obeys the no-body-text rule
+    for Leistungsschutzrecht reasons, it has already happened, and every query in
+    the tool that touches coverage assumes exactly that shape. A consultation that
+    closes in five weeks is none of those three things, and filing it in
+    ``articles`` would make each of those queries wrong in a way nobody would
+    notice until a client report counted a consultation as press.
+
+    Scoped to a client for the same reason :class:`TopicHit` is: what makes a
+    signal belong to a mandate is which mandate it was fetched for, and nothing in
+    the item's own text says so.
+
+    Four dates rather than one, because "when did this happen" is the wrong
+    question for two of the three classes:
+
+    * ``found_at`` — when the sweep saw it. Never the date a reader is shown; a
+      log of what the tool did is not a calendar.
+    * ``published_at`` — when the source put it out. The actionable date for a
+      study, and usually the only one a study has.
+    * ``effective_at`` — when it *lands* or opens: a law taking effect, a
+      consultation opening, an event's own date. Routinely in the future, which is
+      the entire point of the regulatory class, so nothing anywhere in the
+      pipeline may treat that as an error or clamp it to now.
+    * ``deadline_at`` — when the door closes: a consultation's cut-off, a call for
+      speakers. Only the classes that have one carry it, and it is separate from
+      ``effective_at`` because "you may still speak" and "it now applies to you"
+      are opposite instructions.
+
+    ``title_hash`` is the same normalized-title hash ``articles`` carries, stored
+    for the same reason: an official source that re-issues a page under a new URL
+    would otherwise arrive as a second signal every sweep. It is nullable, because
+    :func:`newspulse.matching.dedup_title_hash` refuses a headline too thin to
+    trust — and a NULL does not collide in a UNIQUE index, so such a row falls
+    back to URL identity exactly as the article dedup does.
+    """
+
+    __tablename__ = "market_signals"
+    __table_args__ = (
+        # "url unique per client", not globally: the same consultation is a real
+        # signal for every mandate in the field, and each of them has to be able
+        # to mute, read and report it on its own.
+        UniqueConstraint("client_id", "url", name="uq_market_signal_client_url"),
+        # And the same item under a changed URL. Per class as well as per client,
+        # so a conference and the study it presents can share a headline without
+        # one of them silently disappearing.
+        UniqueConstraint(
+            "client_id", "kind", "title_hash", name="uq_market_signal_client_kind_title"
+        ),
+        # The market page ranks by what is next (DEC-2 C), so this is the column
+        # every read of it orders on.
+        Index("ix_market_signals_effective_at", "effective_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[SignalKind] = mapped_column(
+        SAEnum(
+            SignalKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+        ),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    # Who published it — the institute, the authority, the organiser. Not
+    # nullable: a study whose publisher is unknown cannot be cited, and the empty
+    # string says that out loud rather than hiding behind a NULL.
+    publisher: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    found_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    published_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    effective_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    deadline_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    # The source's own summary line, exactly as syndicated. The same no-scrape
+    # rule as ``articles.summary_text``: this is the only body-ish text stored.
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    origin: Mapped[SignalOrigin] = mapped_column(
+        SAEnum(
+            SignalOrigin,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+        ),
+        nullable=False,
+        default=SignalOrigin.KURATIERT,
+        server_default=SignalOrigin.KURATIERT.value,
+    )
+    title_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class Angle(Base):
@@ -1540,6 +1671,9 @@ __all__ = [
     "OutreachState",
     "SILENT_AFTER_DAYS",
     "TopicHit",
+    "MarketSignal",
+    "SignalKind",
+    "SignalOrigin",
     "GuideSource",
     "Run",
     "Setting",

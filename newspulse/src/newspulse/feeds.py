@@ -70,20 +70,33 @@ def _parse_feeds(data: str, *, origin: str) -> list[Feed]:
     return feeds
 
 
+def read_registry(filename: str, path: str | Path | None = None) -> tuple[str, str]:
+    """The text of a shipped registry file, and a label naming where it came from.
+
+    Both curated lists this package ships are editable TOML travelling as package
+    data: the feed registry here, and the market source list read by
+    :mod:`newspulse.market_sources`. Resolving one is three lines, and the part
+    that is easy to get subtly wrong — package data resolves whether NewsPulse
+    runs from a source checkout or an installed wheel, a caller-supplied path does
+    not — is worth having in exactly one place.
+
+    The label is only ever used in a log line, so a malformed row says which file
+    it was in.
+    """
+    if path is None:
+        return (resources.files("newspulse") / filename).read_text("utf-8"), filename
+    file_path = Path(path)
+    return file_path.read_text("utf-8"), str(file_path)
+
+
 def load_feeds(path: str | Path | None = None) -> list[Feed]:
     """Load the feed registry.
 
     With no ``path`` the packaged ``feeds_default.toml`` is used; pass a path to
     load a custom registry file instead.
     """
-    if path is None:
-        data = (resources.files("newspulse") / _DEFAULT_FEEDS_FILENAME).read_text("utf-8")
-        origin = _DEFAULT_FEEDS_FILENAME
-    else:
-        file_path = Path(path)
-        data = file_path.read_text("utf-8")
-        origin = str(file_path)
+    data, origin = read_registry(_DEFAULT_FEEDS_FILENAME, path)
     return _parse_feeds(data, origin=origin)
 
 
-__all__ = ["Feed", "load_feeds"]
+__all__ = ["Feed", "load_feeds", "read_registry"]
