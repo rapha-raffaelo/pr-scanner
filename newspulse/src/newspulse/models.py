@@ -904,7 +904,9 @@ class MarketSignal(Base):
     # Who published it — the institute, the authority, the organiser. Not
     # nullable: a study whose publisher is unknown cannot be cited, and the empty
     # string says that out loud rather than hiding behind a NULL.
-    publisher: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    publisher: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="", server_default=""
+    )
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
     found_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
@@ -914,7 +916,9 @@ class MarketSignal(Base):
     deadline_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     # The source's own summary line, exactly as syndicated. The same no-scrape
     # rule as ``articles.summary_text``: this is the only body-ish text stored.
-    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    summary: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
     origin: Mapped[SignalOrigin] = mapped_column(
         SAEnum(
             SignalOrigin,

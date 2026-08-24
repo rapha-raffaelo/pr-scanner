@@ -431,7 +431,7 @@ def _sweep_market(
         if client.is_competitor:
             continue
         try:
-            seen = market_sources.already_seen(session, client)
+            seen = market_sources.already_seen(session, client, now=now)
         except Exception as exc:  # noqa: BLE001 — one mandate must not cost the rest
             _log.error("market dedup set for %r failed: %s", client.name, exc)
             errors.append(f"market {client.name!r}: {exc}")

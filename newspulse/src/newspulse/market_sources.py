@@ -547,6 +547,13 @@ def fetchers(*, fetch: FetchFeed = fetch_feed) -> list[MarketFetcher]:
 
 # --- Deduplication and storage --------------------------------------------------
 
+# How far back a mandate's own news is compared against a new signal. A year,
+# because a study a trade publication covered last spring can still arrive from a
+# curated list this morning, while an archive older than that cannot plausibly be
+# the same document as an item on a forward calendar — and the read happens once
+# per mandate per sweep, so unbounded it grows with the archive forever.
+_COVERAGE_LOOKBACK = dt.timedelta(days=365)
+
 
 @dataclass(slots=True)
 class Seen:
@@ -571,7 +578,9 @@ class Seen:
     article_titles: set[str] = field(default_factory=set)
 
 
-def already_seen(session: Session, client: Client) -> Seen:
+def already_seen(
+    session: Session, client: Client, *, now: dt.datetime | None = None
+) -> Seen:
     """Everything this mandate has that a new signal could be a duplicate of.
 
     Two halves, and the second is the one the story is about. The stored signals
@@ -585,8 +594,17 @@ def already_seen(session: Session, client: Client) -> Seen:
     two identities the article dedup already uses; a signal and an article that
     are the same thing therefore collapse on exactly the rule that would have
     collapsed two articles.
+
+    Only the *news* half is bounded, by :data:`_COVERAGE_LOOKBACK`. It is read once
+    per mandate per sweep and would otherwise grow with the archive forever, and an
+    article older than a year cannot plausibly be the same document as an item a
+    forward calendar is publishing this morning. The stored signals are read whole
+    and deliberately so: they carry the UNIQUE the insert would fail on, and a
+    window over them would not miss a duplicate — it would turn one into an
+    IntegrityError that costs the whole class.
     """
     seen = Seen()
+    fresh_enough = (now or dt.datetime.now(dt.UTC)) - _COVERAGE_LOOKBACK
     signals = session.execute(
         select(MarketSignal.url, MarketSignal.title_hash, MarketSignal.kind).where(
             MarketSignal.client_id == client.id
@@ -595,12 +613,12 @@ def already_seen(session: Session, client: Client) -> Seen:
     coverage = session.execute(
         select(Article.url, Article.title_hash)
         .join(Analysis, Analysis.article_id == Article.id)
-        .where(Analysis.client_id == client.id)
+        .where(Analysis.client_id == client.id, Article.published_at >= fresh_enough)
     ).all()
     material = session.execute(
         select(Article.url, Article.title_hash)
         .join(TopicHit, TopicHit.article_id == Article.id)
-        .where(TopicHit.client_id == client.id)
+        .where(TopicHit.client_id == client.id, Article.published_at >= fresh_enough)
     ).all()
     for url, hashed, kind in signals:
         if url:

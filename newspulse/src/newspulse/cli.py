@@ -88,6 +88,11 @@ def _print_report(report: job.RunReport) -> None:
         print("  analyses:          skipped (dry run)")
     else:
         print(f"  analyses written:  {report.analyses_written}")
+        # Separate from "new articles" on purpose: a signal is deliberately not an
+        # article, and an operator reading this line has to be able to see that the
+        # market sweep ran at all — its only other trace is the job's own log.
+        print(f"  market signals:    {report.signals_written}")
+        print(f"  drafts written:    {report.angles_written}")
     if report.errors:
         print(f"  errors ({len(report.errors)}):")
         for message in report.errors:

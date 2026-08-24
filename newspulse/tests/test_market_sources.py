@@ -131,13 +131,9 @@ def _client(session, name="Arrakis Finance", *, industry=None, **over) -> Client
 def _sweep(session, client, fetcher, fetch, *, seen=None) -> list[MarketSignal]:
     """One class, collected and stored, the way ``job._sweep_market`` does it."""
     drafts = fetcher.collect(client, since=_SINCE, now=_NOW)
-    return market_sources.store(
-        session,
-        client,
-        drafts,
-        seen=seen if seen is not None else market_sources.already_seen(session, client),
-        now=_NOW,
-    )
+    if seen is None:
+        seen = market_sources.already_seen(session, client, now=_NOW)
+    return market_sources.store(session, client, drafts, seen=seen, now=_NOW)
 
 
 def _signals(session, client, kind=None) -> list[MarketSignal]:
@@ -366,7 +362,7 @@ def test_a_second_sweep_over_the_same_sources_stores_no_duplicate_signal(
     ]
 
     for _pass in range(2):
-        seen = market_sources.already_seen(session, client)
+        seen = market_sources.already_seen(session, client, now=_NOW)
         for fetcher in fetchers:
             _sweep(session, client, fetcher, fetch, seen=seen)
 
@@ -418,7 +414,7 @@ def test_a_conference_and_the_study_it_presents_may_share_a_headline(session):
         session,
         client,
         drafts,
-        seen=market_sources.already_seen(session, client),
+        seen=market_sources.already_seen(session, client, now=_NOW),
         now=_NOW,
     )
 
@@ -449,7 +445,7 @@ def test_the_same_headline_twice_in_one_class_is_still_stored_once(session):
         session,
         client,
         drafts,
-        seen=market_sources.already_seen(session, client),
+        seen=market_sources.already_seen(session, client, now=_NOW),
         now=_NOW,
     )
 
