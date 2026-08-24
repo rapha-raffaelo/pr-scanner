@@ -167,10 +167,28 @@ _WRITTEN_DATE_RE = re.compile(
 )
 _ISO_DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 
+# A multi-day event states its span once and names the month only at the end:
+# "vom 3. bis zum 5. Mai 2027". The opening day carries no month of its own, so
+# without this the only date in the line is the *closing* one and a three-day
+# conference is filed on the day it ends — a date a consultant cannot use.
+_SPAN_DATE_RE = re.compile(
+    r"\b(\d{1,2})\.\s*(?:bis(?:\s+zum)?|[-–—])\s*(\d{1,2})\.\s?("
+    + "|".join(_MONTHS)
+    + r")\s+(\d{4})\b",
+    re.IGNORECASE,
+)
+
 # How far past a cue phrase a date still belongs to it. Roughly one German clause;
 # beyond that the date in the sentence is about something else, and a regulatory
 # calendar that guesses is worse than one that admits it found no date.
 _CUE_WINDOW = 80
+
+# Title and summary are read as one string, joined by this character. A cue in one
+# field must not reach a date in the other: an item whose *title* says
+# "Konsultation abgeschlossen" and whose summary says "tritt am 01.01.2027 in
+# Kraft" states no consultation date at all, and a window that spans the join
+# invents one. Not a space, so no cue and no date pattern can match across it.
+_FIELD_BREAK = "\x00"
 
 # What an item says right before the date it lands or opens on.
 _EFFECTIVE_CUES = (
@@ -195,13 +213,33 @@ _EVENT_CUES = ("findet am", "findet vom", "am ", "vom ", "termin")
 # stems are deliberately absent — "frist" has to keep matching "Anmeldefrist".
 _WHOLE_WORD_CUES = frozenset({"am ", "vom "})
 
+# The cues that only *name* what an item is about, as against those that introduce
+# a date directly. "Konsultationsfrist" is the subject of the headline; "bis zum"
+# is where the date is. A stem's claim on a date is a guess, so it loses to any
+# claim a real cue made — and it is refused outright when the other column's cue
+# has already claimed that same date. Without the distinction a title reading
+# "Konsultationsfrist zur Datenverordnung" reached 80 characters into the summary
+# and filed the date the rule takes effect as the day the consultation closes,
+# telling the consultant the door shuts three months after it actually did.
+_STEM_CUES = frozenset({
+    "frist", "stellungnahme", "konsultation", "einsendeschluss", "anmeldeschluss",
+    "einreichung", "bewerbungsschluss", "termin", "referenten", "vortragende",
+    "programmvorschläge",
+})
+
 # A call for speakers is the one deadline an event carries, and it is not the
 # registration deadline: a consultant needs to know when he can still get on
 # stage, not when the ticket price rises.
+#
+# Deliberately *not* the deadline cues above. "bis zum" and "endet am" are how
+# ordinary German prose writes a date range — "vom 3. bis zum 5. Mai" — so folding
+# them in turned every multi-day conference's closing day into a call-for-papers
+# cut-off the text never stated. Only phrases that name a submission qualify.
 _SPEAKER_CUES = (
     "call for papers", "call for speakers", "referenten", "vortragende",
-    "beitrag einreichen", "einreichungsfrist", "programmvorschläge",
-) + _DEADLINE_CUES
+    "beitrag einreichen", "einreichungsfrist", "einsendeschluss",
+    "bewerbungsschluss", "programmvorschläge",
+)
 
 
 def _dates(text: str) -> list[tuple[int, dt.datetime]]:
@@ -210,8 +248,19 @@ def _dates(text: str) -> list[tuple[int, dt.datetime]]:
     Midnight rather than a time, because none of these sources publish one: a law
     takes effect on a day. An impossible date (``31.02.2027``) is dropped rather
     than raised on — a typo in one line must not cost the whole item.
+
+    A written date range contributes its *opening* day at the position of that day,
+    which the plain patterns cannot see because it carries no month of its own.
     """
     found: list[tuple[int, dt.datetime]] = []
+    for match in _SPAN_DATE_RE.finditer(text):
+        first_day, _last_day, month_name, year = match.groups()
+        found.append(
+            (
+                match.start(),
+                _at_midnight(int(year), _MONTHS[month_name.casefold()], int(first_day)),
+            )
+        )
     for match in _NUMERIC_DATE_RE.finditer(text):
         day, month, year = (int(g) for g in match.groups())
         found.append((match.start(), _at_midnight(year, month, day)))
@@ -260,26 +309,58 @@ def _mentions(text: str, cues: Sequence[str]) -> bool:
     return any(_cue_pattern(cue).search(text) for cue in cues)
 
 
-def _dated(text: str, cues: Sequence[str]) -> dt.datetime | None:
-    """The first date that follows one of ``cues`` inside :data:`_CUE_WINDOW`.
+def _claims(text: str, cues: Sequence[str]) -> list[tuple[bool, int, int, dt.datetime]]:
+    """Every ``(is stem, distance, position, date)`` a cue in ``cues`` can claim.
+
+    Sorted best first, and "best" is deliberately not "earliest in the text":
+
+    * a cue that introduces a date beats a stem that merely names the subject
+      (:data:`_STEM_CUES`), whichever of them appears first;
+    * among equals the date *nearest its cue* wins, because a cue points at the
+      date beside it, not at the one that happens to come first in the item;
+    * position only breaks a remaining tie, so the reading order still decides
+      between two equally close claims.
+
+    A claim never crosses :data:`_FIELD_BREAK`: a cue in the title is about the
+    title, and the dates in the summary belong to whatever the summary says.
+    """
+    dates = _dates(text)
+    claims: list[tuple[bool, int, int, dt.datetime]] = []
+    for cue in cues:
+        stem = cue in _STEM_CUES
+        for match in _cue_pattern(cue).finditer(text):
+            end = match.end()
+            for pos, when in dates:
+                if pos < end:
+                    continue
+                if pos > end + _CUE_WINDOW or _FIELD_BREAK in text[end:pos]:
+                    break
+                claims.append((stem, pos - end, pos, when))
+                break
+    return sorted(claims)
+
+
+def _dated(
+    text: str, cues: Sequence[str], *, claimed: Sequence[dt.datetime | None] = ()
+) -> dt.datetime | None:
+    """The date a cue in ``cues`` claims, inside :data:`_CUE_WINDOW`, or ``None``.
 
     Cue-anchored rather than positional, because an item routinely carries both
     of the dates this module distinguishes, in either order: "Die Konsultation
     endet am 30.09.2026, die Verordnung tritt am 01.01.2027 in Kraft."
+
+    ``claimed`` are the dates the *other* column's cues already introduced. A stem
+    cue may not take one of them: an item that says "Konsultation abgeschlossen"
+    and gives one date, for when the rule takes effect, has no consultation
+    deadline — and printing that same date in both columns is not two facts, it is
+    one fact and one fabrication.
     """
-    dates = _dates(text)
-    if not dates:
-        return None
-    best: tuple[int, dt.datetime] | None = None
-    for cue in cues:
-        for match in _cue_pattern(cue).finditer(text):
-            end = match.end()
-            for pos, when in dates:
-                if end <= pos <= end + _CUE_WINDOW:
-                    if best is None or pos < best[0]:
-                        best = (pos, when)
-                    break
-    return best[1] if best is not None else None
+    taken = {when for when in claimed if when is not None}
+    for stem, _distance, _pos, when in _claims(text, cues):
+        if stem and when in taken:
+            continue
+        return when
+    return None
 
 
 def _first_from(
@@ -291,9 +372,14 @@ def _first_from(
     do — where no cue phrase vouches for what the date means. Past dates are
     ignored because in a forward calendar they are almost always a reference to
     the predecessor rule rather than the date this item lands on.
+
+    Compared by calendar day, not by instant. A parsed date is that day at UTC
+    midnight while ``reference`` is the sweep's clock with a time on it, so "not
+    yet passed" read as ``>=`` dropped everything happening *today* — the one day
+    a forward calendar is least allowed to be silent about.
     """
     for _pos, when in _dates(text):
-        if when < reference or when == skip:
+        if when.date() < reference.date() or when == skip:
             continue
         return when
     return None
@@ -447,7 +533,11 @@ class MarketFetcher:
     def _draft(
         self, item: FeedItem, source: MarketSource, now: dt.datetime
     ) -> SignalDraft:
-        text = " ".join(part for part in (item.title, item.summary or "") if part)
+        # Joined by the field break rather than a space: both fields are read, but
+        # a cue in one may not reach a date in the other. See :data:`_FIELD_BREAK`.
+        text = _FIELD_BREAK.join(
+            part for part in (item.title, item.summary or "") if part
+        )
         effective, deadline = self.read_dates(text, now)
         return SignalDraft(
             kind=self.kind,
@@ -510,10 +600,14 @@ class RegulationFetcher(MarketFetcher):
     query_terms = ("Gesetz", "Verordnung", "Konsultation")
 
     def read_dates(self, text, now):
-        deadline = _dated(text, _DEADLINE_CUES)
-        effective = _dated(text, _EFFECTIVE_CUES) or _positional(
-            text, now, deadline=deadline, deadline_cues=_DEADLINE_CUES
-        )
+        # The effective date first, so a stem cue ("Konsultationsfrist" in a
+        # headline) cannot claim the date "tritt am …" already introduced.
+        effective = _dated(text, _EFFECTIVE_CUES)
+        deadline = _dated(text, _DEADLINE_CUES, claimed=(effective,))
+        if effective is None:
+            effective = _positional(
+                text, now, deadline=deadline, deadline_cues=_DEADLINE_CUES
+            )
         return effective, deadline
 
 
@@ -524,10 +618,12 @@ class EventFetcher(MarketFetcher):
     query_terms = ("Konferenz", "Kongress", "Fachtagung")
 
     def read_dates(self, text, now):
-        deadline = _dated(text, _SPEAKER_CUES)
-        effective = _dated(text, _EVENT_CUES) or _positional(
-            text, now, deadline=deadline, deadline_cues=_SPEAKER_CUES
-        )
+        effective = _dated(text, _EVENT_CUES)
+        deadline = _dated(text, _SPEAKER_CUES, claimed=(effective,))
+        if effective is None:
+            effective = _positional(
+                text, now, deadline=deadline, deadline_cues=_SPEAKER_CUES
+            )
         return effective, deadline
 
 
