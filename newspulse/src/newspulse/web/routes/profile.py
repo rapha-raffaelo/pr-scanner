@@ -264,10 +264,12 @@ def fill_profile(client_id: int, session: Session = Depends(get_db)) -> Response
     if session.get(Client, client_id) is None:
         raise HTTPException(status_code=404, detail="Client not found")
     if _researching.acquire(blocking=False):
-        threading.Thread(
-            target=_run_research, args=(client_id,), daemon=True,
+        spawn.start_or_release(
+            _run_research,
+            args=(client_id,),
             name=f"newspulse-profile-{client_id}",
-        ).start()
+            release=_researching.release,
+        )
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
 
 

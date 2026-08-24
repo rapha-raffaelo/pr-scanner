@@ -183,8 +183,8 @@ def _recent_coverage_count(
             .join(Client, Client.id == Analysis.client_id)
             .where(
                 *( [Analysis.client_id == client_id] if client_id is not None else [] ),
-                Article.published_at >= dt.datetime.combine(start, dt.time.min, dt.UTC),
-                Article.published_at < dt.datetime.combine(day, dt.time.min, dt.UTC),
+                Article.published_at >= _day_bounds_utc(start)[0],
+                Article.published_at < _day_bounds_utc(day)[0],
                 # The same relevance gate _fetch_items uses, not the is_relevant
                 # column: the count has to describe the rows the archive will
                 # actually show, or the hint promises coverage that isn't there.

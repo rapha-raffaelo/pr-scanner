@@ -64,12 +64,20 @@ class Proposal:
         if client is None or not self.lock.acquire(blocking=False):
             return False
         self.state[client_id] = {"state": "läuft", "client": client.name}
-        threading.Thread(
-            target=self._work,
+
+        def _undo() -> None:
+            # Both halves: the lock, and the line on the page that says a run is
+            # in progress. Releasing only the lock would leave the interface
+            # announcing work that does not exist.
+            self.state.pop(client_id, None)
+            self.lock.release()
+
+        spawn.start_or_release(
+            self._work,
             args=(client_id,),
-            daemon=True,
             name=f"newspulse-{self._name}-{client_id}",
-        ).start()
+            release=_undo,
+        )
         return True
 
     def running_for(self, client_id: int) -> bool:

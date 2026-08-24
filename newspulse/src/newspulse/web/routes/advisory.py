@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from ... import angles, contacts, gmail_link, job, outreach, pitch
 from ...db import get_session
 from ..runlock import guard as _run_guard
-from .. import themework
+from .. import spawn, themework
 from ...models import Angle, Article, Client, Contact, Outreach, TopicHit
 from ...schemas import GuideVerdict
 from ..app import get_db, templates
@@ -385,12 +385,12 @@ def request_impulse(client_id: int, session: Session = Depends(get_db)) -> Respo
     if session.get(Client, client_id) is None:
         raise HTTPException(status_code=404, detail="Client not found")
     if _drafting.acquire(blocking=False):
-        threading.Thread(
-            target=_run_impulse,
+        spawn.start_or_release(
+            _run_impulse,
             args=(client_id,),
-            daemon=True,
             name=f"newspulse-impulse-{client_id}",
-        ).start()
+            release=_drafting.release,
+        )
     return RedirectResponse(f"/client/{client_id}/advice", status_code=_SEE_OTHER)
 
 
@@ -525,12 +525,12 @@ def write_message(
             journalist = options[index].journalist or ""
             outlet = options[index].outlet
     if _writing.acquire(blocking=False):
-        threading.Thread(
-            target=_run_outreach,
+        spawn.start_or_release(
+            _run_outreach,
             args=(client_id, angle_id, journalist.strip(), outlet.strip()),
-            daemon=True,
             name=f"newspulse-outreach-{angle_id}",
-        ).start()
+            release=_writing.release,
+        )
     return RedirectResponse(
         f"/client/{client_id}/advice#impulse-{angle_id}", status_code=_SEE_OTHER
     )
