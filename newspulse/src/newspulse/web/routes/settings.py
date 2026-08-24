@@ -49,6 +49,7 @@ from ... import (
     brain,
     config,
     gmail_link,
+    guide,
     industry,
     job,
     outreach,
@@ -81,7 +82,7 @@ from ...models import (
     Run,
     Setting,
 )
-from .. import runlock, themework
+from .. import redirects, runlock, themework
 from ..app import get_db, templates
 
 router = APIRouter()
@@ -837,7 +838,16 @@ async def _read_upload(form: FormData) -> tuple[str, bytes]:
     when no file was actually selected (empty part with a blank filename)."""
     upload = form.get("file")
     if isinstance(upload, StarletteUploadFile) and upload.filename:
-        return upload.filename, await upload.read()
+        data = await upload.read(guide.MAX_UPLOAD_BYTES + 1)
+        if len(data) > guide.MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Die Datei ist größer als "
+                    f"{guide.MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
+                ),
+            )
+        return upload.filename, data
     return "", b""
 
 
@@ -1204,9 +1214,10 @@ def trigger_run_route(
     # and bouncing the reader to Settings would lose their place. Only ever a
     # same-app path: the value comes from a form field, so an absolute URL here
     # would make this an open redirect.
-    if redirect_to.startswith("/"):
-        return RedirectResponse(redirect_to, status_code=_SEE_OTHER)
-    return RedirectResponse(f"/settings?started={days or 0}", status_code=_SEE_OTHER)
+    return RedirectResponse(
+        redirects.local_target(redirect_to, f"/settings?started={days or 0}"),
+        status_code=_SEE_OTHER,
+    )
 
 
 @router.post("/settings/clients/{client_id}/competitor")
@@ -1284,7 +1295,7 @@ def accept_theme_route(
     """
     # Same-site paths only: the value comes from a form field, and a redirect that
     # accepts anything is an open redirect.
-    back = redirect_to if redirect_to.startswith("/") and "//" not in redirect_to else "/settings"
+    back = redirects.local_target(redirect_to, "/settings")
     client = session.get(Client, client_id)
     chosen = (term or "").strip()
     if client is None or not chosen:
@@ -1394,7 +1405,7 @@ def accept_rival_route(
     """
     # Same posture as the run trigger's redirect: only a same-site path is
     # honoured, so a crafted form cannot bounce the operator off the host.
-    back = redirect_to if redirect_to.startswith("/") else f"/client/{client_id}"
+    back = redirects.local_target(redirect_to, f"/client/{client_id}")
     client = session.get(Client, client_id)
     proposed = (name or "").strip()
     if client is None or not proposed:
@@ -1452,11 +1463,7 @@ def remove_competitor_route(
     the settings row configures it, and being thrown to the other one is a small
     but real way to lose your place. Same-site paths only.
     """
-    back = (
-        redirect_to
-        if redirect_to.startswith("/") and "//" not in redirect_to
-        else f"/client/{client_id}"
-    )
+    back = redirects.local_target(redirect_to, f"/client/{client_id}")
     client = session.get(Client, client_id)
     if client is not None:
         other = session.get(Client, competitor_id)

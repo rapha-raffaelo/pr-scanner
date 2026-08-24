@@ -676,6 +676,9 @@ def _generate_angles(
         try:
             result = angles.suggest(session, client, material)
         except Exception as exc:  # noqa: BLE001 — per-client fault-isolation boundary
+            # Same order and the same reason as _refresh_impulses: the log line
+            # reads client.name, which on an expired attribute is a query.
+            session.rollback()
             _log.warning("positioning draft for %r failed: %s; skipping", client.name, exc)
             continue
         if result is None:
@@ -928,6 +931,12 @@ def _refresh_impulses(
         try:
             result = angles.suggest(session, client, material, note=_note)
         except Exception as exc:  # noqa: BLE001 — per-client fault-isolation boundary
+            # First, before anything else in this handler. A caught exception is
+            # not a clean session, and every line below reaches for one:
+            # ``client.name`` is a SELECT on an expired attribute and ``_note``
+            # commits. Both raise PendingRollbackError on a poisoned session,
+            # out of the handler, past a runs row already written as ok.
+            session.rollback()
             _log.warning("impulse refresh for %r failed: %s; skipping", client.name, exc)
             _note(f"Der Entwurf ist mit einem Fehler abgebrochen: {exc}")
             continue

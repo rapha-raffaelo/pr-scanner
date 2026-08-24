@@ -1035,3 +1035,50 @@ def test_a_dry_run_spends_nothing_on_drafts(session, monkeypatch):
     assert report.dry_run is True
     assert report.angles_written == 0
     assert not any("Themen-Radar" in s for s in sources), sources
+
+
+def _poison(session) -> None:
+    """Leave the session as a failed flush leaves it.
+
+    A flush, not a commit: SQLAlchemy 2.0 rolls the session back itself when a
+    commit fails, so only the flush route reaches the state this is about —
+    every later statement raising PendingRollbackError until somebody rolls back.
+    """
+    session.add(Client(id=99, name="a", aliases=[], keywords=[], alert_topics=[]))
+    session.add(Client(id=99, name="b", aliases=[], keywords=[], alert_topics=[]))
+    with contextlib.suppress(Exception):
+        session.flush()
+
+
+def test_a_mandate_whose_draft_failed_does_not_poison_the_next(session, monkeypatch):
+    """Per-client isolation has to cover the session, not only the loop.
+
+    A failure inside a commit leaves SQLAlchemy raising PendingRollbackError on
+    every later statement. Here the handler itself then calls ``_note``, which
+    commits — so without a rollback the exception escapes the handler, escapes
+    the sweep, and does it past a runs row already written as ok.
+    """
+    from newspulse import angles
+
+    first = _add_client(session, "Alpha AG", keywords=["Verwahrung"])
+    second = _add_client(session, "Beta AG", keywords=["Verwahrung"])
+    session.commit()
+
+    seen: list[str] = []
+
+    def _suggest(sess, client, material, **kw):
+        seen.append(client.name)
+        if client.name == "Alpha AG":
+            _poison(sess)
+            raise RuntimeError("das Modell hat aufgegeben")
+        return None
+
+    monkeypatch.setattr(angles, "suggest", _suggest)
+    monkeypatch.setattr(job, "market_material", lambda *a, **k: ["etwas"])
+
+    job._refresh_impulses(
+        session, [first, second], [], now=dt.datetime.now(dt.UTC)
+    )
+
+    assert seen == ["Alpha AG", "Beta AG"], "the second mandate was still reached"
+    assert session.scalars(select(Client)).all(), "and the session still works"

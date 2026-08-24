@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from .. import redirects
 from ... import config, contacts, outreach
 from ..app import get_db, templates
 from .today import _fetch_last_run
@@ -42,20 +43,6 @@ def _one_contact(session: Session, raw: str) -> contacts.Contact | None:
     """
     wanted = (raw or "").strip()
     return session.get(contacts.Contact, int(wanted)) if wanted.isdigit() else None
-
-
-def _local_target(redirect_to: str, fallback: str = "/contacts") -> str:
-    """A redirect target that cannot leave this site.
-
-    One leading slash, no second slash anywhere — and no backslash either, which
-    is the part a plain ``//`` check misses: browsers normalise the separator, so
-    ``/\\evil.example`` is protocol-relative by the time it is followed and takes
-    the reader off-site. The two characters have to be treated as one.
-    """
-    candidate = (redirect_to or "").strip()
-    if not candidate.startswith("/") or "//" in candidate or "\\" in candidate:
-        return fallback
-    return candidate
 
 
 def _days_since_last(history: list[outreach.HistoryEntry]) -> int | None:
@@ -202,7 +189,7 @@ def save_contact(
     roster filter — and the form carries both, because since the split saving an
     edit otherwise closed the very file being edited.
     """
-    back = _local_target(redirect_to)
+    back = redirects.local_target(redirect_to, "/contacts")
     try:
         contacts.save(
             session,
@@ -241,4 +228,4 @@ def delete_contact(
     themselves survive — the link is the book's, the record is the letter's.
     """
     contacts.delete(session, contact_id)
-    return RedirectResponse(_local_target(redirect_to), status_code=_SEE_OTHER)
+    return RedirectResponse(redirects.local_target(redirect_to, "/contacts"), status_code=_SEE_OTHER)

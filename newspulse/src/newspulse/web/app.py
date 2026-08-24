@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import branding, config, gnews, i18n, onboarding
 from ..db import get_session
-from . import google_auth, navigation, runlock
+from . import google_auth, navigation, origin, runlock
 from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
 
 # The web package ships its own templates/ and static/ next to this module, so
@@ -310,6 +310,9 @@ def create_app() -> FastAPI:
     # Added first so it wraps every route, including the SSE stream and the
     # static mount's siblings.
     app.add_middleware(BasicAuthMiddleware)
+    # Added after the auth middleware, so it runs *before* it: a cross-site
+    # write is refused without the app having to work out who is asking.
+    app.add_middleware(origin.SameOriginMiddleware)
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
     # Imported here (not at module top) to avoid a circular import: the route
