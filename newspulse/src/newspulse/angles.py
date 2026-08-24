@@ -293,17 +293,19 @@ def store(
     by_index = {item.index: item.article_id for item in numbered}
     cited = [by_index[i] for i in draft.evidence if i in by_index]
     # The message and the subject are what a consultant forwards, so they follow
-    # the house rule on dashes (newspulse.prose). The reasoning fields below stay
-    # verbatim: they are read inside the tool, never sent, and a dash there is
-    # nobody's tell.
+    # the house rule on dashes (newspulse.prose). So do the thesis and its
+    # overclaim: the comment here used to say the reasoning fields "are read
+    # inside the tool, never sent", and that stopped being true when the client
+    # report began shipping `These` and `Nicht die These` as columns of the
+    # xlsx. The remaining fields below really are internal.
     angle = Angle(
         client_id=client.id,
         subject=prose.plain(draft.subject),
         message=prose.plain(draft.message),
         context=draft.context.strip(),
         credibility=draft.credibility.strip(),
-        thesis=draft.thesis.strip(),
-        overclaim=draft.overclaim.strip(),
+        thesis=prose.plain(draft.thesis).strip(),
+        overclaim=prose.plain(draft.overclaim).strip(),
         statements=[s.strip() for s in draft.statements if s.strip()],
         article_ids=cited or [item.article_id for item in numbered],
         brain_version=brain.stamp(draft.brain_version, what="this angle"),
@@ -348,21 +350,31 @@ def recent(session: Session, until: dt.datetime, *, days: int = COLUMN_DAYS) -> 
     return latest
 
 
-def for_client(session: Session, client_id: int, *, limit: int = 5) -> list[Angle]:
+def for_client(
+    session: Session,
+    client_id: int,
+    *,
+    limit: int | None = 5,
+    since: dt.datetime | None = None,
+) -> list[Angle]:
     """This client's recent drafts, newest first.
 
     The Today column keeps one per mandate so it stays scannable; the client's own
     page is where the others remain reachable, which is the promise that column
     makes when it drops them.
+
+    ``limit=None`` lifts the cap, and ``since`` bounds by when the draft was
+    written. Both exist for the client report, which states a period in its own
+    heading and so may not answer with "the newest five" — a KPI that is
+    structurally capped is not a measurement.
     """
-    return list(
-        session.scalars(
-            select(Angle)
-            .where(Angle.client_id == client_id)
-            .order_by(Angle.generated_at.desc(), Angle.id.desc())
-            .limit(limit)
-        ).all()
-    )
+    query = select(Angle).where(Angle.client_id == client_id)
+    if since is not None:
+        query = query.where(Angle.generated_at >= since)
+    query = query.order_by(Angle.generated_at.desc(), Angle.id.desc())
+    if limit is not None:
+        query = query.limit(limit)
+    return list(session.scalars(query).all())
 
 
 def latest(session: Session, client_id: int) -> Angle | None:

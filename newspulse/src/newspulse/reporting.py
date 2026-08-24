@@ -27,7 +27,7 @@ import pandas as pd
 from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.orm import Session
 
-from . import angles, config, coverage_map
+from . import angles, config, coverage_map, prose
 from .models import Analysis, Article, Client, visible_coverage
 
 
@@ -137,7 +137,7 @@ def _coverage_frame(
                 "Publisher": article.source,
                 "Autor": article.author or "",
                 "Schlagzeile": article.title,
-                "Zusammenfassung": analysis.summary or "",
+                "Zusammenfassung": prose.plain(analysis.summary or ""),
                 "Kategorie": analysis.category.value,
                 "Wichtigkeit": analysis.importance_score,
                 "Alarm": "ja" if analysis.is_alert else "",
@@ -200,24 +200,52 @@ def _gap_frame(
     )
 
 
-def _impulse_frame(session: Session, client: Client, *, days: int) -> pd.DataFrame:
-    """The positioning drafts, so the argument travels with the numbers."""
-    drafts = angles.for_client(session, client.id)
+def _impulse_frame(
+    session: Session, client: Client, *, days: int, now: dt.datetime | None = None
+) -> pd.DataFrame:
+    """The positioning drafts, so the argument travels with the numbers.
+
+    Bounded by the report's own period and not by a count. ``days`` was accepted
+    and then ignored, so the sheet held the newest five under a heading that
+    says "letzte 30 Tage" — a mandate with fourteen impulses in the window
+    shipped five of them, and the "Vorliegende Impulse" figure beside it was
+    really min(total, 5).
+    """
+    since = (now or dt.datetime.now(dt.UTC)) - dt.timedelta(days=days)
+    drafts = angles.for_client(session, client.id, limit=None, since=since)
     return pd.DataFrame(
         [
             {
                 "Erzeugt": draft.generated_at.astimezone(config.local_zone()).strftime(
                     "%d.%m.%Y"
                 ),
-                "Betreff": draft.subject or "",
-                "Nachricht": draft.message or "",
-                "These": draft.thesis or "",
-                "Nicht die These": getattr(draft, "overclaim", "") or "",
+                "Betreff": prose.plain(draft.subject or ""),
+                "Nachricht": prose.plain(draft.message or ""),
+                "These": prose.plain(draft.thesis or ""),
+                "Nicht die These": prose.plain(getattr(draft, "overclaim", "") or ""),
             }
             for draft in drafts
         ],
         columns=["Erzeugt", "Betreff", "Nachricht", "These", "Nicht die These"],
     )
+
+
+def _share_of_voice_cell(voice) -> str:
+    """The mandate's share, or the reason there is no share to state.
+
+    A share needs something to be a share *of*. With no competitor on file, or
+    with competitors who were not written about at all in the period, the figure
+    is 100 % by construction and says nothing about the market — which is
+    exactly what the dashboard tells the reader before it declines to draw the
+    bar. The workbook is the copy that goes into the meeting, so it owes the
+    same sentence rather than the bare number.
+    """
+    if voice.empty or not (voice["Rolle"] == "Mandant").any():
+        return "keine Angabe"
+    rivals = voice[voice["Rolle"] != "Mandant"]
+    if rivals.empty or int(rivals["Meldungen"].sum()) == 0:
+        return "kein Vergleich — ohne Berichterstattung über Wettbewerber sagt ein Anteil nichts"
+    return f"{voice.loc[voice['Rolle'] == 'Mandant', 'Anteil'].iloc[0]} %"
 
 
 def client_workbook(
@@ -242,7 +270,7 @@ def client_workbook(
     frame = _coverage_frame(session, client.id, days=days, now=now)
     voice = _voice_frame(session, client, days=days, now=now)
     gaps = _gap_frame(session, client, days=days, now=now)
-    impulses = _impulse_frame(session, client, days=days)
+    impulses = _impulse_frame(session, client, days=days, now=now)
 
     reference = now or dt.datetime.now(dt.UTC)
     summary = pd.DataFrame(
@@ -262,11 +290,7 @@ def client_workbook(
             },
             {
                 "Kennzahl": "Anteil am Marktgespräch",
-                "Wert": (
-                    f"{voice.loc[voice['Rolle'] == 'Mandant', 'Anteil'].iloc[0]} %"
-                    if not voice.empty and (voice["Rolle"] == "Mandant").any()
-                    else "—"
-                ),
+                "Wert": _share_of_voice_cell(voice),
             },
             {"Kennzahl": "Medien ohne Kontakt (Pitch-Lücken)", "Wert": len(gaps)},
             {"Kennzahl": "Vorliegende Impulse", "Wert": len(impulses)},

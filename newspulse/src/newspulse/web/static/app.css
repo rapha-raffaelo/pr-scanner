@@ -1837,3 +1837,11 @@ button:disabled { opacity: .55; cursor: default; }
 .side__outbtn:hover { background: rgba(255, 255, 255, .6); color: var(--ink); }
 .side__outbtn .side__nm { flex: 1; }
 .side__outmark { flex: none; opacity: .5; }
+
+/* The reason a portfolio of zeroes is a portfolio of zeroes. Inside the grouped
+   surface, quieter than a row, because it is context and not a mandate. */
+.portfolio__quiet {
+  padding: var(--s2) var(--s4);
+  font-size: var(--t-footnote); color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}

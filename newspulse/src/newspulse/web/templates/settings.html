@@ -500,8 +500,8 @@
     </section>
 
     <!-- ── Clients: add + edit + deactivate (NP-02 CRUD service) ── -->
-    <section class="panel panel--wide" aria-label="Clients">
-      <h2>{{ t("Clients") }}</h2>
+    <section class="panel panel--wide" aria-label="Mandanten">
+      <h2>{{ t("Mandanten") }}</h2>
       {% if client_error %}
         <div class="notice notice--error">{{ client_error }}</div>
       {% endif %}
@@ -509,7 +509,7 @@
       {# Collapsed by default: adding is occasional, reading the portfolio is
          constant, so the six add-fields must not sit permanently above the table. #}
       <details class="add-client-toggle"{% if client_error and not edit_id %} open{% endif %}>
-        <summary>{{ t("+ Client hinzufügen") }}</summary>
+        <summary>{{ t("+ Mandant hinzufügen") }}</summary>
         <form method="post" action="/settings/clients" class="add-client">
           <div class="import-fields">
             <div><label for="new-name">{{ t("Name") }}*</label><input type="text" id="new-name" name="name" required></div>
@@ -556,7 +556,7 @@
           <p class="panel-hint">
             {{ t("Beide Felder speisen außerdem das Themen-Radar, aus dem die Impulse entstehen. Ein Thema taugt dafür nur, wenn die Presse darüber schreibt, ohne den Mandanten zu nennen.") }}
           </p>
-          <button type="submit">{{ t("+ Client hinzufügen") }}</button>
+          <button type="submit">{{ t("+ Mandant hinzufügen") }}</button>
         </form>
       </details>
 
@@ -681,7 +681,9 @@
     <section class="panel" aria-label="Alarm-Schwellenwert">
       <h2>{{ t("Alarm-Schwellenwert") }}</h2>
       {% if threshold_error %}<div class="notice notice--error">{{ threshold_error }}</div>{% endif %}
-      <p class="panel-hint">Ab dieser Wichtigkeit (0–10) wird ein Artikel als Alarm markiert. Wirkt nur auf künftige Läufe.</p>
+      <p class="panel-hint">
+        {{ t("Ab dieser Wichtigkeit (0–10) wird eine Meldung zur Warnung — oder wenn sie eines der Alarm-Themen des Mandanten trifft, unabhängig von der Wichtigkeit. Deshalb liegen viele Warnungen unter dem Schwellenwert: bei einem Mandanten mit vielen Alarm-Themen entscheidet die Themenliste, nicht diese Zahl. Wirkt nur auf künftige Läufe.") }}
+      </p>
       <form method="post" action="/settings/threshold">
         <label for="threshold">Schwellenwert</label>
         <select id="threshold" name="alert_threshold">

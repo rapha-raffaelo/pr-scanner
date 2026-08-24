@@ -737,3 +737,40 @@ def test_one_publisher_is_one_choice_however_the_feed_spelled_it(factory, client
     # And picking it finds every clip, whichever way the feed wrote the name.
     filtered = client.get("/archive", params={"source": "finanzen.net"}).text
     assert _headline_count(filtered) == 4
+
+
+def test_a_portfolio_of_zeroes_says_why_it_is_empty(factory, client):
+    """Seven mandates at 0/0/0 looks identical whether the news was quiet or the
+    sweep stopped four days ago. /today explains the same silence in a banner;
+    this is the screen somebody opens first and it explained nothing."""
+    today = dt.datetime.now().astimezone().date()
+    with factory() as s:
+        mandate = _seed_client(s, name="Alpha AG")
+        _seed_article(
+            s, client_obj=mandate, title="Von vorgestern",
+            url="https://ex.de/alt",
+            published_at=_local_noon(today - dt.timedelta(days=2)),
+        )
+        s.commit()
+
+    body = _content(client.get("/").text)
+
+    assert "Zuletzt Berichterstattung am" in body
+    assert (today - dt.timedelta(days=2)).strftime("%d.%m.%Y") in body
+
+
+def test_a_portfolio_with_coverage_today_says_nothing_extra(factory, client):
+    """The sentence is missing information, not decoration: on a normal morning
+    the numbers speak for themselves."""
+    today = dt.datetime.now().astimezone().date()
+    with factory() as s:
+        mandate = _seed_client(s, name="Alpha AG")
+        _seed_article(
+            s, client_obj=mandate, title="Von heute", url="https://ex.de/neu",
+            published_at=_local_noon(today),
+        )
+        s.commit()
+
+    body = _content(client.get("/").text)
+
+    assert "Zuletzt Berichterstattung am" not in body
