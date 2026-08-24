@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Beispiel-Behoerde Meldungen</title>
+    <link>https://behoerde.example.de/</link>
+    <description>Dieselben Meldungen, nach einem Relaunch unter neuen Adressen.</description>
+    <language>de</language>
+
+    <item>
+      <title>Datenverordnung: Konsultation zur nationalen Umsetzung eroeffnet</title>
+      <link>https://behoerde.example.de/neu/2026/konsultationen/datenverordnung?id=884</link>
+      <description>Stellungnahmen sind bis zum 30.09.2026 moeglich. Die Verordnung tritt am 1. Januar 2027 in Kraft.</description>
+      <pubDate>Fri, 21 Aug 2026 07:00:00 +0200</pubDate>
+      <guid>https://behoerde.example.de/neu/2026/konsultationen/datenverordnung?id=884</guid>
+    </item>
+
+    <item>
+      <title>Neue Meldepflicht fuer Nachhaltigkeitsberichte beschlossen</title>
+      <link>https://behoerde.example.de/neu/2026/gesetze/meldepflicht?id=885</link>
+      <description>Die Berichtspflicht gilt ab dem 01.04.2027 fuer Unternehmen mit mehr als 250 Beschaeftigten.</description>
+      <pubDate>Wed, 19 Aug 2026 11:15:00 +0200</pubDate>
+      <guid>https://behoerde.example.de/neu/2026/gesetze/meldepflicht?id=885</guid>
+    </item>
+
+    <item>
+      <title>Behoerde veroeffentlicht Auslegungshinweise zur Aufsichtspraxis</title>
+      <link>https://behoerde.example.de/neu/2026/meldungen/auslegungshinweise?id=886</link>
+      <description>Die Hinweise fassen die bisherige Verwaltungspraxis zusammen und nennen keinen Stichtag.</description>
+      <pubDate>Mon, 17 Aug 2026 14:00:00 +0200</pubDate>
+      <guid>https://behoerde.example.de/neu/2026/meldungen/auslegungshinweise?id=886</guid>
+    </item>
+  </channel>
+</rss>

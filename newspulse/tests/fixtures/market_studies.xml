@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Beispiel-Institut Pressemitteilungen</title>
+    <link>https://institut.example.de/</link>
+    <description>Studien und Erhebungen des Beispiel-Instituts.</description>
+    <language>de</language>
+
+    <item>
+      <title>Studie: Jeder dritte Mittelstaendler investiert in KI-Anwendungen</title>
+      <link>https://institut.example.de/studien/ki-mittelstand-2026</link>
+      <description>Die Erhebung unter 1.200 Unternehmen zeigt, dass 34 Prozent der Betriebe KI produktiv einsetzen.</description>
+      <pubDate>Thu, 20 Aug 2026 08:00:00 +0200</pubDate>
+      <guid>https://institut.example.de/studien/ki-mittelstand-2026</guid>
+    </item>
+
+    <item>
+      <title>Konjunkturerwartungen der Finanzmaerkte sinken im August deutlich</title>
+      <link>https://institut.example.de/studien/konjunktur-august-2026</link>
+      <description>Der Index faellt um 12,4 Punkte und liegt damit unter dem langfristigen Mittelwert.</description>
+      <pubDate>Tue, 18 Aug 2026 09:30:00 +0200</pubDate>
+      <guid>https://institut.example.de/studien/konjunktur-august-2026</guid>
+    </item>
+  </channel>
+</rss>
