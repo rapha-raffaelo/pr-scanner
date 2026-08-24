@@ -294,6 +294,57 @@ def test_an_impossible_date_is_dropped_rather_than_raised_on():
     assert effective is None
 
 
+def test_a_deadline_is_read_through_the_sharp_s_of_ordinary_german_prose():
+    """The vocabulary of this module is full of "ß" — Maßnahme, gemäß, Fußnote,
+    Beschluß — and casefolding expands each of them to "ss". Every one before the
+    cue used to shift its offset a character to the right, until the date that
+    follows it fell out of the window and the consultation lost its cut-off. The
+    deadline has no positional fallback to cover for that."""
+    text = (
+        "Die Maßnahme gemäß Beschluß der Fußnote betrifft Größe und Maße der "
+        "Anlage: Stellungnahmen bis zum 30.09.2026 einreichen."
+    )
+
+    _effective, deadline = RegulationFetcher(sources=[]).read_dates(text, _NOW)
+
+    assert deadline == dt.datetime(2026, 9, 30, tzinfo=dt.UTC)
+
+
+def test_a_deadline_in_the_old_spelling_is_still_read():
+    """Official archives keep the pre-1996 forms, and "Einsendeschluß" has to reach
+    the same cue as "Einsendeschluss" — the one thing casefolding did buy."""
+    _effective, deadline = RegulationFetcher(sources=[]).read_dates(
+        "Einsendeschluß ist der 30.09.2026.", _NOW
+    )
+
+    assert deadline == dt.datetime(2026, 9, 30, tzinfo=dt.UTC)
+
+
+def test_a_cut_off_stated_before_its_cue_is_not_filed_as_the_date_it_applies_from():
+    """"Bis 30.09.2026 können Stellungnahmen eingereicht werden" states the date
+    ahead of the cue, where the forward-looking window cannot reach it. Handing it
+    to the positional fallback would tell the consultant a consultation he can still
+    answer already applies to him — the one confusion the two columns exist for."""
+    effective, deadline = RegulationFetcher(sources=[]).read_dates(
+        "Bis 30.09.2026 koennen Stellungnahmen eingereicht werden.", _NOW
+    )
+
+    assert effective is None
+    assert deadline is None
+
+
+def test_a_word_that_merely_ends_in_am_does_not_anchor_an_event_date():
+    """"am " is a cue and "Team " ends in it. Matched as a bare substring, the
+    founding year in the organiser's blurb outranks the date the conference is
+    actually on, because a cue-anchored date beats the positional fallback."""
+    effective, _deadline = EventFetcher(sources=[]).read_dates(
+        "Das Team 01.01.2020 gegruendet. Die Fachtagung findet am 12.03.2027 statt.",
+        _NOW,
+    )
+
+    assert effective == dt.datetime(2027, 3, 12, tzinfo=dt.UTC)
+
+
 # --- Running twice stores nothing new ------------------------------------------
 
 

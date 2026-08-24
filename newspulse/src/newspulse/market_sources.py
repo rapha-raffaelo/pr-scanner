@@ -31,6 +31,7 @@ one guard per class, so a dead regulatory feed never costs the other two.
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import logging
 import re
 import tomllib
@@ -188,6 +189,12 @@ _DEADLINE_CUES = (
 # An event names its own date the way a programme does.
 _EVENT_CUES = ("findet am", "findet vom", "am ", "vom ", "termin")
 
+# The cues that are whole German words rather than compound stems, and so must not
+# match inside one: without this "am " fires on the last two letters of "Team ",
+# and the event's date is then anchored to a word that says nothing about it. The
+# stems are deliberately absent — "frist" has to keep matching "Anmeldefrist".
+_WHOLE_WORD_CUES = frozenset({"am ", "vom "})
+
 # A call for speakers is the one deadline an event carries, and it is not the
 # registration deadline: a consultant needs to know when he can still get on
 # stage, not when the ticket price rises.
@@ -227,6 +234,32 @@ def _at_midnight(year: int, month: int, day: int) -> dt.datetime | None:
         return None
 
 
+@functools.lru_cache(maxsize=None)
+def _cue_pattern(cue: str) -> re.Pattern[str]:
+    """One cue as a pattern matched against the *original* text.
+
+    Case-insensitively rather than over a casefolded copy, because
+    :meth:`str.casefold` is not length-preserving in German — it expands "ß" to
+    "ss" — and a cue's offset then no longer lines up with the offsets
+    :func:`_dates` found in the text it is compared against. One "ß" before the
+    cue was enough to push the following date out of :data:`_CUE_WINDOW`, and
+    since ``deadline_at`` has no positional fallback, an ordinary sentence about a
+    "Maßnahme" or an "Einsendeschluß" silently lost its cut-off date.
+
+    "ss" still matches "ß" so the pre-1996 spellings official sources keep in
+    their archives ("Einsendeschluß") are read — but as an alternation inside the
+    pattern, which does not move a single character.
+    """
+    body = re.escape(cue).replace("ss", "(?:ss|ß)")
+    boundary = r"(?<!\w)" if cue in _WHOLE_WORD_CUES else ""
+    return re.compile(boundary + body, re.IGNORECASE)
+
+
+def _mentions(text: str, cues: Sequence[str]) -> bool:
+    """Whether ``text`` uses any of ``cues`` at all, dated or not."""
+    return any(_cue_pattern(cue).search(text) for cue in cues)
+
+
 def _dated(text: str, cues: Sequence[str]) -> dt.datetime | None:
     """The first date that follows one of ``cues`` inside :data:`_CUE_WINDOW`.
 
@@ -234,19 +267,18 @@ def _dated(text: str, cues: Sequence[str]) -> dt.datetime | None:
     of the dates this module distinguishes, in either order: "Die Konsultation
     endet am 30.09.2026, die Verordnung tritt am 01.01.2027 in Kraft."
     """
-    lowered = text.casefold()
     dates = _dates(text)
+    if not dates:
+        return None
     best: tuple[int, dt.datetime] | None = None
     for cue in cues:
-        start = lowered.find(cue)
-        while start != -1:
-            end = start + len(cue)
+        for match in _cue_pattern(cue).finditer(text):
+            end = match.end()
             for pos, when in dates:
                 if end <= pos <= end + _CUE_WINDOW:
                     if best is None or pos < best[0]:
                         best = (pos, when)
                     break
-            start = lowered.find(cue, start + 1)
     return best[1] if best is not None else None
 
 
@@ -265,6 +297,30 @@ def _first_from(
             continue
         return when
     return None
+
+
+def _positional(
+    text: str,
+    reference: dt.datetime,
+    *,
+    deadline: dt.datetime | None,
+    deadline_cues: Sequence[str],
+) -> dt.datetime | None:
+    """:func:`_first_from`, unless the one date in the text is plainly a deadline.
+
+    The fallback reads an uncued date as the date the item lands on. That is right
+    for a calendar entry stated bare, and wrong in exactly one case: the item talks
+    about a closing door but states the date *before* the cue — "Bis 30.09.2026
+    können Stellungnahmen eingereicht werden" — where :func:`_dated` looks only
+    forward and finds nothing to anchor. Filing that date as ``effective_at``
+    tells the consultant "it now applies to you" about a consultation he can still
+    answer, which is the one confusion this module exists to prevent. So when a
+    deadline cue is present and none of the dates could be tied to it, the item is
+    reported as having no effective date rather than a misread one.
+    """
+    if deadline is None and _mentions(text, deadline_cues):
+        return None
+    return _first_from(text, reference, skip=deadline)
 
 
 # --- One fetcher per class, behind one interface --------------------------------
@@ -401,7 +457,9 @@ class RegulationFetcher(MarketFetcher):
 
     def read_dates(self, text, now):
         deadline = _dated(text, _DEADLINE_CUES)
-        effective = _dated(text, _EFFECTIVE_CUES) or _first_from(text, now, skip=deadline)
+        effective = _dated(text, _EFFECTIVE_CUES) or _positional(
+            text, now, deadline=deadline, deadline_cues=_DEADLINE_CUES
+        )
         return effective, deadline
 
 
@@ -413,7 +471,9 @@ class EventFetcher(MarketFetcher):
 
     def read_dates(self, text, now):
         deadline = _dated(text, _SPEAKER_CUES)
-        effective = _dated(text, _EVENT_CUES) or _first_from(text, now, skip=deadline)
+        effective = _dated(text, _EVENT_CUES) or _positional(
+            text, now, deadline=deadline, deadline_cues=_SPEAKER_CUES
+        )
         return effective, deadline
 
 
