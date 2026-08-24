@@ -98,6 +98,31 @@ def background_locks_are_free():
 
 
 @pytest.fixture(autouse=True)
+def no_monthly_report_draft(monkeypatch):
+    """Stop the sweep from drafting monthly reports in a test run.
+
+    Same reason as theme settling: ``job.run`` now reads last month for every
+    mandate that has no report yet, and that is one `claude` call per mandate. It
+    also fires or does not fire depending on the *real* calendar day, which is the
+    worst kind of test flake — a suite that is green on the eighth and shells out
+    to a model on the first.
+
+    Yields the real function for the tests that are about it.
+    """
+    from newspulse import job
+
+    original = job._draft_reports
+
+    def _stub(session, clients, *, now, generate=None) -> int:
+        """The real signature, so a change to it breaks the suite rather than
+        production."""
+        return 0
+
+    monkeypatch.setattr(job, "_draft_reports", _stub)
+    return original
+
+
+@pytest.fixture(autouse=True)
 def brain_composes_the_shipped_blocks(monkeypatch):
     """Compose prompts against the repository's blocks, not against a database.
 
@@ -119,6 +144,9 @@ def brain_composes_the_shipped_blocks(monkeypatch):
     from newspulse import brain
 
     monkeypatch.setattr(brain, "_override_source", dict)
+
+
+@pytest.fixture(autouse=True)
 def no_real_mailbox(tmp_path, monkeypatch):
     """Keep the daily sweep away from a mailbox somebody actually connected.
 

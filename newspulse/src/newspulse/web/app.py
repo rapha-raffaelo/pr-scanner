@@ -164,6 +164,15 @@ def de_short_date(value: dt.datetime) -> str:
     return _local(value).strftime("%d.%m.")
 
 
+def de_date(value: dt.datetime) -> str:
+    """A calendar date in the reader's zone: ``22.07.2026``.
+
+    The report's dates need the year — a document is read months after it was
+    sent, which is exactly when ``22.07.`` stops being enough.
+    """
+    return _local(value).strftime("%d.%m.%Y")
+
+
 # Image types a stored logo may carry. Deliberately the raster set only: an SVG
 # is executable markup, and inlining one into the page would hand the site it
 # came from script execution in this origin.
@@ -244,6 +253,7 @@ templates.env.filters["de_time"] = de_time
 templates.env.filters["de_datetime"] = de_datetime
 templates.env.filters["de_date"] = de_date
 templates.env.filters["de_short_date"] = de_short_date
+templates.env.filters["de_date"] = de_date
 # The header's own reading of a timestamp: see de_when.
 templates.env.filters["de_when"] = de_when
 templates.env.filters["run_age_days"] = run_age_days
@@ -320,8 +330,8 @@ def create_app() -> FastAPI:
     from .routes import (
         advisory, archive, assets_view, assistant, client, contacts, guide_routes,
         language, login, onboarding as onboarding_routes,
-        profile as profile_routes, rivals_view, runstatus, settings, today,
-        triage,
+        profile as profile_routes, report as report_routes, rivals_view,
+        runstatus, settings, today, triage,
     )
 
     # First, so the sign-in pages exist before anything that needs a session.
@@ -344,6 +354,7 @@ def create_app() -> FastAPI:
     app.include_router(contacts.router)
     app.include_router(profile_routes.router)
     app.include_router(rivals_view.router)
+    app.include_router(report_routes.router)
     app.include_router(onboarding_routes.router)
     return app
 

@@ -1061,6 +1061,35 @@ def released_count_by_contact(session: Session) -> dict[int, int]:
     return dict(rows)
 
 
+def released_letters(
+    session: Session,
+    client_id: int,
+    *,
+    until: dt.datetime | None = None,
+    since: dt.datetime | None = None,
+) -> list[Outreach]:
+    """Released letters for one mandate, oldest release first.
+
+    Drafts are absent by construction rather than by a filter a caller has to
+    remember: this is the only way the report reads the ledger, and a report may
+    only credit outreach that actually left the house.
+
+    ``since``/``until`` bound the *release*, not the drafting: a letter matters to
+    a reporting period because of when it went out.
+    """
+    query = select(Outreach).where(
+        Outreach.client_id == client_id,
+        Outreach.released_at.is_not(None),
+    )
+    if since is not None:
+        query = query.where(Outreach.released_at >= since)
+    if until is not None:
+        query = query.where(Outreach.released_at < until)
+    return list(
+        session.scalars(query.order_by(Outreach.released_at, Outreach.id)).all()
+    )
+
+
 def for_angle(session: Session, angle_id: int) -> list[Outreach]:
     """Every message written off one impulse, newest first."""
     return list(
@@ -1097,19 +1126,19 @@ def by_angle(session: Session, angle_ids: list[int]) -> dict[int, list[Outreach]
 
 __all__ = [
     "DEFAULT_RELEASED_BY",
+    "HistoryEntry",
     "MAX_HISTORY",
     "OUTCOMES",
     "STATE_LABELS",
-    "HistoryEntry",
     "Tally",
     "TimelineEvent",
     "TimelineKind",
     "by_angle",
     "crosscheck",
-    "guide_check",
     "days_out",
     "draft",
     "for_angle",
+    "guide_check",
     "history_for_contact",
     "is_silent",
     "record_draft",
@@ -1118,6 +1147,7 @@ __all__ = [
     "record_sent",
     "release",
     "released_count_by_contact",
+    "released_letters",
     "store",
     "tally",
     "timeline",
