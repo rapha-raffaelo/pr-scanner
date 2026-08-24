@@ -46,6 +46,8 @@ from newspulse.models import (
     Category,
     Client,
     MarketSignal,
+    Run,
+    RunStatus,
     SignalKind,
     SignalOrigin,
     visible_coverage,
@@ -647,10 +649,9 @@ def test_an_unreachable_class_logs_an_error_and_leaves_the_other_two_alone(
         lambda path=None: [_STUDY_SOURCE, _REGULATION_SOURCE, _EVENT_SOURCE],
     )
     client = _client(session)
-    errors: list[str] = []
 
     with caplog.at_level(logging.ERROR, logger="newspulse.job"):
-        written = no_market_sweep(session, [client], _SINCE, fetch, _NOW, errors)
+        written, errors = no_market_sweep(session, [client], _SINCE, fetch, _NOW)
 
     assert written == 4  # 2 studies + 2 events; nothing from the dark class
     assert _signals(session, client, SignalKind.REGULIERUNG) == []
@@ -659,6 +660,48 @@ def test_an_unreachable_class_logs_an_error_and_leaves_the_other_two_alone(
     assert [r.levelno for r in caplog.records] == [logging.ERROR]
     assert "regulierung" in caplog.records[0].getMessage()
     assert any("regulierung" in message for message in errors)
+
+
+def test_a_source_that_answers_with_a_landing_page_is_reported_as_dark(
+    session, monkeypatch, caplog, no_market_sweep
+):
+    """How a moved RSS path actually dies: not a connection error but a healthy 200
+    carrying "Seite nicht gefunden". Read leniently that is an empty list, which is
+    exactly what a quiet fortnight looks like — so the class would store nothing,
+    log nothing, and the run would come back green."""
+    landing_page = b"<!doctype html><html><body><h1>Seite nicht gefunden</h1></body></html>"
+    monkeypatch.setattr(ingest, "_fetch_raw", lambda url, timeout: landing_page)
+    monkeypatch.setattr(
+        market_sources, "load_sources", lambda path=None: [_REGULATION_SOURCE]
+    )
+    monkeypatch.setattr(job.config, "GOOGLE_NEWS_ENABLED", False)
+    client = _client(session)
+
+    with caplog.at_level(logging.ERROR, logger="newspulse.job"):
+        written, errors = no_market_sweep(
+            session, [client], _SINCE, ingest.fetch_feed, _NOW
+        )
+
+    assert written == 0
+    assert _signals(session, client) == []
+    assert any("regulierung" in message for message in errors)
+    assert [r.levelno for r in caplog.records] == [logging.ERROR]
+
+
+def test_a_feed_that_parses_but_has_nothing_new_is_not_an_error(session, serve, caplog):
+    """The other side of the same line: a well-formed feed whose items are all older
+    than ``since`` is a quiet fortnight, and a calendar that cried failure over one
+    would train its reader to ignore the ones that matter."""
+    fetch = serve({_STUDIES_URL: "market_studies.xml"})
+    client = _client(session)
+
+    with caplog.at_level(logging.WARNING):
+        drafts = StudyFetcher(fetch=fetch, sources=[_STUDY_SOURCE]).collect(
+            client, since=_NOW, now=_NOW  # every fixture item predates this
+        )
+
+    assert drafts == []
+    assert caplog.records == []
 
 
 def test_a_competitor_gets_no_market_sweep(session, serve, monkeypatch, no_market_sweep):
@@ -670,7 +713,7 @@ def test_a_competitor_gets_no_market_sweep(session, serve, monkeypatch, no_marke
     rival.is_competitor = True
     session.commit()
 
-    written = no_market_sweep(session, [rival], _SINCE, fetch, _NOW, [])
+    written, _errors = no_market_sweep(session, [rival], _SINCE, fetch, _NOW)
 
     assert written == 0
     assert _signals(session, rival) == []
@@ -770,6 +813,39 @@ def test_a_dark_market_class_does_not_disturb_the_daily_news_sweep(
     assert report.analyses_written == 1
     assert report.signals_written == 0
     assert session.scalar(select(func.count()).select_from(MarketSignal)) == 0
+
+
+def test_a_dark_market_class_shows_on_the_run_row_and_not_only_in_the_log(
+    session, monkeypatch, no_market_sweep
+):
+    """The ``runs`` row is committed before the market is fetched — on purpose, so
+    a dark source cannot cost the day's coverage — which leaves it saying ``ok``
+    about a sweep whose last stage failed. A class dark for a week would then show
+    a green run every morning, with the only trace in a log nobody tails. That is
+    the outcome this codebase already rejected for the mailbox."""
+    monkeypatch.setattr(job, "_sweep_market", no_market_sweep)  # the real one
+    monkeypatch.setattr(market_sources, "load_sources", lambda path=None: [_STUDY_SOURCE])
+    monkeypatch.setattr(job.config, "GOOGLE_NEWS_ENABLED", False)
+    _client(session, "Alpha AG")
+
+    def _fetch(url, since, *, source=None, fetched_at=None, **_):
+        if url == _STUDIES_URL:
+            raise urllib.error.URLError("the institute is down")
+        return []
+
+    report = job.run(
+        session,
+        analyzer=_FakeAnalyzer(),
+        feeds=[Feed(name="Handelsblatt", url="https://hb.example.de/rss")],
+        fetch=_fetch,
+        now=lambda: _NOW,
+    )
+
+    stored = session.scalars(select(Run).order_by(Run.id)).all()[-1]
+    assert report.status is RunStatus.PARTIAL
+    assert stored.status is RunStatus.PARTIAL, "the row and the report must agree"
+    assert any("studie" in message for message in stored.errors)
+    assert any("studie" in message for message in report.errors)
 
 
 def test_the_daily_sweep_stores_the_market_classes_it_fetched(

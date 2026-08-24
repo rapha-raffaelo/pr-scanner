@@ -210,10 +210,10 @@ def no_market_sweep(monkeypatch):
 
     original = job._sweep_market
 
-    def _stub(session, clients, since, fetch, now, errors) -> int:
+    def _stub(session, clients, since, fetch, now) -> tuple[int, list[str]]:
         """The real signature, so a change to it breaks the suite rather than
         production: ``lambda *a, **k`` would have accepted anything."""
-        return 0
+        return 0, []
 
     monkeypatch.setattr(job, "_sweep_market", _stub)
     return original

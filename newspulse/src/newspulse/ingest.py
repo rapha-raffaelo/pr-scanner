@@ -51,6 +51,16 @@ class _FeedTooLargeError(Exception):
     broken feed. Handled exactly like any other fetch failure (WARNING + empty)."""
 
 
+class _FeedUnparseableError(Exception):
+    """A 200 that is not a feed: HTML where XML was expected, and no entries.
+
+    Raised only under ``strict``. This is what a moved RSS path actually returns —
+    a "Seite nicht gefunden" page or a relaunch landing page, served with a
+    perfectly healthy status code — so a caller that asks to hear about a dead
+    source has to hear about this one too, or the commonest way a source dies is
+    the one way it stays silent."""
+
+
 @dataclass(frozen=True, slots=True)
 class FeedItem:
     """A single syndicated feed entry, normalized.
@@ -265,18 +275,25 @@ def _parse_items(
     source: str | None,
     fetched_at: dt.datetime,
     per_entry_source: bool = False,
+    strict: bool = False,
 ) -> list[FeedItem]:
     """Parse feed bytes into items published strictly after ``since``.
 
     ``since`` and ``fetched_at`` must already be timezone-aware UTC (the caller
     normalizes them). Kept separate from :func:`fetch_feed` so the fetch and the
     parse/normalize phases each sit behind their own isolation boundary.
+
+    ``strict`` has the meaning it has in :func:`fetch_feed`: a body that is not a
+    feed is raised rather than logged away, because that — not a connection error
+    — is what a source that moved usually looks like from here.
     """
     parsed = feedparser.parse(raw)
     # feedparser is lenient and sets ``bozo`` for any not-well-formed document.
     # Many real feeds are technically bozo yet still parse into entries, so we only
     # treat bozo as a failure when it produced *nothing* to work with.
     if parsed.bozo and not parsed.entries:
+        if strict:
+            raise _FeedUnparseableError(f"{url} is not a feed ({parsed.get('bozo_exception')})")
         _log.warning(
             "Feed %s is malformed (%s); skipping",
             url,
@@ -343,6 +360,14 @@ def fetch_feed(
     indistinguishable from a quiet fortnight — which is the one thing a forward
     calendar must never be wrong about. Those callers ask for the failure so the
     sweep's per-class guard can log it at ERROR.
+
+    "Failure" there covers the body as well as the connection. A moved RSS path
+    rarely answers with an error — it answers 200 with an HTML landing page — so
+    under ``strict`` a body that parses into no entries at all raises
+    :class:`_FeedUnparseableError` rather than logging a WARNING and returning
+    nothing, which would have left the commonest way a source dies as the one way
+    it dies quietly. A feed that is genuinely well-formed and merely has nothing
+    new is untouched by this: it parsed into entries, and ``since`` filtered them.
     """
     # Normalize to tz-aware UTC up front so the ``published_at`` comparison (which
     # is always tz-aware) can never raise a naive/aware TypeError mid-sweep.
@@ -378,6 +403,7 @@ def fetch_feed(
             source=source,
             fetched_at=fetched_at,
             per_entry_source=per_entry_source,
+            strict=strict,
         )
     except Exception as exc:  # noqa: BLE001 — structural fault-isolation boundary
         # Any unexpected error while parsing or normalizing one feed must not
