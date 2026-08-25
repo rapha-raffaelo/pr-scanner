@@ -83,11 +83,14 @@
 {# The instruction the calendar exists to give: how long is left until whichever
    of this row's dates comes first. A row whose source stated no date at all says
    so — dropping it would be the one failure a forward calendar must not have. #}
-{% macro countdown(row) %}
+{% macro countdown(row, own_label, deadline_label) %}
   <div class="sig__when {% if not row.next_in %}sig__when--none{% endif %}">
     {% if row.next_in %}
       {% with r = row.next_in %}{% include "partials/market_remaining.html" %}{% endwith %}
-      <span class="sig__date">{{ row.next_at | de_short_date }}</span>
+      {# Which date this counts to. "In 5 Wochen" beside a conference means two
+         different things — five weeks to submit a talk, or five weeks until the
+         doors open — and a calendar that does not say which is not one. #}
+      <span class="sig__date">{% if row.next_is_deadline %}{{ deadline_label }}{% else %}{{ own_label }}{% endif %} {{ row.next_at | de_date }}</span>
     {% else %}
       {{ t("kein Datum erkannt") }}
     {% endif %}
@@ -100,7 +103,7 @@
 {% macro deadline(row, label) %}
   {% if row.until_deadline %}
     <span class="sig__deadline {% if row.deadline_soon %}sig__deadline--soon{% endif %}">
-      {{ label }} {{ row.deadline_at | de_short_date }} ·
+      {{ label }} {{ row.deadline_at | de_date }} ·
       {% with r = row.until_deadline %}{% include "partials/market_remaining.html" %}{% endwith %}
       {% if row.deadline_soon %} · {{ t("läuft ab") }}{% endif %}
     </span>
@@ -175,7 +178,7 @@
         {% for row in signals['studie'] %}
           <article class="sig__row">
             <div class="sig__when {% if not row.published_at %}sig__when--none{% endif %}">
-              {% if row.published_at %}{{ row.published_at | de_short_date }}{% else %}{{ t("ohne Datum") }}{% endif %}
+              {% if row.published_at %}{{ row.published_at | de_date }}{% else %}{{ t("ohne Datum") }}{% endif %}
             </div>
             <div class="sig__body">
               <div class="feed-item__head">
@@ -203,7 +206,7 @@
         <p class="sig__help">{{ t("Was kommt, in welcher Reihenfolge. Der Vorlauf ist der ganze Wert — was vorbei ist, steht nicht mehr hier.") }}</p>
         {% for row in signals['regulierung'] %}
           <article class="sig__row">
-            {{ countdown(row) }}
+            {{ countdown(row, t("gilt ab"), t("Frist")) }}
             <div class="sig__body">
               <div class="feed-item__head">
                 <a class="feed-item__headline" href="{{ row.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>
@@ -211,7 +214,7 @@
               </div>
               <div class="feed-item__meta">
                 <span class="source">{% if row.publisher %}{{ row.publisher }}{% else %}{{ t("Herausgeber unbekannt") }}{% endif %}</span>
-                {% if row.effective_at %}<span class="time">{{ t("gilt ab") }} {{ row.effective_at | de_short_date }}</span>{% endif %}
+                {% if row.effective_at %}<span class="time">{{ t("gilt ab") }} {{ row.effective_at | de_date }}</span>{% endif %}
                 {{ deadline(row, t("Frist")) }}
               </div>
               {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
@@ -231,7 +234,7 @@
         <p class="sig__help">{{ t("Bühnen im Feld des Mandanten. Wo ein Call for Speakers läuft, steht die Frist daneben.") }}</p>
         {% for row in signals['veranstaltung'] %}
           <article class="sig__row">
-            {{ countdown(row) }}
+            {{ countdown(row, t("Termin"), t("Einreichfrist")) }}
             <div class="sig__body">
               <div class="feed-item__head">
                 <a class="feed-item__headline" href="{{ row.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>
@@ -239,7 +242,7 @@
               </div>
               <div class="feed-item__meta">
                 <span class="source">{% if row.publisher %}{{ row.publisher }}{% else %}{{ t("Veranstalter unbekannt") }}{% endif %}</span>
-                {% if row.effective_at %}<span class="time">{{ t("Termin") }} {{ row.effective_at | de_short_date }}</span>{% endif %}
+                {% if row.effective_at %}<span class="time">{{ t("Termin") }} {{ row.effective_at | de_date }}</span>{% endif %}
                 {{ deadline(row, t("Einreichfrist")) }}
               </div>
               {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}

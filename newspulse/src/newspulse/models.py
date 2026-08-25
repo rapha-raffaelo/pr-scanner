@@ -447,7 +447,7 @@ class Client(Base):
         back_populates="client", cascade="all, delete-orphan"
     )
 
-    def mutes_signal(self, kind: "SignalKind | str") -> bool:
+    def mutes_signal(self, kind: SignalKind | str) -> bool:
         """Whether this mandate has switched off one market class.
 
         On the model rather than in either caller because both the sweep that

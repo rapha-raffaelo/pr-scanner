@@ -714,13 +714,21 @@ class SignalRow:
         return min(ahead, key=lambda r: r.days) if ahead else None
 
     @property
+    def next_is_deadline(self) -> bool:
+        """Whether :attr:`next_in` counts down to the door rather than the event.
+
+        The template says which, because "in 5 Wochen" beside a conference means
+        two entirely different things depending on the answer: five weeks to
+        submit a talk, or five weeks until the doors open.
+        """
+        if self.until_deadline is None:
+            return False
+        return self.until is None or self.until_deadline.days < self.until.days
+
+    @property
     def next_at(self) -> dt.datetime | None:
         """The date :attr:`next_in` counts down to."""
-        if self.until is not None and (
-            self.until_deadline is None or self.until.days <= self.until_deadline.days
-        ):
-            return self.effective_at
-        return self.deadline_at if self.until_deadline is not None else None
+        return self.deadline_at if self.next_is_deadline else self.effective_at
 
 
 @dataclass(frozen=True, slots=True)
@@ -904,9 +912,12 @@ def _by_publication(rows: Sequence[SignalRow]) -> list[SignalRow]:
     citable for months, and a timer would throw it away at roughly the point he
     would want it.
     """
+    # An aware sentinel, so the key is totally ordered even between two undated
+    # rows — a naive one would raise the moment the tuple's first element tied.
+    undated_first = dt.datetime.min.replace(tzinfo=dt.UTC)
     return sorted(
         rows,
-        key=lambda r: (r.published_at is not None, r.published_at or dt.datetime.min),
+        key=lambda r: (r.published_at is not None, r.published_at or undated_first),
         reverse=True,
     )
 

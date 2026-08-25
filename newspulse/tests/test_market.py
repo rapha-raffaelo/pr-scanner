@@ -1,18 +1,27 @@
-"""The Marktumfeld view: what the radar saw, and who reported it.
+"""The Marktumfeld view: what the radar saw, what is coming, and who reported it.
 
 Radar articles were stored with nothing linking them to the client whose themes
 found them, so the material was in the database and attached to nobody —
 unbrowsable, and unusable for ranking outlets. ``topic_hits`` carries that pairing,
 and this view is the first thing that reads it.
 
-The load-bearing distinction throughout: an article that never names the client is
-market material, not coverage of the client. It must appear here and nowhere that
-counts a mandate's own press.
+The load-bearing distinction in the first half: an article that never names the
+client is market material, not coverage of the client. It must appear here and
+nowhere that counts a mandate's own press.
+
+The second half (SRC-02) is about the three classes a news feed cannot carry, and
+its load-bearing rule is DEC-2 C: a market signal does not age out on a timer. A
+study stays citable for months; regulation and events leave the page when nothing
+is coming, not when a window closes behind them. No test here performs a network
+call — the one place the view would make one is the industry probe, and the tests
+that reach it inject an answer.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,17 +29,24 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from newspulse import config, i18n, industry, market_sources
 from newspulse.models import (
     Analysis,
     Article,
     Base,
     Category,
     Client,
+    MarketSignal,
+    SignalKind,
+    SignalOrigin,
     TopicHit,
 )
 from newspulse.web.app import create_app, get_db
+from newspulse.web.routes import client as client_routes
 
 _NOW = dt.datetime(2026, 7, 30, 9, 0, tzinfo=dt.UTC)
+
+_TEMPLATES = Path(client_routes.__file__).resolve().parents[1] / "templates"
 
 
 @pytest.fixture
@@ -236,3 +252,612 @@ def test_the_tab_is_reachable_from_the_other_client_views(factory, client):
 
 def test_an_unknown_client_is_a_404(client):
     assert client.get("/client/9999/market").status_code == 404
+
+
+# --- The three market classes: four sections, and a calendar (SRC-02) ----------
+
+
+def _signal(session, client_obj, kind, title, **over) -> MarketSignal:
+    signal = MarketSignal(
+        client_id=client_obj.id,
+        kind=kind,
+        title=title,
+        publisher=over.get("publisher", "Beispiel-Institut"),
+        url=over.get("url", f"https://quelle.de/{abs(hash(title)) % 100000}"),
+        found_at=_NOW,
+        published_at=over.get("published_at"),
+        effective_at=over.get("effective_at"),
+        deadline_at=over.get("deadline_at"),
+        summary=over.get("summary", ""),
+        origin=over.get("origin", SignalOrigin.KURATIERT),
+    )
+    session.add(signal)
+    session.commit()
+    return signal
+
+
+def _in(days: int) -> dt.datetime:
+    """The instant at midday, local, ``days`` calendar days from today.
+
+    Anchored on the *local date* rather than on ``now + timedelta`` so the weeks
+    the page counts are a property of the data. An offset built from an instant
+    lands on the previous local day whenever the clock crosses a DST boundary or
+    the suite runs near midnight, which turns "in 5 Wochen" into "in 4 Wochen"
+    twice a year — the kind of failure nobody can reproduce.
+    """
+    tz = config.local_zone()
+    day = dt.datetime.now(tz).date() + dt.timedelta(days=days)
+    return dt.datetime.combine(day, dt.time(12, 0), tzinfo=tz).astimezone(dt.UTC)
+
+
+def _de(days: int) -> str:
+    """The same day as :func:`_in`, as the page prints it."""
+    return (dt.datetime.now(config.local_zone()).date() + dt.timedelta(days=days)).strftime(
+        "%d.%m.%Y"
+    )
+
+
+def _markup(body: str) -> str:
+    """The page without its inline ``<style>``.
+
+    Every class this page marks a row with is also *declared* in that block, so a
+    bare ``"sig__deadline--soon" in body`` is true whether or not a single row
+    carries it — an assertion that can never fail is worse than none.
+    """
+    return re.sub(r"<style>.*?</style>", "", body, flags=re.S)
+
+
+# --- Four sections, each with its own empty state ------------------------------
+
+
+def test_a_class_with_no_signals_shows_its_own_empty_line(factory, client):
+    """Not an empty box and not a collapsed section: a reader has to be able to
+    tell "nothing is coming" from "this section is not on the page"."""
+    with factory() as session:
+        subject_id = _client(session).id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Noch keine Studie aus dem Feld dieses Mandanten gefunden." in body
+    assert "Für dieses Feld steht derzeit nichts im Regulierungskalender." in body
+    assert "Keine Veranstaltung im Feld dieses Mandanten gefunden." in body
+
+
+def test_the_four_sections_render_independently(factory, client):
+    """One class having something says nothing about the other three."""
+    with factory() as session:
+        subject = _client(session)
+        _market(session, subject, _article(session, "BitMEX stellt Betrieb ein"))
+        _signal(
+            session,
+            subject,
+            SignalKind.STUDIE,
+            "Zahlungsverhalten im Onlinehandel 2026",
+            published_at=_NOW - dt.timedelta(days=20),
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "BitMEX stellt Betrieb ein" in body
+    assert "Zahlungsverhalten im Onlinehandel 2026" in body
+    # The two that have nothing still say so, in their own words.
+    assert "Für dieses Feld steht derzeit nichts im Regulierungskalender." in body
+    assert "Keine Veranstaltung im Feld dieses Mandanten gefunden." in body
+
+
+# --- The regulatory calendar ---------------------------------------------------
+
+
+def test_regulation_is_ordered_by_when_it_lands_soonest_first(factory, client):
+    """The whole reason it is a calendar and not a list: what is next comes first,
+    regardless of which item the sweep happened to find this morning."""
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.REGULIERUNG,
+            "Meldepflicht tritt in Kraft", effective_at=_in(300),
+        )
+        _signal(
+            session, subject, SignalKind.REGULIERUNG,
+            "Konsultation zur Verordnung", effective_at=_in(35),
+        )
+        subject_id = subject.id
+
+    calendar = client.get(f"/client/{subject_id}/market").text.split(
+        "Regulierungskalender", 1
+    )[1]
+
+    assert calendar.index("Konsultation zur Verordnung") < calendar.index(
+        "Meldepflicht tritt in Kraft"
+    )
+
+
+def test_a_regulatory_row_states_the_weeks_that_are_left(factory, client):
+    """"In 5 Wochen" is a different instruction to a consultant than a date in a
+    column, which is the entire point of the class."""
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.REGULIERUNG,
+            "Konsultation zur Verordnung", effective_at=_in(35),
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "in 5 Wochen" in body
+    assert _de(35) in body
+
+
+def test_a_regulatory_date_that_has_passed_leaves_the_calendar(factory, client):
+    """DEC-2 C: a row goes because nothing is coming, not because a timer ran out."""
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.REGULIERUNG,
+            "Verordnung ist längst in Kraft", effective_at=_in(-3),
+        )
+        _signal(
+            session, subject, SignalKind.REGULIERUNG,
+            "Konsultation läuft noch", effective_at=_in(35),
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Verordnung ist längst in Kraft" not in body
+    assert "Konsultation läuft noch" in body
+
+
+def test_an_item_landing_today_is_still_on_the_calendar(factory, client):
+    """The boundary the "has passed" rule sits on. A rule taking effect this
+    morning is the most actionable row on the page, not the first one to go."""
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.REGULIERUNG,
+            "Meldepflicht gilt ab heute", effective_at=_in(0),
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Meldepflicht gilt ab heute" in body
+    assert "heute" in body
+
+
+def test_a_regulatory_item_whose_date_was_never_read_stays_at_the_end(factory, client):
+    """A parser that found no date has not established that nothing is coming.
+
+    Dropping such a row would be the one failure a forward calendar must never
+    have — a silent one — so it is kept and labelled instead.
+    """
+    with factory() as session:
+        subject = _client(session)
+        _signal(session, subject, SignalKind.REGULIERUNG, "Entwurf ohne Datumsangabe")
+        _signal(
+            session, subject, SignalKind.REGULIERUNG,
+            "Konsultation zur Verordnung", effective_at=_in(35),
+        )
+        subject_id = subject.id
+
+    calendar = client.get(f"/client/{subject_id}/market").text.split(
+        "Regulierungskalender", 1
+    )[1]
+
+    assert "kein Datum erkannt" in calendar
+    assert calendar.index("Konsultation zur Verordnung") < calendar.index(
+        "Entwurf ohne Datumsangabe"
+    )
+
+
+def test_a_consultation_still_open_survives_its_effective_date(factory, client):
+    """The two dates mean opposite things — "it now applies to you" and "you may
+    still speak" — so a rule already in force whose consultation is still open has
+    something coming, and the page counts down to the door rather than dropping it.
+    """
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.REGULIERUNG, "Verordnung mit offener Frist",
+            effective_at=_in(-10), deadline_at=_in(21),
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Verordnung mit offener Frist" in body
+    assert "in 3 Wochen" in body
+
+
+# --- Events --------------------------------------------------------------------
+
+
+def test_an_event_shows_its_date_and_its_speaker_deadline(factory, client):
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.VERANSTALTUNG, "Fachtagung Zahlungsverkehr",
+            effective_at=_in(120), deadline_at=_in(40),
+        )
+        subject_id = subject.id
+
+    events = client.get(f"/client/{subject_id}/market").text.split(
+        "Veranstaltungen", 1
+    )[1]
+
+    assert "Einreichfrist" in events
+    assert _de(120) in events, "the event's own date"
+    assert _de(40) in events, "the speaker deadline"
+
+
+def test_a_speaker_deadline_inside_two_weeks_is_marked(factory, client):
+    """Two weeks is the shortest lead time in which a statement can still be
+    agreed, drafted and sent — inside it the row is an instruction, not a date."""
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.VERANSTALTUNG, "Kongress mit knapper Frist",
+            effective_at=_in(60), deadline_at=_in(9),
+        )
+        subject_id = subject.id
+
+    body = _markup(client.get(f"/client/{subject_id}/market").text)
+
+    assert "sig__deadline--soon" in body
+    assert "läuft ab" in body
+
+
+def test_the_countdown_says_which_of_an_events_two_dates_it_counts_to(factory, client):
+    """"In 5 Wochen" beside a conference means two entirely different things: five
+    weeks to submit a talk, or five weeks until the doors open. A calendar that
+    does not say which is not one."""
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.VERANSTALTUNG, "Fachtagung mit frühem Aufruf",
+            effective_at=_in(120), deadline_at=_in(35),
+        )
+        subject_id = subject.id
+
+    events = _markup(client.get(f"/client/{subject_id}/market").text).split(
+        "Veranstaltungen", 1
+    )[1]
+    countdown = events.split('class="sig__when', 1)[1].split("</div>", 1)[0]
+
+    assert "in 5 Wochen" in countdown, "the nearer of the two dates is what is next"
+    assert "Einreichfrist" in countdown, "and it says that is the deadline"
+    assert _de(35) in countdown
+    assert _de(120) not in countdown
+
+
+def test_a_deadline_further_out_than_two_weeks_is_not_marked(factory, client):
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.VERANSTALTUNG, "Kongress mit Vorlauf",
+            effective_at=_in(200), deadline_at=_in(60),
+        )
+        subject_id = subject.id
+
+    body = _markup(client.get(f"/client/{subject_id}/market").text)
+
+    assert "Einreichfrist" in body
+    assert "sig__deadline--soon" not in body
+
+
+def test_an_event_without_a_call_for_speakers_shows_no_deadline(factory, client):
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.VERANSTALTUNG, "Messe ohne Programmaufruf",
+            effective_at=_in(50),
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Messe ohne Programmaufruf" in body
+    assert "Einreichfrist" not in body
+
+
+# --- Studies -------------------------------------------------------------------
+
+
+def test_a_study_shows_its_publisher_and_links_out_to_the_source(factory, client):
+    """What a study is worth to a consultant is that it can be cited, and a
+    citation needs both halves: who published it and where it stands."""
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.STUDIE, "Zahlungsverhalten im Onlinehandel",
+            publisher="Statistisches Bundesamt",
+            url="https://destatis.example.de/studie-1",
+            summary="Erhoben wurden 4.000 Kaufabbrüche.",
+            published_at=_NOW - dt.timedelta(days=30),
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Statistisches Bundesamt" in body
+    assert "Erhoben wurden 4.000 Kaufabbrüche." in body
+    assert 'href="https://destatis.example.de/studie-1"' in body
+
+
+def test_a_study_does_not_age_off_the_page(factory, client):
+    """DEC-2 C, the half a news feed gets wrong: a study six months old is roughly
+    when a consultant wants it, not when it should disappear."""
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.STUDIE, "Alte, aber zitierfähige Studie",
+            published_at=_NOW - dt.timedelta(days=400),
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Alte, aber zitierfähige Studie" in body
+
+
+def test_studies_are_ordered_newest_publication_first(factory, client):
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.STUDIE, "Ältere Erhebung",
+            published_at=_NOW - dt.timedelta(days=200),
+        )
+        _signal(
+            session, subject, SignalKind.STUDIE, "Frische Erhebung",
+            published_at=_NOW - dt.timedelta(days=5),
+        )
+        subject_id = subject.id
+
+    studies = client.get(f"/client/{subject_id}/market").text.split("Studien", 1)[1]
+
+    assert studies.index("Frische Erhebung") < studies.index("Ältere Erhebung")
+
+
+# --- Provenance (DEC-1 B) ------------------------------------------------------
+
+
+def test_a_search_found_row_is_marked_as_one_and_a_curated_row_is_not(factory, client):
+    """The search half returns things that are not really studies. A reader has to
+    be able to judge such a row as one rather than guess from the publisher."""
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.STUDIE, "Aus der Feldsuche",
+            origin=SignalOrigin.SUCHE, published_at=_NOW,
+        )
+        _signal(
+            session, subject, SignalKind.STUDIE, "Vom Institut",
+            origin=SignalOrigin.KURATIERT, published_at=_NOW - dt.timedelta(days=1),
+        )
+        subject_id = subject.id
+
+    body = _markup(client.get(f"/client/{subject_id}/market").text)
+    searched = body.split("Aus der Feldsuche", 1)[1].split("Vom Institut", 1)[0]
+    curated = body.split("Vom Institut", 1)[1].split("</article>", 1)[0]
+
+    assert "sig__origin--suche" in searched
+    assert "sig__origin--suche" not in curated
+    assert "Kuratiert" in curated
+
+
+# --- The per-class mute --------------------------------------------------------
+
+
+def test_a_muted_class_disappears_from_the_page_for_that_client(factory, client):
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.VERANSTALTUNG, "Fachtagung Zahlungsverkehr",
+            effective_at=_in(30),
+        )
+        subject_id = subject.id
+
+    client.post(f"/client/{subject_id}/market/veranstaltung/mute", follow_redirects=False)
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Fachtagung Zahlungsverkehr" not in body
+    # Gone, not collapsed into an empty box that explains itself.
+    assert "Keine Veranstaltung im Feld dieses Mandanten gefunden." not in body
+    # The other two are untouched.
+    assert "Noch keine Studie aus dem Feld dieses Mandanten gefunden." in body
+
+
+def test_a_muted_class_is_not_fetched_for_that_client_on_the_next_sweep(
+    factory, no_market_sweep
+):
+    """Unlike a muted category, which still arrives and is merely hidden. There is
+    no count and no report to stay honest to here, so asking a dozen sources every
+    morning for a page this mandate switched off would buy nothing."""
+    asked: list[str] = []
+
+    def _fetch(url, since, **kwargs):
+        asked.append(url)
+        return []
+
+    with factory() as session:
+        subject = _client(session)
+        subject.muted_signal_kinds = ["regulierung"]
+        session.commit()
+
+        no_market_sweep(
+            session, [subject], _NOW - dt.timedelta(days=14), _fetch, _NOW
+        )
+
+    regulation = {
+        source.url
+        for source in market_sources.load_sources()
+        if source.kind is SignalKind.REGULIERUNG
+    }
+    assert regulation, "the curated list must still carry a regulatory source"
+    assert not (regulation & set(asked)), "a muted class was still fetched"
+    assert asked, "the classes that were not muted must still be fetched"
+
+
+def test_a_muted_class_can_be_brought_back_from_the_same_page(factory, client):
+    """A class that is gone from the page and from the sweep has exactly one way
+    back, and it has to be where the reader is looking."""
+    with factory() as session:
+        subject = _client(session)
+        subject.muted_signal_kinds = ["studie"]
+        session.commit()
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+    assert f"/client/{subject_id}/market/studie/unmute" in body
+
+    client.post(f"/client/{subject_id}/market/studie/unmute", follow_redirects=False)
+
+    assert "Noch keine Studie aus dem Feld dieses Mandanten gefunden." in client.get(
+        f"/client/{subject_id}/market"
+    ).text
+
+
+def test_muting_an_unknown_class_is_a_404_rather_than_a_stored_typo(factory, client):
+    with factory() as session:
+        subject_id = _client(session).id
+
+    resp = client.post(
+        f"/client/{subject_id}/market/erfunden/mute", follow_redirects=False
+    )
+
+    assert resp.status_code == 404
+    with factory() as session:
+        assert session.get(Client, subject_id).muted_signal_kinds == []
+
+
+def test_one_mandates_mute_does_not_touch_another(factory, client):
+    with factory() as session:
+        quiet = _client(session, "Arrakis Finance")
+        loud = _client(session, "Harkonnen AG")
+        _signal(
+            session, loud, SignalKind.STUDIE, "Studie für Harkonnen", published_at=_NOW
+        )
+        quiet_id, loud_id = quiet.id, loud.id
+
+    client.post(f"/client/{quiet_id}/market/studie/mute", follow_redirects=False)
+
+    assert "Studie für Harkonnen" in client.get(f"/client/{loud_id}/market").text
+
+
+# --- An industry term the press does not write ---------------------------------
+
+
+def test_an_unusable_field_is_explained_rather_than_left_as_a_quiet_market(
+    factory, client, monkeypatch
+):
+    """The measured example is "Beauty Tech": accurate, and almost absent from
+    German press text, so the search half of the radar returns nothing at all. The
+    curated half still arrives, and without a word the page reads as a quiet market
+    rather than as a broken filter."""
+    monkeypatch.setattr(industry, "field_is_usable", lambda client, **kw: False)
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Beauty Tech"
+        session.commit()
+        _signal(
+            session, subject, SignalKind.STUDIE, "Aus kuratierter Quelle",
+            published_at=_NOW,
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Aus kuratierter Quelle" in body, "the curated half still arrives"
+    assert "der Branchenbegriff dieses Mandanten kommt in der deutschen Presse" in body
+
+
+def test_a_working_field_is_not_accused_of_being_unusable(factory, client, monkeypatch):
+    monkeypatch.setattr(industry, "field_is_usable", lambda client, **kw: True)
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Onlinehandel"
+        session.commit()
+        _signal(
+            session, subject, SignalKind.STUDIE, "Aus kuratierter Quelle",
+            published_at=_NOW,
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert (
+        "der Branchenbegriff dieses Mandanten kommt in der deutschen Presse" not in body
+    )
+
+
+def test_the_field_is_never_probed_when_the_search_half_plainly_works(
+    factory, monkeypatch
+):
+    """``field_is_usable`` issues a live search, and this runs inside a page render.
+
+    One search-found row anywhere on the page already proves the field works, so
+    the probe must not be reached at all — the network call has to be the rare
+    case, not the every-render one.
+    """
+
+    def _never(client, **kwargs):
+        raise AssertionError("the field was probed although the search plainly works")
+
+    monkeypatch.setattr(industry, "field_is_usable", _never)
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Onlinehandel"
+        session.commit()
+        row = client_routes._signal_row(
+            _signal(
+                session, subject, SignalKind.STUDIE, "Aus der Feldsuche",
+                origin=SignalOrigin.SUCHE, published_at=_NOW,
+            ),
+            today=_NOW.date(),
+            tz=dt.UTC,
+        )
+
+        assert client_routes._field_gap(subject, [row]) is False
+
+
+def test_a_mandate_with_no_industry_at_all_is_answered_without_a_probe(
+    factory, monkeypatch
+):
+    """There is nothing to measure, so measuring it would be a wasted search."""
+
+    def _never(client, **kwargs):
+        raise AssertionError("a mandate with no industry term was probed")
+
+    monkeypatch.setattr(industry, "field_is_usable", _never)
+    with factory() as session:
+        subject = _client(session)
+
+        assert client_routes._field_gap(subject, []) is True
+
+
+# --- Every new German string has an English one --------------------------------
+
+
+def test_every_german_string_on_the_market_page_is_translated():
+    """A page that switches its nav and keeps its section heads German reads as
+    broken, which is worse than a page that is wholly in one language."""
+    known = set(i18n.known_keys())
+    called: set[str] = set()
+    for template in (
+        _TEMPLATES / "client_market.html",
+        _TEMPLATES / "partials" / "market_remaining.html",
+    ):
+        called |= {
+            match[1]
+            for match in re.findall(
+                r"""t\(\s*("|')(.+?)\1\s*\)""", template.read_text(), re.S
+            )
+        }
+
+    assert called, "the market templates call t() — the scan must not silently find none"
+    assert not sorted(called - known), (
+        "German strings on the market page with no English entry in i18n._EN: "
+        f"{sorted(called - known)}"
+    )
