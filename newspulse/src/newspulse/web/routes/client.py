@@ -12,20 +12,32 @@ archive rather than loading it all into the page).
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from ... import gnews
+from ... import config, gnews, industry
 from ... import angles
 from ... import onboarding, profile as profiles
-from ...models import Analysis, Angle, Article, Category, Client, TopicHit, visible_coverage
+from ...models import (
+    Analysis,
+    Angle,
+    Article,
+    Category,
+    Client,
+    MarketSignal,
+    SignalKind,
+    SignalOrigin,
+    TopicHit,
+    visible_coverage,
+)
 from ... import coverage_map
 from ...reporting import client_workbook, share_of_voice
 from ..app import get_db, templates
@@ -49,6 +61,9 @@ _PAGE_SIZE = 50
 
 # Exchange format for the date-range inputs and the ?date_from=/?date_to= params.
 _DATE_FORMAT = "%Y-%m-%d"
+
+# POST-then-redirect, so a mute survives a refresh instead of being re-posted.
+_SEE_OTHER = 303
 
 
 
@@ -611,6 +626,16 @@ _MARKET_DAYS = 90
 #: being a recommendation and becomes a directory.
 _MARKET_TOP = 12
 
+#: How close a deadline has to be before the page marks it. Two weeks, because
+#: that is the shortest lead time in which a consultant can still get a client to
+#: agree a statement, draft it and send it — inside it the row is not a date any
+#: more, it is an instruction.
+_DEADLINE_SOON = dt.timedelta(days=14)
+
+#: Below a week, remaining time is stated in days. "In 0 Wochen" is not German,
+#: and rounding three days up to a week would overstate the time a reader has.
+_DAYS_PER_WEEK = 7
+
 
 @dataclass(frozen=True, slots=True)
 class MarketItem:
@@ -622,6 +647,80 @@ class MarketItem:
     author: str | None
     published_at: dt.datetime
     summary: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class Remaining:
+    """How long is left until a date, in the units a consultant thinks in.
+
+    Counted in whole local days rather than as a ``timedelta``, so "in 5 Wochen"
+    does not become "in 4 Wochen" because the page was opened in the evening.
+    """
+
+    days: int
+
+    @property
+    def weeks(self) -> int:
+        return self.days // _DAYS_PER_WEEK
+
+    @property
+    def in_weeks(self) -> bool:
+        """Whether to state this in weeks at all — see :data:`_DAYS_PER_WEEK`."""
+        return self.days >= _DAYS_PER_WEEK
+
+
+@dataclass(frozen=True, slots=True)
+class SignalRow:
+    """One study, regulatory date or event, as the market page renders it."""
+
+    kind: SignalKind
+    title: str
+    url: str
+    publisher: str
+    summary: str
+    origin: SignalOrigin
+    published_at: dt.datetime | None
+    effective_at: dt.datetime | None
+    deadline_at: dt.datetime | None
+    #: Time left until the date that makes this row actionable, ``None`` when
+    #: that date has passed or the source never stated one.
+    until: Remaining | None
+    #: Time left until the door closes, on the classes that have a door.
+    until_deadline: Remaining | None
+
+    @property
+    def from_search(self) -> bool:
+        """The half of DEC-1 B a reader has to judge for himself."""
+        return self.origin is SignalOrigin.SUCHE
+
+    @property
+    def deadline_soon(self) -> bool:
+        """Whether the deadline is inside :data:`_DEADLINE_SOON`."""
+        return (
+            self.until_deadline is not None
+            and self.until_deadline.days <= _DEADLINE_SOON.days
+        )
+
+    @property
+    def next_in(self) -> Remaining | None:
+        """Time left until whichever of this row's dates comes first.
+
+        The one number the calendar is ordered and read by. A row usually carries
+        one date, but regulation routinely carries two that mean opposite things
+        — "you may still speak" and "it now applies to you" — and the nearer of
+        them is the one that decides what a consultant does this week.
+        """
+        ahead = [r for r in (self.until, self.until_deadline) if r is not None]
+        return min(ahead, key=lambda r: r.days) if ahead else None
+
+    @property
+    def next_at(self) -> dt.datetime | None:
+        """The date :attr:`next_in` counts down to."""
+        if self.until is not None and (
+            self.until_deadline is None or self.until.days <= self.until_deadline.days
+        ):
+            return self.effective_at
+        return self.deadline_at if self.until_deadline is not None else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -766,19 +865,190 @@ def _nominations(session: Session, client_id: int, *, days: int) -> dict[str, li
     }
 
 
+# --- The three market classes: a calendar, not three more lists -----------------
+
+
+def _remaining(when: dt.datetime | None, *, today: dt.date, tz) -> Remaining | None:
+    """Whole days from today until ``when``, or ``None`` if that is behind us.
+
+    ``None`` for a date in the past is what makes the page a calendar rather than
+    an archive: under DEC-2 C an item leaves because nothing is coming, and this
+    is the function that answers whether anything is.
+    """
+    if when is None:
+        return None
+    days = (when.astimezone(tz).date() - today).days
+    return Remaining(days=days) if days >= 0 else None
+
+
+def _signal_row(signal: MarketSignal, *, today: dt.date, tz) -> SignalRow:
+    return SignalRow(
+        kind=signal.kind,
+        title=signal.title,
+        url=signal.url,
+        publisher=signal.publisher,
+        summary=signal.summary,
+        origin=signal.origin,
+        published_at=signal.published_at.astimezone(tz) if signal.published_at else None,
+        effective_at=signal.effective_at.astimezone(tz) if signal.effective_at else None,
+        deadline_at=signal.deadline_at.astimezone(tz) if signal.deadline_at else None,
+        until=_remaining(signal.effective_at, today=today, tz=tz),
+        until_deadline=_remaining(signal.deadline_at, today=today, tz=tz),
+    )
+
+
+def _by_publication(rows: Sequence[SignalRow]) -> list[SignalRow]:
+    """Studies: no date lands in the future, so newest published first (DEC-2 C).
+
+    Nothing ages out. A study's whole value to a consultant is that it stays
+    citable for months, and a timer would throw it away at roughly the point he
+    would want it.
+    """
+    return sorted(
+        rows,
+        key=lambda r: (r.published_at is not None, r.published_at or dt.datetime.min),
+        reverse=True,
+    )
+
+
+def _forward(rows: Sequence[SignalRow]) -> list[SignalRow]:
+    """A calendar of the dated classes: soonest first, what has passed gone.
+
+    DEC-2 C in one function. The ranking key is the nearest date the row still
+    carries — its own or its deadline, whichever comes first — rather than when
+    the sweep found it, so a consultation opening in five weeks sits above a law
+    landing next year no matter which arrived this morning.
+
+    A row every date of which is behind us is dropped: nothing is coming, which
+    is the only reason an item leaves the page under the locked rule. A row the
+    parser could read *no* date out of has not passed and is not dropped either;
+    it sorts to the end, where the template says the date could not be read
+    rather than pretending the item does not exist. Dropping it would be the one
+    failure a forward calendar must never have — a silent one.
+    """
+    dated = [r for r in rows if r.next_in is not None]
+    undated = [r for r in rows if r.effective_at is None and r.deadline_at is None]
+    dated.sort(key=lambda r: r.next_in.days)
+    return [*dated, *_by_publication(undated)]
+
+
+def _signals_by_kind(
+    session: Session, client: Client, *, now: dt.datetime, tz
+) -> dict[str, list[SignalRow]]:
+    """This mandate's market signals, one ordered list per class it still wants.
+
+    Muted classes are absent from the mapping entirely rather than present and
+    empty, so the template renders no section at all for them — a class a reader
+    switched off must not come back as an empty box explaining itself.
+    """
+    wanted = [kind for kind in SignalKind if not client.mutes_signal(kind)]
+    if not wanted:
+        return {}
+    today = now.astimezone(tz).date()
+    rows = [
+        _signal_row(signal, today=today, tz=tz)
+        for signal in session.scalars(
+            select(MarketSignal).where(
+                MarketSignal.client_id == client.id,
+                MarketSignal.kind.in_(wanted),
+            )
+        ).all()
+    ]
+    order = {
+        SignalKind.STUDIE: _by_publication,
+        SignalKind.REGULIERUNG: _forward,
+        SignalKind.VERANSTALTUNG: _forward,
+    }
+    return {
+        kind.value: order[kind]([r for r in rows if r.kind is kind]) for kind in wanted
+    }
+
+
+def _field_gap(
+    client: Client,
+    rows: Sequence[SignalRow],
+    *,
+    probe: Callable[[Client], bool] | None = None,
+) -> bool:
+    """Whether the searched half of DEC-1 B is missing *because of the field*.
+
+    The curated list applies to every mandate; the search on top of it only works
+    if the industry term is one the German press actually writes. A mandate whose
+    term is accurate and absent from print — "Beauty Tech" is the measured
+    example — silently gets half the market radar, and a page that shows the
+    curated half without a word looks like a quiet market rather than a broken
+    filter. So the page says which half is missing and why.
+
+    Deliberately narrow, because :func:`newspulse.industry.field_is_usable`
+    issues a live search and this runs inside a page render. It is only asked
+    when there is a gap to explain at all: a single search-found row anywhere on
+    the page proves the field works, and no probe is issued. A mandate with no
+    industry term at all is answered without one too — there is nothing to
+    measure. And with the search switched off installation-wide the missing half
+    is not the field's fault, so nothing is claimed.
+    """
+    if not config.GOOGLE_NEWS_ENABLED:
+        return False
+    if any(row.from_search for row in rows):
+        return False
+    if not gnews.context_terms(client):
+        return True
+    return not (probe or industry.field_is_usable)(client)
+
+
+def _set_mute(session: Session, client_id: int, kind: str, *, muted: bool) -> Client:
+    """Switch one market class off or back on for one mandate."""
+    client = session.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if kind not in {k.value for k in SignalKind}:
+        raise HTTPException(status_code=404, detail="Unknown signal kind")
+    current = [k for k in (client.muted_signal_kinds or []) if k != kind]
+    client.muted_signal_kinds = [*current, kind] if muted else current
+    session.commit()
+    return client
+
+
+@router.post("/client/{client_id}/market/{kind}/mute")
+def mute_signal_kind(
+    client_id: int, kind: str, session: Session = Depends(get_db)
+) -> Response:
+    """Switch off one market class for this mandate, on the page that shows it."""
+    _set_mute(session, client_id, kind, muted=True)
+    return RedirectResponse(f"/client/{client_id}/market", status_code=_SEE_OTHER)
+
+
+@router.post("/client/{client_id}/market/{kind}/unmute")
+def unmute_signal_kind(
+    client_id: int, kind: str, session: Session = Depends(get_db)
+) -> Response:
+    """Bring a muted class back. The way out has to be on the same page."""
+    _set_mute(session, client_id, kind, muted=False)
+    return RedirectResponse(f"/client/{client_id}/market", status_code=_SEE_OTHER)
+
+
 @router.get("/client/{client_id}/market", response_class=HTMLResponse)
 def market_view(
     request: Request, client_id: int, session: Session = Depends(get_db)
 ) -> HTMLResponse:
-    """The client's market: coverage of its subject that never names it.
+    """The client's market: four classes of signal, and who reported them.
 
-    The material the positioning drafts are made of, and until now visible only
-    as citations underneath one. Seeing it whole answers the question a draft
-    cannot: why there was an opening today, or why there was not.
+    The theme radar is coverage of the client's subject that never names it —
+    the material the positioning drafts are made of. Beside it now sit the three
+    classes a news feed cannot carry: studies that stay citable for months,
+    regulation dated in the future, and events with a stage and a deadline.
+
+    Four independent sections rather than one ranked list, because they are read
+    for different reasons and on different clocks. Mixing a consultation closing
+    in five weeks into a feed sorted by what arrived this morning is how it gets
+    delivered on the day it is too late to say anything.
     """
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
+    tz = _local_tz()
+    now = dt.datetime.now(dt.UTC)
+    signals = _signals_by_kind(session, client, now=now, tz=tz)
     return templates.TemplateResponse(
         request,
         "client_market.html",
@@ -788,7 +1058,15 @@ def market_view(
             "days": _MARKET_DAYS,
             "themes": list(client.keywords or []) + list(client.alert_topics or []),
             **_nominations(session, client_id, days=_MARKET_DAYS),
+            "signals": signals,
+            "muted_kinds": [
+                kind.value for kind in SignalKind if client.mutes_signal(kind)
+            ],
+            "field_gap": _field_gap(
+                client, [row for rows in signals.values() for row in rows]
+            ),
+            "deadline_weeks": _DEADLINE_SOON.days // _DAYS_PER_WEEK,
             "last_run": _fetch_last_run(session),
-            "header_date": dt.datetime.now(_local_tz()).date(),
+            "header_date": now.astimezone(tz).date(),
         },
     )

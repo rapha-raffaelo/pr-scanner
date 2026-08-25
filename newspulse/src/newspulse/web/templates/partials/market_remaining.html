@@ -1,0 +1,19 @@
+{# How long is left, in the unit a consultant thinks in.
+
+   "In 5 Wochen" is a different instruction from a date in a column, which is the
+   whole reason the regulatory section is a calendar. Under a week it switches to
+   days: "in 0 Wochen" is not German, and rounding three days up to a week would
+   overstate the time the reader has to act.
+
+   Expects `r` (a Remaining) and `t`. #}
+{%- if r.days == 0 -%}
+  {{ t("heute") }}
+{%- elif r.days == 1 -%}
+  {{ t("morgen") }}
+{%- elif not r.in_weeks -%}
+  {{ t("in %(days)s Tagen") | format(days=r.days) }}
+{%- elif r.weeks == 1 -%}
+  {{ t("in einer Woche") }}
+{%- else -%}
+  {{ t("in %(weeks)s Wochen") | format(weeks=r.weeks) }}
+{%- endif -%}

@@ -1034,12 +1034,11 @@ _EN: dict[str, str] = {
     "Beratend, nicht ausführend: der Coach ändert nichts am Guide.":
         "Advisory, not executing: the coach changes nothing in the guide.",
     "Kein Kommunikations-Guide hinterlegt.": "No communications guide set.",
-    "Berichterstattung aus dem Themenfeld des Mandanten — Meldungen, die ihn nicht "
-    "nennen. Aus diesem Material entstehen die Impulse, und daraus lässt sich "
-    "ablesen, wer über das Thema schreibt.":
-        "Coverage from the client's subject area — items that do not name them. "
-        "This is the material the openings are drafted from, and it shows who "
-        "writes about the subject.",
+    "Vier Arten von Signal aus dem Feld des Mandanten: was berichtet wurde, was "
+    "belegt ist, was kommt und wo er auftreten kann.":
+        "Four kinds of signal from the client's field: what was reported, what is "
+        "evidenced, what is coming, and where they can be heard.",
+    "Themen-Radar: letzte": "Topic radar: last",
     "Das Themen-Radar hat in diesem Zeitraum nichts gefunden.":
         "The topic radar found nothing in this period.",
     "Die hinterlegten Themen sind womöglich zu eng gefasst — zwei bis drei "
@@ -1066,6 +1065,68 @@ _EN: dict[str, str] = {
     "Kein Feed in diesem Zeitraum hat einen Autor mitgeliefert.":
         "No feed supplied an author in this period.",
     "Tage": "days",
+    # --- Client: the three market classes (SRC-02) ---------------------------
+    # Each class heading is used three times — the section head, the mute, and
+    # the line that brings a muted class back — so all three read the same word.
+    "Studien": "Studies",
+    "Regulierungskalender": "Regulatory calendar",
+    "Veranstaltungen": "Events",
+    "Belege, die sich monatelang zitieren lassen — wer sie veröffentlicht hat und "
+    "was gemessen wurde.":
+        "Evidence that stays citable for months — who published it and what was "
+        "measured.",
+    "Was kommt, in welcher Reihenfolge. Der Vorlauf ist der ganze Wert — was "
+    "vorbei ist, steht nicht mehr hier.":
+        "What is coming, in what order. The lead time is the whole value — what "
+        "has passed is no longer here.",
+    "Bühnen im Feld des Mandanten. Wo ein Call for Speakers läuft, steht die "
+    "Frist daneben.":
+        "Stages in the client's field. Where a call for speakers is open, the "
+        "deadline stands beside it.",
+    # One empty line per class, each naming the class. A shared "nothing found"
+    # would leave a reader unsure which of the four sections was speaking.
+    "Noch keine Studie aus dem Feld dieses Mandanten gefunden.":
+        "No study from this client's field found yet.",
+    "Für dieses Feld steht derzeit nichts im Regulierungskalender.":
+        "Nothing is currently in the regulatory calendar for this field.",
+    "Keine Veranstaltung im Feld dieses Mandanten gefunden.":
+        "No event found in this client's field.",
+    "Herausgeber unbekannt": "Publisher unknown",
+    "Veranstalter unbekannt": "Organiser unknown",
+    "gilt ab": "applies from",
+    "Termin": "Date",
+    "Frist": "Deadline",
+    "Einreichfrist": "Submission deadline",
+    "läuft ab": "closing",
+    "ohne Datum": "undated",
+    "kein Datum erkannt": "no date recognised",
+    # The remaining time, in the units a consultant thinks in. Under a week it
+    # switches to days: "in 0 Wochen" is not a sentence, and rounding three days
+    # up to a week would overstate the time the reader has.
+    "morgen": "tomorrow",
+    "in %(days)s Tagen": "in %(days)s days",
+    "in einer Woche": "in a week",
+    "in %(weeks)s Wochen": "in %(weeks)s weeks",
+    # Provenance (DEC-1 B). The search half returns things that are not really
+    # studies, so a reader has to be able to judge such a row as one.
+    "Kuratiert": "Curated",
+    "Aus einer kuratierten Quelle dieser Klasse.":
+        "From a curated source for this class.",
+    "Von der Feldsuche gefunden — nicht aus einer kuratierten Quelle. Vor der "
+    "Verwendung prüfen.":
+        "Found by the field search, not from a curated source. Check it before "
+        "using it.",
+    "Nur kuratierte Quellen: der Branchenbegriff dieses Mandanten kommt in der "
+    "deutschen Presse zu selten vor, um damit zu suchen. Die gezielte Suche im "
+    "Feld fehlt deshalb.":
+        "Curated sources only: this client's industry term appears too rarely in "
+        "the German press to search with. The targeted search in the field is "
+        "therefore missing.",
+    "Branche anpassen": "Adjust the industry",
+    # The per-class mute, and the only place it can be undone.
+    "Klasse ausblenden": "Hide this class",
+    "Ausgeblendet und nicht mehr abgerufen:": "Hidden and no longer fetched:",
+    "wieder einblenden": "show again",
     # --- Client: the kick-off questionnaire (ONB-01) --------------------------
     # The question texts are chrome, not data: they live in ``onboarding.py`` as a
     # module constant, the same way ``profile.FIELDS`` does, and a consultant

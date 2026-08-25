@@ -416,7 +416,7 @@ def _sweep_market(
 
     Competitors are skipped for the reason the topic radar skips them: a yardstick
     is tracked to compare its share of the conversation, and nobody reads it a
-    market page.
+    market page. A class a mandate has muted is skipped for that mandate alone.
 
     Returns ``(signals written, what failed)``. The failures are returned rather
     than appended to the run's list in passing, because the caller has to do
@@ -438,6 +438,12 @@ def _sweep_market(
             session.rollback()
             continue
         for fetcher in active:
+            # A muted class is not fetched, not merely hidden. Unlike a muted
+            # category there is no count and no report to stay honest to, so
+            # asking a dozen sources every morning for a page this mandate has
+            # switched off would buy nothing. See ``Client.mutes_signal``.
+            if client.mutes_signal(fetcher.kind):
+                continue
             try:
                 drafts = fetcher.collect(client, since=since, now=now)
                 written += len(

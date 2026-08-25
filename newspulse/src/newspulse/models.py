@@ -350,6 +350,23 @@ class Client(Base):
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
     )
+    # The market classes this mandate never wants — the same shape and the same
+    # reasoning as ``muted_categories`` above, one level out: a regulatory
+    # calendar is the whole job for a bank and pure noise for a fashion label.
+    #
+    # It differs from the category mute in one way, and deliberately. A muted
+    # category still arrives and is merely hidden, because the archive and the
+    # counts must not move with a reading preference. A muted class is not
+    # fetched at all on the next sweep, because a market signal is not coverage:
+    # nothing counts it, no report is judged on it, and there is nobody to be
+    # honest to about a study the mandate has said it does not want. Fetching it
+    # anyway would spend a dozen requests a morning on a page nobody looks at.
+    muted_signal_kinds: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
     # Why this mandate has no current positioning, and when that was last
     # established. On the client rather than in the web process, because the
     # answer is produced by the 06:10 sweep and read by a person at nine — an
@@ -429,6 +446,16 @@ class Client(Base):
     analyses: Mapped[list["Analysis"]] = relationship(
         back_populates="client", cascade="all, delete-orphan"
     )
+
+    def mutes_signal(self, kind: "SignalKind | str") -> bool:
+        """Whether this mandate has switched off one market class.
+
+        On the model rather than in either caller because both the sweep that
+        must not fetch it and the page that must not show it have to agree on
+        the answer, and two readings of the same list is how a class ends up
+        fetched every morning for a page that hides it.
+        """
+        return str(getattr(kind, "value", kind)) in (self.muted_signal_kinds or [])
 
 
 #: The floor for "this analysis concerns its client". A relevance of 0 is the
