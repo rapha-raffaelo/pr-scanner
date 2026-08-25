@@ -1102,6 +1102,10 @@ def test_a_mandate_that_muted_every_class_costs_the_sweep_nothing(
     )
     with factory() as session:
         subject = _client(session)
+        # An industry term as well, so the industry probe is in scope for the
+        # claim: its answer is only ever read above the three sections this
+        # mandate does not render.
+        subject.industry = "Onlinehandel"
         subject.muted_signal_kinds = [kind.value for kind in SignalKind]
         session.commit()
 

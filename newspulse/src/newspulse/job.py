@@ -476,12 +476,14 @@ def _sweep_market(
     for client in clients:
         if client.is_competitor:
             continue
-        _refresh_field_verdict(session, client, fetch=fetch, now=now)
         # A mandate that has switched off every class is skipped whole, before the
-        # dedup set is even built. "Not fetched, not merely hidden" has to be true
-        # of the work done for a class as well as of its feeds.
+        # dedup set is even built and before the term is measured. "Not fetched,
+        # not merely hidden" has to be true of the work done for a class as well
+        # as of its feeds — and the verdict below is only ever read above those
+        # sections, which this mandate does not render.
         if all(client.mutes_signal(fetcher.kind) for fetcher in active):
             continue
+        _refresh_field_verdict(session, client, fetch=fetch, now=now)
         try:
             seen = market_sources.already_seen(session, client, now=now)
         except Exception as exc:  # noqa: BLE001 — one mandate must not cost the rest
