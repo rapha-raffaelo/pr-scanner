@@ -6,6 +6,13 @@
 {% block content %}
 {% set t = translator(request) %}
 {% set active = 'market' %}
+{# One name per class, so the head, the mute and the way back all say the same
+   word. Keyed on the stored enum value, never on a translated one. #}
+{% set class_names = {
+  'studie': t("Studien"),
+  'regulierung': t("Regulierungskalender"),
+  'veranstaltung': t("Veranstaltungen"),
+} %}
 {% include '_client_tabs.html' %}
 
 <style>
@@ -23,12 +30,41 @@
   .nomhead { font-size: var(--t-caption); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
   .nomhelp { font-size: var(--t-caption); color: var(--muted); margin-bottom: 8px; }
   .nomempty { font-size: var(--t-caption); color: var(--muted); font-style: italic; margin-bottom: 1.2rem; }
+
+  /* The four sections. Each is its own block with its own head, count and empty
+     line: a class with nothing in it says so rather than collapsing, because a
+     missing section and a quiet one are different facts about the market. */
+  .sig { margin-bottom: 2rem; }
+  .sig__head { display: flex; align-items: baseline; gap: 8px; }
+  .sig__head .colhead { margin-bottom: 0; }
+  .sig__mute { margin-left: auto; }
+  .sig__help { font-size: var(--t-caption); color: var(--muted); margin: 4px 0 10px; max-width: 62ch; }
+  .sig__empty { font-size: var(--t-footnote); color: var(--muted); font-style: italic; padding: 10px 0; border-top: 1px solid var(--line); }
+  .sig__note { font-size: var(--t-caption); color: var(--warn); background: var(--warn-wash); border-radius: var(--radius); padding: 7px 10px; margin-bottom: 10px; }
+  .sig__more { font-size: var(--t-caption); color: var(--muted); font-style: italic; border-top: 1px solid var(--line); padding-top: 8px; }
+  .sig__muted { font-size: var(--t-caption); color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; margin-top: 0.6rem; }
+  .sig__muted form { display: inline; }
+
+  /* The remaining time, which is the instruction: bigger than the date beside
+     it, in a fixed column so a calendar reads down rather than across. */
+  .sig__when { flex: 0 0 8.5rem; font-size: var(--t-footnote); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .sig__when--none { font-weight: 400; color: var(--muted); font-style: italic; }
+  .sig__row { display: flex; gap: 12px; align-items: baseline; padding: var(--s4) 0; border-top: 1px solid var(--line); }
+  .sig__body { flex: 1; min-width: 0; }
+  .sig__date { display: block; font-size: var(--t-caption2); font-weight: 400; color: var(--muted); }
+  .sig__deadline { font-weight: 600; }
+  .sig__deadline--soon { color: var(--alert); }
+  /* A door that has shut is still shown — see the deadline() macro — but it is
+     not an instruction any more, so it reads like the rest of the meta line. */
+  .sig__deadline--closed { font-weight: 400; color: var(--muted); }
+  .sig__origin { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 999px; background: #eef2ff; color: #3730a3; }
+  .sig__origin--suche { background: var(--warn-wash); color: var(--warn); }
 </style>
 
 <h1 class="pagetitle">{{ t("Marktumfeld") }}</h1>
 <p class="market__lead">
-  {{ t("Berichterstattung aus dem Themenfeld des Mandanten — Meldungen, die ihn nicht nennen. Aus diesem Material entstehen die Impulse, und daraus lässt sich ablesen, wer über das Thema schreibt.") }}
-  <br><span class="nom__last">{{ t("Letzte") }} {{ days }} {{ t("Tage") }}</span>
+  {{ t("Vier Arten von Signal aus dem Feld des Mandanten: was berichtet wurde, was belegt ist, was kommt und wo er auftreten kann.") }}
+  <br><span class="nom__last">{{ t("Themen-Radar: letzte %(days)s Tage") | format(days=days) }}</span>
 </p>
 
 {% if themes %}
@@ -37,39 +73,236 @@
   </div>
 {% endif %}
 
+{# One head per section, so the count and the mute sit in the same place in all
+   four and a reader learns the shape once. #}
+{% macro sighead(kind, heading, count) %}
+  <div class="sig__head">
+    <div class="colhead">{{ heading }} <span class="n">{{ count }}</span></div>
+    <form class="sig__mute" method="post" action="/client/{{ client.id }}/market/{{ kind }}/mute">
+      <button class="linkbtn linkbtn--danger" type="submit">{{ t("Klasse ausblenden") }}</button>
+    </form>
+  </div>
+{% endmacro %}
+
+{# The instruction the calendar exists to give: how long is left until whichever
+   of this row's dates comes first. A row whose source stated no date at all says
+   so — dropping it would be the one failure a forward calendar must not have. #}
+{% macro countdown(row, own_label, deadline_label) %}
+  <div class="sig__when {% if not row.next_in %}sig__when--none{% endif %}">
+    {% if row.next_in %}
+      {% with r = row.next_in %}{% include "partials/market_remaining.html" %}{% endwith %}
+      {# Which date this counts to. "In 5 Wochen" beside a conference means two
+         different things — five weeks to submit a talk, or five weeks until the
+         doors open — and a calendar that does not say which is not one. #}
+      <span class="sig__date">{% if row.next_is_deadline %}{{ deadline_label }}{% else %}{{ own_label }}{% endif %} {{ row.next_at | de_date }}</span>
+    {% else %}
+      {{ t("kein Datum erkannt") }}
+    {% endif %}
+  </div>
+{% endmacro %}
+
+{# The door, on the two classes that have one. Marked when it is within two
+   weeks, which is the shortest lead time in which a statement can still be
+   agreed, drafted and sent.
+
+   A door that has already shut is still printed, as shut. Gating this on the
+   remaining time made a closed call for speakers vanish, which on a conference
+   still months away is indistinguishable from one that never invited speakers at
+   all — and those are different answers to "can this client be heard here". #}
+{% macro deadline(row, label, counted=false) %}
+  {% if row.deadline_at %}
+    <span class="sig__deadline {% if row.deadline_soon %}sig__deadline--soon{% endif %} {% if not row.until_deadline %}sig__deadline--closed{% endif %}">
+      {{ label }} {{ row.deadline_at | de_date }}
+      {%- if not row.until_deadline %} · {{ t("abgelaufen") }}
+      {%- elif not counted %} ·
+        {# `counted` says the column to the left is already counting down to *this*
+           date. Repeating it here printed "in 2 Wochen" twice on one row, which
+           reads as two facts rather than one. The date itself stays: the meta line
+           is where a reader sees both of a regulation's dates side by side. #}
+        {% with r = row.until_deadline %}{% include "partials/market_remaining.html" %}{% endwith %}
+      {%- endif %}
+      {# "Höchstens", not "unter": at exactly the threshold the countdown beside
+         this reads "in 2 Wochen", and "läuft in unter 2 Wochen ab" next to it
+         contradicts it. Named rather than implied, so the sentence stays true if
+         _DEADLINE_SOON_DAYS moves — "läuft ab" beside a date eleven days out says
+         nothing a reader can check. #}
+      {%- if row.deadline_soon %} · {{ t("läuft in höchstens %(weeks)s Wochen ab") | format(weeks=deadline_weeks) }}{% endif %}
+    </span>
+  {% endif %}
+{% endmacro %}
+
+{# Where a row came from (DEC-1 B). A curated source is what it says it is; the
+   field search will return things that are not really studies, and a reader has
+   to be able to judge such a row as one rather than guess from the publisher. #}
+{% macro origin(row) %}
+  {% if row.from_search %}
+    <span class="sig__origin sig__origin--suche" title="{{ t('Von der Feldsuche gefunden — nicht aus einer kuratierten Quelle. Vor der Verwendung prüfen.') }}">{{ t("Suche") }}</span>
+  {% else %}
+    <span class="sig__origin" title="{{ t('Aus einer kuratierten Quelle dieser Klasse.') }}">{{ t("Kuratiert") }}</span>
+  {% endif %}
+{% endmacro %}
+
 <div class="market__cols">
   <main>
-    <div class="colhead">{{ t("Meldungen") }} <span class="n">{{ items | length }}</span></div>
-    {% for item in items %}
-      <article class="feed-item">
-        <div class="feed-item__head">
-          <a class="feed-item__headline" href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a>
+    {# 1 — The theme radar, unchanged: coverage of the subject that never names
+       the mandate, newest first. #}
+    <section class="sig">
+      <div class="sig__head"><div class="colhead">{{ t("Meldungen") }} <span class="n">{{ items | length }}</span></div></div>
+      {% for item in items %}
+        <article class="feed-item">
+          <div class="feed-item__head">
+            <a class="feed-item__headline" href="{{ item.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ item.headline }}</a>
+          </div>
+          <div class="feed-item__meta">
+            <span class="source">{{ item.source }}</span>
+            {% if item.author %}<span class="time">{{ item.author }}</span>{% endif %}
+            <span class="time">{{ item.published_at | de_datetime }}</span>
+          </div>
+          {% if item.summary %}<p class="feed-item__summary">{{ item.summary }}</p>{% endif %}
+        </article>
+      {% else %}
+        <div class="empty-state">
+          {% if themes %}
+            <p>{{ t("Das Themen-Radar hat in diesem Zeitraum nichts gefunden.") }}</p>
+            <p class="empty-state-hint">
+              {{ t("Die hinterlegten Themen sind womöglich zu eng gefasst — zwei bis drei geläufige Begriffe aus dem Feld treffen mehr als ein Dutzend Spezialbegriffe.") }}
+            </p>
+          {% else %}
+            {# Without themes there is no radar at all, so this is not a quiet market
+               — it is an unconfigured one, and the page must not blame the market. #}
+            <p>{{ t("Für diesen Mandanten ist kein Themen-Radar eingerichtet.") }}</p>
+            <p class="empty-state-hint">
+              {{ t("Ohne hinterlegte Themen lässt sich nicht bestimmen, welche Marktmeldung ihn angeht.") }}
+              <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }}</a>
+            </p>
+          {% endif %}
         </div>
-        <div class="feed-item__meta">
-          <span class="source">{{ item.source }}</span>
-          {% if item.author %}<span class="time">{{ item.author }}</span>{% endif %}
-          <span class="time">{{ item.published_at | de_datetime }}</span>
-        </div>
-        {% if item.summary %}<p class="feed-item__summary">{{ item.summary }}</p>{% endif %}
-      </article>
-    {% else %}
-      <div class="empty-state">
-        {% if themes %}
-          <p>{{ t("Das Themen-Radar hat in diesem Zeitraum nichts gefunden.") }}</p>
-          <p class="empty-state-hint">
-            {{ t("Die hinterlegten Themen sind womöglich zu eng gefasst — zwei bis drei geläufige Begriffe aus dem Feld treffen mehr als ein Dutzend Spezialbegriffe.") }}
-          </p>
+      {% endfor %}
+    </section>
+
+    {# The searched half of the market radar is missing, and why. Said once, above
+       the three classes it applies to, rather than three times — and only when it
+       is actually true, which the route decides (see routes.client._field_gap). Two messages rather than
+       one: an unconfigured mandate and a term the press does not write are
+       different facts, and they send the reader to different work. #}
+    {% if field_gap %}
+      <p class="sig__note">
+        {% if field_gap == 'unusable' %}
+          {{ t("Nur kuratierte Quellen: der Branchenbegriff dieses Mandanten kommt in der deutschen Presse zu selten vor, um damit zu suchen. Die gezielte Suche im Feld fehlt deshalb.") }}
+          <a href="/settings?edit={{ client.id }}">{{ t("Branche anpassen") }}</a>
         {% else %}
-          {# Without themes there is no radar at all, so this is not a quiet market
-             — it is an unconfigured one, and the page must not blame the market. #}
-          <p>{{ t("Für diesen Mandanten ist kein Themen-Radar eingerichtet.") }}</p>
-          <p class="empty-state-hint">
-            {{ t("Ohne hinterlegte Themen lässt sich nicht bestimmen, welche Marktmeldung ihn angeht.") }}
-            <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }}</a>
-          </p>
+          {{ t("Nur kuratierte Quellen: für diesen Mandanten ist keine Branche hinterlegt, und ohne sie lässt sich im Feld nicht gezielt suchen.") }}
+          <a href="/settings?edit={{ client.id }}">{{ t("Branche hinterlegen") }}</a>
         {% endif %}
-      </div>
-    {% endfor %}
+      </p>
+    {% endif %}
+
+    {# 2 — Studies. Not an event but a body of evidence: what was measured and by
+       whom, citable for months, so nothing ages it off the page. #}
+    {% if 'studie' in signals %}
+      <section class="sig" id="sig-studie">
+        {{ sighead('studie', class_names['studie'], signals['studie'] | length) }}
+        <p class="sig__help">{{ t("Belege, die sich monatelang zitieren lassen — wer sie veröffentlicht hat und was gemessen wurde.") }}</p>
+        {% for row in signals['studie'] %}
+          <article class="sig__row">
+            <div class="sig__when {% if not row.published_at %}sig__when--none{% endif %}">
+              {% if row.published_at %}{{ row.published_at | de_date }}{% else %}{{ t("ohne Datum") }}{% endif %}
+            </div>
+            <div class="sig__body">
+              <div class="feed-item__head">
+                <a class="feed-item__headline" href="{{ row.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>
+                {{ origin(row) }}
+              </div>
+              <div class="feed-item__meta">
+                <span class="source">{% if row.publisher %}{{ row.publisher }}{% else %}{{ t("Herausgeber unbekannt") }}{% endif %}</span>
+              </div>
+              {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
+            </div>
+          </article>
+        {% else %}
+          <p class="sig__empty">{{ t("Noch keine Studie aus dem Feld dieses Mandanten gefunden.") }}</p>
+        {% endfor %}
+        {# Nothing ages a study off this page, so it is the one section that only
+           grows. It is cut to a shortlist — and the cut is stated, because a cap
+           nobody is told about reads as "that is all there is". #}
+        {% if hidden_studies %}
+          <p class="sig__more">{{ t("Ältere Studien werden nicht angezeigt.") }}</p>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {# 3 — The regulatory calendar. Not a list: what is coming, soonest first,
+       with the weeks left spelled out, because "in 5 Wochen" is a different
+       instruction to a consultant than a date in a column. #}
+    {% if 'regulierung' in signals %}
+      <section class="sig" id="sig-regulierung">
+        {{ sighead('regulierung', class_names['regulierung'], signals['regulierung'] | length) }}
+        <p class="sig__help">{{ t("Was kommt, in welcher Reihenfolge. Der Vorlauf ist der ganze Wert — was vorbei ist, steht nicht mehr hier.") }}</p>
+        {% for row in signals['regulierung'] %}
+          <article class="sig__row">
+            {{ countdown(row, t("gilt ab"), t("Frist")) }}
+            <div class="sig__body">
+              <div class="feed-item__head">
+                <a class="feed-item__headline" href="{{ row.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>
+                {{ origin(row) }}
+              </div>
+              <div class="feed-item__meta">
+                <span class="source">{% if row.publisher %}{{ row.publisher }}{% else %}{{ t("Herausgeber unbekannt") }}{% endif %}</span>
+                {% if row.effective_at %}<span class="time">{{ t("gilt ab") }} {{ row.effective_at | de_date }}</span>{% endif %}
+                {{ deadline(row, t("Frist"), counted=row.next_is_deadline) }}
+              </div>
+              {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
+            </div>
+          </article>
+        {% else %}
+          <p class="sig__empty">{{ t("Für dieses Feld steht derzeit nichts im Regulierungskalender.") }}</p>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    {# 4 — Events. The one class that answers "where can this client be heard",
+       and the only one with a door that closes. #}
+    {% if 'veranstaltung' in signals %}
+      <section class="sig" id="sig-veranstaltung">
+        {{ sighead('veranstaltung', class_names['veranstaltung'], signals['veranstaltung'] | length) }}
+        <p class="sig__help">{{ t("Bühnen im Feld des Mandanten. Wo ein Call for Speakers läuft, steht die Frist daneben.") }}</p>
+        {% for row in signals['veranstaltung'] %}
+          <article class="sig__row">
+            {{ countdown(row, t("Termin"), t("Einreichfrist")) }}
+            <div class="sig__body">
+              <div class="feed-item__head">
+                <a class="feed-item__headline" href="{{ row.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>
+                {{ origin(row) }}
+              </div>
+              <div class="feed-item__meta">
+                <span class="source">{% if row.publisher %}{{ row.publisher }}{% else %}{{ t("Veranstalter unbekannt") }}{% endif %}</span>
+                {% if row.effective_at %}<span class="time">{{ t("Termin") }} {{ row.effective_at | de_date }}</span>{% endif %}
+                {{ deadline(row, t("Einreichfrist"), counted=row.next_is_deadline) }}
+              </div>
+              {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
+            </div>
+          </article>
+        {% else %}
+          <p class="sig__empty">{{ t("Keine Veranstaltung im Feld dieses Mandanten gefunden.") }}</p>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    {# The way back. A muted class is gone from the page and from the next sweep,
+       so the only place it can be switched on again is here. #}
+    {% if muted_kinds %}
+      <p class="sig__muted">
+        {{ t("Ausgeblendet und nicht mehr abgerufen:") }}
+        {% for kind in muted_kinds %}
+          <form method="post" action="/client/{{ client.id }}/market/{{ kind }}/unmute">
+            {# Falls back to the stored value: Jinja renders a missing key as the
+               empty string, so a class nobody has named here would otherwise be a
+               nameless button that switches something unknown back on. #}
+            <button class="linkbtn" type="submit">{{ class_names.get(kind, kind) }} {{ t("wieder einblenden") }}</button>
+          </form>{% if not loop.last %} · {% endif %}
+        {% endfor %}
+      </p>
+    {% endif %}
   </main>
 
   <aside>

@@ -350,6 +350,23 @@ class Client(Base):
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
     )
+    # The market classes this mandate never wants — the same shape and the same
+    # reasoning as ``muted_categories`` above, one level out: a regulatory
+    # calendar is the whole job for a bank and pure noise for a fashion label.
+    #
+    # It differs from the category mute in one way, and deliberately. A muted
+    # category still arrives and is merely hidden, because the archive and the
+    # counts must not move with a reading preference. A muted class is not
+    # fetched at all on the next sweep, because a market signal is not coverage:
+    # nothing counts it, no report is judged on it, and there is nobody to be
+    # honest to about a study the mandate has said it does not want. Fetching it
+    # anyway would spend a dozen requests a morning on a page nobody looks at.
+    muted_signal_kinds: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
     # Why this mandate has no current positioning, and when that was last
     # established. On the client rather than in the web process, because the
     # answer is produced by the 06:10 sweep and read by a person at nine — an
@@ -377,6 +394,22 @@ class Client(Base):
     #: ``impulse_note`` was added to close, so it is closed the same way.
     profile_note: Mapped[str] = mapped_column(
         Text, nullable=False, default="", server_default=""
+    )
+    #: Whether this mandate's industry term is one the German press writes often
+    #: enough to search with, and when that was last established. Same reasoning
+    #: as the two stamps above: the answer costs a live search per term, it is
+    #: produced by the 06:10 sweep, and it is read by a person at nine — asking
+    #: it while a page renders would put a twenty-second feed timeout inside a
+    #: GET, on exactly the mandates the answer exists for.
+    #:
+    #: NULL is the third answer and it is load-bearing: the question has not been
+    #: put, or the last attempt could not reach the search at all. The market page
+    #: says nothing in that case, because an unreachable search is not evidence
+    #: about a word, and sending an operator off to fix a term that works is worse
+    #: than the silence it replaces.
+    field_usable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    field_checked_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
     )
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1")
@@ -429,6 +462,16 @@ class Client(Base):
     analyses: Mapped[list["Analysis"]] = relationship(
         back_populates="client", cascade="all, delete-orphan"
     )
+
+    def mutes_signal(self, kind: SignalKind | str) -> bool:
+        """Whether this mandate has switched off one market class.
+
+        On the model rather than in either caller because both the sweep that
+        must not fetch it and the page that must not show it have to agree on
+        the answer, and two readings of the same list is how a class ends up
+        fetched every morning for a page that hides it.
+        """
+        return str(getattr(kind, "value", kind)) in (self.muted_signal_kinds or [])
 
 
 #: The floor for "this analysis concerns its client". A relevance of 0 is the
