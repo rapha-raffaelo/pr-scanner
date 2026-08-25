@@ -20,6 +20,10 @@
   <a href="/client/{{ client.id }}/heute"{% if active == 'heute' %} class="active" aria-current="page"{% endif %}>{{ t("Heute") }}</a>
   <a href="/client/{{ client.id }}/advice"{% if active == 'advice' %} class="active" aria-current="page"{% endif %}>{{ t("Impulse") }}</a>
   <a href="/client/{{ client.id }}/wettbewerb"{% if active == 'rivals' %} class="active" aria-current="page"{% endif %}>{{ t("Wettbewerb") }}</a>
+  {# The month, read and cut down. Sits after the daily work and before the
+     standing material because that is the order it is used in: the report is what
+     the week's triage and the month's outreach were for. #}
+  <a href="/client/{{ client.id }}/berichte"{% if active == 'reports' %} class="active" aria-current="page"{% endif %}>{{ t("Berichte") }}</a>
   <a href="/client/{{ client.id }}"{% if active == 'overview' %} class="active" aria-current="page"{% endif %}>{{ t("Archiv") }}</a>
   {# Kickoff sits ahead of Profil and Guide because it is upstream of both: the
      twenty questions are where a profile field and a no-go come from. #}

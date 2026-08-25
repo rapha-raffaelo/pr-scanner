@@ -326,6 +326,11 @@ CARRIED_BEFORE = {
     # The guide check said none of them. It is a checker with one question, and
     # it says so itself: style and structure are another pass.
     "guide_check.txt": set(),
+    # The report's reader, added with RPT. It stated four of them in its own
+    # words: no invented reference, headlines rather than full articles, no
+    # dashes or advertising tone, and an empty list when the month carried
+    # nothing. Those bullets are gone from the prompt.
+    "report_findings.txt": {"no_invention", "evidence", "house_style", "refusal"},
     # "Eine Maßnahme ohne Beleg ist wertlos"; "nur Schlagzeilen und kurze
     # Zusammenfassungen"; "Lieber drei gute als sechs beliebige" / "erfinde keine
     # Betriebsamkeit"; "Empfiehl auch das Unterlassen".
@@ -406,6 +411,11 @@ ADDED_IN_MIGRATION = {
     # The guide check gains the two a checker can get wrong: quoting a rule the
     # guide does not contain, and finding something every single time.
     "guide_check.txt": {"no_invention", "false_alarm"},
+    # Nothing. It reads a month and writes findings for a document the client
+    # reads: it is addressed to no journalist, it takes no position of its own,
+    # and it is not a check, so journalistic_value, position and false_alarm
+    # would each put advice in front of it about a job it is not doing.
+    "report_findings.txt": set(),
     # advisory writes drafts that go out as they stand, to a Redaktion or as a
     # Sprachregelung. Both standards govern sendable text and the original
     # relied on the model not needing to be told.

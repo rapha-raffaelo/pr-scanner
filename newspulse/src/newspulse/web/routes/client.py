@@ -48,7 +48,7 @@ from ..app import get_db, templates
 # duplicating the DST-aware local-day math and the last-run header query: the
 # local zone and the "last run" banner are shared page chrome, single-sourced in
 # one place so both views agree on day boundaries and header content.
-from .today import _day_bounds_utc, _fetch_last_run, _local_tz
+from .today import _latest_covered_day, _day_bounds_utc, _fetch_last_run, _local_tz
 
 _log = logging.getLogger(__name__)
 
@@ -515,6 +515,13 @@ def clients_index(
             # against, not to a list of its own — with several mandates a flat
             # list mixes unrelated markets into one meaningless roster.
             "rows": [r for r in rows if not r.is_competitor],
+            # Only when there is nothing at all today: on any normal morning the
+            # numbers speak for themselves and a sentence under them is noise.
+            "quiet_since": (
+                _latest_covered_day(session, before=day)
+                if not any(r.today_count for r in rows if not r.is_competitor)
+                else None
+            ),
             "last_run": _fetch_last_run(session),
             "header_date": day,
         },

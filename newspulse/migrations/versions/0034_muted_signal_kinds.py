@@ -9,8 +9,8 @@ Same column shape as ``muted_categories`` on purpose — a JSON array of the
 stored enum values, defaulting to "mute nothing" — so an existing row upgrades
 into exactly the behaviour it had before this column existed.
 
-Revision ID: 0031_muted_signal_kinds
-Revises: 0023_market_signals
+Revision ID: 0034_muted_signal_kinds
+Revises: 0033_market_signals
 Create Date: 2026-08-25
 """
 from __future__ import annotations
@@ -20,8 +20,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0031_muted_signal_kinds"
-down_revision: str | None = "0023_market_signals"
+revision: str = "0034_muted_signal_kinds"
+down_revision: str | None = "0033_market_signals"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

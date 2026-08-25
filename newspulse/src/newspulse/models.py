@@ -1689,7 +1689,187 @@ class Asset(Base):
         return CheckState.GEPRUEFT
 
 
+
+class ReportState(StrEnum):
+    """Whether a report is still the tool's proposal or the agency's document.
+
+    Two members and no third. Everything before a release is a draft the tool may
+    overwrite; everything after it is a record of what a client was sent, and the
+    same rule the outreach ledger applies to a letter applies here: once somebody
+    has put the agency's name on it, it is never replaced.
+    """
+
+    ENTWURF = "entwurf"
+    FREIGEGEBEN = "freigegeben"
+
+
+class ReportFindingKind(StrEnum):
+    """What sort of statement a finding makes about the month.
+
+    Typed so a risk and a visibility finding are distinguishable without reading
+    them: the consultant reviewing twelve findings before a jour fixe needs to see
+    which two are the ones that cost something, and a colour on a card cannot be
+    derived from prose.
+
+    Four, and no more. Each corresponds to a question a client actually asks about
+    a month, and a fifth would be a category invented to hold a sentence that did
+    not fit the other four.
+    """
+
+    SICHTBARKEIT = "sichtbarkeit"  # how present the mandate was
+    RISIKO = "risiko"              # something here gets more expensive if it stays
+    WIRKUNG = "wirkung"            # this agency's own outreach produced coverage
+    BOTSCHAFT = "botschaft"        # the mandate's own message carried, or did not
+
+
+class Report(Base):
+    """One mandate's period, read: the findings a consultant reviews and releases.
+
+    A row per (client, period) rather than per generation. Generating July twice
+    is one report drafted twice, not two Julys, and a second row would put two
+    documents with the same date and different sentences in front of a client. The
+    UNIQUE below makes that a schema guarantee rather than something ``store``
+    remembers.
+
+    ``note`` carries the period-level statement when there is no finding to make.
+    A month with no coverage is a legitimate answer here, and it has to arrive as
+    a sentence rather than as an empty list nobody can distinguish from a failure.
+    """
+
+    __tablename__ = "reports"
+    __table_args__ = (
+        UniqueConstraint(
+            "client_id", "period_start", "period_end", name="uq_reports_client_period"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The window this report is about, ``start`` inclusive and ``end`` exclusive,
+    #: exactly as :class:`newspulse.reporting.Period` holds it. Stored rather than
+    #: derived from a month number: a report may cover a partial period, and a
+    #: document that recomputed its own window would change what it said.
+    period_start: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    period_end: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    state: Mapped[ReportState] = mapped_column(
+        SAEnum(
+            ReportState,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="report_state",
+        ),
+        nullable=False,
+        default=ReportState.ENTWURF,
+        server_default=ReportState.ENTWURF.value,
+    )
+    generated_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: When a person put the agency's name on it. Null while it is a draft, and the
+    #: difference is load-bearing: this is the artefact that goes to the client.
+    released_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: Who released it. Follows ``Outreach.released_by`` and ``ClientFact.filled_by``:
+    #: there are no user accounts here, so the interesting fact is that a person was
+    #: in the loop. Empty means never released.
+    released_by: Mapped[str] = mapped_column(
+        String(80), nullable=False, default="", server_default=""
+    )
+    #: Why there is nothing to say, when there is nothing to say.
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: The document as it read the moment it was released — figures, findings and
+    #: the evidence under them, copied rather than referenced. Null while it is a
+    #: draft, and written exactly once, by :func:`newspulse.report.release`.
+    #:
+    #: This is the one place in the feature where copying beats pointing, and it is
+    #: the same reason the rest of it points: a *draft* must notice that its ground
+    #: moved, so its evidence is ids resolved against the archive as it is. A
+    #: released report is the artefact a client was sent, and re-deriving it from a
+    #: live archive means a piece of coverage dismissed in October silently changes
+    #: what the September document says it said. Both are honesty about the same
+    #: rows; which one applies is decided by whether a human put the agency's name
+    #: on it.
+    snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    findings: Mapped[list["ReportFinding"]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan",
+        order_by="ReportFinding.id",
+        lazy="selectin",
+    )
+
+
+class ReportFinding(Base):
+    """One claim, what follows from it, and the ids of the rows underneath it.
+
+    ``evidence_ids`` points at :class:`Analysis` rows, and it is never empty: a
+    finding the model returned without evidence is discarded in
+    :mod:`newspulse.report` before it reaches this table. That is the whole safety
+    argument of the feature, so it is worth saying where the column is defined —
+    the ids are attached by code from the metrics the claim cites, not quoted by
+    the model, which cannot be trusted to remember which article a number came
+    from.
+
+    Pointing at analyses rather than copying headlines is what lets a finding go
+    weak in public: an article that is later dismissed stops resolving, and the
+    claim renders with the evidence that is left rather than with the ground it
+    used to stand on.
+    """
+
+    __tablename__ = "report_findings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    report_id: Mapped[int] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[ReportFindingKind] = mapped_column(
+        SAEnum(
+            ReportFindingKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="report_finding_kind",
+        ),
+        nullable=False,
+    )
+    #: One sentence: what is the case.
+    claim: Mapped[str] = mapped_column(Text, nullable=False)
+    #: What follows from it. The half a client pays for, and the half a dashboard
+    #: cannot produce.
+    consequence: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    evidence_ids: Mapped[list[int]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+    #: Whether the consultant kept it. Dropped findings stay as rows: what was
+    #: proposed and rejected is part of how a report was arrived at, and a finding
+    #: that vanished on a click cannot be argued about afterwards.
+    kept: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("1")
+    )
+    #: Why it was dropped, in the consultant's own words. Optional, because a
+    #: finding that is simply wrong needs no essay — but a dropped finding that
+    #: stays visible without a reason invites the same claim to be argued down
+    #: again next month, and L8 cannot learn from a rejection nobody explained.
+    #: Cleared when a dropped finding is taken back up.
+    drop_reason: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: When a human last rewrote it. Null means the sentence is as generated, which
+    #: is a thing the reviewer of a document is entitled to know.
+    edited_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    report: Mapped["Report"] = relationship(back_populates="findings")
+
 __all__ = [
+    "ReportState",
+    "ReportFindingKind",
+    "Report",
+    "ReportFinding",
     "Base",
     "Category",
     "CheckState",

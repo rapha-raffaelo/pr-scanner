@@ -39,6 +39,15 @@ _EN: dict[str, str] = {
     "Einstellungen": "Settings",
     "↻ Aktualisieren": "↻ Refresh",
     "Aktualisieren": "Refresh",
+    "Heute noch nichts, und in den letzten Tagen auch nicht.": "Nothing today, and nothing in the last few days either.",
+    "Heute noch nichts. Zuletzt Berichterstattung am": "Nothing today. Last coverage on",
+    "der letzte Tag mit Meldungen": "the last day with stories",
+    "liegt noch keine Berichterstattung vor. Angezeigt wird deshalb": "there is no coverage yet. Showing instead",
+    "Ab dieser Wichtigkeit (0–10) wird eine Meldung zur Warnung — oder wenn sie eines der Alarm-Themen des Mandanten trifft, unabhängig von der Wichtigkeit. Deshalb liegen viele Warnungen unter dem Schwellenwert: bei einem Mandanten mit vielen Alarm-Themen entscheidet die Themenliste, nicht diese Zahl. Wirkt nur auf künftige Läufe.": "A story becomes an alert at or above this importance (0-10) — or whenever it hits one of the client's alert topics, whatever its importance. That is why many alerts sit below the threshold: for a client with many alert topics it is the topic list that decides, not this number. Applies to future runs only.",
+    "Neu beginnen": "Start over",
+    "+ Mandant hinzufügen": "+ Add a client",
+    "in der Coverage Map": "in the coverage map",
+    "und %(n)s weitere": "and %(n)s more",
     "Ja, eintragen": "Yes, record it",
     "Sie halten fest, dass dieser Text hinausgegangen ist. Der Einwand oben bleibt daneben stehen.": "You are recording that this text went out. The objection above stays beside it.",
     "Es hält etwas in diesem Text für unbelegt. Wenn Sie widersprechen, geht die Nachricht so hinaus.": "It holds something in this text to be unsupported. Overrule it and the message goes out as it stands.",
@@ -420,13 +429,10 @@ _EN: dict[str, str] = {
     "Wird geschrieben": "Writing",
     "Anschreiben": "Letter",
     "Nicht geschrieben": "Not written",
-    "Entwurf": "Draft",
     "Geprüft": "Checked",
-    "Freigegeben": "Released",
     "Schreiben": "Write",
     "Neu schreiben": "Write again",
     "Gegenlesen lassen": "Have it read",
-    "Freigeben": "Release",
     # "Bearbeiten" is not repeated here: the contact book already carries it
     # further down this dict, and a second entry for the same German string is a
     # key Python silently drops — the next person to reword one of them would
@@ -480,7 +486,6 @@ _EN: dict[str, str] = {
     "Paket schreiben": "Write the package",
     "Noch nicht schreibbar.": "Not writable yet.",
     "Profil ergänzen": "Fill in the profile",
-    "Guide hinterlegen": "Add the guide",
     "Guide-Prüfung": "Guide check",
     "geschrieben": "written",
     "von Hand geändert": "edited by hand",
@@ -527,7 +532,6 @@ _EN: dict[str, str] = {
     "Absage": "Declined",
     "Veröffentlicht": "Published",
     "Ohne Reaktion": "No response",
-    "Freigegeben am": "Released on",
     "Ergebnis am": "Outcome on",
     "Tagen still": "days now",
     "Geschrieben": "Written",
@@ -923,15 +927,12 @@ _EN: dict[str, str] = {
     # "Positionierung" and "Wettbewerber" are further up, from the pages that
     # used them first. ``test_every_german_string_on_the_review_pages_is_
     # translated`` now reads ``profile.FIELDS`` directly for exactly this reason.
-    "Geschäftsfeld": "Line of business",
     "Geschäftsführung": "Management",
-    "Pressekontakt": "Press contact",
     "Gegründet": "Founded",
     "Sitz": "Headquarters",
     "Mitarbeitende": "Employees",
     "Umsatz / Finanzierung": "Revenue / funding",
     "Eigentümer": "Owners",
-    "Zielgruppe": "Target audience",
     "Produkte": "Products",
     "Öffentliche Themen": "Public debates",
     "Reputationsrisiken": "Reputation risks",
@@ -1146,6 +1147,138 @@ _EN: dict[str, str] = {
     "Klasse ausblenden": "Hide this class",
     "Ausgeblendet und nicht mehr abgerufen:": "Hidden and no longer fetched:",
     "wieder einblenden": "show again",
+    # --- Berichte: the review surface and the document -----------------------
+    #
+    # The document's chrome is here with the rest of the interface, and its
+    # *content* is not: a claim, a consequence and a headline stay in the language
+    # they were written in, exactly as a stored summary does. An English-speaking
+    # consultant reviewing a German mandate's month gets English labels around
+    # German sentences, which is the honest rendering — the alternative is a page
+    # that claims RauteOS wrote something it did not.
+    "Berichte": "Reports",
+    "Bericht": "Report",
+    "RauteOS liest den Zeitraum und schlägt Befunde vor: eine Aussage, was daraus folgt, und darunter die Beiträge, auf denen sie steht. Behalten, ändern oder verwerfen — was übrig bleibt, wird das Dokument.":
+        "RauteOS reads the period and proposes findings: a claim, what follows "
+        "from it, and underneath it the coverage it rests on. Keep, edit or drop "
+        "— what survives becomes the document.",
+    "Bericht erzeugen": "Draft report",
+    "Für diesen Mandanten liegt noch kein Bericht vor. Zum Monatsersten entsteht einer automatisch; er lässt sich hier auch sofort erzeugen.":
+        "There is no report for this client yet. One is drafted automatically on "
+        "the first of the month; it can also be drafted here right away.",
+    "Entwurf": "Draft",
+    "Freigegeben": "Released",
+    "Freigegeben am": "Released on",
+    "Freigegeben von": "Released by",
+    "Freigeben": "Release",
+    "Name (optional)": "Name (optional)",
+    "Mit der Freigabe steht der Name der Agentur auf dem Bericht. Er wird eingefroren: Befunde, Zahlen und Belege bleiben, wie sie freigegeben wurden, auch wenn sich die Berichterstattung später ändert.":
+        "Releasing puts the agency's name on the report. It is then frozen: "
+        "findings, figures and evidence stay as they were released, even when the "
+        "coverage underneath them changes later.",
+    "Ein freigegebener Bericht wird nicht mehr geändert und nicht neu erzeugt.":
+        "A released report is neither edited nor drafted again.",
+    "Dokument": "Document",
+    "Der Bericht ist freigegeben und wird nicht überschrieben. Ein freigegebener Bericht wird nicht neu erzeugt.":
+        "The report is released and is not overwritten. A released report is not "
+        "drafted again.",
+    # The two error strings that carry data keep their placeholders, so the
+    # translation is chosen before the value is put into it and an English reader
+    # gets an English sentence around a German term the archive could not source.
+    "Der Bericht ist fehlgeschlagen: {reason}": "The report failed: {reason}",
+    "Ein Befund ohne Aussage ist kein Befund. Der Text bleibt wie er war.":
+        "A finding without a claim is not a finding. The text stays as it was.",
+    "„{terms}“ kann RauteOS aus Archiv und Ledger nicht belegen und steht deshalb in keinem Bericht. Der Text bleibt wie er war.":
+        "RauteOS cannot source „{terms}“ from the archive or the ledger, "
+        "so it stands in no report. The text stays as it was.",
+    "Verworfen": "Dropped",
+    "Verworfen, weil": "Dropped because",
+    "Warum nicht? (optional)": "Why not? (optional)",
+    "Wieder aufnehmen": "Take it back up",
+    "bearbeitet": "edited",
+    "Aussage": "Claim",
+    "Was daraus folgt": "What follows from it",
+    "Kein Beleg trägt diesen Befund mehr. Er steht nicht im Dokument.":
+        "No evidence carries this finding any more. It is not in the document.",
+    "Beleg(e) sind nicht mehr in der Berichterstattung. Der Befund steht auf dem, was übrig ist.":
+        "piece(s) of evidence are no longer in the coverage. The finding stands on "
+        "what is left.",
+    "Ein Teil der Belege ist inzwischen nicht mehr in der Berichterstattung des Mandanten. Der Befund steht auf dem, was hier steht.":
+        "Some of the evidence is no longer in the client's coverage. The finding "
+        "stands on what is printed here.",
+    "kein Wert": "no figure",
+    "redaktionell bearbeitet": "edited by the agency",
+    # The comparison under a figure, as its parts. Composed in the template rather
+    # than stored as one German phrase: the number between them is frozen at
+    # release and the words around it are chrome, and only one of those two may
+    # change with the reader's language.
+    "vorher": "previously",
+    "kein Vergleichszeitraum": "no comparison period",
+    # ``reporting.Direction``. "unbekannt" is below, with the tonality it shares
+    # the word with.
+    "gestiegen": "up",
+    "gefallen": "down",
+    "unverändert": "unchanged",
+    # Why a figure is missing, as ``reporting.MetricValue.note`` says it. This is
+    # the line an English reader most needs on a tile that shows no number, and it
+    # is the tool's own wording rather than the mandate's, so it translates. The
+    # notes built from counts (see ``reporting._unnamed_note``) have no fixed
+    # form to key on and fall back to German, which is what this scheme degrades
+    # to everywhere by design.
+    "Keine Berichterstattung im Zeitraum.": "No coverage in the period.",
+    "Kein Vergleichsumfeld hinterlegt. Ein Anteil am Marktgespräch braucht die Wettbewerber, die für diesen Mandanten hinterlegt sind.":
+        "No comparison set stored. A share of the market conversation needs the "
+        "competitors stored for this client.",
+    "Im Zeitraum wurde weder über den Mandanten noch über einen der hinterlegten Wettbewerber geschrieben. Ohne Marktgespräch gibt es keinen Anteil daran.":
+        "In this period neither the client nor any of the stored competitors was "
+        "written about. With no market conversation there is no share of it.",
+    "Keine freigegebenen Anschreiben im Zeitraum. Ohne eigene Ansprache gibt es nichts zuzurechnen — das ist keine Null, sondern keine Frage.":
+        "No released letters in the period. With no outreach of our own there is "
+        "nothing to attribute: that is not a zero, it is not a question.",
+    "Gezählt wird ein Beitrag, der die Botschaft als Ganzes aufnimmt oder mindestens zwei ihrer tragenden Begriffe.":
+        "An item counts when it carries the message as a whole, or at least two "
+        "of its load-bearing terms.",
+    "Keine Kernbotschaften im Kommunikations-Guide hinterlegt. Ohne sie gibt es nichts, woran sich die Berichterstattung messen ließe.":
+        "No key messages stored in the communications guide. Without them there "
+        "is nothing to measure the coverage against.",
+    # And why a whole report has no findings, as ``report.ReportDraft.note`` says
+    # it. Three separate sentences on purpose: an empty month, a month whose
+    # figures carry nothing, and a reading that produced nothing that stands up
+    # are different things to put in front of a client.
+    "Für diesen Zeitraum liegt keine belegbare Kennzahl vor, auf die sich eine Aussage stützen ließe.":
+        "This period holds no sourceable figure a statement could rest on.",
+    "Aus der Berichterstattung dieses Zeitraums ergibt sich keine belegbare Aussage.":
+        "The coverage in this period yields no sourceable statement.",
+    "Kennzahlen": "Figures",
+    "Verteilung": "Distribution",
+    "Befunde": "Findings",
+    "Erstellt am": "Drafted on",
+    "Vergleichsumfeld": "Comparison set",
+    "keines hinterlegt": "none stored",
+    "bis": "to",
+    "Der Inhalt ist ab der Freigabe eingefroren und ändert sich nicht mehr mit dem Archiv.":
+        "From the release onwards the content is frozen and no longer moves with "
+        "the archive.",
+    "Für diesen Zeitraum steht kein Befund im Bericht.":
+        "No finding stands in the report for this period.",
+    "Zurück zur Prüfung": "Back to the review",
+    "Exportieren": "Export",
+    "Tabelle anzeigen": "Show table",
+    "Segment": "Segment",
+    "Jede Zahl in diesem Bericht stammt aus der archivierten Berichterstattung und dem Ansprache-Ledger. Reichweiten, Kontaktchancen und Werbewerte werden nicht geschätzt und deshalb nicht ausgewiesen.":
+        "Every figure in this report comes from the archived coverage and the "
+        "outreach ledger. Reach, opportunities to see and advertising value are "
+        "not estimated and therefore not stated.",
+    # The finding kinds, as ``models.ReportFindingKind`` names them.
+    "Sichtbarkeit": "Visibility",
+    "Risiko": "Risk",
+    "Wirkung": "Impact",
+    "Botschaft": "Message",
+    # The metric labels, as ``reporting._LABELS`` names them, plus the one
+    # tonality value that had no entry yet.
+    "Beiträge": "Items",
+    "Beiträge in Leitmedien": "Items in lead media",
+    "Anteil am Marktgespräch": "Share of the market conversation",
+    "Aus eigener Ansprache": "From our own outreach",
     # --- Client: the kick-off questionnaire (ONB-01) --------------------------
     # The question texts are chrome, not data: they live in ``onboarding.py`` as a
     # module constant, the same way ``profile.FIELDS`` does, and a consultant

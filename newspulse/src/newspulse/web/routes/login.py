@@ -18,7 +18,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ... import config
-from .. import google_auth
+from .. import google_auth, redirects
 from ..app import templates
 
 _log = logging.getLogger(__name__)
@@ -27,21 +27,6 @@ router = APIRouter()
 
 #: Where a signed-in person lands when nothing better is known.
 _HOME = "/"
-
-
-def _safe_next(raw: str | None) -> str:
-    """A path from the query string, or the dashboard.
-
-    Only a same-site *path* is ever honoured. Reflecting an absolute URL here
-    would turn the sign-in page into an open redirect: a link to our own domain
-    that quietly lands somewhere else, which is worth a lot to whoever is
-    phishing the two people who have access. "//host" is rejected for the same
-    reason — the browser reads it as a scheme-relative absolute URL.
-    """
-    candidate = (raw or "").strip()
-    if not candidate.startswith("/") or candidate.startswith("//"):
-        return _HOME
-    return candidate
 
 
 def _is_secure(request: Request) -> bool:
@@ -78,12 +63,12 @@ def login_page(request: Request, next: str | None = None, error: str | None = No
     if google_auth.is_configured() and google_auth.read_session(
         request.cookies.get(google_auth.SESSION_COOKIE)
     ):
-        return RedirectResponse(_safe_next(next), status_code=303)
+        return RedirectResponse(redirects.local_target(next), status_code=303)
     return templates.TemplateResponse(
         request,
         "login.html",
         {
-            "next": _safe_next(next),
+            "next": redirects.local_target(next),
             "error": error,
             "configured": google_auth.is_configured(),
         },
@@ -103,8 +88,21 @@ def google_start(request: Request, next: str | None = None):
     # Carried in a cookie rather than through Google: `state` is the only field
     # that comes back, and stuffing a destination into it would mean trusting a
     # value that made a round trip through the address bar.
-    _set_cookie(response, request, "rauteos_next", _safe_next(next),
+    _set_cookie(response, request, "rauteos_next", redirects.local_target(next),
                 seconds=google_auth.STATE_SECONDS)
+    return response
+
+
+def _back_to_login(error: str, request: Request) -> Response:
+    """To the sign-in page, and the one-time state goes with us.
+
+    Only the success path used to clear it, so a state stayed replayable for the
+    rest of its ten-minute window after every refusal — including the refusals
+    that mean somebody is trying something.
+    """
+    response = RedirectResponse(f"/login?error={error}", status_code=303)
+    response.delete_cookie(google_auth.STATE_COOKIE, path="/")
+    response.delete_cookie("rauteos_next", path="/")
     return response
 
 
@@ -116,27 +114,27 @@ def google_callback(request: Request, code: str | None = None,
         # The person declined the consent screen, or Google refused. Neither is
         # an application fault and neither deserves a stack trace.
         _log.info("Google sign-in declined: %s", error)
-        return RedirectResponse("/login?error=abgebrochen", status_code=303)
+        return _back_to_login("abgebrochen", request)
 
     if not google_auth.state_is_valid(request.cookies.get(google_auth.STATE_COOKIE), state):
-        return RedirectResponse("/login?error=abgelaufen", status_code=303)
+        return _back_to_login("abgelaufen", request)
     if not code:
-        return RedirectResponse("/login?error=abgebrochen", status_code=303)
+        return _back_to_login("abgebrochen", request)
 
     try:
         identity = google_auth.exchange_code(code)
     except google_auth.SignInError as exc:
         _log.warning("Google sign-in failed: %s", exc)
-        return RedirectResponse("/login?error=fehlgeschlagen", status_code=303)
+        return _back_to_login("fehlgeschlagen", request)
 
     if not google_auth.is_allowed(identity.email):
         # Deliberately its own message. "Wrong password" for an account that is
         # simply not on the list sends the person to reset a credential that was
         # never the problem.
         _log.warning("Rejected sign-in for %s: not on the allow-list", identity.email)
-        return RedirectResponse("/login?error=nicht_freigegeben", status_code=303)
+        return _back_to_login("nicht_freigegeben", request)
 
-    destination = _safe_next(request.cookies.get("rauteos_next"))
+    destination = redirects.local_target(request.cookies.get("rauteos_next"))
     response = RedirectResponse(destination, status_code=303)
     _set_cookie(response, request, google_auth.SESSION_COOKIE,
                 google_auth.issue_session(identity),

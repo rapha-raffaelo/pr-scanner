@@ -219,15 +219,15 @@ def test_the_next_parameter_cannot_leave_the_site(hostile):
     """A login page that reflects an absolute URL is an open redirect, and an
     open redirect on the domain the two of them trust is worth real money to
     whoever is phishing them."""
-    from newspulse.web.routes.login import _safe_next
+    from newspulse.web.redirects import local_target
 
-    assert _safe_next(hostile) == "/"
+    assert local_target(hostile) == "/"
 
 
 def test_a_relative_path_is_kept(configured):
-    from newspulse.web.routes.login import _safe_next
+    from newspulse.web.redirects import local_target
 
-    assert _safe_next("/client/3/advice?tab=x") == "/client/3/advice?tab=x"
+    assert local_target("/client/3/advice?tab=x") == "/client/3/advice?tab=x"
 
 
 # --- Booting ------------------------------------------------------------------

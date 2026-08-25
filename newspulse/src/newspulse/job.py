@@ -59,6 +59,7 @@ from . import (
     market_sources,
     notify,
     profile_refresh,
+    report,
     themes,
 )
 from .analyzer import Analyzer, get_analyzer
@@ -131,6 +132,19 @@ _SETTLE_PER_SWEEP = 3
 # the answer current at roughly one search per mandate per month; asking every
 # morning would spend a search a day to re-learn the same fact.
 _FIELD_RECHECK = dt.timedelta(days=30)
+# How many monthly reports one sweep is willing to draft, for the same reason
+# ``_SETTLE_PER_SWEEP`` exists: each is a model call inside the run guard, and on
+# the first of the month every mandate is due at once. What is left over is
+# drafted by tomorrow's sweep, well inside the window below.
+_REPORTS_PER_SWEEP = 3
+
+# How long after the turn of the month the sweep keeps offering to draft. DEC-3
+# puts the draft at the Stichtag; a week is what lets that survive a sweep that
+# failed on the first, a host that was down, or a mandate added on the second —
+# and it stops a mandate whose generation keeps failing from being retried all
+# month. Nobody has to press anything meanwhile: the drafts wait, and the surface
+# can always draft a period on demand.
+_REPORT_DRAFT_DAYS = 7
 
 # Rotating-log knobs. The whole point of the file is week-three survivability, so
 # it must never grow without bound or silently truncate: rotate at 5 MB and keep 5
@@ -823,6 +837,9 @@ def _generate_angles(
         try:
             result = angles.suggest(session, client, material)
         except Exception as exc:  # noqa: BLE001 — per-client fault-isolation boundary
+            # Same order and the same reason as _refresh_impulses: the log line
+            # reads client.name, which on an expired attribute is a query.
+            session.rollback()
             _log.warning("positioning draft for %r failed: %s; skipping", client.name, exc)
             continue
         if result is None:
@@ -1075,6 +1092,12 @@ def _refresh_impulses(
         try:
             result = angles.suggest(session, client, material, note=_note)
         except Exception as exc:  # noqa: BLE001 — per-client fault-isolation boundary
+            # First, before anything else in this handler. A caught exception is
+            # not a clean session, and every line below reaches for one:
+            # ``client.name`` is a SELECT on an expired attribute and ``_note``
+            # commits. Both raise PendingRollbackError on a poisoned session,
+            # out of the handler, past a runs row already written as ok.
+            session.rollback()
             _log.warning("impulse refresh for %r failed: %s; skipping", client.name, exc)
             _note(f"Der Entwurf ist mit einem Fehler abgebrochen: {exc}")
             continue
@@ -1091,6 +1114,82 @@ def _refresh_impulses(
         written += 1
         _log.info("impulse refreshed for %r: %s", client.name, draft.subject)
     return written
+
+
+def _draft_reports(
+    session: Session,
+    clients: Sequence[Client],
+    *,
+    now: dt.datetime,
+    generate: report.Generate | None = None,
+) -> int:
+    """Draft last month's report for every mandate that has none yet (DEC-3 B).
+
+    "Zum Stichtag vorbereitet, nie verschickt": the work is done before it is
+    needed and nothing goes anywhere without a release, which is how every other
+    generator in this tool already behaves. A consultant with a jour fixe on the
+    third opens the tab and finds the month already read, rather than doing it on
+    the second, at night.
+
+    Three bounds, and each is a different failure being kept out. The window
+    (:data:`_REPORT_DRAFT_DAYS`) means a mandate whose generation keeps failing is
+    retried for a week and not all month. The per-sweep cap
+    (:data:`_REPORTS_PER_SWEEP`) means the first of the month does not hold the run
+    guard for an hour while a portfolio is read one model call at a time; what is
+    deferred is logged, because a cap nobody is told about reads as "everything was
+    covered". And every mandate is inside its own fault boundary: a report is worth
+    nothing if the price of it is a failed sweep, so a failure is logged, the
+    transaction is rolled back, and the next mandate is tried.
+
+    A released report is never touched — :func:`newspulse.report.findings` refuses
+    before it costs a model call, and this never reaches one anyway, since a
+    mandate with any report for the period is skipped.
+    """
+    local = now.astimezone(config.local_zone())
+    if local.day > _REPORT_DRAFT_DAYS:
+        return 0
+    period = report.previous_month(now)
+    drafted = 0
+    deferred = 0
+    for client in clients:
+        # A competitor is tracked to compare its share of the conversation; nobody
+        # writes it a report, so drafting one would spend a call on nothing.
+        if client.is_competitor:
+            continue
+        if report.for_period(session, client.id, period) is not None:
+            continue
+        if drafted >= _REPORTS_PER_SWEEP:
+            deferred += 1
+            continue
+        try:
+            draft = (
+                report.findings(session, client, period)
+                if generate is None
+                else report.findings(session, client, period, generate=generate)
+            )
+            report.store(session, client, draft)
+            drafted += 1
+            _log.info(
+                "report drafted for %r: %d finding(s)%s",
+                client.name,
+                len(draft.findings),
+                f" — {draft.note}" if draft.note else "",
+            )
+        except Exception:  # noqa: BLE001 — a report is not worth a failed sweep
+            _log.exception("report draft for %r failed; skipping", client.name)
+            # A caught exception is not a clean session: ``store`` writes, so a
+            # failed flush leaves the transaction in ``PendingRollbackError`` and
+            # every later statement in this sweep dies with it, after the run has
+            # already been recorded as ok. The same rollback theme settling needs,
+            # for the same reason.
+            session.rollback()
+    if deferred:
+        _log.info(
+            "%d further report(s) deferred to a later sweep (cap %d per run)",
+            deferred,
+            _REPORTS_PER_SWEEP,
+        )
+    return drafted
 
 
 def _refresh_profiles(session: Session, now: dt.datetime) -> int:
@@ -1476,51 +1575,15 @@ class _PostRun:
     profiles: int = 0
 
 
-def _post_run(
-    session: Session,
-    run: Run,
-    clients: Sequence[Client],
-    topic_pairs: Sequence[Candidate],
-    errors: list[str],
-    *,
-    since: dt.datetime,
-    started: dt.datetime,
-    fetch: FetchFeed,
-    now_fn: Callable[[], dt.datetime],
-) -> _PostRun:
-    """Everything the sweep does once its own row is safely committed.
+def _settle_themes(session: Session, clients: Sequence[Client], fetch: FetchFeed) -> int:
+    """Give the mandates that still have no radar one, up to the per-sweep cap.
 
-    Four independent stages with two different rules. The mailbox and the market
-    run unconditionally, because they are their own sources of their own things and
-    whether this morning's *news* feeds answered says nothing about whether a
-    journalist replied or the regulatory calendar moved. The radar work behind them
-    runs only if the sweep itself came through — pitching a positioning message off
-    a half-fetched radar would put a confident text in front of the reader on the
-    strength of partial data.
-
-    Both of the unconditional stages report what failed into the ``runs`` row that
-    is already written, so a source that has been dark for a week shows as a
-    partial run rather than a green one with a line in a log nobody tails.
+    A mandate with no themes has no radar, and every downstream feature reads off
+    that radar. It was only ever filled in at onboarding, so every mandate created
+    before that existed sat permanently in the state the onboarding step prevents
+    — reported three times as "hier wird immer noch kein Impuls angezeigt".
+    Self-limiting: the call returns immediately once a radar is in place.
     """
-    outcome = _PostRun()
-    # The mailbox, once a day, with the sweep: reading the replies to letters that
-    # went out weeks ago has nothing to do with whether this morning's feeds
-    # answered, and a journalist's answer is the one thing in this tool nobody can
-    # re-fetch later by pressing a button.
-    outcome.replies = _sync_mailbox(session, run, errors, now=now_fn())
-    # The three market classes, on the same footing as the mailbox above: a failed
-    # news sweep must not also cost a consultation that closes in five weeks.
-    outcome.signals, market_errors = _sweep_market(
-        session, clients, since, fetch, now_fn()
-    )
-    _record_late_failure(session, run, errors, market_errors)
-    if run.status is RunStatus.FAILED:
-        return outcome
-    # A mandate with no themes has no radar, and every downstream feature reads off
-    # that radar. It was only ever filled in at onboarding, so every mandate created
-    # before that existed sat permanently in the state the onboarding step prevents
-    # — reported three times as "hier wird immer noch kein Impuls angezeigt".
-    # Self-limiting: the call returns immediately once a radar is in place.
     settled = 0
     for client in clients:
         if client.is_competitor:
@@ -1536,9 +1599,57 @@ def _post_run(
             # failed flush leaves the transaction in ``PendingRollbackError`` and
             # every later statement in this block dies with it — after
             # ``_finalize_run`` has already recorded the sweep as ok. Reproduced:
-            # the header shows a green run with zero errors while the drafting, the
-            # archive linking and the notification were all skipped.
+            # the header shows a green run with zero errors while the drafting,
+            # the archive linking and the notification were all skipped.
             session.rollback()
+    return settled
+
+
+def _post_run(
+    session: Session,
+    run: Run,
+    clients: Sequence[Client],
+    topic_pairs: Sequence[Candidate],
+    errors: list[str],
+    *,
+    since: dt.datetime,
+    started: dt.datetime,
+    fetch: FetchFeed,
+    now_fn: Callable[[], dt.datetime],
+) -> _PostRun:
+    """Everything the sweep does once its own row is safely committed.
+
+    Two rules govern the stages here. The mailbox and the market run
+    unconditionally, because they are their own sources of their own things and
+    whether this morning's *news* feeds answered says nothing about whether a
+    journalist replied or the regulatory calendar moved. Everything behind them
+    runs only if the sweep itself came through — pitching a positioning message
+    off a half-fetched radar would put a confident text in front of the reader on
+    the strength of partial data.
+
+    Both of the unconditional stages report what failed into the ``runs`` row that
+    is already written, so a source that has been dark for a week shows as a
+    partial run rather than a green one with a line in a log nobody tails.
+
+    Every stage sits inside its own fault boundary: the run row is written by the
+    time this is called, so an exception escaping here would leave a green run
+    beside work that silently did not happen.
+    """
+    outcome = _PostRun()
+    # The mailbox, once a day, with the sweep: reading the replies to letters that
+    # went out weeks ago has nothing to do with whether this morning's feeds
+    # answered, and a journalist's answer is the one thing in this tool nobody can
+    # re-fetch later by pressing a button.
+    outcome.replies = _sync_mailbox(session, run, errors, now=now_fn())
+    # The three market classes, on the same footing as the mailbox above: a failed
+    # news sweep must not also cost a consultation that closes in five weeks.
+    outcome.signals, market_errors = _sweep_market(
+        session, clients, since, fetch, now_fn()
+    )
+    _record_late_failure(session, run, errors, market_errors)
+    if run.status is RunStatus.FAILED:
+        return outcome
+    _settle_themes(session, clients, fetch)
     # The archive first: the registry feeds fetched the trade press this morning and
     # nothing linked it to the mandates whose field it is. Doing this before drafting
     # means today's material is available to today's draft rather than tomorrow's.
@@ -1552,6 +1663,17 @@ def _post_run(
     # say.
     outcome.angles += _refresh_impulses(session, clients, errors, now=now_fn())
     outcome.profiles = _refresh_profiles(session, now_fn())
+    # Last, and outside everything above: the monthly report reads a period that
+    # has already ended, so it needs nothing this sweep fetched, and putting it
+    # here means a failure in it cannot cost the sweep any of the work that came
+    # before. The boundary is doubled — per mandate inside, and once here —
+    # because the period arithmetic and the client list are outside the
+    # per-mandate try and must not be able to end the run either.
+    try:
+        _draft_reports(session, clients, now=now_fn())
+    except Exception:  # noqa: BLE001 — a report is never worth a failed sweep
+        _log.exception("the monthly report draft failed; the sweep stands")
+        session.rollback()
     return outcome
 
 

@@ -22,13 +22,13 @@ a new URL, which would otherwise arrive as a fresh signal every morning.
 and NULLs do not collide in a UNIQUE index, so such a row falls back to URL
 identity exactly as the article dedup does.
 
-Numbering: the number is the story's (SRC-01 was specified as ``0023_market_signals``)
+Numbering: the number is the story's (SRC-01 was specified as ``0033_market_signals``)
 and the chain, not the number, is what orders a migration — the same convention
 ``0024_assets`` and ``0029_guide_check`` already record. It parents whatever was at
 head, which is ``0030_asset_brain_version``.
 
-Revision ID: 0023_market_signals
-Revises: 0030_asset_brain_version
+Revision ID: 0033_market_signals
+Revises: 0032_report_snapshot
 Create Date: 2026-08-24
 """
 from __future__ import annotations
@@ -38,8 +38,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0023_market_signals"
-down_revision: str | None = "0030_asset_brain_version"
+revision: str = "0033_market_signals"
+down_revision: str | None = "0032_report_snapshot"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

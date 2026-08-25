@@ -16,3 +16,328 @@
 2026-07-28 18:54:39,194 INFO newspulse.job run done: status=ok, 11 new article(s), 11 analysis(es), 0 error(s)
 2026-07-28 18:54:39,199 INFO newspulse.web.routes.settings dashboard-triggered run finished: status=ok new_articles=11
 2026-08-03 21:54:41,530 INFO newspulse.job run start: 4 active client(s), 73 feed(s) (68 registry + 4 client search + 1 topic radar), since=2026-07-28T16:53:40.547572+00:00
+2026-08-24 11:35:41,995 ERROR newspulse.web.routes.settings dashboard-triggered run failed before it could report
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such table: clients
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/web/routes/settings.py", line 378, in _execute_run
+    report = job.run(session, analyzer=get_analyzer(), since=since)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/job.py", line 1216, in run
+    clients = list_clients(session)
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/clients.py", line 450, in list_clients
+    return sorted(session.scalars(stmt).all(), key=lambda c: c.name.lower())
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2481, in scalars
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: clients
+[SQL: SELECT clients.id, clients.name, clients.aliases, clients.industry, clients.website, clients.logo_url, clients.country, clients.keywords, clients.alert_topics, clients.muted_categories, clients.impulse_note, clients.impulse_checked_at, clients.profile_checked_at, clients.profile_note, clients.active, clients.is_competitor, clients.created_at, clients.comms_guide 
+FROM clients 
+WHERE clients.active IS 1]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-08-24 11:35:43,259 WARNING newspulse.web.origin refused a POST to /settings/run from 'https://evil.example/x'
+2026-08-24 11:35:43,285 ERROR newspulse.web.routes.settings dashboard-triggered run failed before it could report
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such table: clients
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/web/routes/settings.py", line 378, in _execute_run
+    report = job.run(session, analyzer=get_analyzer(), since=since)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/job.py", line 1216, in run
+    clients = list_clients(session)
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/clients.py", line 450, in list_clients
+    return sorted(session.scalars(stmt).all(), key=lambda c: c.name.lower())
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2481, in scalars
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: clients
+[SQL: SELECT clients.id, clients.name, clients.aliases, clients.industry, clients.website, clients.logo_url, clients.country, clients.keywords, clients.alert_topics, clients.muted_categories, clients.impulse_note, clients.impulse_checked_at, clients.profile_checked_at, clients.profile_note, clients.active, clients.is_competitor, clients.created_at, clients.comms_guide 
+FROM clients 
+WHERE clients.active IS 1]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-08-24 11:36:05,889 ERROR newspulse.web.routes.settings dashboard-triggered run failed before it could report
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such table: clients
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/web/routes/settings.py", line 378, in _execute_run
+    report = job.run(session, analyzer=get_analyzer(), since=since)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/job.py", line 1216, in run
+    clients = list_clients(session)
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/clients.py", line 450, in list_clients
+    return sorted(session.scalars(stmt).all(), key=lambda c: c.name.lower())
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2481, in scalars
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: clients
+[SQL: SELECT clients.id, clients.name, clients.aliases, clients.industry, clients.website, clients.logo_url, clients.country, clients.keywords, clients.alert_topics, clients.muted_categories, clients.impulse_note, clients.impulse_checked_at, clients.profile_checked_at, clients.profile_note, clients.active, clients.is_competitor, clients.created_at, clients.comms_guide 
+FROM clients 
+WHERE clients.active IS 1]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-08-24 11:36:35,486 ERROR newspulse.web.routes.settings dashboard-triggered run failed before it could report
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such table: clients
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/web/routes/settings.py", line 378, in _execute_run
+    report = job.run(session, analyzer=get_analyzer(), since=since)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/job.py", line 1216, in run
+    clients = list_clients(session)
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/clients.py", line 450, in list_clients
+    return sorted(session.scalars(stmt).all(), key=lambda c: c.name.lower())
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2481, in scalars
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: clients
+[SQL: SELECT clients.id, clients.name, clients.aliases, clients.industry, clients.website, clients.logo_url, clients.country, clients.keywords, clients.alert_topics, clients.muted_categories, clients.impulse_note, clients.impulse_checked_at, clients.profile_checked_at, clients.profile_note, clients.active, clients.is_competitor, clients.created_at, clients.comms_guide 
+FROM clients 
+WHERE clients.active IS 1]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-08-24 11:37:01,164 ERROR newspulse.web.routes.settings dashboard-triggered run failed before it could report
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such table: clients
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/web/routes/settings.py", line 378, in _execute_run
+    report = job.run(session, analyzer=get_analyzer(), since=since)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/job.py", line 1216, in run
+    clients = list_clients(session)
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/clients.py", line 450, in list_clients
+    return sorted(session.scalars(stmt).all(), key=lambda c: c.name.lower())
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2481, in scalars
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: clients
+[SQL: SELECT clients.id, clients.name, clients.aliases, clients.industry, clients.website, clients.logo_url, clients.country, clients.keywords, clients.alert_topics, clients.muted_categories, clients.impulse_note, clients.impulse_checked_at, clients.profile_checked_at, clients.profile_note, clients.active, clients.is_competitor, clients.created_at, clients.comms_guide 
+FROM clients 
+WHERE clients.active IS 1]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-08-24 11:37:02,130 ERROR newspulse.web.routes.settings dashboard-triggered run failed before it could report
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such table: clients
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/web/routes/settings.py", line 378, in _execute_run
+    report = job.run(session, analyzer=get_analyzer(), since=since)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/job.py", line 1216, in run
+    clients = list_clients(session)
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/src/newspulse/clients.py", line 450, in list_clients
+    return sorted(session.scalars(stmt).all(), key=lambda c: c.name.lower())
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2481, in scalars
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/private/tmp/claude-501/-Users-raphaelmankopf-Documents-09-Projects-pr-scanner/3fcfc02d-bf62-4831-bcb9-6da6a9c0f216/scratchpad/fix/newspulse/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: clients
+[SQL: SELECT clients.id, clients.name, clients.aliases, clients.industry, clients.website, clients.logo_url, clients.country, clients.keywords, clients.alert_topics, clients.muted_categories, clients.impulse_note, clients.impulse_checked_at, clients.profile_checked_at, clients.profile_note, clients.active, clients.is_competitor, clients.created_at, clients.comms_guide 
+FROM clients 
+WHERE clients.active IS 1]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)

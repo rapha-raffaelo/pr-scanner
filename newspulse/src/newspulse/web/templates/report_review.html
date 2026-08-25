@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Berichte") }} · {{ client.name }} · RauteOS{% endblock %}
+
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'reports' %}
+{% include '_client_tabs.html' %}
+
+{#- The review surface. One screen, one question per card: does the agency stand
+    behind this sentence? Everything on it exists to make that answerable in the
+    second before it is approved — the claim, what follows from it, and the
+    coverage it rests on, all in one place and none of it a click away.
+
+    A dropped finding stays on this page, greyed and marked, with the reason it
+    was dropped. It is not deleted and it is not hidden behind a filter: what was
+    proposed and rejected is part of how a report was arrived at. -#}
+<style>
+  .rep__lead { font-size: var(--t-body); color: var(--muted); max-width: 66ch; margin-bottom: 18px; }
+  .rep__bar { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;
+              padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+  .rep__bar form { display: flex; align-items: flex-end; gap: 8px; }
+  .rep__pick { font: inherit; font-size: var(--t-footnote); padding: 6px 9px;
+               border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink); }
+  .rep__state { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .pill { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.04em; padding: 3px 10px; border-radius: 20px; }
+  .pill--entwurf { background: #fef3c7; color: #92400e; }
+  .pill--frei { background: #dcfce7; color: #15803d; }
+  .rep__figs { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-bottom: 22px;
+               font-size: var(--t-footnote); }
+  .rep__fig b { font-weight: 700; }
+  .rep__fig span { color: var(--muted); }
+  .fnd { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px;
+         background: var(--card); padding: 15px 18px; margin-bottom: 14px; }
+  .fnd--out { border-left-color: var(--line); opacity: .68; }
+  .fnd__k { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.04em; color: var(--muted); }
+  .fnd__c { font-size: var(--t-subhead); font-weight: 600; margin: 4px 0 5px; }
+  .fnd__f { font-size: var(--t-footnote); color: var(--muted); }
+  .fnd__flag { font-size: var(--t-caption); margin-top: 8px; }
+  .fnd__flag--weak { color: #92400e; }
+  .fnd__flag--gone { color: #b91c1c; }
+  .fnd__why { font-size: var(--t-caption); color: var(--muted); margin-top: 8px;
+              border-left: 2px solid var(--line); padding-left: 10px; }
+  .fnd__ev { list-style: none; margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--line);
+             font-size: var(--t-caption); }
+  .fnd__ev li { margin-bottom: 3px; }
+  .fnd__ev a { color: var(--accent); }
+  .fnd__ev span { color: var(--muted); }
+  .fnd__acts { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  .fnd__edit { margin-top: 10px; }
+  .fnd__edit summary { font-size: var(--t-caption); color: var(--accent); cursor: pointer; }
+  .fnd__edit textarea, .fnd__edit input[type=text] {
+    width: 100%; font: inherit; font-size: var(--t-footnote); padding: 8px 10px; margin-top: 7px;
+    border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink);
+    resize: vertical;
+  }
+  .fnd__drop { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 240px; }
+  .fnd__drop input { flex: 1; }
+  .rep__empty { font-size: var(--t-footnote); color: var(--muted); max-width: 60ch; }
+  .rep__note { font-size: var(--t-footnote); color: var(--muted); font-style: italic;
+               background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 13px 16px; }
+  .rep__rel { display: flex; gap: 8px; align-items: center; margin-top: 22px; padding-top: 16px;
+              border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .rep__rel input { font: inherit; font-size: var(--t-footnote); padding: 6px 9px;
+                    border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink); }
+  .rep__rel p { font-size: var(--t-caption); color: var(--muted); flex-basis: 100%; }
+</style>
+
+<h1 class="pagetitle">{{ t("Berichte") }}</h1>
+<p class="rep__lead">
+  {{ t("RauteOS liest den Zeitraum und schlägt Befunde vor: eine Aussage, was daraus folgt, und darunter die Beiträge, auf denen sie steht. Behalten, ändern oder verwerfen — was übrig bleibt, wird das Dokument.") }}
+</p>
+
+{% if error %}<div class="notice notice--error">{{ error }}</div>{% endif %}
+{% if notice %}<div class="notice notice--ok">{{ notice }}</div>{% endif %}
+
+<div class="rep__bar">
+  {#- Two forms, no script. Choosing a period is a GET, so the page a consultant
+      lands on is a URL they can send to a colleague; generating is a POST for the
+      period already on screen, so the button never drafts a month other than the
+      one being looked at. -#}
+  <form method="get" action="/client/{{ client.id }}/berichte">
+    <label class="rep__fig">
+      <span>{{ t("Zeitraum") }}</span><br>
+      <select class="rep__pick" name="zeitraum">
+        {% for option in periods %}
+          <option value="{{ option }}"{% if option == period_key %} selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn--quiet">{{ t("Anzeigen") }}</button>
+  </form>
+  {#- Hidden once released. The route refuses it anyway — before it costs a model
+      call — but a button whose only possible outcome, in the state it is shown
+      in, is a refusal is a surface asking to be pressed and then arguing. -#}
+  {% if not released %}
+  <form method="post" action="/client/{{ client.id }}/berichte/erzeugen">
+    <input type="hidden" name="zeitraum" value="{{ period_key }}">
+    <button type="submit" class="btn btn--ghost">{{ t("Bericht erzeugen") }}</button>
+  </form>
+  {% endif %}
+  {% if report %}
+    <div class="rep__state">
+      {% if released %}
+        <span class="pill pill--frei">{{ t("Freigegeben") }}</span>
+      {% else %}
+        <span class="pill pill--entwurf">{{ t("Entwurf") }}</span>
+      {% endif %}
+      <a class="btn btn--go" href="/client/{{ client.id }}/berichte/{{ report.id }}/dokument">{{ t("Dokument") }}</a>
+    </div>
+  {% endif %}
+</div>
+
+{% if not report %}
+  <p class="rep__empty">{{ t(no_report) }}</p>
+{% else %}
+
+  {% if document %}
+    <div class="rep__figs">
+      {#- The comparison is composed from its parts rather than printed as a
+          stored German phrase: the words around the number are chrome and
+          translate, the number itself is frozen and does not. -#}
+      {% for f in document.figures %}
+        <span class="rep__fig">
+          <span>{{ t(f.label) }}</span>
+          <b>{{ f.text if f.text else t("kein Wert") }}</b>
+          {% if f.previous_value_text %}
+            <span>({{ t("vorher") }} {{ f.previous_value_text }}, {{ t(f.direction) }})</span>
+          {% elif f.direction %}
+            <span>({{ t("kein Vergleichszeitraum") }})</span>
+          {% endif %}
+        </span>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if report.note and not views %}
+    <p class="rep__note">{{ t(report.note) }}</p>
+  {% endif %}
+
+  {% for view in views %}
+    {% set f = view.finding %}
+    <article class="fnd{% if not f.kept %} fnd--out{% endif %}">
+      <div class="fnd__k">
+        {{ t(kind_labels.get(f.kind.value, f.kind.value)) }}
+        {% if not f.kept %} · {{ t("Verworfen") }}{% endif %}
+        {% if f.edited_at %} · {{ t("bearbeitet") }} {{ f.edited_at | de_date }}{% endif %}
+      </div>
+      <p class="fnd__c">{{ f.claim }}</p>
+      {% if f.consequence %}<p class="fnd__f">{{ f.consequence }}</p>{% endif %}
+
+      {% if not f.kept and f.drop_reason %}
+        <p class="fnd__why">{{ t("Verworfen, weil") }}: {{ f.drop_reason }}</p>
+      {% endif %}
+
+      {#- Only while the report is still a draft. These flags are read off the
+          archive as it stands today, and that is the right reading for a draft:
+          a claim whose ground moved must say so before anybody releases it. For
+          a released report it would be a false statement on the page — "steht
+          nicht im Dokument" about a finding the frozen document still prints —
+          and the figures beside it already come out of the snapshot. -#}
+      {% if not released %}
+        {% if view.unsupported %}
+          <p class="fnd__flag fnd__flag--gone">{{ t("Kein Beleg trägt diesen Befund mehr. Er steht nicht im Dokument.") }}</p>
+        {% elif view.weakened %}
+          <p class="fnd__flag fnd__flag--weak">{{ view.missing }} {{ t("Beleg(e) sind nicht mehr in der Berichterstattung. Der Befund steht auf dem, was übrig ist.") }}</p>
+        {% endif %}
+      {% endif %}
+
+      {% if view.evidence %}
+        <ul class="fnd__ev">
+          {% for e in view.evidence %}
+            <li>
+              {% if e.url %}<a href="{{ e.url | safe_url }}">{{ e.headline }}</a>{% else %}{{ e.headline }}{% endif %}
+              <span>· {{ e.source }} · {{ e.published_at | de_date }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if not released %}
+        <div class="fnd__acts">
+          {% if f.kept %}
+            <form method="post" class="fnd__drop"
+                  action="/client/{{ client.id }}/berichte/{{ report.id }}/befund/{{ f.id }}/verwerfen">
+              <input type="text" name="grund" class="rep__pick"
+                     placeholder="{{ t('Warum nicht? (optional)') }}">
+              <button type="submit" class="btn btn--quiet">{{ t("Verwerfen") }}</button>
+            </form>
+          {% else %}
+            <form method="post"
+                  action="/client/{{ client.id }}/berichte/{{ report.id }}/befund/{{ f.id }}/behalten">
+              <button type="submit" class="btn btn--quiet">{{ t("Wieder aufnehmen") }}</button>
+            </form>
+          {% endif %}
+        </div>
+
+        <details class="fnd__edit">
+          <summary>{{ t("Bearbeiten") }}</summary>
+          <form method="post"
+                action="/client/{{ client.id }}/berichte/{{ report.id }}/befund/{{ f.id }}">
+            <input type="text" name="claim" value="{{ f.claim }}"
+                   aria-label="{{ t('Aussage') }}">
+            <textarea name="consequence" rows="3"
+                      aria-label="{{ t('Was daraus folgt') }}">{{ f.consequence }}</textarea>
+            <button type="submit" class="btn" style="margin-top:8px">{{ t("Übernehmen") }}</button>
+          </form>
+        </details>
+      {% endif %}
+    </article>
+  {% endfor %}
+
+  {% if not released %}
+    <form method="post" class="rep__rel"
+          action="/client/{{ client.id }}/berichte/{{ report.id }}/freigeben">
+      <input type="text" name="freigegeben_von" placeholder="{{ t('Name (optional)') }}"
+             aria-label="{{ t('Freigegeben von') }}">
+      <button type="submit" class="btn btn--go">{{ t("Freigeben") }}</button>
+      <p>{{ t("Mit der Freigabe steht der Name der Agentur auf dem Bericht. Er wird eingefroren: Befunde, Zahlen und Belege bleiben, wie sie freigegeben wurden, auch wenn sich die Berichterstattung später ändert.") }}</p>
+    </form>
+  {% else %}
+    {#- The date is guarded because `released` does not imply it: `is_released`
+        deliberately answers yes to a row labelled freigegeben whose stamp is
+        missing, so that a half-written state fails closed rather than offering
+        the controls. It must not then fail open here, on a filter that would
+        raise on None. -#}
+    <p class="rep__rel">{% if report.released_at %}{{ t("Freigegeben am") }} {{ report.released_at | de_date }}{% else %}{{ t("Freigegeben") }}{% endif %}{% if report.released_by %} · {{ report.released_by }}{% endif %}.
+      {{ t("Ein freigegebener Bericht wird nicht mehr geändert und nicht neu erzeugt.") }}</p>
+  {% endif %}
+{% endif %}
+{% endblock %}

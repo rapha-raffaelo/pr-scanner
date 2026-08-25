@@ -1035,3 +1035,126 @@ def test_a_dry_run_spends_nothing_on_drafts(session, monkeypatch):
     assert report.dry_run is True
     assert report.angles_written == 0
     assert not any("Themen-Radar" in s for s in sources), sources
+
+
+def _poison(session) -> None:
+    """Leave the session as a failed flush leaves it.
+
+    A flush, not a commit: SQLAlchemy 2.0 rolls the session back itself when a
+    commit fails, so only the flush route reaches the state this is about —
+    every later statement raising PendingRollbackError until somebody rolls back.
+    """
+    session.add(Client(id=99, name="a", aliases=[], keywords=[], alert_topics=[]))
+    session.add(Client(id=99, name="b", aliases=[], keywords=[], alert_topics=[]))
+    with contextlib.suppress(Exception):
+        session.flush()
+
+
+def test_a_mandate_whose_draft_failed_does_not_poison_the_next(session, monkeypatch):
+    """Per-client isolation has to cover the session, not only the loop.
+
+    A failure inside a commit leaves SQLAlchemy raising PendingRollbackError on
+    every later statement. Here the handler itself then calls ``_note``, which
+    commits — so without a rollback the exception escapes the handler, escapes
+    the sweep, and does it past a runs row already written as ok.
+    """
+    from newspulse import angles
+
+    first = _add_client(session, "Alpha AG", keywords=["Verwahrung"])
+    second = _add_client(session, "Beta AG", keywords=["Verwahrung"])
+    session.commit()
+
+    seen: list[str] = []
+
+    def _suggest(sess, client, material, **kw):
+        seen.append(client.name)
+        if client.name == "Alpha AG":
+            _poison(sess)
+            raise RuntimeError("das Modell hat aufgegeben")
+        return None
+
+    monkeypatch.setattr(angles, "suggest", _suggest)
+    monkeypatch.setattr(job, "market_material", lambda *a, **k: ["etwas"])
+
+    job._refresh_impulses(
+        session, [first, second], [], now=dt.datetime.now(dt.UTC)
+    )
+
+    assert seen == ["Alpha AG", "Beta AG"], "the second mandate was still reached"
+    assert session.scalars(select(Client)).all(), "and the session still works"
+
+
+# --- The monthly report, from inside the sweep ---------------------------------
+
+# Day three of a month, so the draft window (``job._REPORT_DRAFT_DAYS``) is open.
+# The module's shared ``_NOW`` is the twentieth, which is past it — every other
+# test in this file runs on a day the report step deliberately does nothing, so
+# the step needs a clock of its own rather than the shared one.
+_STICHTAG = dt.datetime(2026, 8, 3, 10, 0, tzinfo=dt.UTC)
+
+
+def _fetches_nothing(url, since, **_):
+    return []
+
+
+@pytest.fixture
+def real_report_draft(monkeypatch, no_monthly_report_draft):
+    """Put the real drafting step back for the two tests that are about it.
+
+    ``conftest`` stubs it away for the whole suite, which is right — it is a model
+    call per mandate on a date the real calendar decides. The cost is that the
+    call site inside the sweep is invisible to every other test: deleting it
+    outright leaves the suite green. These two tests are what stands in front of
+    that, so they take the real function back and fake only the generator.
+    """
+    from newspulse import report
+
+    monkeypatch.setattr(job, "_draft_reports", no_monthly_report_draft)
+    monkeypatch.setattr(
+        report,
+        "findings",
+        lambda sess, cli, per, **_: report.ReportDraft(client_id=cli.id, period=per),
+    )
+    return report
+
+
+def test_the_sweep_drafts_last_months_report(session, real_report_draft):
+    """The report step is wired into the run, not merely callable on its own.
+
+    The generator is faked: what is under test is that the sweep reaches it at all
+    and keeps what comes back. The drafting itself is ``test_report``'s subject.
+    """
+    client = _add_client(session, "Arrakis")
+
+    job.run(
+        session, analyzer=_FakeAnalyzer(), fetch=_fetches_nothing, now=lambda: _STICHTAG
+    )
+
+    period = real_report_draft.previous_month(_STICHTAG)
+    assert real_report_draft.for_period(session, client.id, period) is not None
+
+
+def test_a_failed_sweep_writes_neither_report_nor_draft(
+    session, monkeypatch, real_report_draft
+):
+    """The guard in front of the radar work, exercised on the day that would draft.
+
+    A sweep that crashed knows nothing about today, so everything written off
+    today's material stays unwritten. A report and a positioning message are both
+    confident texts, and neither may be built on a run that did not finish.
+    """
+    client = _add_client(session, "Arrakis")
+
+    def _crash(*_args, **_kwargs):
+        raise RuntimeError("der Sweep stirbt vor dem Abgleich")
+
+    monkeypatch.setattr(job, "_match", _crash)
+
+    result = job.run(
+        session, analyzer=_FakeAnalyzer(), fetch=_fetches_nothing, now=lambda: _STICHTAG
+    )
+
+    assert result.status is RunStatus.FAILED
+    period = real_report_draft.previous_month(_STICHTAG)
+    assert real_report_draft.for_period(session, client.id, period) is None
+    assert result.angles_written == 0

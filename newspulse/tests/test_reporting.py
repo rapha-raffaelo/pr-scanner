@@ -288,3 +288,107 @@ def test_max_cell_is_never_zero_so_the_view_can_divide_by_it(session):
     session.add(c)
     session.commit()
     assert build(session, c, days=90).max_cell == 1
+
+
+def test_the_workbook_carries_no_dash_the_house_rule_forbids(session, portfolio):
+    """The one file that leaves the building.
+
+    ``prose.plain`` was applied where a text is *stored*, on the stated grounds
+    that the reasoning fields "are read inside the tool, never sent". The client
+    report ships ``These`` and ``Nicht die These`` as columns, so they are sent —
+    and impulses were already on disk carrying dashes, which no change to the
+    writing side can reach.
+    """
+    from newspulse.models import Angle
+
+    mandate, _, _ = portfolio
+    session.add(
+        Angle(
+            client_id=mandate.id,
+            generated_at=dt.datetime.now(dt.UTC),
+            subject="Betreff",
+            message="Nachricht.",
+            context="Kontext",
+            credibility="belegt",
+            thesis="Der Feedbackkreis liefert — und deshalb trägt die These.",
+            overclaim="Alles ist anders – behauptet niemand.",
+            statements=[],
+            article_ids=[],
+        )
+    )
+    session.commit()
+
+    book = load_workbook(io.BytesIO(client_workbook(session, mandate, days=30)))
+    text = "\n".join(
+        str(cell.value)
+        for sheet in book.worksheets
+        for row in sheet.iter_rows()
+        for cell in row
+        if cell.value is not None
+    )
+
+    assert "—" not in text and "–" not in text
+    assert "Der Feedbackkreis liefert" in text, "and the sentence still says it"
+
+
+def test_a_share_with_nothing_to_compare_says_so_instead_of_100_percent(
+    session, portfolio
+):
+    """The dashboard already refuses this number and explains why. The workbook
+    is the copy that goes into the meeting and printed it bare — including in
+    the commoner case the dashboard's own guard misses, where a competitor is on
+    file and simply was not written about."""
+    mandate, rival, _ = portfolio
+    # Coverage for the mandate, none for anybody else in the window.
+    session.query(Analysis).filter(Analysis.client_id != mandate.id).delete(
+        synchronize_session=False
+    )
+    session.commit()
+
+    book = load_workbook(io.BytesIO(client_workbook(session, mandate, days=30)))
+    overview = book["Überblick"]
+    cells = {row[0].value: row[1].value for row in overview.iter_rows(min_row=2)}
+
+    assert "100" not in str(cells.get("Anteil am Marktgespräch", ""))
+    assert "kein Vergleich" in str(cells.get("Anteil am Marktgespräch", ""))
+
+
+def test_the_impulse_sheet_covers_the_period_it_claims(session, portfolio):
+    """The heading says "letzte 30 Tage" and the sheet held the newest five.
+
+    ``_impulse_frame`` took a ``days`` argument and never used it, so a mandate
+    with more than five impulses in the window shipped five of them — and the
+    "Vorliegende Impulse" figure beside them was really min(total, 5), which is
+    not a measurement of anything.
+    """
+    from newspulse.models import Angle
+
+    mandate, _, _ = portfolio
+    now = dt.datetime.now(dt.UTC)
+    for i in range(8):
+        session.add(
+            Angle(
+                client_id=mandate.id,
+                generated_at=now - dt.timedelta(days=i),
+                subject=f"Impuls {i}",
+                message="Text.", context="", credibility="",
+                thesis="", overclaim="", statements=[], article_ids=[],
+            )
+        )
+    # And one that really is outside the window, which must not appear.
+    session.add(
+        Angle(
+            client_id=mandate.id,
+            generated_at=now - dt.timedelta(days=45),
+            subject="Zu alt", message="Text.", context="", credibility="",
+            thesis="", overclaim="", statements=[], article_ids=[],
+        )
+    )
+    session.commit()
+
+    book = load_workbook(io.BytesIO(client_workbook(session, mandate, days=30, now=now)))
+    sheet = book["Impulse"]
+    subjects = [row[1].value for row in sheet.iter_rows(min_row=2) if row[1].value]
+
+    assert len(subjects) == 8, "every impulse in the period, not the newest five"
+    assert "Zu alt" not in subjects, "and nothing from outside it"

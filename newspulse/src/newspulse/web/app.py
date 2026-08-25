@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import branding, config, gnews, i18n, onboarding
 from ..db import get_session
-from . import google_auth, navigation, runlock
+from . import google_auth, navigation, origin, runlock
 from .auth import BasicAuthMiddleware, is_loopback, require_auth_for_public_bind
 
 # The web package ships its own templates/ and static/ next to this module, so
@@ -164,6 +164,15 @@ def de_short_date(value: dt.datetime) -> str:
     return _local(value).strftime("%d.%m.")
 
 
+def de_date(value: dt.datetime) -> str:
+    """A calendar date in the reader's zone: ``22.07.2026``.
+
+    The report's dates need the year — a document is read months after it was
+    sent, which is exactly when ``22.07.`` stops being enough.
+    """
+    return _local(value).strftime("%d.%m.%Y")
+
+
 # Image types a stored logo may carry. Deliberately the raster set only: an SVG
 # is executable markup, and inlining one into the page would hand the site it
 # came from script execution in this origin.
@@ -244,6 +253,7 @@ templates.env.filters["de_time"] = de_time
 templates.env.filters["de_datetime"] = de_datetime
 templates.env.filters["de_date"] = de_date
 templates.env.filters["de_short_date"] = de_short_date
+templates.env.filters["de_date"] = de_date
 # The header's own reading of a timestamp: see de_when.
 templates.env.filters["de_when"] = de_when
 templates.env.filters["run_age_days"] = run_age_days
@@ -310,6 +320,9 @@ def create_app() -> FastAPI:
     # Added first so it wraps every route, including the SSE stream and the
     # static mount's siblings.
     app.add_middleware(BasicAuthMiddleware)
+    # Added after the auth middleware, so it runs *before* it: a cross-site
+    # write is refused without the app having to work out who is asking.
+    app.add_middleware(origin.SameOriginMiddleware)
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
     # Imported here (not at module top) to avoid a circular import: the route
@@ -317,8 +330,8 @@ def create_app() -> FastAPI:
     from .routes import (
         advisory, archive, assets_view, assistant, client, contacts, guide_routes,
         language, login, onboarding as onboarding_routes,
-        profile as profile_routes, rivals_view, runstatus, settings, today,
-        triage,
+        profile as profile_routes, report as report_routes, rivals_view,
+        runstatus, settings, today, triage,
     )
 
     # First, so the sign-in pages exist before anything that needs a session.
@@ -341,6 +354,7 @@ def create_app() -> FastAPI:
     app.include_router(contacts.router)
     app.include_router(profile_routes.router)
     app.include_router(rivals_view.router)
+    app.include_router(report_routes.router)
     app.include_router(onboarding_routes.router)
     return app
 

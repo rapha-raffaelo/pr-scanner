@@ -127,6 +127,12 @@
         <span>{{ row.source }}</span>
       </div>
     {% endfor %}
+    {% if gap_total > gaps | length %}
+      <p class="panel-hint">
+        {{ t("und %(n)s weitere") | format(n=gap_total - (gaps | length)) }} —
+        <a href="/client/{{ client.id }}/map">{{ t("in der Coverage Map") }}</a>
+      </p>
+    {% endif %}
   {% else %}
     <p class="panel-hint">
       {{ t("Noch keine: dafür braucht es Medien, die mehrfach über den Wettbewerb geschrieben haben.") }}

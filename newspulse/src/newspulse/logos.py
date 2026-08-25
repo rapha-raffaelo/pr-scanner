@@ -22,7 +22,9 @@ service that did not already know.
 from __future__ import annotations
 
 import base64
+import ipaddress
 import logging
+import socket
 import re
 import urllib.error
 import urllib.parse
@@ -79,15 +81,75 @@ def normalize_website(raw: str | None) -> str | None:
     return f"https://{parsed.netloc}"
 
 
+class Blocked(Exception):
+    """A URL this fetcher will not follow."""
+
+
+def _reachable(url: str) -> str:
+    """``url`` if it names a public HTTP host, raising otherwise.
+
+    Everything this module fetches is decided by somebody else's HTML. The
+    operator types a company's website; the page's own ``<link rel="icon">`` says
+    where the icon is, and ``urljoin`` hands an *absolute* href straight back, so
+    a hostile or merely compromised site chooses the second request's target
+    outright. Three things follow from that and each is a separate refusal:
+
+    * Only http and https. ``urlopen`` honours ``file:`` and ``ftp:`` too, and
+      Python synthesises a Content-Type from the extension, so
+      ``file:///data/x.png`` was a local file read and inlined into the page.
+    * No private, loopback, link-local or otherwise reserved address. The
+      container can reach its own network and the platform's metadata service;
+      this process has no business fetching a logo from either.
+    * The name is resolved here rather than trusted. "localhost" and a domain
+      whose A record points at 127.0.0.1 are the same request.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in ("http", "https"):
+        raise Blocked(f"scheme {parsed.scheme!r}")
+    host = parsed.hostname
+    if not host:
+        raise Blocked("no host")
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80),
+                                   proto=socket.IPPROTO_TCP)
+    except OSError as exc:
+        raise Blocked(f"unresolvable: {exc}") from exc
+    for info in infos:
+        address = ipaddress.ip_address(info[4][0])
+        if not address.is_global or address.is_multicast:
+            raise Blocked(f"non-public address {address}")
+    return url
+
+
+class _GuardedRedirects(urllib.request.HTTPRedirectHandler):
+    """Re-check every hop.
+
+    A public host that answers 302 to ``http://169.254.169.254/`` would walk
+    straight past a check that only looked at the URL we started with.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _reachable(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_GuardedRedirects)
+
+
 def _get(url: str, *, limit: int = _MAX_BYTES) -> tuple[bytes, str] | None:
+    try:
+        _reachable(url)
+    except Blocked as exc:
+        _log.info("logo fetch refused for %s: %s", url, exc)
+        return None
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
+        with _OPENER.open(request, timeout=_TIMEOUT) as response:
             # read one byte past the cap so an oversized asset is detected rather
             # than silently truncated into a corrupt image.
             body = response.read(limit + 1)
             content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-    except (urllib.error.URLError, OSError, ValueError) as exc:
+    except (urllib.error.URLError, OSError, ValueError, Blocked) as exc:
         _log.debug("logo fetch failed for %s: %s", url, exc)
         return None
     if len(body) > limit:

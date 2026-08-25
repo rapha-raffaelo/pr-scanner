@@ -193,3 +193,42 @@ def test_the_loop_survives_a_failing_sweep(monkeypatch):
 
     assert len(attempts) >= 2, "it tried again after the failure"
     assert still_running, "the thread was alive until we asked it to stop"
+
+
+def test_a_sweep_started_by_hand_does_not_earn_a_second_one(session, monkeypatch):
+    """The window between "is one running?" and taking the guard.
+
+    The check and the acquire were not atomic and the acquire *blocked*, so a
+    click landing between them made the scheduler wait out the whole manual
+    sweep and then run a complete second one behind it: forty feed fetches, a
+    model call per batch, and a second ``send_digest`` — a duplicate morning mail
+    to the client.
+    """
+    ran: list[str] = []
+    monkeypatch.setattr(scheduler.job, "setup_logging", lambda *a, **k: None)
+    monkeypatch.setattr(scheduler.job, "run", lambda *a, **k: ran.append("sweep"))
+
+    # Someone pressed the button and it is still going.
+    assert scheduler.runlock.guard.acquire(blocking=False)
+    try:
+        scheduler._run_once()
+    finally:
+        scheduler.runlock.guard.release()
+
+    assert ran == [], "it did not queue behind the manual sweep"
+
+
+def test_a_sweep_that_finished_while_we_waited_settles_the_day(
+    session, monkeypatch
+):
+    """Due-ness is read again inside the guard. The first read happened before a
+    manual sweep may have finished, and that sweep writes the very row it
+    reads."""
+    ran: list[str] = []
+    monkeypatch.setattr(scheduler.job, "setup_logging", lambda *a, **k: None)
+    monkeypatch.setattr(scheduler.job, "run", lambda *a, **k: ran.append("sweep"))
+    monkeypatch.setattr(scheduler, "_due", lambda *a, **k: False)
+
+    scheduler._run_once()
+
+    assert ran == []

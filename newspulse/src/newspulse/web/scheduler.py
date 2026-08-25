@@ -81,8 +81,24 @@ def _run_once() -> None:
     # failure mode the logging exists to prevent. Idempotent, so calling it on
     # every sweep costs nothing.
     job.setup_logging()
-    with runlock.guard:
+    # Non-blocking, like every other caller of this guard. Blocking made the
+    # scheduler wait out a sweep somebody had just started by hand and then run
+    # a second complete one behind it — forty feed fetches, a model call per
+    # batch, and a second digest, which is a duplicate morning mail to the
+    # client. The dashboard's own trigger and the asset writer both take it this
+    # way; this was the one that queued.
+    if not runlock.guard.acquire(blocking=False):
+        _log.info("a sweep is already running; leaving the scheduled one for tomorrow")
+        return
+    try:
         with get_session() as session:
+            # Asked again, now that nothing else can be running. The check
+            # outside the guard was made before a manual sweep may have finished,
+            # and that sweep wrote the very row this reads: without the re-read a
+            # click at 06:09 gives the client two of everything, digest included.
+            if not _due(session, dt.datetime.now(dt.UTC)):
+                _log.info("a sweep landed while we waited; nothing due any more")
+                return
             report = job.run(session)
             _log.info(
                 "scheduled sweep finished: status=%s, %d new article(s), "
@@ -96,6 +112,8 @@ def _run_once() -> None:
                 # Unconfigured SMTP logs a warning and returns None; the digest is
                 # a convenience and must never fail the sweep that produced it.
                 digest.send_digest(session)
+    finally:
+        runlock.guard.release()
 
 
 def _loop(stop: threading.Event) -> None:

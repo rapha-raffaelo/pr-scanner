@@ -11,8 +11,8 @@ search at all. A backfill of 0 would read as "the press does not write this
 word" for every existing row, which is exactly the false accusation the column
 exists to prevent.
 
-Revision ID: 0032_field_usable
-Revises: 0031_muted_signal_kinds
+Revision ID: 0035_field_usable
+Revises: 0034_muted_signal_kinds
 Create Date: 2026-08-25
 """
 from __future__ import annotations
@@ -22,8 +22,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0032_field_usable"
-down_revision: str | None = "0031_muted_signal_kinds"
+revision: str = "0035_field_usable"
+down_revision: str | None = "0034_muted_signal_kinds"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
