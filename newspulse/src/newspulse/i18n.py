@@ -1093,6 +1093,11 @@ _EN: dict[str, str] = {
         "Nothing is currently in the regulatory calendar for this field.",
     "Keine Veranstaltung im Feld dieses Mandanten gefunden.":
         "No event found in this client's field.",
+    # The studies section is the only one nothing ages out of, so it is the only
+    # one with a cap — and the cap is said out loud rather than applied quietly.
+    "Eine ältere Studie wird nicht angezeigt.": "One older study is not shown.",
+    "%(n)s ältere Studien werden nicht angezeigt.":
+        "%(n)s older studies are not shown.",
     "Herausgeber unbekannt": "Publisher unknown",
     "Veranstalter unbekannt": "Organiser unknown",
     "gilt ab": "applies from",

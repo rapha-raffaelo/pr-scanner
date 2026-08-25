@@ -41,6 +41,7 @@
   .sig__help { font-size: var(--t-caption); color: var(--muted); margin: 4px 0 10px; max-width: 62ch; }
   .sig__empty { font-size: var(--t-footnote); color: var(--muted); font-style: italic; padding: 10px 0; border-top: 1px solid var(--line); }
   .sig__note { font-size: var(--t-caption); color: var(--warn); background: var(--warn-wash); border-radius: var(--radius); padding: 7px 10px; margin-bottom: 10px; }
+  .sig__more { font-size: var(--t-caption); color: var(--muted); font-style: italic; border-top: 1px solid var(--line); padding-top: 8px; }
   .sig__muted { font-size: var(--t-caption); color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; margin-top: 0.6rem; }
   .sig__muted form { display: inline; }
 
@@ -218,6 +219,18 @@
         {% else %}
           <p class="sig__empty">{{ t("Noch keine Studie aus dem Feld dieses Mandanten gefunden.") }}</p>
         {% endfor %}
+        {# Nothing ages a study off this page, so it is the one section that only
+           grows. It is cut to a shortlist — and the cut is stated, because a cap
+           nobody is told about reads as "that is all there is". #}
+        {% if hidden_signals.get('studie') %}
+          <p class="sig__more">
+            {% if hidden_signals['studie'] == 1 %}
+              {{ t("Eine ältere Studie wird nicht angezeigt.") }}
+            {% else %}
+              {{ t("%(n)s ältere Studien werden nicht angezeigt.") | format(n=hidden_signals['studie']) }}
+            {% endif %}
+          </p>
+        {% endif %}
       </section>
     {% endif %}
 

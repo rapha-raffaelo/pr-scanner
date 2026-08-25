@@ -12,7 +12,8 @@ archive rather than loading it all into the page).
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Sequence
+import logging
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from urllib.parse import urlencode
@@ -48,6 +49,8 @@ from ..app import get_db, templates
 # local zone and the "last run" banner are shared page chrome, single-sourced in
 # one place so both views agree on day boundaries and header content.
 from .today import _day_bounds_utc, _fetch_last_run, _local_tz
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -958,16 +961,117 @@ def _forward(rows: Sequence[SignalRow]) -> list[SignalRow]:
     it sorts to the end, where the template says the date could not be read
     rather than pretending the item does not exist. Dropping it would be the one
     failure a forward calendar must never have — a silent one.
+
+    One pass over ``rows``, with the third case counted rather than implied. Two
+    comprehensions read as an exhaustive split and are not one — a row can fall
+    in neither bucket — so what leaves the calendar was invisible from here, and
+    "why did that item disappear" had no answer anywhere in the process.
     """
-    dated = [r for r in rows if r.next_in is not None]
-    undated = [r for r in rows if r.effective_at is None and r.deadline_at is None]
+    dated: list[SignalRow] = []
+    undated: list[SignalRow] = []
+    passed = 0
+    for row in rows:
+        if row.next_in is not None:
+            dated.append(row)
+        elif row.effective_at is None and row.deadline_at is None:
+            undated.append(row)
+        else:
+            passed += 1
+    if passed:
+        _log.debug("market calendar: %d row(s) left, every date behind us", passed)
     dated.sort(key=lambda r: r.next_in.days)
     return [*dated, *_by_publication(undated)]
 
 
+#: How each class is ordered — and, by which function it names, whether it is a
+#: calendar at all. Kept in one mapping because two of its readers have to agree:
+#: the sort below, and the SQL that refuses to load what the sort would drop. A
+#: class with no rule of its own is ordered by publication, which is what DEC-2 C
+#: says an undated thing does anyway; a ``KeyError`` here would be a 500 on the
+#: whole market page the day a fourth class is added.
+_CLASS_ORDER: dict[SignalKind, Callable[[Sequence[SignalRow]], list[SignalRow]]] = {
+    SignalKind.STUDIE: _by_publication,
+    SignalKind.REGULIERUNG: _forward,
+    SignalKind.VERANSTALTUNG: _forward,
+}
+
+#: The most studies one section shows. The same reasoning as :data:`_MARKET_TOP`,
+#: and needed here for a reason the other two classes do not have: nothing ages a
+#: study off the page (DEC-2 C), so this is the one list on it that only ever
+#: grows. Left uncapped it becomes the directory that comment is about, and the
+#: whole table is loaded to build it. What the cap leaves out is *counted and
+#: said* below the section — a shortlist is fine, a silent one is not.
+_STUDIES_SHOWN = _MARKET_TOP
+
+
+def _calendar_floor(*, today: dt.date, tz: dt.tzinfo) -> dt.datetime:
+    """The instant local ``today`` begins, in UTC.
+
+    The exact boundary :func:`_remaining` uses, expressed for SQL: a stored date
+    at or after this has a local date of today or later, and one before it does
+    not. Not an approximation with a day of slack — the two must agree, or the
+    page and the query disagree about what is still coming.
+    """
+    return dt.datetime.combine(today, dt.time.min, tzinfo=tz).astimezone(dt.UTC)
+
+
+def _still_ahead(floor: dt.datetime) -> ColumnElement[bool]:
+    """The SQL half of :func:`_forward`: rows a calendar class still wants.
+
+    Every past-dated row was being loaded and then discarded in Python on every
+    render, so a mandate three years into a regulatory calendar paid for its
+    whole history to build a page showing none of it. The undated arm is not an
+    optimisation but a correctness one: :func:`_forward` keeps a row whose dates
+    the parser could not read, and a floor without it would delete exactly the
+    rows the calendar promises never to lose silently.
+    """
+    return or_(
+        MarketSignal.effective_at >= floor,
+        MarketSignal.deadline_at >= floor,
+        and_(MarketSignal.effective_at.is_(None), MarketSignal.deadline_at.is_(None)),
+    )
+
+
+def _stored_signals(
+    session: Session,
+    client: Client,
+    *,
+    kinds: Sequence[SignalKind],
+    floor: dt.datetime,
+) -> Sequence[MarketSignal]:
+    """The rows worth reading for ``kinds`` — the calendar ones bounded by date."""
+    calendar_kinds = [k for k in kinds if _CLASS_ORDER.get(k) is _forward]
+    wanted: ColumnElement[bool] = MarketSignal.kind.in_(kinds)
+    if calendar_kinds:
+        wanted = and_(
+            wanted,
+            or_(MarketSignal.kind.not_in(calendar_kinds), _still_ahead(floor)),
+        )
+    return session.scalars(
+        select(MarketSignal)
+        .where(MarketSignal.client_id == client.id, wanted)
+        # Both orderings applied afterwards are stable sorts, so whatever SQLite
+        # happens to return decides ties — two studies published the same day
+        # would swap places between two renders of the same page. Newest-found
+        # first, id as the last word, so the order is a property of the data.
+        .order_by(MarketSignal.found_at.desc(), MarketSignal.id.desc())
+    ).all()
+
+
+@dataclass(frozen=True, slots=True)
+class MarketSections:
+    """The market classes this mandate still wants, as the page renders them."""
+
+    #: One ordered list per class, keyed on the stored enum value.
+    rows: dict[str, list[SignalRow]]
+    #: How many rows of each class :data:`_STUDIES_SHOWN` left out, so the page
+    #: can say so. A cap nobody is told about reads as "that is all there is".
+    hidden: dict[str, int]
+
+
 def _signals_by_kind(
     session: Session, client: Client, *, now: dt.datetime, tz: dt.tzinfo
-) -> dict[str, list[SignalRow]]:
+) -> MarketSections:
     """This mandate's market signals, one ordered list per class it still wants.
 
     Muted classes are absent from the mapping entirely rather than present and
@@ -976,37 +1080,31 @@ def _signals_by_kind(
     """
     wanted = [kind for kind in SignalKind if not client.mutes_signal(kind)]
     if not wanted:
-        return {}
+        return MarketSections(rows={}, hidden={})
     today = now.astimezone(tz).date()
     rows = [
         _signal_row(signal, today=today, tz=tz)
-        for signal in session.scalars(
-            select(MarketSignal)
-            .where(
-                MarketSignal.client_id == client.id,
-                MarketSignal.kind.in_(wanted),
-            )
-            # Both orderings below are stable sorts, so whatever SQLite happens to
-            # return decides ties — two studies published the same day would swap
-            # places between two renders of the same page. Newest-found first, id
-            # as the last word, so the order is a property of the data.
-            .order_by(MarketSignal.found_at.desc(), MarketSignal.id.desc())
-        ).all()
+        for signal in _stored_signals(
+            session, client, kinds=wanted, floor=_calendar_floor(today=today, tz=tz)
+        )
     ]
-    # A class with no calendar rule of its own is ordered by publication, which is
-    # what DEC-2 C says an undated thing does anyway. A ``KeyError`` here would be
-    # a 500 on the whole market page the day a fourth class is added.
-    order = {
-        SignalKind.STUDIE: _by_publication,
-        SignalKind.REGULIERUNG: _forward,
-        SignalKind.VERANSTALTUNG: _forward,
-    }
-    return {
-        kind.value: order.get(kind, _by_publication)(
+    ordered = {
+        kind.value: _CLASS_ORDER.get(kind, _by_publication)(
             [r for r in rows if r.kind is kind]
         )
         for kind in wanted
     }
+    # Only the class with no clock of its own is capped. The two calendars are
+    # already bounded by the one thing that bounds them honestly — a date passing
+    # — and cutting the far end of a calendar would hide what a mandate has the
+    # most time to prepare for.
+    shown = dict(ordered)
+    studies = shown.get(SignalKind.STUDIE.value)
+    hidden: dict[str, int] = {}
+    if studies is not None and len(studies) > _STUDIES_SHOWN:
+        hidden[SignalKind.STUDIE.value] = len(studies) - _STUDIES_SHOWN
+        shown[SignalKind.STUDIE.value] = studies[:_STUDIES_SHOWN]
+    return MarketSections(rows=shown, hidden=hidden)
 
 
 class FieldGap(StrEnum):
@@ -1150,7 +1248,8 @@ def market_view(
         raise HTTPException(status_code=404, detail="Client not found")
     tz = _local_tz()
     now = dt.datetime.now(dt.UTC)
-    signals = _signals_by_kind(session, client, now=now, tz=tz)
+    sections = _signals_by_kind(session, client, now=now, tz=tz)
+    signals = sections.rows
     return templates.TemplateResponse(
         request,
         "client_market.html",
@@ -1161,6 +1260,7 @@ def market_view(
             "themes": list(client.keywords or []) + list(client.alert_topics or []),
             **_nominations(session, client_id, days=_MARKET_DAYS),
             "signals": signals,
+            "hidden_signals": sections.hidden,
             "muted_kinds": [
                 kind.value for kind in SignalKind if client.mutes_signal(kind)
             ],
