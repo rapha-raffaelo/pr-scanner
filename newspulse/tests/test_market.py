@@ -264,7 +264,7 @@ def _signal(session, client_obj, kind, title, **over) -> MarketSignal:
         title=title,
         publisher=over.get("publisher", "Beispiel-Institut"),
         url=over.get("url", f"https://quelle.de/{abs(hash(title)) % 100000}"),
-        found_at=_NOW,
+        found_at=over.get("found_at", _NOW),
         published_at=over.get("published_at"),
         effective_at=over.get("effective_at"),
         deadline_at=over.get("deadline_at"),
@@ -620,6 +620,36 @@ def test_studies_are_ordered_newest_publication_first(factory, client):
     studies = client.get(f"/client/{subject_id}/market").text.split("Studien", 1)[1]
 
     assert studies.index("Frische Erhebung") < studies.index("Ältere Erhebung")
+
+
+def test_two_studies_published_the_same_day_do_not_swap_places_between_renders(
+    factory, client
+):
+    """Both orderings on this page are stable sorts, so whatever the database
+    happens to return decides every tie. Unordered, two studies published the same
+    morning could trade places between two loads of the same page — which reads as
+    the list having changed when nothing did."""
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.STUDIE, "Zuerst gefunden",
+            published_at=_NOW - dt.timedelta(days=3),
+            found_at=_NOW - dt.timedelta(days=3),
+        )
+        _signal(
+            session, subject, SignalKind.STUDIE, "Heute gefunden",
+            published_at=_NOW - dt.timedelta(days=3),
+            found_at=_NOW,
+        )
+        subject_id = subject.id
+
+    renders = [
+        client.get(f"/client/{subject_id}/market").text.split("Studien", 1)[1]
+        for _ in range(2)
+    ]
+
+    for studies in renders:
+        assert studies.index("Heute gefunden") < studies.index("Zuerst gefunden")
 
 
 # --- Provenance (DEC-1 B) ------------------------------------------------------
