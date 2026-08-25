@@ -85,9 +85,11 @@ def _run_once() -> None:
         with get_session() as session:
             report = job.run(session)
             _log.info(
-                "scheduled sweep finished: status=%s, %d new article(s), %d draft(s)",
+                "scheduled sweep finished: status=%s, %d new article(s), "
+                "%d market signal(s), %d draft(s)",
                 report.status.value,
                 report.new_articles,
+                report.signals_written,
                 report.angles_written,
             )
             if report.status is not RunStatus.FAILED:

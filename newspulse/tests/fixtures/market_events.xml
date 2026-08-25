@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Beispiel-Verband Veranstaltungen</title>
+    <link>https://verband.example.de/</link>
+    <description>Kongresse, Fachtagungen und Messen der Branche.</description>
+    <language>de</language>
+
+    <item>
+      <title>Fachtagung Digitale Verwaltung mit europaeischem Schwerpunkt</title>
+      <link>https://verband.example.de/termine/fachtagung-digitale-verwaltung</link>
+      <description>Die Fachtagung findet am 12. Maerz 2027 in Berlin statt. Der Call for Papers endet am 15.11.2026.</description>
+      <pubDate>Thu, 20 Aug 2026 10:00:00 +0200</pubDate>
+      <guid>https://verband.example.de/termine/fachtagung-digitale-verwaltung</guid>
+    </item>
+
+    <item>
+      <title>Branchenkongress in Vorbereitung, Programm noch offen</title>
+      <link>https://verband.example.de/termine/branchenkongress-vorbereitung</link>
+      <description>Der Verband bereitet einen Kongress vor; ein Termin steht noch nicht fest.</description>
+      <pubDate>Mon, 17 Aug 2026 16:00:00 +0200</pubDate>
+      <guid>https://verband.example.de/termine/branchenkongress-vorbereitung</guid>
+    </item>
+  </channel>
+</rss>

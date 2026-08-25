@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Beispiel-Suche</title>
+    <link>https://suche.example.de/</link>
+    <description>Ein Aggregator: jeder Eintrag nennt sein eigenes Medium.</description>
+    <language>de</language>
+
+    <item>
+      <title>Marktstudie sieht Onchain-Liquiditaet im deutschen Mittelstand wachsen</title>
+      <link>https://suche.example.de/rss/articles/CBMiSuche001</link>
+      <description>Eine Auswertung von Transaktionsdaten aus zwoelf Monaten.</description>
+      <pubDate>Sat, 22 Aug 2026 06:00:00 +0200</pubDate>
+      <source url="https://boerse.example.de/">Boersenblatt</source>
+      <guid>https://suche.example.de/rss/articles/CBMiSuche001</guid>
+    </item>
+  </channel>
+</rss>
