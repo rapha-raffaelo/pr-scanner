@@ -13,10 +13,18 @@
 {% include '_client_tabs.html' %}
 
 <div class="client-profile">
+  {# The lead describes gaps, which only exist against a comparison group. Said
+     to a mandate that has none, it promises a pitch list the page cannot draw
+     and sends the reader looking for rows that are not there. #}
   <p class="panel-hint">
-    {{ t("Wer schreibt über wen") }} — {{ days }} {{ t("Tage") }}.
-    {{ t("Die Lücken oben sind Publikationen, die regelmäßig über den Wettbewerb berichten und nie über") }}
-    {{ map.client }} — {{ t("also eine Pitch-Liste, keine Statistik.") }}
+    {% if map.one_sided %}
+      {{ t("Welche Medien in den letzten %(days)s Tagen über diesen Mandanten geschrieben haben, und wie oft.") | format(days=days) }}
+      {{ t("Für eine Pitch-Liste — Medien, die über den Wettbewerb schreiben und über ihn nicht — fehlt noch eine Vergleichsgruppe.") }}
+    {% else %}
+      {{ t("Wer schreibt über wen") }} — {{ days }} {{ t("Tage") }}.
+      {{ t("Die Lücken oben sind Publikationen, die regelmäßig über den Wettbewerb berichten und nie über") }}
+      {{ map.client }} — {{ t("also eine Pitch-Liste, keine Statistik.") }}
+    {% endif %}
   </p>
 </div>
 
@@ -55,16 +63,46 @@
    question — who writes about them and not us — by putting the two sides against
    a shared centre line and sorting by the gap. Only outlets with a real signal
    are plotted; the rest are a table below. #}
+{# Two questions, and only one of them can be answered at a time. With a
+   comparison group the chart is a diverging one and the heading says which side
+   is which. Without, there is nothing on the left: the same rows are a ranking
+   of who covers this mandate, and the heading has to stop promising a
+   comparison it cannot draw. #}
 <div class="colhead" style="margin-top:26px">
-  {{ t("Wer schreibt über wen") }} <span class="n">{{ map.leaning | length }}</span>
-  <span class="colhead__note">{{ t("Wettbewerb links") }} · {{ map.client }} {{ t("rechts") }} · {{ t("nach Ungleichgewicht sortiert") }}</span>
+  {% if map.one_sided %}
+    {{ t("Wer über %(name)s schreibt") | format(name=map.client) }}
+    <span class="n">{{ map.ranked | length }}</span>
+    <span class="colhead__note">{{ t("nach Menge sortiert") }}</span>
+  {% else %}
+    {{ t("Wer schreibt über wen") }} <span class="n">{{ map.leaning | length }}</span>
+    <span class="colhead__note">{{ t("Wettbewerb links") }} · {{ map.client }} {{ t("rechts") }} · {{ t("nach Ungleichgewicht sortiert") }}</span>
+  {% endif %}
 </div>
 
 {# An empty chart is the worst of the three possible answers here: it looks
    broken, and the two real causes need opposite responses. A map compares two
    sides — with no competitor linked there is no left-hand side to draw, and
    saying so beats a white box with a legend over it. #}
-{% if map.leaning %}
+{% if map.leaning and map.one_sided %}
+{# The collapsed form: one bar per outlet, full width, busiest first. Nothing is
+   hidden that the diverging form showed — the left column held no bar in this
+   state — and the width the axis and the empty half used to take is given to
+   the bars that do carry a number. #}
+<div class="diverge diverge--solo">
+  {% for row in map.ranked %}
+    <div class="drow">
+      <div class="drow__label" title="{{ row.source }}">{{ row.source }}</div>
+      <div class="drow__right">
+        <span class="dbar dbar--own" style="width: {{ (row.client_articles / map.widest * 100) | round(1) }}%"></span>
+        <span class="dnum">{{ row.client_articles }}</span>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+<p class="panel-hint">
+  {{ t("Sobald ein Wettbewerber hinterlegt ist, wird daraus der Vergleich: welche Medien über die anderen schreiben und über diesen Mandanten nicht.") }}
+</p>
+{% elif map.leaning %}
 <div class="diverge">
   <div class="diverge__legend">
     <span class="diverge__key"><i class="dk dk--rival"></i>{{ t("Wettbewerb") }}</span>

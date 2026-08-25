@@ -129,3 +129,60 @@ def test_a_map_with_a_real_imbalance_still_draws(factory, client):
 
     assert 'class="diverge"' in body
     assert "Kosmetik-Journal" in body
+
+
+def test_without_a_peer_group_a_busy_mandate_gets_a_ranking_not_half_a_chart(
+    factory, client
+):
+    """Freedom24: twenty-four outlets, every bar on the right, the left half blank.
+
+    The case above has nothing to plot at all. This one has plenty — it simply
+    has nothing to plot on the *left*, and the diverging form then makes four
+    promises it cannot keep: a legend for a series with no data, a lead about
+    gaps where there are none, a sort by imbalance over a column of zeroes, and
+    half the width given to an empty side. The rows are still worth reading. They
+    are a ranking of who covers this mandate, so the page says that instead.
+    """
+    with factory() as session:
+        subject = Client(name="Freedom24", aliases=[], keywords=[], alert_topics=[])
+        session.add(subject)
+        session.flush()
+        _covered(session, subject, "Manager Magazin", 6)
+        _covered(session, subject, "Capital", 2)
+        session.commit()
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/map").text
+    flat = " ".join(body.split())
+
+    assert "diverge--solo" in body
+    assert "Wer über Freedom24 schreibt" in flat
+    assert "nach Menge sortiert" in flat
+    # Neither half of what cannot be drawn is advertised.
+    assert "diverge__legend" not in body
+    assert "nach Ungleichgewicht sortiert" not in flat
+    # Busiest first — the ranking's only claim, and the reverse of the order the
+    # imbalance sort produces when every row leans the same way.
+    assert flat.index("Manager Magazin") < flat.index("Capital")
+
+
+def test_a_peer_group_still_gets_the_two_sided_chart(factory, client):
+    """The collapse must not swallow the comparison it stands in for."""
+    with factory() as session:
+        subject = Client(name="IB-7", aliases=[], keywords=[], alert_topics=[])
+        rival = Client(
+            name="Beauty Rival", aliases=[], keywords=[], alert_topics=[],
+            is_competitor=True,
+        )
+        session.add_all([subject, rival])
+        session.flush()
+        subject.competitors.append(rival)
+        _covered(session, rival, "Kosmetik-Journal", 4)
+        _covered(session, subject, "Kosmetik-Journal", 1)
+        session.commit()
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/map").text
+
+    assert "diverge--solo" not in body
+    assert "diverge__legend" in body

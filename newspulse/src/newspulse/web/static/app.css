@@ -1594,6 +1594,10 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .drow--gap .drow__label { font-weight: 700; color: var(--alert); }
+/* The collapsed map: no comparison group, so no left half and no axis. The
+   label keeps its column and the bar takes everything the empty side and the
+   centre line used to hold. */
+.diverge--solo .drow { grid-template-columns: 170px 1fr; }
 .drow__left { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .drow__right { display: flex; align-items: center; gap: 6px; }
 .drow__axis { width: 1px; height: 16px; background: var(--line); }

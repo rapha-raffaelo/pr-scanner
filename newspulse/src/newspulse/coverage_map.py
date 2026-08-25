@@ -90,6 +90,33 @@ class CoverageMap:
         return tuple(r for r in self.rows if r.total >= _MIN_RIVAL_ARTICLES)[:24]
 
     @property
+    def one_sided(self) -> bool:
+        """True when nothing in the window was written about the competition.
+
+        Either no competitor is linked to this mandate, or none of them was
+        covered. The diverging view then has no left-hand side to draw: half the
+        width stays blank, the legend advertises a series with no data, the lead
+        promises "gaps" where there are none, and "sorted by imbalance" describes
+        a sort over a column of zeroes. The rows are still worth reading — they
+        are a ranking rather than a comparison, and saying which of the two this
+        is costs one property.
+        """
+        return not any(row.rival_articles for row in self.leaning)
+
+    @property
+    def ranked(self) -> tuple[MapRow, ...]:
+        """The same outlets by how much they write about the client, busiest first.
+
+        :attr:`leaning` sorts by the imbalance, which is the right question only
+        while there are two sides. With one side that sort runs from the outlet
+        writing about the mandate least to the one writing most — backwards for
+        the only question left, which is who covers us.
+        """
+        return tuple(
+            sorted(self.leaning, key=lambda row: row.client_articles, reverse=True)
+        )
+
+    @property
     def gaps(self) -> tuple[MapRow, ...]:
         """Outlets writing about the competition and not about the client."""
         return tuple(row for row in self.rows if row.is_gap)

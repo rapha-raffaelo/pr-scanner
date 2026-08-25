@@ -318,6 +318,20 @@ _EN: dict[str, str] = {
     "Pitch-Lücken": "Pitch gaps",
     "berichten über Wettbewerber, nie über": "cover competitors, never",
     "Wer schreibt über wen": "Who writes about whom",
+    # The same page with no comparison group: a ranking, not a comparison. Every
+    # string here exists because the diverging wording promises a left-hand side
+    # that cannot be drawn.
+    "Wer über %(name)s schreibt": "Who writes about %(name)s",
+    "nach Menge sortiert": "sorted by volume",
+    "Welche Medien in den letzten %(days)s Tagen über diesen Mandanten geschrieben haben, und wie oft.":
+        "Which outlets wrote about this mandate in the last %(days)s days, and "
+        "how often.",
+    "Für eine Pitch-Liste — Medien, die über den Wettbewerb schreiben und über ihn nicht — fehlt noch eine Vergleichsgruppe.":
+        "A pitch list — outlets that write about the competition and not about "
+        "them — needs a comparison group first.",
+    "Sobald ein Wettbewerber hinterlegt ist, wird daraus der Vergleich: welche Medien über die anderen schreiben und über diesen Mandanten nicht.":
+        "Once a competitor is linked this becomes the comparison: which outlets "
+        "write about the others and not about this mandate.",
     "Wettbewerb links": "competitors left",
     "rechts": "right",
     "nach Ungleichgewicht sortiert": "sorted by imbalance",
