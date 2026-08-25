@@ -1080,3 +1080,26 @@ def test_a_stale_run_says_so_in_the_header(factory, client, monkeypatch):
     body = client.get("/today").text
 
     assert "seit 3 Tagen kein Lauf" in body
+
+
+def test_picking_a_mandate_puts_its_name_in_the_heading(factory, client):
+    """The heading has to say whose day is on screen.
+
+    Filtering to one mandate turns this page into that mandate's workspace — the
+    tab strip below it is the mandate's own — but the heading kept saying
+    "Heute", so the one line that names the subject named the page instead.
+    Reported as: clicking a mandate does not open the mandate.
+    """
+    with factory() as session:
+        _seed_for(session, "Arrakis", "Arrakis startet Vaults", "https://ex.de/a1", days_ago=2)
+        session.commit()
+        arrakis = session.scalar(select(Client).where(Client.name == "Arrakis")).id
+
+    head = client.get(
+        "/today", params={"date": _TEST_DAY.isoformat(), "client": arrakis}
+    ).text.split('tbar__title', 1)[1].split("</h1>", 1)[0]
+
+    assert "Arrakis" in head
+    # The portfolio's own day belongs to nobody, and must not borrow a name.
+    plain = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
+    assert "Arrakis" not in plain.split("tbar__title", 1)[1].split("</h1>", 1)[0]

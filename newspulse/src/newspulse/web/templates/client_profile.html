@@ -16,7 +16,7 @@
   .prof__row { border-top: 1px solid var(--line); padding: var(--s4) 0; }
   .prof__row--long { grid-column: 1 / -1; }
   .prof__label {
-    font-size: var(--t-micro); font-weight: 600; letter-spacing: 0.08em;
+    font-size: var(--t-caption); font-weight: 600; letter-spacing: 0.08em;
     text-transform: uppercase; color: var(--muted); margin-bottom: var(--s2);
     display: flex; align-items: baseline; gap: var(--s2);
   }
@@ -25,9 +25,9 @@
   /* Provenance. A machine-filled line says so and links the page it was read
      from; a line the consultant typed says nothing, because his own knowledge
      needs no citation. */
-  .prof__src { margin-top: var(--s2); font-size: var(--t-micro); color: var(--faint); }
+  .prof__src { margin-top: var(--s2); font-size: var(--t-caption); color: var(--faint); }
   .prof__src a { color: var(--muted); }
-  .prof__hint { font-size: var(--t-micro); color: var(--faint); font-weight: 400;
+  .prof__hint { font-size: var(--t-caption); color: var(--faint); font-weight: 400;
                 letter-spacing: 0; text-transform: none; }
   .prof__done { color: var(--good); }
 
@@ -36,24 +36,24 @@
   .fillbar .panel-hint { margin: 0; max-width: 52ch; }
   /* The check date sits with the button that refreshes it, and is pushed to the
      far end so the eye finds it without it competing with the button. */
-  .fillbar__checked { margin-left: auto; font-size: var(--t-micro); color: var(--faint); }
+  .fillbar__checked { margin-left: auto; font-size: var(--t-caption); color: var(--faint); }
   .props { border-top: 1px solid var(--ink); padding-top: var(--s4); margin-bottom: var(--s5); }
   .props__row { display: flex; gap: var(--s3); align-items: flex-start;
                 padding: var(--s3) 0; border-top: 1px solid var(--line); }
   .props__row:first-of-type { border-top: 0; }
-  .props__key { flex: 0 0 168px; font-size: var(--t-micro); font-weight: 600;
+  .props__key { flex: 0 0 168px; font-size: var(--t-caption); font-weight: 600;
                 letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-  .props__val { flex: 1; font-size: var(--t-small); }
+  .props__val { flex: 1; font-size: var(--t-footnote); }
   .props__act { display: flex; gap: var(--s3); margin-top: var(--s4); }
   /* The value a kick-off answer replaced (DEC-2). Set back and quieter than the
      line above it: it is what the web said, kept legible while the disagreement
      stands, not a second answer competing for the reader's eye. */
   .prof__old { margin-top: var(--s2); padding-left: var(--s3);
-               border-left: 2px solid var(--line); font-size: var(--t-micro);
+               border-left: 2px solid var(--line); font-size: var(--t-caption);
                color: var(--faint); }
   .prof__old form { display: inline; }
   .foundation { display: flex; align-items: baseline; gap: var(--s3);
-                flex-wrap: wrap; font-size: var(--t-small); color: var(--muted); }
+                flex-wrap: wrap; font-size: var(--t-footnote); color: var(--muted); }
   /* Old above, new below, and the old one quiet: the decision is about what
      changed, so the value being argued against is context and not the headline.
      Struck through only when there is something to strike: the same rule on the

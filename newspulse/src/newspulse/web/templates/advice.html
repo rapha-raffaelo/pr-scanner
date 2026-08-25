@@ -13,35 +13,82 @@
      now comes from the system in app.css; this block used to redeclare them as
      bordered cards and quietly opted this page out of the redesign. */
   .sect__head { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s1); }
-  .sect__title { font-size: var(--t-lead); font-weight: 600; }
-  .sect__n { font-size: var(--t-small); color: var(--ink); font-weight: 600; }
-  .sect__src { font-size: var(--t-micro); text-transform: uppercase; letter-spacing: 0.06em;
+  .sect__title { font-size: var(--t-title3); font-weight: 600; }
+  .sect__n { font-size: var(--t-footnote); color: var(--ink); font-weight: 600; }
+  .sect__src { font-size: var(--t-caption); text-transform: uppercase; letter-spacing: 0.06em;
                color: var(--faint); font-weight: 600; margin-left: auto; }
-  .sect__lead { font-size: var(--t-small); color: var(--muted); margin-bottom: var(--s4); max-width: 72ch; }
+  .sect__lead { font-size: var(--t-footnote); color: var(--muted); margin-bottom: var(--s4); max-width: 72ch; }
   .sect__act { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
                padding-bottom: var(--s4); margin-bottom: var(--s4); border-bottom: 1px solid var(--line); }
   .sect__act .panel-hint { margin: 0; }
-  .sect__when { display: block; margin-top: var(--s1); font-size: var(--t-micro); color: var(--muted); }
+  .sect__when { display: block; margin-top: var(--s1); font-size: var(--t-caption); color: var(--muted); }
   .situation { font-size: var(--t-body); line-height: 1.6; margin-bottom: var(--s1); }
-  .sect__meta { font-size: var(--t-micro); color: var(--muted); }
+  .sect__meta { font-size: var(--t-caption); color: var(--muted); }
   .handover__lead { font-size: var(--t-body); margin-bottom: var(--s1); }
-  .handover__why { font-size: var(--t-small); color: var(--muted); margin-bottom: var(--s3); max-width: 68ch; }
-  .handover__act { font-size: var(--t-small); color: var(--muted); }
+  .handover__why { font-size: var(--t-footnote); color: var(--muted); margin-bottom: var(--s3); max-width: 68ch; }
+  .handover__act { font-size: var(--t-footnote); color: var(--muted); }
   .handover__act a { color: var(--accent); font-weight: 600; }
+
+  /* One occasion, one card. The system's .impulse is a flat panel on --card with
+     no border, which is right on the Today page, where it holds four lines and
+     the next one starts an obvious distance below. Here one card carries an
+     idea, seven formats and a send ledger, and the card after it began with no
+     visible seam at all. Reported as: I cannot tell what is an idea and what is
+     the draft belonging to it. */
+  #positioning .impulse { border: 1px solid var(--line-strong); border-radius: var(--radius);
+                          padding: var(--s6); margin-bottom: var(--s6); }
+  /* The card's rubric. The index is not decoration: it is the only thing that
+     says a page holding three ideas holds three, and it stays readable when
+     every stage below it is folded shut. */
+  .imp__rub { display: flex; align-items: baseline; gap: var(--s2); margin-bottom: var(--s2); }
+  .imp__ix { font-size: var(--t-caption); text-transform: uppercase; letter-spacing: 0.06em;
+             font-weight: 700; color: var(--accent); }
+  .imp__when { font-size: var(--t-caption); color: var(--faint); }
+  .imp__rub .impulse__copy { margin-left: auto; }
+  /* The occasion's own headline, at the size a card title deserves. It shared
+     --t-footnote with the Today column, where it is one line in a rail; here it
+     is the title of everything below it. */
+  #positioning .impulse__subject { font-size: var(--t-title3); line-height: 1.3; margin-bottom: var(--s4); }
+
+  /* Three named stages: the idea, the texts written from it, and what was sent.
+     The card used to run all three together with a single hairline between, so
+     the thesis and the press release it produced were the same visual object.
+     The rubric answers "which of these is which" without being read. */
+  .stage { margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line); }
+  .stage--first { margin-top: var(--s3); padding-top: 0; border-top: 0; }
+  .stage__h { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
+  .stage__n { font-size: var(--t-caption); text-transform: uppercase; letter-spacing: 0.07em;
+              font-weight: 700; color: var(--ink); }
+  .stage__st { font-size: var(--t-caption); color: var(--muted); }
+
+  /* The two halves of the send pane. Quieter than a stage rubric — they divide
+     one stage rather than starting a new one — but loud enough that the composer
+     and the ledger are not read as one list. */
+  .send__rub { font-size: var(--t-caption); text-transform: uppercase; letter-spacing: 0.06em;
+               font-weight: 600; color: var(--muted); margin-bottom: var(--s2); }
+  .send__rub--led { margin-top: var(--s5); padding-top: var(--s3); border-top: 1px solid var(--line); }
 
   /* The package (DEC-1). Page-local because no other template renders it: a
      class two pages share belongs in app.css, and one page's own layout does
      not. Every name here is prefixed so it cannot collide with the system's.
 
-     Sizes come off the scale app.css actually defines, which the mock uses too.
-     The rules above this block ask for --t-small and --t-micro, which are on no
-     :root anywhere — an undefined custom property makes the declaration invalid
-     at computed-value time, so those font sizes silently inherit. That is older
-     than this package and is left where it is rather than fixed by halves; the
-     package itself does not join in. */
-  .pack { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--line); }
-  .pack__head { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
-  .pack__t { font-size: var(--t-subhead); font-weight: 600; }
+     Sizes come off the scale app.css actually defines. The rules above this
+     block used to ask for --t-small, --t-micro and --t-lead, which are on no
+     :root anywhere — an undefined custom property makes the whole declaration
+     invalid at computed-value time, so every one of those font sizes silently
+     fell back to body text. That flattened the page: the section title, its
+     explanatory line and the meta beside it all rendered at 14px, which is why
+     nothing on this page read as a heading. Mapped onto the real scale
+     (title3/footnote/caption); client_rivals and client_profile had the same
+     three ghosts and were fixed with it. */
+  /* The package is stage two, and was already drawn as one — its own top rule,
+     its own head. What it lacked was a rubric that matched the stage above, so
+     "Das Paket zu diesem Anlass" read as a sentence inside the idea rather than
+     as the heading of everything written from it. */
+  .pack { margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line); }
+  .pack__head { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
+  .pack__t { font-size: var(--t-caption); text-transform: uppercase; letter-spacing: 0.07em;
+             font-weight: 700; color: var(--ink); }
   .pack__st { font-size: var(--t-caption); color: var(--muted); }
   .pack__acts { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
   .pack__off { font-size: var(--t-caption); color: var(--muted); margin-bottom: var(--s2); }
@@ -238,19 +285,29 @@
   <div class="sect__body">
     {% for angle in angles %}
       <article class="impulse" id="impulse-{{ angle.id }}">
-        <div class="impulse__head">
-          <span class="clichip">{{ angle.generated_at | de_short_date }}</span>
+        <div class="impulse__head imp__rub">
+          <span class="imp__ix">{{ t("Impuls") }} {{ loop.index }}/{{ angles | length }}</span>
+          <span class="imp__when">{{ angle.generated_at | de_short_date }}</span>
           <button type="button" class="impulse__copy" data-copy-from="impulse-text-{{ angle.id }}">{{ t("Kopieren") }}</button>
         </div>
-        {% if angle.subject %}<div class="impulse__subject">{{ angle.subject }}</div>{% endif %}
-        <div class="impulse__text" id="impulse-text-{{ angle.id }}">{{ angle.message }}</div>
-        {% if angle.thesis %}
-          <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ angle.thesis }}</div>
-        {% endif %}
-        {% if angle.overclaim %}
-          <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
-        {% endif %}
-        {{ provenance.brain_stamp(angle.brain_version, t) }}
+        {% if angle.subject %}<h2 class="impulse__subject">{{ angle.subject }}</h2>{% endif %}
+
+        {# Stage one: the occasion itself, and nothing written from it. Everything
+           in here answers "why is there something to say"; everything in the two
+           stages below is a text that already says it. #}
+        <div class="stage stage--first">
+          <div class="stage__h">
+            <span class="stage__n">{{ t("Die Idee") }}</span>
+            <span class="stage__st">{{ t("aus dem Themen-Radar") }}</span>
+          </div>
+          <div class="impulse__text" id="impulse-text-{{ angle.id }}">{{ angle.message }}</div>
+          {% if angle.thesis %}
+            <div class="impulse__thesis"><span class="impulse__label">{{ t("These") }}</span> {{ angle.thesis }}</div>
+          {% endif %}
+          {% if angle.overclaim %}
+            <div class="impulse__overclaim"><span class="impulse__label">{{ t("Nicht die These") }}</span> {{ angle.overclaim }}</div>
+          {% endif %}
+          {{ provenance.brain_stamp(angle.brain_version, t) }}
 
         {# The lead of this page promises that every claim names the coverage it
            rests on. This card — the *detailed* view of a draft, reached from the
@@ -285,6 +342,7 @@
           {% endif %}
           <p class="impulse__caveat">{{ t("Entwurf aus Schlagzeilen und Feed-Anrissen, nicht aus den vollständigen Artikeln. Vor dem Versand prüfen.") }}</p>
         </details>
+        </div>{# /stage: die Idee #}
 
         {# DEC-1, "ein Anlass, ein Paket": the formats are a strip on the impulse
            rather than a folder somewhere else, because that is how a communication
@@ -566,6 +624,27 @@
 
           <div class="fmtpane" id="pane-{{ angle.id }}-anschreiben" role="tabpanel"
                aria-labelledby="tab-{{ angle.id }}-anschreiben" tabindex="0">
+        {# Stage three. This pane is the only one that can put a text in front of
+           a journalist, and it used to open straight onto a recipient dropdown
+           with the letters that already exist running on below it, unlabelled —
+           writing a new one and reading what was already sent were one
+           undifferentiated column. Two rubrics separate them, and the head says
+           what the ledger holds before it is scrolled.
+           ``released_at`` rather than the state enum for the count: a released
+           letter has a timestamp whatever outcome was recorded on it later. #}
+        {% set gone = written | rejectattr("released_at", "none") | list | length %}
+        <div class="stage__h">
+          <span class="stage__n">{{ t("Der Versand") }}</span>
+          <span class="stage__st">
+            {% if written %}
+              {{ written | length }} {{ t("geschrieben") }}
+              <span class="dot">·</span> {{ gone }} {{ t("verschickt") }}
+            {% else %}
+              {{ t("noch nichts geschrieben") }}
+            {% endif %}
+          </span>
+        </div>
+        <div class="send__rub">{{ t("Neue Nachricht") }}</div>
         <div class="makemsg">
           <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/message"
                 class="makemsg__form">
@@ -620,6 +699,9 @@
           <p class="sect__empty sect__refusal"><strong>{{ t("Keine Nachricht erzeugt.") }}</strong> {{ message_error }}</p>
         {% endif %}
 
+        {% if written %}
+          <div class="send__rub send__rub--led">{{ t("Geschriebene Nachrichten") }}</div>
+        {% endif %}
         {% for msg in written %}
           {# The address this letter would go to, or why there is none. Resolved
              once for the whole card: the head names it, the confirmation repeats

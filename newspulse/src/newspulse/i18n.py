@@ -424,6 +424,14 @@ _EN: dict[str, str] = {
     "Formate": "Formats",
     "Formaten geschrieben": "formats written",
     "noch nichts geschrieben": "nothing written yet",
+    # The three stages of one impulse card: the occasion, the texts written from
+    # it, and what left the house. Rubrics, so they stay short in both languages.
+    "Die Idee": "The idea",
+    "aus dem Themen-Radar": "from the topic radar",
+    "Der Versand": "Sending",
+    "Neue Nachricht": "New message",
+    "Geschriebene Nachrichten": "Messages written",
+    "verschickt": "sent",
     "Alles kopieren": "Copy all",
     "Fehlende schreiben": "Write the missing ones",
     "Wird geschrieben": "Writing",

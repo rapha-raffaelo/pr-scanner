@@ -60,7 +60,11 @@
   </div>
 {% endmacro %}
 
-{% block pagetitle %}{{ translator(request)("Heute") }}{% endblock %}
+{# Reached from a mandate — a chip on this page, or its own workspace tab — the
+   title says whose day this is, the same way every other workspace tab does. The
+   word "Heute" is not lost: it is the active tab in the strip right below, which
+   is where it belongs once the heading has a mandate to name. #}
+{% block pagetitle %}{% if workspace_client %}{% set client = workspace_client %}{% include "partials/client_title.html" %}{% else %}{{ translator(request)("Heute") }}{% endif %}{% endblock %}
 
 {% block content %}
 {% set t = translator(request) %}
