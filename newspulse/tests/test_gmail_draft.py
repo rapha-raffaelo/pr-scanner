@@ -753,15 +753,25 @@ def test_the_card_offers_the_two_click_send_and_names_the_address(
     assert _ADDRESS in body
 
 
-def test_the_card_says_the_send_permission_changes_the_grundannahme(
+def test_the_card_says_which_mailbox_is_connected_and_what_it_may_do(
     mailbox, gmail, web, session
 ):
+    """The status line stays. The band that used to argue with it does not.
+
+    A red band explaining that the send permission reverses this product's
+    founding sentence is addressed to whoever grants the permission. The strip it
+    sat under renders on every mandate's Impulse page, so once the permission was
+    granted the argument was repeated at a reader who had already decided — in
+    red, where red means something is wrong. What the reader does need is which
+    mailbox this is and whether it can send, and the strip says both.
+    """
     row = _letter(session)
 
     body = _card(web, row)
 
-    assert "Diese Variante ändert die Grundannahme." in body
     assert "Postfach verbunden" in body and _MAILBOX in body
+    assert "lesen und senden" in body
+    assert "Grundannahme" not in body
 
 
 def test_a_sent_letter_links_into_its_thread_and_loses_the_kopieren_button(

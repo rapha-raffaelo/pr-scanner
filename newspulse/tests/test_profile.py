@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -513,3 +514,41 @@ def test_the_client_day_tab_lands_on_the_filtered_day(factory, web):
 
     assert resp.status_code == 303
     assert resp.headers["location"] == f"/today?client={client_id}"
+
+
+def test_the_fill_button_answers_and_gives_its_lock_back(web, session, monkeypatch):
+    """The endpoint that shipped a NameError to production with no test on it.
+
+    Nothing exercised this route, so routing it through ``spawn.start_or_release``
+    without importing ``spawn`` was green in the suite and 500ed on the first
+    click in production. The second failure is the worse one and is what this
+    test is really for: the exception fired *after* the module-level lock was
+    taken, so it was never given back. Every later click found the lock held,
+    skipped the branch and redirected as though it had worked — the button did
+    nothing at all, for every mandate, until the process restarted. A 303 alone
+    would not have caught that, which is why the lock is asserted too.
+    """
+    from newspulse.web.routes import profile as route
+
+    client = _client(session)
+    started = threading.Event()
+    seen: list[int] = []
+
+    def _record(client_id: int) -> None:
+        """The worker's half of the contract: release whatever else happens."""
+        try:
+            seen.append(client_id)
+        finally:
+            route._researching.release()
+            started.set()
+
+    monkeypatch.setattr(route, "_run_research", _record)
+
+    answer = web.post(f"/client/{client.id}/profil/fill", follow_redirects=False)
+
+    assert answer.status_code == 303
+    assert answer.headers["location"] == f"/client/{client.id}/profil"
+    assert started.wait(timeout=2), "the worker was never started"
+    assert seen == [client.id]
+    assert route._researching.acquire(blocking=False), "the lock never came back"
+    route._researching.release()

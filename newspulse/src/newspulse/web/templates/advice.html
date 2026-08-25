@@ -148,14 +148,6 @@
   .mailbar__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--alert); flex: none; }
   .mailbar b { color: var(--ink-2); font-weight: 600; }
   .mailbar__r { margin-left: auto; display: flex; gap: 10px; align-items: center; }
-  /* Red, and as loud as the button it explains. The Grundannahme says no engine
-     sends anything to a journalist; with the send scope granted, that sentence
-     no longer holds, and the screen has to say so rather than let the change
-     arrive silently as a new button. */
-  .warnband { background: rgba(215, 0, 21, .07); border: 1px solid rgba(215, 0, 21, .30);
-              border-radius: var(--radius); padding: 12px var(--s4); margin-bottom: var(--s5);
-              font-size: var(--t-footnote); color: #8a0010; max-width: 82ch; }
-  .warnband strong { color: #6b000c; }
   .btn--send { background: var(--alert); color: #fff; }
   .btn--send:hover:not(:disabled) { background: #b91c1c; }
   /* "This letter left because a button here was pressed." Distinct from the blue
@@ -221,17 +213,6 @@
     <span class="dot">·</span> <b>{% if mailbox.may_send %}{{ t("lesen und senden") }}{% else %}{{ t("nur lesen") }}{% endif %}</b>
     <span class="mailbar__r"><a href="/settings#gmail">{{ t("Einstellungen") }}</a></span>
   </div>
-  {# Not decoration. DEC-4 option C is the one decision in this product that
-     contradicts its own founding sentence, and the screen where it is exercised
-     is where that has to be readable — but only where it is *exercised*: on a
-     mailbox that was never granted the send permission, nothing leaves the
-     house and the warning would be describing a power this build does not have. #}
-  {% if mailbox.may_send %}
-    <div class="warnband">
-      <strong>{{ t("Diese Variante ändert die Grundannahme.") }}</strong>
-      {{ t("Bisher gilt: keine Engine verschickt etwas an einen Journalisten. Mit Sendrecht verlässt ein Text das Haus, weil in RauteOS ein Knopf gedrückt wurde, nicht weil jemand in seinem eigenen Postfach auf Senden geht. Der Unterschied ist klein am Bildschirm und groß, wenn eine Nachricht falsch war.") }}
-    </div>
-  {% endif %}
 {% endif %}
 {% if gmail_error %}
   <p class="sect__empty sect__refusal"><strong>{{ t("Nicht verschickt.") }}</strong> {{ gmail_error }}</p>

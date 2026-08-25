@@ -561,10 +561,12 @@ _EN: dict[str, str] = {
         "Nothing leaves from here. The button records that you read the letter, "
         "released it and sent it yourself.",
     # --- The letter goes out through Gmail (DEC-4 option C) -------------------
-    # The strip above the impulses, and the warning that belongs with it. The
-    # warning is not boilerplate: with the send scope granted, the product's own
-    # founding sentence no longer holds, and the screen where that is exercised
-    # is where it has to be readable.
+    # The strip above the impulses: which mailbox this is and what it may do.
+    # A band under it used to argue that granting the send permission reverses
+    # the product's founding sentence. True, and it belonged to whoever grants
+    # it — but the strip renders on every mandate's Impulse page, so once the
+    # permission was granted the argument was repeated at a reader who had
+    # already made the decision, in red, where red means something is wrong.
     "Postfach verbunden": "Mailbox connected",
     # One string, not fragments — same reason as the release trail below: "lesen
     # und" plus "senden" is two English words that only happen to fall in this
@@ -574,13 +576,6 @@ _EN: dict[str, str] = {
     #: What the same strip says on a connection that was never granted the send
     #: permission — every mailbox connected before DEC-4's send path.
     "nur lesen": "read only",
-    "Diese Variante ändert die Grundannahme.":
-        "This variant changes the founding assumption.",
-    "Bisher gilt: keine Engine verschickt etwas an einen Journalisten. Mit Sendrecht verlässt ein Text das Haus, weil in RauteOS ein Knopf gedrückt wurde, nicht weil jemand in seinem eigenen Postfach auf Senden geht. Der Unterschied ist klein am Bildschirm und groß, wenn eine Nachricht falsch war.":
-        "Until now the rule was: no engine sends anything to a journalist. With "
-        "the send permission, a text leaves the building because a button was "
-        "pressed in RauteOS, not because somebody hit send in their own mailbox. "
-        "The difference is small on screen and large when a message was wrong.",
     "Freigeben und senden": "Release and send",
     "Ja, senden": "Yes, send",
     # ("Abbrechen", the confirmation's second control, is already translated

@@ -15,6 +15,7 @@ from ... import profile as profiles
 from ... import profile_refresh
 from ...db import get_session
 from ...models import Client, ClientFact, OnboardingAnswer, ProfileProposal
+from .. import spawn
 from ..app import get_db, templates
 from ..runlock import guard as _run_guard
 from .today import _fetch_last_run, _local_tz

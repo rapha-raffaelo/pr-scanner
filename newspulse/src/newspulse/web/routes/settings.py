@@ -83,6 +83,7 @@ from ...models import (
     Setting,
 )
 from .. import redirects, runlock, themework
+from .. import spawn
 from ..app import get_db, templates
 
 router = APIRouter()
@@ -1207,9 +1208,17 @@ def trigger_run_route(
     # daemon=True: a local single-user tool should not refuse to shut down because
     # a sweep is mid-flight. An interrupted run leaves its `runs` row unfinished,
     # which the header already renders as "Lauf läuft…".
-    threading.Thread(
-        target=_execute_run, args=(days,), daemon=True, name="newspulse-run"
-    ).start()
+    #
+    # Through the helper, because the guard is already taken by the line above and
+    # only the worker gives it back: a thread that refuses to start would hold it
+    # for the life of the process and every later run would be refused with "Es
+    # läuft bereits ein Lauf", correctly and uselessly.
+    spawn.start_or_release(
+        _execute_run,
+        args=(days,),
+        name="newspulse-run",
+        release=_run_guard.release,
+    )
     # Return to where the click came from — the header button is on every page,
     # and bouncing the reader to Settings would lose their place. Only ever a
     # same-app path: the value comes from a form field, so an absolute URL here
