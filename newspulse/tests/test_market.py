@@ -508,7 +508,57 @@ def test_a_speaker_deadline_inside_two_weeks_is_marked(factory, client):
     assert "sig__deadline--soon" in body
     # The mark says what it is marked by. "Läuft ab" beside a date nine days out
     # is not something a reader can check against anything.
-    assert "läuft in unter 2 Wochen ab" in body
+    assert "läuft in höchstens 2 Wochen ab" in body
+
+
+def test_a_deadline_exactly_two_weeks_out_does_not_contradict_the_countdown(
+    factory, client
+):
+    """The boundary the mark and the copy have to agree on.
+
+    Fourteen days is inside the threshold, so the row is marked — and the
+    countdown beside it reads "in 2 Wochen", because two weeks is what fourteen
+    days is. A mark reading "läuft in unter 2 Wochen ab" there argued with the
+    number printed next to it, on exactly the day the row matters most.
+    """
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.VERANSTALTUNG, "Kongress genau an der Grenze",
+            effective_at=_in(60), deadline_at=_in(14),
+        )
+        subject_id = subject.id
+
+    body = _markup(client.get(f"/client/{subject_id}/market").text)
+
+    assert "sig__deadline--soon" in body, "fourteen days is within two weeks"
+    assert "in 2 Wochen" in body
+    assert "läuft in unter 2 Wochen ab" not in body
+
+
+def test_a_speaker_deadline_that_has_closed_reads_as_closed(factory, client):
+    """A shut door is a different answer from no door at all.
+
+    The event is still months away, so it stays on the calendar. Dropping its
+    deadline because the deadline is behind us made it look like a conference that
+    never invited speakers — and "you cannot get on this stage any more" and "this
+    stage has no open call" send a consultant to different work.
+    """
+    with factory() as session:
+        subject = _client(session)
+        _signal(
+            session, subject, SignalKind.VERANSTALTUNG, "Kongress mit geschlossenem Aufruf",
+            effective_at=_in(40), deadline_at=_in(-3),
+        )
+        subject_id = subject.id
+
+    body = _markup(client.get(f"/client/{subject_id}/market").text)
+
+    assert "Kongress mit geschlossenem Aufruf" in body, "the event itself is still ahead"
+    assert "Einreichfrist" in body
+    assert _de(-3) in body
+    assert "abgelaufen" in body
+    assert "sig__deadline--soon" not in body, "a shut door is not an instruction"
 
 
 def test_the_countdown_says_which_of_an_events_two_dates_it_counts_to(factory, client):

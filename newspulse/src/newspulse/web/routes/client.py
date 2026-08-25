@@ -631,7 +631,12 @@ _MARKET_TOP = 12
 #: that is the shortest lead time in which a consultant can still get a client to
 #: agree a statement, draft it and send it — inside it the row is not a date any
 #: more, it is an instruction.
-_DEADLINE_SOON = dt.timedelta(days=14)
+#:
+#: Whole days rather than a ``timedelta``, because both readers of it want days:
+#: the comparison, and the copy that names the threshold. Kept as a ``timedelta``
+#: it had to be unwrapped twice, and the round-trip through ``.days // 7`` is what
+#: let the marker say "in under 2 weeks" beside a countdown reading "in 2 weeks".
+_DEADLINE_SOON_DAYS = 14
 
 #: Below a week, remaining time is stated in days. "In 0 Wochen" is not German,
 #: and rounding three days up to a week would overstate the time a reader has.
@@ -696,10 +701,16 @@ class SignalRow:
 
     @property
     def deadline_soon(self) -> bool:
-        """Whether the deadline is inside :data:`_DEADLINE_SOON`."""
+        """Whether the deadline is within :data:`_DEADLINE_SOON_DAYS`.
+
+        Inclusive: a door closing on the fourteenth day is exactly the case the
+        threshold was chosen for, so it is marked. The copy beside it says "at
+        most", not "under", for that reason — the two have to agree at the
+        boundary or the row contradicts the countdown printed next to it.
+        """
         return (
             self.until_deadline is not None
-            and self.until_deadline.days <= _DEADLINE_SOON.days
+            and self.until_deadline.days <= _DEADLINE_SOON_DAYS
         )
 
     @property
@@ -728,8 +739,16 @@ class SignalRow:
 
     @property
     def next_at(self) -> dt.datetime | None:
-        """The date :attr:`next_in` counts down to."""
-        return self.deadline_at if self.next_is_deadline else self.effective_at
+        """The date :attr:`next_in` counts down to.
+
+        Falls back to the deadline rather than returning ``None`` beside a
+        rendered countdown: today no such row reaches a template, because
+        :func:`_forward` drops the rows this could happen to, but that is the
+        caller's property and not this one's.
+        """
+        if self.next_is_deadline:
+            return self.deadline_at
+        return self.effective_at or self.deadline_at
 
 
 @dataclass(frozen=True, slots=True)
@@ -1158,7 +1177,7 @@ def market_view(
                 if signals
                 else None
             ),
-            "deadline_weeks": _DEADLINE_SOON.days // _DAYS_PER_WEEK,
+            "deadline_weeks": _DEADLINE_SOON_DAYS // _DAYS_PER_WEEK,
             "last_run": _fetch_last_run(session),
             "header_date": now.astimezone(tz).date(),
         },

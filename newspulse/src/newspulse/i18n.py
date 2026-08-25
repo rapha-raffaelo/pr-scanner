@@ -1100,8 +1100,15 @@ _EN: dict[str, str] = {
     "Frist": "Deadline",
     "Einreichfrist": "Submission deadline",
     # Names the threshold it is marked by rather than implying one, so the line
-    # stays true if the two weeks in ``_DEADLINE_SOON`` ever move.
-    "läuft in unter %(weeks)s Wochen ab": "closes in under %(weeks)s weeks",
+    # stays true if the two weeks in ``_DEADLINE_SOON_DAYS`` ever move. "Höchstens"
+    # rather than "unter", because the mark is inclusive: at exactly the threshold
+    # the countdown beside it reads "in 2 Wochen", and "in unter 2 Wochen" there
+    # contradicts it.
+    "läuft in höchstens %(weeks)s Wochen ab": "closes in %(weeks)s weeks at most",
+    # A door that has shut is printed as shut rather than dropped: on a conference
+    # still months away, no deadline at all reads as "this one never invited
+    # speakers", which is a different answer.
+    "abgelaufen": "closed",
     "ohne Datum": "undated",
     "kein Datum erkannt": "no date recognised",
     # The remaining time, in the units a consultant thinks in. Under a week it

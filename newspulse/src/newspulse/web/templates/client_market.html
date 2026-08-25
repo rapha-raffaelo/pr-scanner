@@ -53,6 +53,9 @@
   .sig__date { display: block; font-size: var(--t-caption2); font-weight: 400; color: var(--muted); }
   .sig__deadline { font-weight: 600; }
   .sig__deadline--soon { color: var(--alert); }
+  /* A door that has shut is still shown — see the deadline() macro — but it is
+     not an instruction any more, so it reads like the rest of the meta line. */
+  .sig__deadline--closed { font-weight: 400; color: var(--muted); }
   .sig__origin { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 999px; background: #eef2ff; color: #3730a3; }
   .sig__origin--suche { background: var(--warn-wash); color: var(--warn); }
 </style>
@@ -97,18 +100,29 @@
   </div>
 {% endmacro %}
 
-{# The door, on the two classes that have one. Marked when it is inside two
+{# The door, on the two classes that have one. Marked when it is within two
    weeks, which is the shortest lead time in which a statement can still be
-   agreed, drafted and sent. #}
+   agreed, drafted and sent.
+
+   A door that has already shut is still printed, as shut. Gating this on the
+   remaining time made a closed call for speakers vanish, which on a conference
+   still months away is indistinguishable from one that never invited speakers at
+   all — and those are different answers to "can this client be heard here". #}
 {% macro deadline(row, label) %}
-  {% if row.until_deadline %}
-    <span class="sig__deadline {% if row.deadline_soon %}sig__deadline--soon{% endif %}">
+  {% if row.deadline_at %}
+    <span class="sig__deadline {% if row.deadline_soon %}sig__deadline--soon{% endif %} {% if not row.until_deadline %}sig__deadline--closed{% endif %}">
       {{ label }} {{ row.deadline_at | de_date }} ·
-      {% with r = row.until_deadline %}{% include "partials/market_remaining.html" %}{% endwith %}
-      {# Named rather than implied, so the sentence stays true if _DEADLINE_SOON
-         moves: "läuft ab" beside a date eleven days out says nothing a reader can
-         check. #}
-      {% if row.deadline_soon %} · {{ t("läuft in unter %(weeks)s Wochen ab") | format(weeks=deadline_weeks) }}{% endif %}
+      {% if row.until_deadline %}
+        {% with r = row.until_deadline %}{% include "partials/market_remaining.html" %}{% endwith %}
+        {# "Höchstens", not "unter": at exactly the threshold the countdown beside
+           this reads "in 2 Wochen", and "läuft in unter 2 Wochen ab" next to it
+           contradicts it. Named rather than implied, so the sentence stays true if
+           _DEADLINE_SOON_DAYS moves — "läuft ab" beside a date eleven days out
+           says nothing a reader can check. #}
+        {% if row.deadline_soon %} · {{ t("läuft in höchstens %(weeks)s Wochen ab") | format(weeks=deadline_weeks) }}{% endif %}
+      {% else %}
+        {{ t("abgelaufen") }}
+      {% endif %}
     </span>
   {% endif %}
 {% endmacro %}
