@@ -885,11 +885,11 @@ def test_a_search_found_signal_answers_the_question_even_when_it_is_not_rendered
 ):
     """The evidence is the stored table, not the rendered list.
 
-    The rows the page shows have been narrowed twice — a muted class is not among
-    them, and the calendar has already dropped everything whose dates are behind
-    us. A mandate whose only search-found signal is a regulation that has landed
-    would otherwise look exactly like one whose search returns nothing, and be
-    told its industry term is the reason for a field that demonstrably works.
+    The rows the page shows have been narrowed by the calendar, which has already
+    dropped everything whose dates are behind us. A mandate whose only
+    search-found signal is a regulation that has landed would otherwise look
+    exactly like one whose search returns nothing, and be told its industry term
+    is the reason for a field that demonstrably works.
     """
     with factory() as session:
         subject = _client(session)
@@ -908,6 +908,34 @@ def test_a_search_found_signal_answers_the_question_even_when_it_is_not_rendered
 
     assert "Gilt seit vorletzter Woche" not in body, "it has landed; it left the calendar"
     assert "kommt in der deutschen Presse zu selten vor" not in body
+
+
+def test_a_muted_class_does_not_hide_why_the_search_half_is_missing(factory, client):
+    """The other narrowing is not a date, and waiting does not undo it.
+
+    A past-dated row comes back to the question because the table still holds it;
+    a muted class is gone from the page *and* from the sweep, so a search hit
+    inside it is evidence about nothing the reader can see. Counted anyway, one
+    muted class silenced the explanation above the two sections that were still
+    rendered — which then showed curated-only content with no word about why.
+    """
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Beauty Tech"
+        subject.field_usable = False
+        subject.field_checked_at = _NOW
+        subject.muted_signal_kinds = ["studie"]
+        session.commit()
+        _signal(
+            session, subject, SignalKind.STUDIE, "Suchtreffer in der stummen Klasse",
+            origin=SignalOrigin.SUCHE, published_at=_NOW,
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Suchtreffer in der stummen Klasse" not in body, "the class is muted"
+    assert "kommt in der deutschen Presse zu selten vor" in body
 
 
 def test_a_mandate_with_no_industry_at_all_is_told_that_and_not_something_else(

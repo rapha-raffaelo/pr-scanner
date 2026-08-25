@@ -1005,17 +1005,28 @@ class FieldGap(StrEnum):
     UNUSABLE = "unusable"
 
 
-def _has_searched_signal(session: Session, client: Client) -> bool:
-    """Whether the field search has ever produced anything for this mandate.
+def _has_searched_signal(
+    session: Session, client: Client, *, kinds: Sequence[SignalKind]
+) -> bool:
+    """Whether the field search has produced anything in the classes on show.
 
     Asked of the stored table rather than of the rows the page is about to
-    render, because the render list has been narrowed twice before it gets here:
-    a muted class is not in it at all, and the calendar has already dropped every
-    row whose dates are behind us. A mandate whose search-found signals are all
-    past-dated regulation would look, from the rendered rows alone, exactly like
-    one whose search returns nothing — and get told its industry term is the
-    reason, about a field that demonstrably works.
+    render, because the render list has been narrowed by the calendar before it
+    gets here: it has already dropped every row whose dates are behind us. A
+    mandate whose search-found signals are all past-dated regulation would look,
+    from the rendered rows alone, exactly like one whose search returns nothing —
+    and get told its industry term is the reason, about a field that demonstrably
+    works.
+
+    Narrowed by ``kinds`` all the same, because the *other* narrowing is not a
+    date and cannot be undone by waiting. A muted class is gone from the page and
+    from the sweep, so a search hit inside it is evidence about nothing a reader
+    can see: counting it let one muted class silence the explanation above the
+    two sections that were still rendered, which then showed curated-only content
+    with no word about the missing half. Pass the same list the render used.
     """
+    if not kinds:
+        return False
     return bool(
         session.scalar(
             select(
@@ -1023,6 +1034,7 @@ def _has_searched_signal(session: Session, client: Client) -> bool:
                 .where(
                     MarketSignal.client_id == client.id,
                     MarketSignal.origin == SignalOrigin.SUCHE,
+                    MarketSignal.kind.in_(kinds),
                 )
                 .exists()
             )
@@ -1137,7 +1149,12 @@ def market_view(
             # has muted all three classes renders none of them, and the route and
             # the template must agree on when the question is worth putting.
             "field_gap": (
-                _field_gap(client, searched=_has_searched_signal(session, client))
+                _field_gap(
+                    client,
+                    searched=_has_searched_signal(
+                        session, client, kinds=[SignalKind(k) for k in signals]
+                    ),
+                )
                 if signals
                 else None
             ),
