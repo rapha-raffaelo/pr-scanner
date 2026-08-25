@@ -389,6 +389,16 @@ def create_client(
     return client
 
 
+def _field_key(industry: str | None) -> str:
+    """An industry term reduced to what actually changes the probe's answer.
+
+    The probe searches the term; whitespace around it and the case of it change
+    nothing about what the German press wrote, so neither should invalidate a
+    measured verdict. See :func:`update_client`.
+    """
+    return (industry or "").strip().casefold()
+
+
 def update_client(session: Session, client_id: int, **fields) -> Client:
     """Update the given fields on a client. Raises ``LookupError`` if it does not
     exist and ``ValueError`` on an unknown field name, an empty ``name``, or an
@@ -420,6 +430,19 @@ def update_client(session: Session, client_id: int, **fields) -> Client:
         )
         if duplicate is not None:
             raise _duplicate_active_error(duplicate)
+    # A new industry term has not been measured, so the verdict about the old one
+    # is not about it. Cleared rather than carried over: the market page reads
+    # this to explain a missing search half, and a stale False would tell an
+    # operator that the word they just fixed is still the problem.
+    #
+    # Compared the way the probe would search it, so a stray trailing space or a
+    # re-capitalisation does not throw away a good answer and buy a live search
+    # per term on the next sweep. "Fintech " and "Fintech" are the same question.
+    if "industry" in fields and _field_key(fields["industry"]) != _field_key(
+        client.industry
+    ):
+        client.field_usable = None
+        client.field_checked_at = None
     for name, value in fields.items():
         setattr(client, name, value)
     session.commit()

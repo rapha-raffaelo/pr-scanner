@@ -50,7 +50,18 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import angles, config, gnews, mailsync, notify, profile_refresh, report, themes
+from . import (
+    angles,
+    config,
+    gnews,
+    industry,
+    mailsync,
+    market_sources,
+    notify,
+    profile_refresh,
+    report,
+    themes,
+)
 from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
 from .feeds import Feed, load_feeds
@@ -115,6 +126,12 @@ _MIN_RADAR_ITEMS = 3
 # night clears such a portfolio inside a week without anyone noticing the cost.
 _SETTLE_PER_SWEEP = 3
 
+# How long a measured industry term is trusted before it is measured again. The
+# probe is a live search per term, and what it measures — whether the German
+# press writes a word at all — moves over months, not overnight. Monthly keeps
+# the answer current at roughly one search per mandate per month; asking every
+# morning would spend a search a day to re-learn the same fact.
+_FIELD_RECHECK = dt.timedelta(days=30)
 # How many monthly reports one sweep is willing to draft, for the same reason
 # ``_SETTLE_PER_SWEEP`` exists: each is a model call inside the run guard, and on
 # the first of the month every mandate is due at once. What is left over is
@@ -178,6 +195,12 @@ class RunReport:
     # so a caller constructing a report positionally — every existing test — keeps
     # working, and because zero is the honest value on a day with no opening.
     angles_written: int = 0
+    # Market signals stored this sweep: studies, regulatory dates and events
+    # (see newspulse.market_sources). Defaulted for the same reason as above, and
+    # reported separately from ``new_articles`` because a signal is deliberately
+    # not an article — counting the two together is exactly the mistake the
+    # separate table exists to prevent.
+    signals_written: int = 0
 
 
 def _utcnow() -> dt.datetime:
@@ -391,6 +414,130 @@ def _fetch_topics(
         feeds_ok += 1
         pairs.extend(Candidate(item=item, client=client) for item in batch)
     return pairs, feeds_ok
+
+
+def _refresh_field_verdict(
+    session: Session, client: Client, *, fetch: FetchFeed, now: dt.datetime
+) -> None:
+    """Measure whether this mandate's industry term is one the press writes.
+
+    Here rather than on the market page, for the reason ``profile_checked_at``
+    is on the client rather than in the web process: the answer costs a live
+    search per term, and a page render is the one place that cost cannot be
+    paid. The page reads what this leaves behind (see
+    ``web.routes.client._field_gap``).
+
+    Asked at most every :data:`_FIELD_RECHECK`, and never for a mandate with no
+    term to measure or on an installation with the search switched off — the
+    probe *is* a search, and there would be nothing for the page to explain. A
+    probe that could not reach the search leaves the answer ``None`` rather than
+    ``False``: the stamp is still written, so an outage does not make every sweep
+    re-probe, but nothing is claimed about the term — an unreachable search is
+    not evidence that nobody writes a word.
+
+    Not reached at all for a mandate that has muted every class (see
+    :func:`_sweep_market`), which has one consequence worth naming: such a
+    mandate's verdict stays where it was until the *next* sweep after it unmutes
+    something, so the first page load after unmuting can only say nothing. That
+    is the right way round — an unmeasured term claims nothing rather than
+    claiming the wrong thing — and it heals itself the following morning.
+    """
+    if not config.GOOGLE_NEWS_ENABLED or not gnews.context_terms(client):
+        return
+    checked = client.field_checked_at
+    if checked is not None and now - checked < _FIELD_RECHECK:
+        return
+    try:
+        client.field_usable = industry.field_is_usable(client, fetch=fetch, now=now)
+    except Exception as exc:  # noqa: BLE001 — a probe must not cost the sweep
+        _log.warning("industry probe for %r failed: %s", client.name, exc)
+        client.field_usable = None
+    client.field_checked_at = now
+    session.commit()
+
+
+def _sweep_market(
+    session: Session,
+    clients: Sequence[Client],
+    since: dt.datetime,
+    fetch: FetchFeed,
+    now: dt.datetime,
+) -> tuple[int, list[str]]:
+    """Fetch the three market classes for every mandate. One guard per class.
+
+    Per class rather than per sweep, because the three are independent sources of
+    independent things: the regulatory calendar going dark says nothing about
+    whether the institutes published a study this morning, and a shared boundary
+    would let one dead feed take the other two down with it.
+
+    Louder than the news sweep on purpose. A feed among forty being unreachable is
+    a WARNING (:func:`newspulse.ingest.fetch_feed`); a *class* being unreachable is
+    an ERROR, because a class has one or two sources and an empty regulatory
+    calendar is indistinguishable from a quiet fortnight — the one thing a forward
+    calendar must never be wrong about.
+
+    Competitors are skipped for the reason the topic radar skips them: a yardstick
+    is tracked to compare its share of the conversation, and nobody reads it a
+    market page. A class a mandate has muted is skipped for that mandate alone,
+    and a mandate that has muted all three is skipped before any work is done for
+    it at all.
+
+    This is also where the industry term is measured (:func:`_refresh_field_verdict`),
+    because the market page is what reads the answer and a page render is the one
+    place a live search must not happen.
+
+    Returns ``(signals written, what failed)``. The failures are returned rather
+    than appended to the run's list in passing, because the caller has to do
+    something with them beyond logging: the ``runs`` row is already committed by
+    the time this runs, and a class that has been dark for a week must not keep
+    showing as a green run.
+    """
+    written = 0
+    errors: list[str] = []
+    active = market_sources.fetchers(fetch=fetch)
+    for client in clients:
+        if client.is_competitor:
+            continue
+        # A mandate that has switched off every class is skipped whole, before the
+        # dedup set is even built and before the term is measured. "Not fetched,
+        # not merely hidden" has to be true of the work done for a class as well
+        # as of its feeds — and the verdict below is only ever read above those
+        # sections, which this mandate does not render.
+        if all(client.mutes_signal(fetcher.kind) for fetcher in active):
+            continue
+        _refresh_field_verdict(session, client, fetch=fetch, now=now)
+        try:
+            seen = market_sources.already_seen(session, client, now=now)
+        except Exception as exc:  # noqa: BLE001 — one mandate must not cost the rest
+            _log.error("market dedup set for %r failed: %s", client.name, exc)
+            errors.append(f"market {client.name!r}: {exc}")
+            session.rollback()
+            continue
+        for fetcher in active:
+            # A muted class is not fetched, not merely hidden. Unlike a muted
+            # category there is no count and no report to stay honest to, so
+            # asking a dozen sources every morning for a page this mandate has
+            # switched off would buy nothing. See ``Client.mutes_signal``.
+            if client.mutes_signal(fetcher.kind):
+                continue
+            try:
+                drafts = fetcher.collect(client, since=since, now=now)
+                written += len(
+                    market_sources.store(session, client, drafts, seen=seen, now=now)
+                )
+            except Exception as exc:  # noqa: BLE001 — per-class fault boundary
+                _log.error(
+                    "market class %s for %r failed: %s; storing nothing for it",
+                    fetcher.kind.value,
+                    client.name,
+                    exc,
+                )
+                errors.append(f"market {fetcher.kind.value} for {client.name!r}: {exc}")
+                # A caught exception is not a clean session: ``store`` writes, so a
+                # failed flush would otherwise leave the transaction pending and
+                # kill the next class with an error about this one.
+                session.rollback()
+    return written, errors
 
 
 def _on_theme(items: Sequence[FeedItem], client: Client) -> list[FeedItem]:
@@ -1192,22 +1339,23 @@ def _finalize_run(
     return run
 
 
-def _record_sync_failure(
+def _record_late_failure(
     session: Session, run: Run, errors: list[str], reported: Sequence[str]
 ) -> None:
-    """Fold the mailbox's failures into the run row that is already written.
+    """Fold a post-finalize stage's failures into the run row already written.
 
-    The ``runs`` row is committed before the mailbox is touched — deliberately,
-    so a dead Google cannot cost the day's coverage — which leaves it stating
-    ``ok`` for a sweep whose last step failed. Amended here rather than by moving
-    the sync in front of the finalize: the row is the thing that must survive,
-    and a second small write is cheaper than putting it behind a network call.
+    The ``runs`` row is committed before the mailbox is read or the market classes
+    are fetched — deliberately, so somebody else's dead service cannot cost the
+    day's coverage — which leaves it stating ``ok`` for a sweep whose last steps
+    failed. Amended here rather than by moving those stages in front of the
+    finalize: the row is the thing that must survive, and a second small write is
+    cheaper than putting it behind a network call.
 
-    Downgraded to ``partial`` and never to ``failed``: the acceptance criterion
-    is that an unreachable mailbox does not fail the daily sweep, and it does not
-    — every stored row stands, nothing is rolled back, and the sweep's own work
-    is untouched. A run that already failed keeps that status; there is nothing
-    worse to say about it.
+    Downgraded to ``partial`` and never to ``failed``: the acceptance criteria are
+    that an unreachable mailbox does not fail the daily sweep and that a dark
+    market class leaves the news sweep alone, and neither does — every stored row
+    stands, nothing is rolled back, and the sweep's own work is untouched. A run
+    that already failed keeps that status; there is nothing worse to say about it.
     """
     if not reported:
         return
@@ -1234,7 +1382,7 @@ def _sync_mailbox(
     rolled back because a journalist's mail could not be read.
 
     Not failing the sweep is not the same as saying nothing. Whatever went wrong
-    is folded into the run's own errors by :func:`_record_sync_failure`, so a
+    is folded into the run's own errors by :func:`_record_late_failure`, so a
     mailbox that has been unreadable for a week shows as a partial run instead of
     a green one with a line in a log nobody tails. ``now`` is the sweep's clock:
     ``fetched_at`` says when this tool took a copy of somebody else's mail, and a
@@ -1251,9 +1399,9 @@ def _sync_mailbox(
         # A raised write leaves the transaction half-open, and every later
         # statement on this session would die with it.
         session.rollback()
-        _record_sync_failure(session, run, errors, [f"mail sync: {exc}"])
+        _record_late_failure(session, run, errors, [f"mail sync: {exc}"])
         return 0
-    _record_sync_failure(session, run, errors, report.errors)
+    _record_late_failure(session, run, errors, report.errors)
     return report.replies
 
 
@@ -1412,6 +1560,21 @@ def _run_dry(
     )
 
 
+@dataclass(slots=True)
+class _PostRun:
+    """What the stages after the ``runs`` row is written contribute to the report.
+
+    Counters only, and deliberately no status: the status lives on the ``run`` row
+    those stages may have downgraded, and reading it back off the row is what keeps
+    the report and the stored row saying the same thing.
+    """
+
+    replies: int = 0
+    signals: int = 0
+    angles: int = 0
+    profiles: int = 0
+
+
 def _settle_themes(session: Session, clients: Sequence[Client], fetch: FetchFeed) -> int:
     """Give the mandates that still have no radar one, up to the per-sweep cap.
 
@@ -1444,37 +1607,62 @@ def _settle_themes(session: Session, clients: Sequence[Client], fetch: FetchFeed
 
 def _post_run(
     session: Session,
+    run: Run,
     clients: Sequence[Client],
     topic_pairs: Sequence[Candidate],
     errors: list[str],
-    fetch: FetchFeed,
+    *,
+    since: dt.datetime,
     started: dt.datetime,
+    fetch: FetchFeed,
     now_fn: Callable[[], dt.datetime],
-) -> int:
-    """Everything the sweep produces once its own work is recorded, in order.
+) -> _PostRun:
+    """Everything the sweep does once its own row is safely committed.
 
-    Four steps, each after the one it needs and each inside its own fault
-    boundary, because they are worth having and none of them is worth the sweep:
-    the run row is already written by the time this is called, so an exception
-    escaping here would leave a green run beside work that silently did not
-    happen. Returns how many positioning drafts were written.
+    Two rules govern the stages here. The mailbox and the market run
+    unconditionally, because they are their own sources of their own things and
+    whether this morning's *news* feeds answered says nothing about whether a
+    journalist replied or the regulatory calendar moved. Everything behind them
+    runs only if the sweep itself came through — pitching a positioning message
+    off a half-fetched radar would put a confident text in front of the reader on
+    the strength of partial data.
+
+    Both of the unconditional stages report what failed into the ``runs`` row that
+    is already written, so a source that has been dark for a week shows as a
+    partial run rather than a green one with a line in a log nobody tails.
+
+    Every stage sits inside its own fault boundary: the run row is written by the
+    time this is called, so an exception escaping here would leave a green run
+    beside work that silently did not happen.
     """
-    _settle_themes(session, clients, fetch)
-    # The archive first: the registry feeds fetched the trade press this morning
-    # and nothing linked it to the mandates whose field it is. Doing this before
-    # drafting means today's material is available to today's draft rather than
-    # tomorrow's.
-    linked = link_archive_to_themes(
-        session, clients, started - IMPULSE_LOOKBACK, started
+    outcome = _PostRun()
+    # The mailbox, once a day, with the sweep: reading the replies to letters that
+    # went out weeks ago has nothing to do with whether this morning's feeds
+    # answered, and a journalist's answer is the one thing in this tool nobody can
+    # re-fetch later by pressing a button.
+    outcome.replies = _sync_mailbox(session, run, errors, now=now_fn())
+    # The three market classes, on the same footing as the mailbox above: a failed
+    # news sweep must not also cost a consultation that closes in five weeks.
+    outcome.signals, market_errors = _sweep_market(
+        session, clients, since, fetch, now_fn()
     )
+    _record_late_failure(session, run, errors, market_errors)
+    if run.status is RunStatus.FAILED:
+        return outcome
+    _settle_themes(session, clients, fetch)
+    # The archive first: the registry feeds fetched the trade press this morning and
+    # nothing linked it to the mandates whose field it is. Doing this before drafting
+    # means today's material is available to today's draft rather than tomorrow's.
+    linked = link_archive_to_themes(session, clients, started - IMPULSE_LOOKBACK, started)
     if linked:
         _log.info("linked %d archived article(s) as market material", linked)
-    angles_written = _generate_angles(session, topic_pairs, errors)
-    # And then top up the mandates the radar did not move today. Drafting only
-    # from fresh material meant a quiet fortnight showed an empty Impulse column
-    # for a fortnight — for exactly the mandate whose consultant most needs
-    # something to say.
-    angles_written += _refresh_impulses(session, clients, errors, now=now_fn())
+    outcome.angles = _generate_angles(session, topic_pairs, errors)
+    # And then top up the mandates the radar did not move today. Drafting only from
+    # fresh material meant a quiet fortnight showed an empty Impulse column for a
+    # fortnight — for exactly the mandate whose consultant most needs something to
+    # say.
+    outcome.angles += _refresh_impulses(session, clients, errors, now=now_fn())
+    outcome.profiles = _refresh_profiles(session, now_fn())
     # Last, and outside everything above: the monthly report reads a period that
     # has already ended, so it needs nothing this sweep fetched, and putting it
     # here means a failure in it cannot cost the sweep any of the work that came
@@ -1486,7 +1674,7 @@ def _post_run(
     except Exception:  # noqa: BLE001 — a report is never worth a failed sweep
         _log.exception("the monthly report draft failed; the sweep stands")
         session.rollback()
-    return angles_written
+    return outcome
 
 
 def _run_real(
@@ -1504,8 +1692,6 @@ def _run_real(
     """The persisting sweep, wrapped so any crash still records a ``failed`` run."""
     new_articles = 0
     analyses_written = 0
-    angles_written = 0
-    profiles_refreshed = 0
     feeds_ok = items_count = candidates_count = 0
     # Bound before the try so the post-run drafting step has a defined value even
     # when the sweep aborts on its first line.
@@ -1568,37 +1754,33 @@ def _run_real(
         status = RunStatus.FAILED
         session.rollback()
     run = _finalize_run(session, started, now_fn(), status, new_articles, errors)
-    # The mailbox, once a day, with the sweep. Deliberately outside the
-    # status check below: reading the replies to letters that went out weeks ago
-    # has nothing to do with whether this morning's feeds answered, and a
-    # journalist's answer is the one thing in this tool nobody can re-fetch
-    # later by pressing a button.
-    replies = _sync_mailbox(session, run, errors, now=now_fn())
-    # The run row may have been downgraded to partial by an unreadable mailbox;
-    # the report has to say the same thing the stored row does. Never to failed,
-    # so the post-run work below still runs — a dead Google says nothing about
-    # whether this morning's feeds answered.
+    post = _post_run(
+        session,
+        run,
+        clients,
+        topic_pairs,
+        errors,
+        since=since,
+        started=started,
+        fetch=fetch,
+        now_fn=now_fn,
+    )
+    # The run row may have been downgraded to partial by an unreadable mailbox or a
+    # dark market class; the report has to say the same thing the stored row does.
     status = run.status
-    # Drafting happens after the run is recorded and only if the sweep itself came
-    # through: pitching a positioning message off a half-fetched radar would put a
-    # confident text in front of the reader on the strength of partial data.
-    if status is not RunStatus.FAILED:
-        angles_written = _post_run(
-            session, clients, topic_pairs, errors, fetch, started, now_fn
-        )
-        profiles_refreshed = _refresh_profiles(session, now_fn())
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
-        "%d profile(s), %d repl(y/ies), %d error(s)",
+        "%d market signal(s), %d profile(s), %d repl(y/ies), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
-        angles_written,
+        post.angles,
+        post.signals,
         # On the run's own line because a refresh that quietly returns zero for
         # weeks looks exactly like a portfolio where nothing was due, and the
         # difference is only visible here.
-        profiles_refreshed,
-        replies,
+        post.profiles,
+        post.replies,
         len(errors),
     )
     # The run's data is committed; deliver any fired-alert notification now. This is
@@ -1615,7 +1797,8 @@ def _run_real(
         analyses_written=analyses_written,
         errors=list(errors),
         dry_run=False,
-        angles_written=angles_written,
+        angles_written=post.angles,
+        signals_written=post.signals,
     )
 
 

@@ -46,9 +46,19 @@ _MAX_FEED_BYTES = 25 * 1024 * 1024
 _USER_AGENT = "NewsPulse/0.1 (+local RSS monitor)"
 
 
-class _FeedTooLargeError(Exception):
+class FeedTooLargeError(Exception):
     """Raised when a feed body exceeds :data:`_MAX_FEED_BYTES` — a hostile or
     broken feed. Handled exactly like any other fetch failure (WARNING + empty)."""
+
+
+class FeedUnparseableError(Exception):
+    """A 200 that is not a feed: HTML where XML was expected, and no entries.
+
+    Raised only under ``strict``. This is what a moved RSS path actually returns —
+    a "Seite nicht gefunden" page or a relaunch landing page, served with a
+    perfectly healthy status code — so a caller that asks to hear about a dead
+    source has to hear about this one too, or the commonest way a source dies is
+    the one way it stays silent."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +114,7 @@ def _fetch_raw(url: str, timeout: float) -> bytes:
         # oversized body and reject the whole feed rather than parse a fragment.
         raw = response.read(_MAX_FEED_BYTES + 1)
     if len(raw) > _MAX_FEED_BYTES:
-        raise _FeedTooLargeError(f"feed body exceeds {_MAX_FEED_BYTES} bytes")
+        raise FeedTooLargeError(f"feed body exceeds {_MAX_FEED_BYTES} bytes")
     return raw
 
 
@@ -265,18 +275,25 @@ def _parse_items(
     source: str | None,
     fetched_at: dt.datetime,
     per_entry_source: bool = False,
+    strict: bool = False,
 ) -> list[FeedItem]:
     """Parse feed bytes into items published strictly after ``since``.
 
     ``since`` and ``fetched_at`` must already be timezone-aware UTC (the caller
     normalizes them). Kept separate from :func:`fetch_feed` so the fetch and the
     parse/normalize phases each sit behind their own isolation boundary.
+
+    ``strict`` has the meaning it has in :func:`fetch_feed`: a body that is not a
+    feed is raised rather than logged away, because that — not a connection error
+    — is what a source that moved usually looks like from here.
     """
     parsed = feedparser.parse(raw)
     # feedparser is lenient and sets ``bozo`` for any not-well-formed document.
     # Many real feeds are technically bozo yet still parse into entries, so we only
     # treat bozo as a failure when it produced *nothing* to work with.
     if parsed.bozo and not parsed.entries:
+        if strict:
+            raise FeedUnparseableError(f"{url} is not a feed ({parsed.get('bozo_exception')})")
         _log.warning(
             "Feed %s is malformed (%s); skipping",
             url,
@@ -319,6 +336,7 @@ def fetch_feed(
     fetched_at: dt.datetime | None = None,
     timeout: float = _FEED_TIMEOUT_SECONDS,
     per_entry_source: bool = False,
+    strict: bool = False,
 ) -> list[FeedItem]:
     """Fetch and parse one feed, returning items published newer than ``since``.
 
@@ -334,6 +352,22 @@ def fetch_feed(
     Returns an empty list — never raises — when the feed is unreachable, times
     out, is oversized, or is unparseable, logging a WARNING so a single bad feed
     never aborts a multi-feed sweep.
+
+    ``strict`` inverts that last part and re-raises instead. The news sweep reads
+    forty publications and one of them being down is not the day's story, so it
+    takes the default. A market class (:mod:`newspulse.market_sources`) has one or
+    two sources, and a silent empty list from the regulatory calendar is
+    indistinguishable from a quiet fortnight — which is the one thing a forward
+    calendar must never be wrong about. Those callers ask for the failure so the
+    sweep's per-class guard can log it at ERROR.
+
+    "Failure" there covers the body as well as the connection. A moved RSS path
+    rarely answers with an error — it answers 200 with an HTML landing page — so
+    under ``strict`` a body that parses into no entries at all raises
+    :class:`FeedUnparseableError` rather than logging a WARNING and returning
+    nothing, which would have left the commonest way a source dies as the one way
+    it dies quietly. A feed that is genuinely well-formed and merely has nothing
+    new is untouched by this: it parsed into entries, and ``since`` filtered them.
     """
     # Normalize to tz-aware UTC up front so the ``published_at`` comparison (which
     # is always tz-aware) can never raise a naive/aware TypeError mid-sweep.
@@ -342,7 +376,9 @@ def fetch_feed(
 
     try:
         raw = _fetch_raw(url, timeout)
-    except _FeedTooLargeError as exc:
+    except FeedTooLargeError as exc:
+        if strict:
+            raise
         _log.warning("Feed %s is too large (%s); skipping", url, exc)
         return []
     except (
@@ -354,6 +390,8 @@ def fetch_feed(
     ) as exc:
         # Unreachable / timed out / connection reset / truncated or garbled
         # response (IncompleteRead, BadStatusLine) — isolate and move on.
+        if strict:
+            raise
         _log.warning("Feed %s could not be fetched (%s); skipping", url, exc)
         return []
 
@@ -365,13 +403,16 @@ def fetch_feed(
             source=source,
             fetched_at=fetched_at,
             per_entry_source=per_entry_source,
+            strict=strict,
         )
     except Exception as exc:  # noqa: BLE001 — structural fault-isolation boundary
         # Any unexpected error while parsing or normalizing one feed must not
         # abort the sweep. This is the deliberate broad-catch the acceptance
         # criteria require; it always logs, never swallows silently.
+        if strict:
+            raise
         _log.warning("Feed %s could not be parsed (%s); skipping", url, exc)
         return []
 
 
-__all__ = ["FeedItem", "fetch_feed"]
+__all__ = ["FeedItem", "FeedTooLargeError", "FeedUnparseableError", "fetch_feed"]

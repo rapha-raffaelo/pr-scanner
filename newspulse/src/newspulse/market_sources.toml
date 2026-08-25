@@ -1,0 +1,89 @@
+# NewsPulse curated market source list (DEC-1 B, the curated half).
+#
+# The three classes a news feed never carries: studies, regulatory dates and
+# events. This file is editable — add, remove or reclassify a source without
+# touching code. Each entry is a `[[sources]]` table with:
+#   name  (required) — human label, and the publisher credited on a signal from a
+#                      source that does not name its own
+#   url   (required) — the RSS/Atom feed URL
+#   kind  (required) — one of: studie, regulierung, veranstaltung
+#
+# This is the half of the radar that applies to every mandate. The other half is
+# a per-mandate search in the client's own field, built in market_sources.py and
+# stored with origin = "suche", so a reader can always tell the two apart.
+#
+# The list is global on purpose for now: a mandate that wants its own trade
+# association added is a settings change once the shape here has proven itself.
+#
+# Reachability is not checked in the test suite (nothing here touches the
+# network). A source that has moved or gone dark logs at ERROR on the next sweep
+# and stores nothing for its class, which is how a stale entry announces itself.
+#
+# Only feed-provided fields are ever ingested. Full article bodies are never
+# fetched or stored (Leistungsschutzrecht) — see ingest.py.
+
+# --- Studien: who measures the German market -----------------------------------
+
+[[sources]]
+name = "Statistisches Bundesamt"
+url = "https://www.destatis.de/SiteGlobals/Functions/RSSFeed/DE/RSSNewsfeed_Pressemitteilungen.xml"
+kind = "studie"
+
+[[sources]]
+name = "ifo Institut"
+url = "https://www.ifo.de/rss/news.xml"
+kind = "studie"
+
+[[sources]]
+name = "ZEW"
+url = "https://www.zew.de/rss/pressemitteilungen.xml"
+kind = "studie"
+
+[[sources]]
+name = "DIW Berlin"
+url = "https://www.diw.de/de/diw_01.c.413888.de/rss.xml"
+kind = "studie"
+
+[[sources]]
+name = "Bitkom"
+url = "https://www.bitkom.org/rss.xml"
+kind = "studie"
+
+# --- Regulierung: what is coming, and when it lands -----------------------------
+
+[[sources]]
+name = "Bundesregierung"
+url = "https://www.bundesregierung.de/service/rss/breg-de/1151244/feed.xml"
+kind = "regulierung"
+
+[[sources]]
+name = "Bundestag"
+url = "https://www.bundestag.de/static/appdata/includes/rss/aktuellethemen.rss"
+kind = "regulierung"
+
+[[sources]]
+name = "BaFin"
+url = "https://www.bafin.de/SiteGlobals/Functions/RSSFeed/DE/RSSNewsfeed_Meldungen.xml"
+kind = "regulierung"
+
+[[sources]]
+name = "Bundeskartellamt"
+url = "https://www.bundeskartellamt.de/SiteGlobals/Functions/RSSFeed/DE/RSSNewsfeed_Meldungen.xml"
+kind = "regulierung"
+
+[[sources]]
+name = "Europäische Kommission"
+url = "https://ec.europa.eu/commission/presscorner/api/rss?language=de"
+kind = "regulierung"
+
+# --- Veranstaltungen: where this field is staged --------------------------------
+
+[[sources]]
+name = "AUMA Messedatenbank"
+url = "https://www.auma.de/de/rss/messetermine"
+kind = "veranstaltung"
+
+[[sources]]
+name = "Bundesverband der Deutschen Industrie"
+url = "https://bdi.eu/rss/veranstaltungen"
+kind = "veranstaltung"

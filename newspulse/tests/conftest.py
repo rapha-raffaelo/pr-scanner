@@ -222,6 +222,32 @@ def no_sweep_profile_refresh(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_market_sweep(monkeypatch):
+    """Keep the sweep's market classes out of the tests that are not about them.
+
+    Same reason as the two fixtures below, and the same shape. ``job.run`` now
+    fetches studies, regulation and events per mandate — a dozen curated sources
+    each — so without this every test that drives a sweep reaches a dozen external
+    feeds, and a test that merely pinned which *news* feeds were fetched would be
+    asserting against the market list as well.
+
+    Yields the real function, so the tests that are about the wiring can put it
+    back and prove the sweep genuinely reaches it.
+    """
+    from newspulse import job
+
+    original = job._sweep_market
+
+    def _stub(session, clients, since, fetch, now) -> tuple[int, list[str]]:
+        """The real signature, so a change to it breaks the suite rather than
+        production: ``lambda *a, **k`` would have accepted anything."""
+        return 0, []
+
+    monkeypatch.setattr(job, "_sweep_market", _stub)
+    return original
+
+
+@pytest.fixture(autouse=True)
 def no_theme_settling(monkeypatch):
     """Stop the sweep from proposing themes in a test run.
 

@@ -14,11 +14,12 @@ difference is invisible from the form and decisive for everything downstream.
 from __future__ import annotations
 
 import datetime as dt
+import urllib.error
 
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from newspulse import industry
+from newspulse import industry, ingest
 from newspulse.db import make_engine
 from newspulse.ingest import FeedItem
 from newspulse.models import Base, Client
@@ -123,7 +124,59 @@ def test_a_failing_probe_does_not_promote_the_term(session):
 
     measured = industry.measure(_client(), ["Kosmetik"], fetch=_boom, now=lambda: _NOW)
 
-    assert measured == [industry.Candidate(term="Kosmetik", hits=0)]
+    assert measured == [industry.Candidate(term="Kosmetik", hits=0, measured=False)]
+    assert measured[0].usable is False
+
+
+def test_a_field_nobody_could_measure_is_not_a_field_nobody_writes(session):
+    """The number alone cannot tell them apart: a probe that never reached the
+    search is recorded as zero hits, exactly like a word the press does not use.
+    Read as "nobody writes this", one rate-limited morning sends an operator off
+    to change an industry term that works — so the two answers are kept apart.
+    """
+
+    def _boom(*a, **k):
+        raise RuntimeError("Netzwerk weg")
+
+    client = _client(industry="Kosmetik")
+
+    assert industry.field_is_usable(client, fetch=_boom, now=lambda: _NOW) is None
+    assert industry.field_is_usable(client, fetch=_hits({}), now=lambda: _NOW) is False
+    assert (
+        industry.field_is_usable(
+            client, fetch=_hits({"Kosmetik": 9}), now=lambda: _NOW
+        )
+        is True
+    )
+
+
+def test_a_real_outage_is_not_a_verdict_about_the_term(monkeypatch):
+    """The version of the above that the production default actually takes.
+
+    Every other test here injects a ``fetch`` that *raises*; the real
+    ``fetch_feed`` never does. It answers an unreachable feed with an empty list,
+    which arrives at the probe as "nobody writes this word" — so the whole
+    distinction above was dead code on the one path that matters. Mocked at the
+    socket, not at the fetch: ``fetch_feed`` itself stays real.
+    """
+
+    def _down(url, timeout):
+        raise urllib.error.URLError("Netzwerk weg")
+
+    monkeypatch.setattr(ingest, "_fetch_raw", _down)
+    client = _client(industry="Onlinehandel")
+
+    assert industry.field_is_usable(client, now=lambda: _NOW) is None
+
+
+def test_a_search_that_answers_with_nothing_is_a_verdict(monkeypatch):
+    """The other half: a well-formed feed with no items is the press being asked
+    and having written nothing, which is the answer the market page explains."""
+    empty_feed = b'<?xml version="1.0"?><rss version="2.0"><channel>'
+    empty_feed += b"<title>Google News</title></channel></rss>"
+    monkeypatch.setattr(ingest, "_fetch_raw", lambda url, timeout: empty_feed)
+
+    assert industry.field_is_usable(_client(industry="Onlinehandel"), now=lambda: _NOW) is False
 
 
 def test_the_probe_uses_the_clients_own_news_edition():
