@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from urllib.parse import urlencode
 
 import re
@@ -975,13 +976,28 @@ def _signals_by_kind(
     }
 
 
+class FieldGap(StrEnum):
+    """Why the searched half of the market radar (DEC-1 B) is missing.
+
+    Two reasons, kept apart for the reason the theme radar's two empty states are
+    kept apart: an unconfigured mandate and a term the press does not write are
+    different facts, they send the reader to different places, and one message
+    covering both would be wrong about whichever case it was not written for.
+    """
+
+    #: No industry term at all — nothing to search the field with.
+    UNSET = "unset"
+    #: A term the German press does not write often enough to filter on.
+    UNUSABLE = "unusable"
+
+
 def _field_gap(
     client: Client,
     rows: Sequence[SignalRow],
     *,
     probe: Callable[[Client], bool] | None = None,
-) -> bool:
-    """Whether the searched half of DEC-1 B is missing *because of the field*.
+) -> FieldGap | None:
+    """Why the searched half of DEC-1 B is missing, or ``None`` if it is not.
 
     The curated list applies to every mandate; the search on top of it only works
     if the industry term is one the German press actually writes. A mandate whose
@@ -995,20 +1011,28 @@ def _field_gap(
     when there is a gap to explain at all: a single search-found row anywhere on
     the page proves the field works, and no probe is issued. A mandate with no
     industry term at all is answered without one too — there is nothing to
-    measure. And with the search switched off installation-wide the missing half
-    is not the field's fault, so nothing is claimed.
+    measure, and the answer is the other reason anyway. And with the search
+    switched off installation-wide the missing half is not the field's fault, so
+    nothing is claimed.
     """
     if not config.GOOGLE_NEWS_ENABLED:
-        return False
+        return None
     if any(row.from_search for row in rows):
-        return False
+        return None
     if not gnews.context_terms(client):
-        return True
-    return not (probe or industry.field_is_usable)(client)
+        return FieldGap.UNSET
+    if (probe or industry.field_is_usable)(client):
+        return None
+    return FieldGap.UNUSABLE
 
 
-def _set_mute(session: Session, client_id: int, kind: str, *, muted: bool) -> Client:
-    """Switch one market class off or back on for one mandate."""
+def _set_mute(session: Session, client_id: int, kind: str, *, muted: bool) -> None:
+    """Switch one market class off or back on for one mandate.
+
+    A kind the enum does not know is a 404 rather than a stored string: the list
+    is read back by the sweep to decide what not to fetch, and a typo in it would
+    be a class that quietly keeps arriving with no way to see why.
+    """
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -1017,7 +1041,6 @@ def _set_mute(session: Session, client_id: int, kind: str, *, muted: bool) -> Cl
     current = [k for k in (client.muted_signal_kinds or []) if k != kind]
     client.muted_signal_kinds = [*current, kind] if muted else current
     session.commit()
-    return client
 
 
 @router.post("/client/{client_id}/market/{kind}/mute")

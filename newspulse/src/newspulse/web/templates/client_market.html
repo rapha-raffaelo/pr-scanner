@@ -159,13 +159,20 @@
       {% endfor %}
     </section>
 
-    {# The searched half of the market radar is missing and the industry term is
-       why. Said once, above the three classes it applies to, rather than three
-       times — and only when it is actually true (see routes.client._field_gap). #}
+    {# The searched half of the market radar is missing, and why. Said once, above
+       the three classes it applies to, rather than three times — and only when it
+       is actually true (see routes.client._field_gap). Two messages rather than
+       one: an unconfigured mandate and a term the press does not write are
+       different facts, and they send the reader to different work. #}
     {% if field_gap and signals %}
       <p class="sig__note">
-        {{ t("Nur kuratierte Quellen: der Branchenbegriff dieses Mandanten kommt in der deutschen Presse zu selten vor, um damit zu suchen. Die gezielte Suche im Feld fehlt deshalb.") }}
-        <a href="/settings?edit={{ client.id }}">{{ t("Branche anpassen") }}</a>
+        {% if field_gap == 'unusable' %}
+          {{ t("Nur kuratierte Quellen: der Branchenbegriff dieses Mandanten kommt in der deutschen Presse zu selten vor, um damit zu suchen. Die gezielte Suche im Feld fehlt deshalb.") }}
+          <a href="/settings?edit={{ client.id }}">{{ t("Branche anpassen") }}</a>
+        {% else %}
+          {{ t("Nur kuratierte Quellen: für diesen Mandanten ist keine Branche hinterlegt, und ohne sie lässt sich im Feld nicht gezielt suchen.") }}
+          <a href="/settings?edit={{ client.id }}">{{ t("Branche hinterlegen") }}</a>
+        {% endif %}
       </p>
     {% endif %}
 

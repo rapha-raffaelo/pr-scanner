@@ -771,6 +771,7 @@ def test_an_unusable_field_is_explained_rather_than_left_as_a_quiet_market(
 
     assert "Aus kuratierter Quelle" in body, "the curated half still arrives"
     assert "der Branchenbegriff dieses Mandanten kommt in der deutschen Presse" in body
+    assert "keine Branche hinterlegt" not in body, "it has one; it just does not work"
 
 
 def test_a_working_field_is_not_accused_of_being_unusable(factory, client, monkeypatch):
@@ -819,13 +820,19 @@ def test_the_field_is_never_probed_when_the_search_half_plainly_works(
             tz=dt.UTC,
         )
 
-        assert client_routes._field_gap(subject, [row]) is False
+        assert client_routes._field_gap(subject, [row]) is None
 
 
-def test_a_mandate_with_no_industry_at_all_is_answered_without_a_probe(
-    factory, monkeypatch
+def test_a_mandate_with_no_industry_at_all_is_told_that_and_not_something_else(
+    factory, client, monkeypatch
 ):
-    """There is nothing to measure, so measuring it would be a wasted search."""
+    """Nothing to measure, so no probe — and, more to the point, a different fact.
+
+    A mandate that never had an industry and one whose accurate industry the press
+    does not write are not the same problem and do not send the reader to the same
+    work, so one message covering both would be wrong about whichever case it was
+    not written for.
+    """
 
     def _never(client, **kwargs):
         raise AssertionError("a mandate with no industry term was probed")
@@ -833,8 +840,14 @@ def test_a_mandate_with_no_industry_at_all_is_answered_without_a_probe(
     monkeypatch.setattr(industry, "field_is_usable", _never)
     with factory() as session:
         subject = _client(session)
+        subject_id = subject.id
 
-        assert client_routes._field_gap(subject, []) is True
+        assert client_routes._field_gap(subject, []) is client_routes.FieldGap.UNSET
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "für diesen Mandanten ist keine Branche hinterlegt" in body
+    assert "kommt in der deutschen Presse zu selten vor" not in body
 
 
 # --- Every new German string has an English one --------------------------------

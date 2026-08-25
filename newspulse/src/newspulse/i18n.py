@@ -1122,7 +1122,12 @@ _EN: dict[str, str] = {
         "Curated sources only: this client's industry term appears too rarely in "
         "the German press to search with. The targeted search in the field is "
         "therefore missing.",
+    "Nur kuratierte Quellen: für diesen Mandanten ist keine Branche hinterlegt, "
+    "und ohne sie lässt sich im Feld nicht gezielt suchen.":
+        "Curated sources only: no industry is set for this client, and without one "
+        "there is no way to search the field.",
     "Branche anpassen": "Adjust the industry",
+    "Branche hinterlegen": "Add an industry",
     # The per-class mute, and the only place it can be undone.
     "Klasse ausblenden": "Hide this class",
     "Ausgeblendet und nicht mehr abgerufen:": "Hidden and no longer fetched:",
