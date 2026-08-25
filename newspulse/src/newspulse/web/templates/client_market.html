@@ -109,21 +109,24 @@
    remaining time made a closed call for speakers vanish, which on a conference
    still months away is indistinguishable from one that never invited speakers at
    all — and those are different answers to "can this client be heard here". #}
-{% macro deadline(row, label) %}
+{% macro deadline(row, label, counted=false) %}
   {% if row.deadline_at %}
     <span class="sig__deadline {% if row.deadline_soon %}sig__deadline--soon{% endif %} {% if not row.until_deadline %}sig__deadline--closed{% endif %}">
-      {{ label }} {{ row.deadline_at | de_date }} ·
-      {% if row.until_deadline %}
+      {{ label }} {{ row.deadline_at | de_date }}
+      {%- if not row.until_deadline %} · {{ t("abgelaufen") }}
+      {%- elif not counted %} ·
+        {# `counted` says the column to the left is already counting down to *this*
+           date. Repeating it here printed "in 2 Wochen" twice on one row, which
+           reads as two facts rather than one. The date itself stays: the meta line
+           is where a reader sees both of a regulation's dates side by side. #}
         {% with r = row.until_deadline %}{% include "partials/market_remaining.html" %}{% endwith %}
-        {# "Höchstens", not "unter": at exactly the threshold the countdown beside
-           this reads "in 2 Wochen", and "läuft in unter 2 Wochen ab" next to it
-           contradicts it. Named rather than implied, so the sentence stays true if
-           _DEADLINE_SOON_DAYS moves — "läuft ab" beside a date eleven days out
-           says nothing a reader can check. #}
-        {% if row.deadline_soon %} · {{ t("läuft in höchstens %(weeks)s Wochen ab") | format(weeks=deadline_weeks) }}{% endif %}
-      {% else %}
-        {{ t("abgelaufen") }}
-      {% endif %}
+      {%- endif %}
+      {# "Höchstens", not "unter": at exactly the threshold the countdown beside
+         this reads "in 2 Wochen", and "läuft in unter 2 Wochen ab" next to it
+         contradicts it. Named rather than implied, so the sentence stays true if
+         _DEADLINE_SOON_DAYS moves — "läuft ab" beside a date eleven days out says
+         nothing a reader can check. #}
+      {%- if row.deadline_soon %} · {{ t("läuft in höchstens %(weeks)s Wochen ab") | format(weeks=deadline_weeks) }}{% endif %}
     </span>
   {% endif %}
 {% endmacro %}
@@ -222,12 +225,12 @@
         {# Nothing ages a study off this page, so it is the one section that only
            grows. It is cut to a shortlist — and the cut is stated, because a cap
            nobody is told about reads as "that is all there is". #}
-        {% if hidden_signals.get('studie') %}
+        {% if hidden_studies %}
           <p class="sig__more">
-            {% if hidden_signals['studie'] == 1 %}
+            {% if hidden_studies == 1 %}
               {{ t("Eine ältere Studie wird nicht angezeigt.") }}
             {% else %}
-              {{ t("%(n)s ältere Studien werden nicht angezeigt.") | format(n=hidden_signals['studie']) }}
+              {{ t("%(n)s ältere Studien werden nicht angezeigt.") | format(n=hidden_studies) }}
             {% endif %}
           </p>
         {% endif %}
@@ -252,7 +255,7 @@
               <div class="feed-item__meta">
                 <span class="source">{% if row.publisher %}{{ row.publisher }}{% else %}{{ t("Herausgeber unbekannt") }}{% endif %}</span>
                 {% if row.effective_at %}<span class="time">{{ t("gilt ab") }} {{ row.effective_at | de_date }}</span>{% endif %}
-                {{ deadline(row, t("Frist")) }}
+                {{ deadline(row, t("Frist"), counted=row.next_is_deadline) }}
               </div>
               {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
             </div>
@@ -280,7 +283,7 @@
               <div class="feed-item__meta">
                 <span class="source">{% if row.publisher %}{{ row.publisher }}{% else %}{{ t("Veranstalter unbekannt") }}{% endif %}</span>
                 {% if row.effective_at %}<span class="time">{{ t("Termin") }} {{ row.effective_at | de_date }}</span>{% endif %}
-                {{ deadline(row, t("Einreichfrist")) }}
+                {{ deadline(row, t("Einreichfrist"), counted=row.next_is_deadline) }}
               </div>
               {% if row.summary %}<p class="feed-item__summary">{{ row.summary }}</p>{% endif %}
             </div>

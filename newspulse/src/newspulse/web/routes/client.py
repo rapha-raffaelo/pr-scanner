@@ -1064,9 +1064,10 @@ class MarketSections:
 
     #: One ordered list per class, keyed on the stored enum value.
     rows: dict[str, list[SignalRow]]
-    #: How many rows of each class :data:`_STUDIES_SHOWN` left out, so the page
-    #: can say so. A cap nobody is told about reads as "that is all there is".
-    hidden: dict[str, int]
+    #: How many studies :data:`_STUDIES_SHOWN` left out, so the page can say so.
+    #: A cap nobody is told about reads as "that is all there is". One number
+    #: rather than one per class, because studies are the only class capped.
+    hidden_studies: int = 0
 
 
 def _signals_by_kind(
@@ -1080,7 +1081,7 @@ def _signals_by_kind(
     """
     wanted = [kind for kind in SignalKind if not client.mutes_signal(kind)]
     if not wanted:
-        return MarketSections(rows={}, hidden={})
+        return MarketSections(rows={})
     today = now.astimezone(tz).date()
     rows = [
         _signal_row(signal, today=today, tz=tz)
@@ -1098,13 +1099,11 @@ def _signals_by_kind(
     # already bounded by the one thing that bounds them honestly — a date passing
     # — and cutting the far end of a calendar would hide what a mandate has the
     # most time to prepare for.
-    shown = dict(ordered)
-    studies = shown.get(SignalKind.STUDIE.value)
-    hidden: dict[str, int] = {}
-    if studies is not None and len(studies) > _STUDIES_SHOWN:
-        hidden[SignalKind.STUDIE.value] = len(studies) - _STUDIES_SHOWN
-        shown[SignalKind.STUDIE.value] = studies[:_STUDIES_SHOWN]
-    return MarketSections(rows=shown, hidden=hidden)
+    studies = ordered.get(SignalKind.STUDIE.value, [])
+    hidden = max(len(studies) - _STUDIES_SHOWN, 0)
+    if hidden:
+        ordered[SignalKind.STUDIE.value] = studies[:_STUDIES_SHOWN]
+    return MarketSections(rows=ordered, hidden_studies=hidden)
 
 
 class FieldGap(StrEnum):
@@ -1260,7 +1259,7 @@ def market_view(
             "themes": list(client.keywords or []) + list(client.alert_topics or []),
             **_nominations(session, client_id, days=_MARKET_DAYS),
             "signals": signals,
-            "hidden_signals": sections.hidden,
+            "hidden_studies": sections.hidden_studies,
             "muted_kinds": [
                 kind.value for kind in SignalKind if client.mutes_signal(kind)
             ],

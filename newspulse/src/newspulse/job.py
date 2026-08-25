@@ -415,10 +415,18 @@ def _refresh_field_verdict(
 
     Asked at most every :data:`_FIELD_RECHECK`, and never for a mandate with no
     term to measure or on an installation with the search switched off — the
-    probe *is* a search, and there would be nothing for the page to explain. A probe that could not reach the search leaves the answer
-    ``None`` rather than ``False``: the stamp is still written, so an outage
-    does not make every sweep re-probe, but nothing is claimed about the term —
-    an unreachable search is not evidence that nobody writes a word.
+    probe *is* a search, and there would be nothing for the page to explain. A
+    probe that could not reach the search leaves the answer ``None`` rather than
+    ``False``: the stamp is still written, so an outage does not make every sweep
+    re-probe, but nothing is claimed about the term — an unreachable search is
+    not evidence that nobody writes a word.
+
+    Not reached at all for a mandate that has muted every class (see
+    :func:`_sweep_market`), which has one consequence worth naming: such a
+    mandate's verdict stays where it was until the *next* sweep after it unmutes
+    something, so the first page load after unmuting can only say nothing. That
+    is the right way round — an unmeasured term claims nothing rather than
+    claiming the wrong thing — and it heals itself the following morning.
     """
     if not config.GOOGLE_NEWS_ENABLED or not gnews.context_terms(client):
         return
