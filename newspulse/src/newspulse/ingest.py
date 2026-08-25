@@ -46,12 +46,12 @@ _MAX_FEED_BYTES = 25 * 1024 * 1024
 _USER_AGENT = "NewsPulse/0.1 (+local RSS monitor)"
 
 
-class _FeedTooLargeError(Exception):
+class FeedTooLargeError(Exception):
     """Raised when a feed body exceeds :data:`_MAX_FEED_BYTES` — a hostile or
     broken feed. Handled exactly like any other fetch failure (WARNING + empty)."""
 
 
-class _FeedUnparseableError(Exception):
+class FeedUnparseableError(Exception):
     """A 200 that is not a feed: HTML where XML was expected, and no entries.
 
     Raised only under ``strict``. This is what a moved RSS path actually returns —
@@ -114,7 +114,7 @@ def _fetch_raw(url: str, timeout: float) -> bytes:
         # oversized body and reject the whole feed rather than parse a fragment.
         raw = response.read(_MAX_FEED_BYTES + 1)
     if len(raw) > _MAX_FEED_BYTES:
-        raise _FeedTooLargeError(f"feed body exceeds {_MAX_FEED_BYTES} bytes")
+        raise FeedTooLargeError(f"feed body exceeds {_MAX_FEED_BYTES} bytes")
     return raw
 
 
@@ -293,7 +293,7 @@ def _parse_items(
     # treat bozo as a failure when it produced *nothing* to work with.
     if parsed.bozo and not parsed.entries:
         if strict:
-            raise _FeedUnparseableError(f"{url} is not a feed ({parsed.get('bozo_exception')})")
+            raise FeedUnparseableError(f"{url} is not a feed ({parsed.get('bozo_exception')})")
         _log.warning(
             "Feed %s is malformed (%s); skipping",
             url,
@@ -364,7 +364,7 @@ def fetch_feed(
     "Failure" there covers the body as well as the connection. A moved RSS path
     rarely answers with an error — it answers 200 with an HTML landing page — so
     under ``strict`` a body that parses into no entries at all raises
-    :class:`_FeedUnparseableError` rather than logging a WARNING and returning
+    :class:`FeedUnparseableError` rather than logging a WARNING and returning
     nothing, which would have left the commonest way a source dies as the one way
     it dies quietly. A feed that is genuinely well-formed and merely has nothing
     new is untouched by this: it parsed into entries, and ``since`` filtered them.
@@ -376,7 +376,7 @@ def fetch_feed(
 
     try:
         raw = _fetch_raw(url, timeout)
-    except _FeedTooLargeError as exc:
+    except FeedTooLargeError as exc:
         if strict:
             raise
         _log.warning("Feed %s is too large (%s); skipping", url, exc)
@@ -415,4 +415,4 @@ def fetch_feed(
         return []
 
 
-__all__ = ["FeedItem", "fetch_feed"]
+__all__ = ["FeedItem", "FeedTooLargeError", "FeedUnparseableError", "fetch_feed"]

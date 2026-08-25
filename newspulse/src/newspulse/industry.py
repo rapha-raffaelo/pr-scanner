@@ -21,6 +21,7 @@ until something searches for it.
 from __future__ import annotations
 
 import datetime as dt
+import http.client
 import json
 import logging
 from dataclasses import dataclass
@@ -29,7 +30,7 @@ from string import Template
 
 from . import brain, config, gnews
 from .analyzer import AnalyzerError, ParseError, invoke_with_fallback, strip_code_fence
-from .ingest import fetch_feed
+from .ingest import FeedTooLargeError, FeedUnparseableError, fetch_feed
 from .models import Client
 from .schemas import IndustryTerms
 
@@ -109,6 +110,15 @@ def measure(
     A term used as a filter has to appear in ordinary coverage; searching it
     alone is exactly that question. Terms are measured in the client's own news
     edition, because a word can be common in one and absent in another.
+
+    The probe asks for ``strict=True`` and then sorts the failures into the two
+    that mean opposite things, which is the whole point of
+    :attr:`Candidate.measured`. Unreachable, timed out, refused, oversized: the
+    press was never asked, so nothing is claimed (``measured=False``). A 200 that
+    is not a feed with entries: the search answered, and answered with nothing,
+    which is what a word nobody writes looks like from here (``hits=0``).
+    Without ``strict`` the default ``fetch_feed`` answers *both* with an empty
+    list, and every unreachable morning would read as a verdict about the word.
     """
     reference = now() if callable(now) else (now or dt.datetime.now(dt.UTC))
     since = reference - dt.timedelta(days=days)
@@ -122,8 +132,31 @@ def measure(
                 since,
                 source="Branchen-Probe",
                 per_entry_source=True,
+                # The whole reason this probe can tell an outage from a verdict.
+                # Without it ``fetch_feed`` answers an unreachable search with an
+                # empty list, which arrives here indistinguishable from "the press
+                # does not write this word" — and that is the one mistake this
+                # module exists to prevent. See :func:`newspulse.ingest.fetch_feed`.
+                strict=True,
             )
+        except FeedUnparseableError as exc:
+            # The search answered; the body just was not a feed with entries in
+            # it. That is what a query for a word nobody writes looks like from
+            # here, so it counts as a measurement of zero rather than as silence.
+            _log.info("industry probe %r returned no feed: %s", term, exc)
+            measured.append(Candidate(term=term, hits=0))
+            continue
+        except (
+            FeedTooLargeError,
+            OSError,  # urllib.error.URLError, socket.timeout/TimeoutError, resets
+            http.client.HTTPException,
+        ) as exc:
+            _log.warning("industry probe %r could not be reached: %s", term, exc)
+            measured.append(Candidate(term=term, hits=0, measured=False))
+            continue
         except Exception as exc:  # noqa: BLE001 — one bad probe must not lose the rest
+            # Anything unforeseen is silence, not a verdict: the term was never
+            # actually put to the press, so nothing may be claimed about it.
             _log.warning("industry probe %r failed: %s", term, exc)
             measured.append(Candidate(term=term, hits=0, measured=False))
             continue
@@ -161,11 +194,12 @@ def field_is_usable(client: Client, *, fetch=fetch_feed, now=None) -> bool | Non
     industry is the reason the mandate has no market material.
 
     Three answers, not two. ``None`` means the question could not be answered:
-    every probe failed, so nothing was measured. It is kept apart from ``False``
-    because :func:`measure` records an unreachable search as zero hits, and a
-    caller that read that as an answer would tell an operator to change a term
-    over an outage. ``False`` is only returned when the press was actually asked
-    and did not write the word.
+    every probe failed to reach the search, so nothing was measured. It is kept
+    apart from ``False`` because :func:`measure` records an unreachable search as
+    zero hits too, and a caller that read the count alone would tell an operator
+    to change a term over an outage. ``False`` is only returned when at least one
+    probe carries ``measured``: the press was actually asked and did not write
+    the word.
     """
     terms = gnews.context_terms(client)
     if not terms:

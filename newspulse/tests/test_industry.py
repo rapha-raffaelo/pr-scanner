@@ -14,11 +14,12 @@ difference is invisible from the form and decisive for everything downstream.
 from __future__ import annotations
 
 import datetime as dt
+import urllib.error
 
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from newspulse import industry
+from newspulse import industry, ingest
 from newspulse.db import make_engine
 from newspulse.ingest import FeedItem
 from newspulse.models import Base, Client
@@ -147,6 +148,35 @@ def test_a_field_nobody_could_measure_is_not_a_field_nobody_writes(session):
         )
         is True
     )
+
+
+def test_a_real_outage_is_not_a_verdict_about_the_term(monkeypatch):
+    """The version of the above that the production default actually takes.
+
+    Every other test here injects a ``fetch`` that *raises*; the real
+    ``fetch_feed`` never does. It answers an unreachable feed with an empty list,
+    which arrives at the probe as "nobody writes this word" — so the whole
+    distinction above was dead code on the one path that matters. Mocked at the
+    socket, not at the fetch: ``fetch_feed`` itself stays real.
+    """
+
+    def _down(url, timeout):
+        raise urllib.error.URLError("Netzwerk weg")
+
+    monkeypatch.setattr(ingest, "_fetch_raw", _down)
+    client = _client(industry="Onlinehandel")
+
+    assert industry.field_is_usable(client, now=lambda: _NOW) is None
+
+
+def test_a_search_that_answers_with_nothing_is_a_verdict(monkeypatch):
+    """The other half: a well-formed feed with no items is the press being asked
+    and having written nothing, which is the answer the market page explains."""
+    empty_feed = b'<?xml version="1.0"?><rss version="2.0"><channel>'
+    empty_feed += b"<title>Google News</title></channel></rss>"
+    monkeypatch.setattr(ingest, "_fetch_raw", lambda url, timeout: empty_feed)
+
+    assert industry.field_is_usable(_client(industry="Onlinehandel"), now=lambda: _NOW) is False
 
 
 def test_the_probe_uses_the_clients_own_news_edition():
