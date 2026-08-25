@@ -420,6 +420,13 @@ def update_client(session: Session, client_id: int, **fields) -> Client:
         )
         if duplicate is not None:
             raise _duplicate_active_error(duplicate)
+    # A new industry term has not been measured, so the verdict about the old one
+    # is not about it. Cleared rather than carried over: the market page reads
+    # this to explain a missing search half, and a stale False would tell an
+    # operator that the word they just fixed is still the problem.
+    if "industry" in fields and fields["industry"] != client.industry:
+        client.field_usable = None
+        client.field_checked_at = None
     for name, value in fields.items():
         setattr(client, name, value)
     session.commit()

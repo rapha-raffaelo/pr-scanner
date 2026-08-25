@@ -12,7 +12,7 @@ archive rather than loading it all into the page).
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from urllib.parse import urlencode
@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from ... import config, gnews, industry
+from ... import config, gnews
 from ... import angles
 from ... import onboarding, profile as profiles
 from ...models import (
@@ -991,12 +991,32 @@ class FieldGap(StrEnum):
     UNUSABLE = "unusable"
 
 
-def _field_gap(
-    client: Client,
-    rows: Sequence[SignalRow],
-    *,
-    probe: Callable[[Client], bool] | None = None,
-) -> FieldGap | None:
+def _has_searched_signal(session: Session, client: Client) -> bool:
+    """Whether the field search has ever produced anything for this mandate.
+
+    Asked of the stored table rather than of the rows the page is about to
+    render, because the render list has been narrowed twice before it gets here:
+    a muted class is not in it at all, and the calendar has already dropped every
+    row whose dates are behind us. A mandate whose search-found signals are all
+    past-dated regulation would look, from the rendered rows alone, exactly like
+    one whose search returns nothing — and get told its industry term is the
+    reason, about a field that demonstrably works.
+    """
+    return bool(
+        session.scalar(
+            select(
+                select(MarketSignal.id)
+                .where(
+                    MarketSignal.client_id == client.id,
+                    MarketSignal.origin == SignalOrigin.SUCHE,
+                )
+                .exists()
+            )
+        )
+    )
+
+
+def _field_gap(client: Client, *, searched: bool) -> FieldGap | None:
     """Why the searched half of DEC-1 B is missing, or ``None`` if it is not.
 
     The curated list applies to every mandate; the search on top of it only works
@@ -1006,24 +1026,27 @@ def _field_gap(
     curated half without a word looks like a quiet market rather than a broken
     filter. So the page says which half is missing and why.
 
-    Deliberately narrow, because :func:`newspulse.industry.field_is_usable`
-    issues a live search and this runs inside a page render. It is only asked
-    when there is a gap to explain at all: a single search-found row anywhere on
-    the page proves the field works, and no probe is issued. A mandate with no
-    industry term at all is answered without one too — there is nothing to
-    measure, and the answer is the other reason anyway. And with the search
-    switched off installation-wide the missing half is not the field's fault, so
-    nothing is claimed.
+    Reads only stored state and never measures anything: the measurement is a
+    live search per term, and :func:`newspulse.job._refresh_field_verdict` does it
+    on the sweep for the reason ``profile_checked_at`` exists — an expensive
+    question answered once at 06:10 rather than on every page load, and worst on
+    exactly the mandates this section is written for, whose search half is empty
+    every morning.
+
+    Four states, and the fourth is the one worth naming. ``client.field_usable``
+    is ``None`` when the question has not been answered — never measured, or the
+    last probe could not reach the search at all. Nothing is claimed then. An
+    unreachable search is not evidence about a word, and "Ihr Branchenbegriff
+    kommt zu selten vor" over an outage would send an operator off to change a
+    term that works: confidently wrong, and worse than the silence it replaces.
     """
     if not config.GOOGLE_NEWS_ENABLED:
         return None
-    if any(row.from_search for row in rows):
+    if searched:
         return None
     if not gnews.context_terms(client):
         return FieldGap.UNSET
-    if (probe or industry.field_is_usable)(client):
-        return None
-    return FieldGap.UNUSABLE
+    return FieldGap.UNUSABLE if client.field_usable is False else None
 
 
 def _set_mute(session: Session, client_id: int, kind: str, *, muted: bool) -> None:
@@ -1096,8 +1119,13 @@ def market_view(
             "muted_kinds": [
                 kind.value for kind in SignalKind if client.mutes_signal(kind)
             ],
-            "field_gap": _field_gap(
-                client, [row for rows in signals.values() for row in rows]
+            # Not asked when there is no section to say it above: a mandate that
+            # has muted all three classes renders none of them, and the route and
+            # the template must agree on when the question is worth putting.
+            "field_gap": (
+                _field_gap(client, searched=_has_searched_signal(session, client))
+                if signals
+                else None
             ),
             "deadline_weeks": _DEADLINE_SOON.days // _DAYS_PER_WEEK,
             "last_run": _fetch_last_run(session),

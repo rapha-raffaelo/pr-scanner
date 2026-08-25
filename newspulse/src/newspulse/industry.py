@@ -53,6 +53,11 @@ class Candidate:
 
     term: str
     hits: int
+    #: Whether the probe actually ran. A search that could not be reached is not
+    #: a measurement of zero, and the two must not look alike: "nobody writes
+    #: this word" sends an operator off to change a term, and doing that on the
+    #: strength of one rate-limited morning is worse than saying nothing.
+    measured: bool = True
 
     @property
     def usable(self) -> bool:
@@ -120,7 +125,7 @@ def measure(
             )
         except Exception as exc:  # noqa: BLE001 — one bad probe must not lose the rest
             _log.warning("industry probe %r failed: %s", term, exc)
-            measured.append(Candidate(term=term, hits=0))
+            measured.append(Candidate(term=term, hits=0, measured=False))
             continue
         measured.append(Candidate(term=term, hits=len(items)))
     return measured
@@ -149,16 +154,26 @@ def classify(
     return None
 
 
-def field_is_usable(client: Client, *, fetch=fetch_feed, now=None) -> bool:
+def field_is_usable(client: Client, *, fetch=fetch_feed, now=None) -> bool | None:
     """Whether the client's stored industry works as a filter at all.
 
-    The question the settings page asks before telling an operator that their
-    perfectly accurate industry is the reason the mandate has no market material.
+    The question asked before telling an operator that their perfectly accurate
+    industry is the reason the mandate has no market material.
+
+    Three answers, not two. ``None`` means the question could not be answered:
+    every probe failed, so nothing was measured. It is kept apart from ``False``
+    because :func:`measure` records an unreachable search as zero hits, and a
+    caller that read that as an answer would tell an operator to change a term
+    over an outage. ``False`` is only returned when the press was actually asked
+    and did not write the word.
     """
     terms = gnews.context_terms(client)
     if not terms:
         return False
-    return any(c.usable for c in measure(client, terms, fetch=fetch, now=now))
+    candidates = measure(client, terms, fetch=fetch, now=now)
+    if any(c.usable for c in candidates):
+        return True
+    return False if any(c.measured for c in candidates) else None
 
 
 __all__ = [

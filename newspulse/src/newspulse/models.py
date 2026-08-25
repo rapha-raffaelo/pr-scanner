@@ -395,6 +395,22 @@ class Client(Base):
     profile_note: Mapped[str] = mapped_column(
         Text, nullable=False, default="", server_default=""
     )
+    #: Whether this mandate's industry term is one the German press writes often
+    #: enough to search with, and when that was last established. Same reasoning
+    #: as the two stamps above: the answer costs a live search per term, it is
+    #: produced by the 06:10 sweep, and it is read by a person at nine — asking
+    #: it while a page renders would put a twenty-second feed timeout inside a
+    #: GET, on exactly the mandates the answer exists for.
+    #:
+    #: NULL is the third answer and it is load-bearing: the question has not been
+    #: put, or the last attempt could not reach the search at all. The market page
+    #: says nothing in that case, because an unreachable search is not evidence
+    #: about a word, and sending an operator off to fix a term that works is worse
+    #: than the silence it replaces.
+    field_usable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    field_checked_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("1")
     )

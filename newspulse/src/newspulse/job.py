@@ -54,6 +54,7 @@ from . import (
     angles,
     config,
     gnews,
+    industry,
     mailsync,
     market_sources,
     notify,
@@ -123,6 +124,13 @@ _MIN_RADAR_ITEMS = 3
 # morning, and every page would show "a sweep is running" throughout. Three a
 # night clears such a portfolio inside a week without anyone noticing the cost.
 _SETTLE_PER_SWEEP = 3
+
+# How long a measured industry term is trusted before it is measured again. The
+# probe is a live search per term, and what it measures — whether the German
+# press writes a word at all — moves over months, not overnight. Monthly keeps
+# the answer current at roughly one search per mandate per month; asking every
+# morning would spend a search a day to re-learn the same fact.
+_FIELD_RECHECK = dt.timedelta(days=30)
 
 # Rotating-log knobs. The whole point of the file is week-three survivability, so
 # it must never grow without bound or silently truncate: rotate at 5 MB and keep 5
@@ -394,6 +402,38 @@ def _fetch_topics(
     return pairs, feeds_ok
 
 
+def _refresh_field_verdict(
+    session: Session, client: Client, *, fetch: FetchFeed, now: dt.datetime
+) -> None:
+    """Measure whether this mandate's industry term is one the press writes.
+
+    Here rather than on the market page, for the reason ``profile_checked_at``
+    is on the client rather than in the web process: the answer costs a live
+    search per term, and a page render is the one place that cost cannot be
+    paid. The page reads what this leaves behind (see
+    ``web.routes.client._field_gap``).
+
+    Asked at most every :data:`_FIELD_RECHECK`, and never for a mandate with no
+    term to measure or on an installation with the search switched off — the
+    probe *is* a search, and there would be nothing for the page to explain. A probe that could not reach the search leaves the answer
+    ``None`` rather than ``False``: the stamp is still written, so an outage
+    does not make every sweep re-probe, but nothing is claimed about the term —
+    an unreachable search is not evidence that nobody writes a word.
+    """
+    if not config.GOOGLE_NEWS_ENABLED or not gnews.context_terms(client):
+        return
+    checked = client.field_checked_at
+    if checked is not None and now - checked < _FIELD_RECHECK:
+        return
+    try:
+        client.field_usable = industry.field_is_usable(client, fetch=fetch, now=now)
+    except Exception as exc:  # noqa: BLE001 — a probe must not cost the sweep
+        _log.warning("industry probe for %r failed: %s", client.name, exc)
+        client.field_usable = None
+    client.field_checked_at = now
+    session.commit()
+
+
 def _sweep_market(
     session: Session,
     clients: Sequence[Client],
@@ -416,7 +456,13 @@ def _sweep_market(
 
     Competitors are skipped for the reason the topic radar skips them: a yardstick
     is tracked to compare its share of the conversation, and nobody reads it a
-    market page. A class a mandate has muted is skipped for that mandate alone.
+    market page. A class a mandate has muted is skipped for that mandate alone,
+    and a mandate that has muted all three is skipped before any work is done for
+    it at all.
+
+    This is also where the industry term is measured (:func:`_refresh_field_verdict`),
+    because the market page is what reads the answer and a page render is the one
+    place a live search must not happen.
 
     Returns ``(signals written, what failed)``. The failures are returned rather
     than appended to the run's list in passing, because the caller has to do
@@ -429,6 +475,12 @@ def _sweep_market(
     active = market_sources.fetchers(fetch=fetch)
     for client in clients:
         if client.is_competitor:
+            continue
+        _refresh_field_verdict(session, client, fetch=fetch, now=now)
+        # A mandate that has switched off every class is skipped whole, before the
+        # dedup set is even built. "Not fetched, not merely hidden" has to be true
+        # of the work done for a class as well as of its feeds.
+        if all(client.mutes_signal(fetcher.kind) for fetcher in active):
             continue
         try:
             seen = market_sources.already_seen(session, client, now=now)

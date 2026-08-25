@@ -123,7 +123,30 @@ def test_a_failing_probe_does_not_promote_the_term(session):
 
     measured = industry.measure(_client(), ["Kosmetik"], fetch=_boom, now=lambda: _NOW)
 
-    assert measured == [industry.Candidate(term="Kosmetik", hits=0)]
+    assert measured == [industry.Candidate(term="Kosmetik", hits=0, measured=False)]
+    assert measured[0].usable is False
+
+
+def test_a_field_nobody_could_measure_is_not_a_field_nobody_writes(session):
+    """The number alone cannot tell them apart: a probe that never reached the
+    search is recorded as zero hits, exactly like a word the press does not use.
+    Read as "nobody writes this", one rate-limited morning sends an operator off
+    to change an industry term that works — so the two answers are kept apart.
+    """
+
+    def _boom(*a, **k):
+        raise RuntimeError("Netzwerk weg")
+
+    client = _client(industry="Kosmetik")
+
+    assert industry.field_is_usable(client, fetch=_boom, now=lambda: _NOW) is None
+    assert industry.field_is_usable(client, fetch=_hits({}), now=lambda: _NOW) is False
+    assert (
+        industry.field_is_usable(
+            client, fetch=_hits({"Kosmetik": 9}), now=lambda: _NOW
+        )
+        is True
+    )
 
 
 def test_the_probe_uses_the_clients_own_news_edition():

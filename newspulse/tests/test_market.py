@@ -29,7 +29,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import config, i18n, industry, market_sources
+from newspulse import clients, config, i18n, industry, job, market_sources
 from newspulse.models import (
     Analysis,
     Article,
@@ -750,16 +750,17 @@ def test_one_mandates_mute_does_not_touch_another(factory, client):
 
 
 def test_an_unusable_field_is_explained_rather_than_left_as_a_quiet_market(
-    factory, client, monkeypatch
+    factory, client
 ):
     """The measured example is "Beauty Tech": accurate, and almost absent from
     German press text, so the search half of the radar returns nothing at all. The
     curated half still arrives, and without a word the page reads as a quiet market
     rather than as a broken filter."""
-    monkeypatch.setattr(industry, "field_is_usable", lambda client, **kw: False)
     with factory() as session:
         subject = _client(session)
         subject.industry = "Beauty Tech"
+        subject.field_usable = False
+        subject.field_checked_at = _NOW
         session.commit()
         _signal(
             session, subject, SignalKind.STUDIE, "Aus kuratierter Quelle",
@@ -774,11 +775,12 @@ def test_an_unusable_field_is_explained_rather_than_left_as_a_quiet_market(
     assert "keine Branche hinterlegt" not in body, "it has one; it just does not work"
 
 
-def test_a_working_field_is_not_accused_of_being_unusable(factory, client, monkeypatch):
-    monkeypatch.setattr(industry, "field_is_usable", lambda client, **kw: True)
+def test_a_working_field_is_not_accused_of_being_unusable(factory, client):
     with factory() as session:
         subject = _client(session)
         subject.industry = "Onlinehandel"
+        subject.field_usable = True
+        subject.field_checked_at = _NOW
         session.commit()
         _signal(
             session, subject, SignalKind.STUDIE, "Aus kuratierter Quelle",
@@ -793,61 +795,290 @@ def test_a_working_field_is_not_accused_of_being_unusable(factory, client, monke
     )
 
 
-def test_the_field_is_never_probed_when_the_search_half_plainly_works(
-    factory, monkeypatch
-):
-    """``field_is_usable`` issues a live search, and this runs inside a page render.
+def test_a_field_that_could_not_be_measured_is_not_accused_of_anything(factory, client):
+    """The failure this section exists to prevent, one turn further on.
 
-    One search-found row anywhere on the page already proves the field works, so
-    the probe must not be reached at all — the network call has to be the rare
-    case, not the every-render one.
+    ``industry.measure`` records an unreachable search as zero hits, so a probe
+    that never completed and a term nobody writes look identical from the number
+    alone. Telling an operator to change a word over a rate-limited morning is
+    confidently wrong and actionable — worse than the silence it replaces — so an
+    unanswered question says nothing.
     """
-
-    def _never(client, **kwargs):
-        raise AssertionError("the field was probed although the search plainly works")
-
-    monkeypatch.setattr(industry, "field_is_usable", _never)
     with factory() as session:
         subject = _client(session)
         subject.industry = "Onlinehandel"
+        subject.field_usable = None  # the probe could not reach the search
+        subject.field_checked_at = _NOW
         session.commit()
-        row = client_routes._signal_row(
-            _signal(
-                session, subject, SignalKind.STUDIE, "Aus der Feldsuche",
-                origin=SignalOrigin.SUCHE, published_at=_NOW,
-            ),
-            today=_NOW.date(),
-            tz=dt.UTC,
+        _signal(
+            session, subject, SignalKind.STUDIE, "Aus kuratierter Quelle",
+            published_at=_NOW,
         )
+        subject_id = subject.id
 
-        assert client_routes._field_gap(subject, [row]) is None
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Aus kuratierter Quelle" in body
+    assert "kommt in der deutschen Presse zu selten vor" not in body
+    assert "keine Branche hinterlegt" not in body
+
+
+def test_rendering_the_market_page_never_measures_the_industry(factory, client, monkeypatch):
+    """``field_is_usable`` issues one live search per industry term, each with a
+    twenty-second feed timeout. A page render is the one place that cost cannot be
+    paid — and the mandate it would be paid for on every single load is exactly the
+    one this section exists for, whose search half is empty every morning. The
+    answer is produced by the sweep and read here."""
+
+    def _never(*args, **kwargs):
+        raise AssertionError("the market page measured the industry term")
+
+    monkeypatch.setattr(industry, "field_is_usable", _never)
+    monkeypatch.setattr(industry, "measure", _never)
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Beauty Tech"
+        session.commit()
+        _signal(
+            session, subject, SignalKind.STUDIE, "Aus kuratierter Quelle",
+            published_at=_NOW,
+        )
+        subject_id = subject.id
+
+    assert client.get(f"/client/{subject_id}/market").status_code == 200
+
+
+def test_a_search_found_signal_answers_the_question_even_when_it_is_not_rendered(
+    factory, client
+):
+    """The evidence is the stored table, not the rendered list.
+
+    The rows the page shows have been narrowed twice — a muted class is not among
+    them, and the calendar has already dropped everything whose dates are behind
+    us. A mandate whose only search-found signal is a regulation that has landed
+    would otherwise look exactly like one whose search returns nothing, and be
+    told its industry term is the reason for a field that demonstrably works.
+    """
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Beauty Tech"
+        subject.field_usable = False
+        subject.field_checked_at = _NOW
+        session.commit()
+        _signal(
+            session, subject, SignalKind.REGULIERUNG, "Gilt seit vorletzter Woche",
+            origin=SignalOrigin.SUCHE,
+            effective_at=_in(-14),
+        )
+        subject_id = subject.id
+
+    body = client.get(f"/client/{subject_id}/market").text
+
+    assert "Gilt seit vorletzter Woche" not in body, "it has landed; it left the calendar"
+    assert "kommt in der deutschen Presse zu selten vor" not in body
 
 
 def test_a_mandate_with_no_industry_at_all_is_told_that_and_not_something_else(
-    factory, client, monkeypatch
+    factory, client
 ):
-    """Nothing to measure, so no probe — and, more to the point, a different fact.
+    """A different fact, and a different message.
 
     A mandate that never had an industry and one whose accurate industry the press
     does not write are not the same problem and do not send the reader to the same
     work, so one message covering both would be wrong about whichever case it was
     not written for.
     """
-
-    def _never(client, **kwargs):
-        raise AssertionError("a mandate with no industry term was probed")
-
-    monkeypatch.setattr(industry, "field_is_usable", _never)
     with factory() as session:
         subject = _client(session)
         subject_id = subject.id
 
-        assert client_routes._field_gap(subject, []) is client_routes.FieldGap.UNSET
+        assert (
+            client_routes._field_gap(subject, searched=False)
+            is client_routes.FieldGap.UNSET
+        )
 
     body = client.get(f"/client/{subject_id}/market").text
 
     assert "für diesen Mandanten ist keine Branche hinterlegt" in body
     assert "kommt in der deutschen Presse zu selten vor" not in body
+
+
+# --- The measurement, on the sweep rather than in the page ----------------------
+
+
+def _probe_urls(asked: list[tuple[str, str | None]]) -> list[str]:
+    """The industry probes among everything a sweep fetched.
+
+    ``industry.measure`` labels its own fetch ``Branchen-Probe``, which is what
+    tells a probe apart from the dozen curated market feeds beside it.
+    """
+    return [url for url, source in asked if source == "Branchen-Probe"]
+
+
+def _recording_fetch(asked: list[tuple[str, str | None]], *, probe_items: list | None = None):
+    def _fetch(url, since, **kwargs):
+        asked.append((url, kwargs.get("source")))
+        if kwargs.get("source") == "Branchen-Probe":
+            return list(probe_items or [])
+        return []
+
+    return _fetch
+
+
+def test_the_sweep_measures_the_industry_term_and_stores_the_answer(
+    factory, no_market_sweep
+):
+    """The page reads this; it never asks the question itself. One live search per
+    industry term, each with a twenty-second feed timeout, is a cost a GET cannot
+    carry — least of all on the mandates the answer exists for, whose search half
+    is empty every morning."""
+    asked: list[tuple[str, str | None]] = []
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Onlinehandel"
+        session.commit()
+
+        no_market_sweep(
+            session,
+            [subject],
+            _NOW - dt.timedelta(days=14),
+            _recording_fetch(asked, probe_items=["ein Treffer", "noch einer"]),
+            _NOW,
+        )
+        subject = session.get(Client, subject.id)
+
+        assert _probe_urls(asked), "the term was never measured"
+        assert subject.field_usable is True
+        assert subject.field_checked_at == _NOW
+
+
+def test_a_probe_that_could_not_reach_the_search_claims_nothing_about_the_term(
+    factory, no_market_sweep
+):
+    """``industry.measure`` records an unreachable search as zero hits, so on the
+    number alone an outage and a word nobody writes are the same thing. Stored as
+    ``False`` it would put "Ihr Branchenbegriff kommt zu selten vor" on the page
+    over a rate-limited morning, and send an operator off to change a term that
+    works. The stamp is still written, so one bad night does not make every later
+    sweep re-probe."""
+    asked: list[tuple[str, str | None]] = []
+
+    def _fetch(url, since, **kwargs):
+        asked.append((url, kwargs.get("source")))
+        if kwargs.get("source") == "Branchen-Probe":
+            raise RuntimeError("Netzwerk weg")
+        return []
+
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Onlinehandel"
+        session.commit()
+
+        no_market_sweep(session, [subject], _NOW - dt.timedelta(days=14), _fetch, _NOW)
+        subject = session.get(Client, subject.id)
+
+        assert _probe_urls(asked), "the probe was issued"
+        assert subject.field_usable is None, "an outage is not a verdict about a word"
+        assert subject.field_checked_at == _NOW
+
+
+def test_a_measured_term_is_not_re_measured_every_morning(factory, no_market_sweep):
+    """What the probe measures — whether the German press writes a word at all —
+    moves over months. Asking every sweep would spend a live search a day to
+    re-learn the same fact."""
+    asked: list[tuple[str, str | None]] = []
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Onlinehandel"
+        subject.field_usable = False
+        subject.field_checked_at = _NOW - dt.timedelta(days=3)
+        session.commit()
+
+        no_market_sweep(
+            session, [subject], _NOW - dt.timedelta(days=14), _recording_fetch(asked), _NOW
+        )
+        subject = session.get(Client, subject.id)
+
+        assert not _probe_urls(asked), "the term was measured again three days on"
+        assert subject.field_usable is False, "and the stored answer is untouched"
+
+
+def test_a_term_measured_long_enough_ago_is_measured_again(factory, no_market_sweep):
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Onlinehandel"
+        subject.field_usable = False
+        subject.field_checked_at = _NOW - job._FIELD_RECHECK - dt.timedelta(days=1)
+        session.commit()
+        asked: list[tuple[str, str | None]] = []
+
+        no_market_sweep(
+            session,
+            [subject],
+            _NOW - dt.timedelta(days=14),
+            _recording_fetch(asked, probe_items=["a", "b"]),
+            _NOW,
+        )
+
+        assert _probe_urls(asked)
+        assert session.get(Client, subject.id).field_usable is True
+
+
+def test_a_mandate_with_no_industry_is_not_probed(factory, no_market_sweep):
+    """Nothing to measure, and the page has a different message for that case."""
+    asked: list[tuple[str, str | None]] = []
+    with factory() as session:
+        subject = _client(session)
+
+        no_market_sweep(
+            session, [subject], _NOW - dt.timedelta(days=14), _recording_fetch(asked), _NOW
+        )
+
+        assert not _probe_urls(asked)
+        assert session.get(Client, subject.id).field_checked_at is None
+
+
+def test_changing_the_industry_term_clears_the_verdict_about_the_old_one(factory):
+    """The verdict is about a word. Carried over to a new one it would tell an
+    operator that the term they just fixed is still the problem."""
+    with factory() as session:
+        subject = _client(session)
+        subject.industry = "Beauty Tech"
+        subject.field_usable = False
+        subject.field_checked_at = _NOW
+        session.commit()
+
+        clients.update_client(session, subject.id, industry="Kosmetik")
+
+        subject = session.get(Client, subject.id)
+        assert subject.field_usable is None
+        assert subject.field_checked_at is None
+
+
+def test_a_mandate_that_muted_every_class_costs_the_sweep_nothing(
+    factory, no_market_sweep, monkeypatch
+):
+    """"Not fetched, not merely hidden" has to be true of the work done for a
+    class as well as of its feeds. The dedup set is built per mandate before the
+    per-class check, so a mandate that has switched all three off was still paying
+    that query every morning to hand it to nobody."""
+    asked: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(
+        market_sources,
+        "already_seen",
+        lambda *a, **k: pytest.fail("built a dedup set for a mandate that wants no class"),
+    )
+    with factory() as session:
+        subject = _client(session)
+        subject.muted_signal_kinds = [kind.value for kind in SignalKind]
+        session.commit()
+
+        written, errors = no_market_sweep(
+            session, [subject], _NOW - dt.timedelta(days=14), _recording_fetch(asked), _NOW
+        )
+
+        assert asked == [], "a mandate that wants no class was still fetched for"
+        assert (written, errors) == (0, [])
 
 
 # --- Every new German string has an English one --------------------------------

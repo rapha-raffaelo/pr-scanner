@@ -161,10 +161,10 @@
 
     {# The searched half of the market radar is missing, and why. Said once, above
        the three classes it applies to, rather than three times — and only when it
-       is actually true (see routes.client._field_gap). Two messages rather than
+       is actually true, which the route decides (see routes.client._field_gap). Two messages rather than
        one: an unconfigured mandate and a term the press does not write are
        different facts, and they send the reader to different work. #}
-    {% if field_gap and signals %}
+    {% if field_gap %}
       <p class="sig__note">
         {% if field_gap == 'unusable' %}
           {{ t("Nur kuratierte Quellen: der Branchenbegriff dieses Mandanten kommt in der deutschen Presse zu selten vor, um damit zu suchen. Die gezielte Suche im Feld fehlt deshalb.") }}
