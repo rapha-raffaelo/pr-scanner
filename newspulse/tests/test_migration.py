@@ -104,6 +104,55 @@ def test_alembic_upgrade_creates_schema_and_round_trips_arrays(tmp_path, monkeyp
         engine.dispose()
 
 
+def test_the_market_columns_exist_on_the_migrated_clients_table(tmp_path, monkeypatch):
+    """The per-mandate mute and the industry verdict, against the real migration.
+
+    Every test that exercises them builds its schema from ``Base.metadata``, so an
+    ORM/migration divergence in either column would pass the whole suite and first
+    appear on a deployed database — as a 500 on the market page, or as a mute that
+    cannot be stored. The array column is round-tripped rather than merely
+    present: ``muted_signal_kinds`` is read back by the sweep to decide what not
+    to fetch, and a column that cannot hold a list would fail there.
+    """
+    db_path = tmp_path / "market.db"
+    monkeypatch.setattr(config, "DATABASE_PATH", db_path)
+
+    command.upgrade(_alembic_config(), "head")
+
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    try:
+        columns = {c["name"] for c in inspect(engine).get_columns("clients")}
+        assert {"muted_signal_kinds", "field_usable", "field_checked_at"} <= columns
+
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO clients "
+                    "(name, aliases, industry, country, keywords, alert_topics, "
+                    "muted_signal_kinds, active, created_at) "
+                    "VALUES ('Beispiel AG', '[]', 'Automotive', 'DE', '[]', '[]', "
+                    ":muted, 1, '2026-07-24 08:00:00')"
+                ),
+                {"muted": '["studie", "veranstaltung"]'},
+            )
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT muted_signal_kinds, field_usable, field_checked_at "
+                    "FROM clients"
+                )
+            ).one()
+
+        assert json.loads(row[0]) == ["studie", "veranstaltung"]
+        # Not backfilled, and that is the point: 0 would read as "the press does
+        # not write this word" for every existing mandate, which is the false
+        # accusation the column was added to prevent.
+        assert row[1] is None
+        assert row[2] is None
+    finally:
+        engine.dispose()
+
+
 def test_a_row_written_before_the_stamp_carries_no_version_rather_than_zero(
     tmp_path, monkeypatch
 ):

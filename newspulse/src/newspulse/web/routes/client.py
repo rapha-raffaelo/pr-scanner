@@ -877,7 +877,9 @@ def _nominations(session: Session, client_id: int, *, days: int) -> dict[str, li
 # --- The three market classes: a calendar, not three more lists -----------------
 
 
-def _remaining(when: dt.datetime | None, *, today: dt.date, tz) -> Remaining | None:
+def _remaining(
+    when: dt.datetime | None, *, today: dt.date, tz: dt.tzinfo
+) -> Remaining | None:
     """Whole days from today until ``when``, or ``None`` if that is behind us.
 
     ``None`` for a date in the past is what makes the page a calendar rather than
@@ -890,7 +892,7 @@ def _remaining(when: dt.datetime | None, *, today: dt.date, tz) -> Remaining | N
     return Remaining(days=days) if days >= 0 else None
 
 
-def _signal_row(signal: MarketSignal, *, today: dt.date, tz) -> SignalRow:
+def _signal_row(signal: MarketSignal, *, today: dt.date, tz: dt.tzinfo) -> SignalRow:
     return SignalRow(
         kind=signal.kind,
         title=signal.title,
@@ -945,7 +947,7 @@ def _forward(rows: Sequence[SignalRow]) -> list[SignalRow]:
 
 
 def _signals_by_kind(
-    session: Session, client: Client, *, now: dt.datetime, tz
+    session: Session, client: Client, *, now: dt.datetime, tz: dt.tzinfo
 ) -> dict[str, list[SignalRow]]:
     """This mandate's market signals, one ordered list per class it still wants.
 
@@ -960,19 +962,31 @@ def _signals_by_kind(
     rows = [
         _signal_row(signal, today=today, tz=tz)
         for signal in session.scalars(
-            select(MarketSignal).where(
+            select(MarketSignal)
+            .where(
                 MarketSignal.client_id == client.id,
                 MarketSignal.kind.in_(wanted),
             )
+            # Both orderings below are stable sorts, so whatever SQLite happens to
+            # return decides ties — two studies published the same day would swap
+            # places between two renders of the same page. Newest-found first, id
+            # as the last word, so the order is a property of the data.
+            .order_by(MarketSignal.found_at.desc(), MarketSignal.id.desc())
         ).all()
     ]
+    # A class with no calendar rule of its own is ordered by publication, which is
+    # what DEC-2 C says an undated thing does anyway. A ``KeyError`` here would be
+    # a 500 on the whole market page the day a fourth class is added.
     order = {
         SignalKind.STUDIE: _by_publication,
         SignalKind.REGULIERUNG: _forward,
         SignalKind.VERANSTALTUNG: _forward,
     }
     return {
-        kind.value: order[kind]([r for r in rows if r.kind is kind]) for kind in wanted
+        kind.value: order.get(kind, _by_publication)(
+            [r for r in rows if r.kind is kind]
+        )
+        for kind in wanted
     }
 
 

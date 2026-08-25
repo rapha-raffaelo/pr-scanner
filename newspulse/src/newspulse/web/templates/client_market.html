@@ -60,7 +60,7 @@
 <h1 class="pagetitle">{{ t("Marktumfeld") }}</h1>
 <p class="market__lead">
   {{ t("Vier Arten von Signal aus dem Feld des Mandanten: was berichtet wurde, was belegt ist, was kommt und wo er auftreten kann.") }}
-  <br><span class="nom__last">{{ t("Themen-Radar: letzte") }} {{ days }} {{ t("Tage") }}</span>
+  <br><span class="nom__last">{{ t("Themen-Radar: letzte %(days)s Tage") | format(days=days) }}</span>
 </p>
 
 {% if themes %}
@@ -105,7 +105,10 @@
     <span class="sig__deadline {% if row.deadline_soon %}sig__deadline--soon{% endif %}">
       {{ label }} {{ row.deadline_at | de_date }} ·
       {% with r = row.until_deadline %}{% include "partials/market_remaining.html" %}{% endwith %}
-      {% if row.deadline_soon %} · {{ t("läuft ab") }}{% endif %}
+      {# Named rather than implied, so the sentence stays true if _DEADLINE_SOON
+         moves: "läuft ab" beside a date eleven days out says nothing a reader can
+         check. #}
+      {% if row.deadline_soon %} · {{ t("läuft in unter %(weeks)s Wochen ab") | format(weeks=deadline_weeks) }}{% endif %}
     </span>
   {% endif %}
 {% endmacro %}
@@ -268,7 +271,10 @@
         {{ t("Ausgeblendet und nicht mehr abgerufen:") }}
         {% for kind in muted_kinds %}
           <form method="post" action="/client/{{ client.id }}/market/{{ kind }}/unmute">
-            <button class="linkbtn" type="submit">{{ class_names[kind] }} {{ t("wieder einblenden") }}</button>
+            {# Falls back to the stored value: Jinja renders a missing key as the
+               empty string, so a class nobody has named here would otherwise be a
+               nameless button that switches something unknown back on. #}
+            <button class="linkbtn" type="submit">{{ class_names.get(kind, kind) }} {{ t("wieder einblenden") }}</button>
           </form>{% if not loop.last %} · {% endif %}
         {% endfor %}
       </p>

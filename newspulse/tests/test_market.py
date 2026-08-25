@@ -506,7 +506,9 @@ def test_a_speaker_deadline_inside_two_weeks_is_marked(factory, client):
     body = _markup(client.get(f"/client/{subject_id}/market").text)
 
     assert "sig__deadline--soon" in body
-    assert "läuft ab" in body
+    # The mark says what it is marked by. "Läuft ab" beside a date nine days out
+    # is not something a reader can check against anything.
+    assert "läuft in unter 2 Wochen ab" in body
 
 
 def test_the_countdown_says_which_of_an_events_two_dates_it_counts_to(factory, client):

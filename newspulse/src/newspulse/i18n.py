@@ -1038,7 +1038,9 @@ _EN: dict[str, str] = {
     "belegt ist, was kommt und wo er auftreten kann.":
         "Four kinds of signal from the client's field: what was reported, what is "
         "evidenced, what is coming, and where they can be heard.",
-    "Themen-Radar: letzte": "Topic radar: last",
+    # One unit, not a sentence split around an interpolated number: a translator
+    # cannot reorder "letzte" / 90 / "Tage" once they are three separate strings.
+    "Themen-Radar: letzte %(days)s Tage": "Topic radar: last %(days)s days",
     "Das Themen-Radar hat in diesem Zeitraum nichts gefunden.":
         "The topic radar found nothing in this period.",
     "Die hinterlegten Themen sind womöglich zu eng gefasst — zwei bis drei "
@@ -1097,7 +1099,9 @@ _EN: dict[str, str] = {
     "Termin": "Date",
     "Frist": "Deadline",
     "Einreichfrist": "Submission deadline",
-    "läuft ab": "closing",
+    # Names the threshold it is marked by rather than implying one, so the line
+    # stays true if the two weeks in ``_DEADLINE_SOON`` ever move.
+    "läuft in unter %(weeks)s Wochen ab": "closes in under %(weeks)s weeks",
     "ohne Datum": "undated",
     "kein Datum erkannt": "no date recognised",
     # The remaining time, in the units a consultant thinks in. Under a week it
