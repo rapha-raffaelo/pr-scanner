@@ -998,9 +998,10 @@ _CLASS_ORDER: dict[SignalKind, Callable[[Sequence[SignalRow]], list[SignalRow]]]
 #: The most studies one section shows. The same reasoning as :data:`_MARKET_TOP`,
 #: and needed here for a reason the other two classes do not have: nothing ages a
 #: study off the page (DEC-2 C), so this is the one list on it that only ever
-#: grows. Left uncapped it becomes the directory that comment is about, and the
-#: whole table is loaded to build it. What the cap leaves out is *counted and
-#: said* below the section — a shortlist is fine, a silent one is not.
+#: grows. Left uncapped it becomes the directory that comment is about — and the
+#: whole shelf is read out of the database to build it, year after year. What the
+#: cap leaves out is *said* below the section: a shortlist is fine, a silent one
+#: is not.
 _STUDIES_SHOWN = _MARKET_TOP
 
 
@@ -1033,28 +1034,42 @@ def _still_ahead(floor: dt.datetime) -> ColumnElement[bool]:
 
 
 def _stored_signals(
-    session: Session,
-    client: Client,
-    *,
-    kinds: Sequence[SignalKind],
-    floor: dt.datetime,
+    session: Session, client: Client, *, kind: SignalKind, floor: dt.datetime
 ) -> Sequence[MarketSignal]:
-    """The rows worth reading for ``kinds`` — the calendar ones bounded by date."""
-    calendar_kinds = [k for k in kinds if _CLASS_ORDER.get(k) is _forward]
-    wanted: ColumnElement[bool] = MarketSignal.kind.in_(kinds)
-    if calendar_kinds:
-        wanted = and_(
-            wanted,
-            or_(MarketSignal.kind.not_in(calendar_kinds), _still_ahead(floor)),
-        )
+    """The rows worth reading for one class, bounded by whatever bounds it.
+
+    One query per class rather than one for all three, because what bounds them
+    is not the same thing. A calendar class is bounded by a date — everything
+    below ``floor`` is a row :func:`_forward` would discard, so it is never read.
+    Studies have no such clock, so the bound is the cap itself, applied here so
+    the shelf is not read out of the database in full to show a dozen of it.
+
+    One row past the cap is fetched deliberately: it is all the section needs to
+    know there is more, and it costs a row rather than a second ``COUNT``.
+    """
+    query = select(MarketSignal).where(
+        MarketSignal.client_id == client.id, MarketSignal.kind == kind
+    )
+    if _CLASS_ORDER.get(kind) is _forward:
+        return session.scalars(
+            # Every ordering applied afterwards is a stable sort, so whatever
+            # SQLite happens to return decides ties. Newest-found first, id as the
+            # last word, so the order is a property of the data rather than of the
+            # storage engine's mood.
+            query.where(_still_ahead(floor)).order_by(
+                MarketSignal.found_at.desc(), MarketSignal.id.desc()
+            )
+        ).all()
+    # The exact order :func:`_by_publication` produces, expressed for SQL, so the
+    # limit below cuts the same rows the page would have cut. A cap applied over a
+    # different ordering throws away the wrong end of the shelf.
     return session.scalars(
-        select(MarketSignal)
-        .where(MarketSignal.client_id == client.id, wanted)
-        # Both orderings applied afterwards are stable sorts, so whatever SQLite
-        # happens to return decides ties — two studies published the same day
-        # would swap places between two renders of the same page. Newest-found
-        # first, id as the last word, so the order is a property of the data.
-        .order_by(MarketSignal.found_at.desc(), MarketSignal.id.desc())
+        query.order_by(
+            MarketSignal.published_at.is_(None),
+            MarketSignal.published_at.desc(),
+            MarketSignal.found_at.desc(),
+            MarketSignal.id.desc(),
+        ).limit(_STUDIES_SHOWN + 1)
     ).all()
 
 
@@ -1064,10 +1079,11 @@ class MarketSections:
 
     #: One ordered list per class, keyed on the stored enum value.
     rows: dict[str, list[SignalRow]]
-    #: How many studies :data:`_STUDIES_SHOWN` left out, so the page can say so.
-    #: A cap nobody is told about reads as "that is all there is". One number
-    #: rather than one per class, because studies are the only class capped.
-    hidden_studies: int = 0
+    #: Whether :data:`_STUDIES_SHOWN` left any study out, so the page can say so.
+    #: A cap nobody is told about reads as "that is all there is". A flag rather
+    #: than a count, because the query stops one row past the cap and an exact
+    #: number would cost a second pass over a shelf nobody is reading.
+    hidden_studies: bool = False
 
 
 def _signals_by_kind(
@@ -1083,15 +1099,15 @@ def _signals_by_kind(
     if not wanted:
         return MarketSections(rows={})
     today = now.astimezone(tz).date()
-    rows = [
-        _signal_row(signal, today=today, tz=tz)
-        for signal in _stored_signals(
-            session, client, kinds=wanted, floor=_calendar_floor(today=today, tz=tz)
-        )
-    ]
+    floor = _calendar_floor(today=today, tz=tz)
     ordered = {
         kind.value: _CLASS_ORDER.get(kind, _by_publication)(
-            [r for r in rows if r.kind is kind]
+            [
+                _signal_row(signal, today=today, tz=tz)
+                for signal in _stored_signals(
+                    session, client, kind=kind, floor=floor
+                )
+            ]
         )
         for kind in wanted
     }
@@ -1100,7 +1116,7 @@ def _signals_by_kind(
     # — and cutting the far end of a calendar would hide what a mandate has the
     # most time to prepare for.
     studies = ordered.get(SignalKind.STUDIE.value, [])
-    hidden = max(len(studies) - _STUDIES_SHOWN, 0)
+    hidden = len(studies) > _STUDIES_SHOWN
     if hidden:
         ordered[SignalKind.STUDIE.value] = studies[:_STUDIES_SHOWN]
     return MarketSections(rows=ordered, hidden_studies=hidden)

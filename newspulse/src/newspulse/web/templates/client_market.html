@@ -226,13 +226,7 @@
            grows. It is cut to a shortlist — and the cut is stated, because a cap
            nobody is told about reads as "that is all there is". #}
         {% if hidden_studies %}
-          <p class="sig__more">
-            {% if hidden_studies == 1 %}
-              {{ t("Eine ältere Studie wird nicht angezeigt.") }}
-            {% else %}
-              {{ t("%(n)s ältere Studien werden nicht angezeigt.") | format(n=hidden_studies) }}
-            {% endif %}
-          </p>
+          <p class="sig__more">{{ t("Ältere Studien werden nicht angezeigt.") }}</p>
         {% endif %}
       </section>
     {% endif %}
