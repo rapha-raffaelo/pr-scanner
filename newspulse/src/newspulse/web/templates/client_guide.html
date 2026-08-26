@@ -166,6 +166,21 @@
       {% endif %}
     </div>
 
+    {# The third way in, and the one most mandates have on the day they are
+       created: neither a brand book nor an answered questionnaire, but a profile
+       and a few hundred articles. Same door as the other two — the material is
+       filed as a source and distilled — and the hint says what it is made of,
+       because this is the weakest of the three kinds of evidence and a guide
+       that every later text is checked against should not hide that. #}
+    <div style="margin-top:12px">
+      <form method="post" action="/client/{{ client.id }}/guide/vorschlag">
+        <button type="submit" class="btn btn--ghost">{{ t("Entwurf aus Profil und Berichterstattung") }}</button>
+      </form>
+      <p class="drop__hint">
+        {{ t("Liest, was im Profil steht und wie die Presse über diesen Mandanten schreibt, und schlägt daraus einen Guide vor. Schwächere Grundlage als ein Markenhandbuch oder der Kickoff — gespeichert wird nur, was Sie übernehmen.") }}
+      </p>
+    </div>
+
     <form method="post" action="/client/{{ client.id }}/guide/upload" enctype="multipart/form-data" class="drop" style="margin-top:12px">
       <input type="file" name="file" accept=".pdf,.txt,.md,.markdown">
       <button type="submit" class="btn btn--quiet" style="margin-top:8px">{{ t("Hochladen") }}</button>

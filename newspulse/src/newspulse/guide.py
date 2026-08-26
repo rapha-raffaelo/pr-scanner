@@ -198,6 +198,98 @@ def _prompt_template() -> Template:
     return Template(brain.compose(text))
 
 
+#: The source name a record-derived draft is filed under, so its provenance
+#: reads as what it is rather than looking like something somebody uploaded.
+RECORD_SOURCE_NAME = "Profil und Berichterstattung"
+
+#: How much coverage goes into that source. "Alles lesen" bounded by what a model
+#: call can hold: newest first, so the budget is spent on what is current rather
+#: than on the first month this mandate was ever tracked.
+_COVERAGE_CHARS = 16_000
+
+
+def _record_text(session: Session, client: Client) -> str:
+    """The mandate as the tool already holds it: the profile, then the coverage.
+
+    Two blocks and they are different kinds of evidence, so they are labelled
+    rather than run together. The profile is what somebody recorded about this
+    company. The coverage is what the press actually wrote — which is the half
+    that says how this mandate is talked about, and therefore the half a guide
+    built without a brand book is really made of.
+    """
+    from . import profile as profiles  # local: profile imports nothing from here
+    from .models import Analysis, Article
+
+    facts = profiles.stored(session, client.id)
+    lines = [f"UNTERNEHMEN: {client.name}"]
+    if client.industry:
+        lines.append(f"BRANCHE: {client.industry}")
+    lines.append("")
+    lines.append("PROFIL")
+    recorded = 0
+    for field in profiles.FIELDS:
+        fact = facts.get(field.key)
+        if fact and fact.value.strip():
+            recorded += 1
+            lines.append(f"- {field.label}: {fact.value.strip()}")
+    if not recorded:
+        # Said rather than left blank: an empty block reads as a block the
+        # builder forgot, and the model should know it is working from coverage
+        # alone rather than quietly filling the gap.
+        lines.append("- (keine Angaben hinterlegt)")
+
+    rows = session.execute(
+        select(Article.published_at, Article.source, Article.title, Analysis.summary)
+        .join(Analysis, Analysis.article_id == Article.id)
+        .where(Analysis.client_id == client.id)
+        .order_by(Article.published_at.desc())
+    ).all()
+
+    lines.append("")
+    lines.append(f"BERICHTERSTATTUNG ({len(rows)} Beiträge, neueste zuerst)")
+    budget = _COVERAGE_CHARS
+    used = 0
+    for published_at, source, title, summary in rows:
+        entry = f"- {published_at:%Y-%m-%d} {source}: {title}"
+        if summary:
+            entry += f"\n  {summary}"
+        if budget - len(entry) <= 0:
+            break
+        budget -= len(entry)
+        used += 1
+        lines.append(entry)
+    if not rows:
+        lines.append("- (noch keine Berichterstattung erfasst)")
+    elif used < len(rows):
+        lines.append(f"- (… {len(rows) - used} ältere Beiträge nicht mitgelesen)")
+    return "\n".join(lines)
+
+
+def from_record(
+    session: Session,
+    client: Client,
+    *,
+    invoke: Callable[..., str] = invoke_with_fallback,
+) -> str:
+    """Propose a guide from what the tool already holds: profile and coverage.
+
+    The third way in, after an uploaded brand book and the kick-off answers, and
+    the one for a mandate that has neither. Through the same door as those two —
+    the material is filed as a :class:`GuideSource` and distilled — so there is
+    one path to a guide rather than three, and the rule that dictated material is
+    never applied directly holds here as well: this returns a proposal, and a
+    person decides.
+
+    Worth being plain about, because the three are not equal evidence. A brand
+    book is what the client decided. The kick-off is what the client said. This
+    is what the press has written and what somebody recorded in the profile —
+    the weakest of the three, and the only one available to a mandate that
+    arrived with nothing.
+    """
+    replace_source(session, client, RECORD_SOURCE_NAME, _record_text(session, client))
+    return distill(session, client, invoke=invoke)
+
+
 def distill(
     session: Session,
     client: Client,

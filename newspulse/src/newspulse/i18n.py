@@ -453,6 +453,12 @@ _EN: dict[str, str] = {
     "Ausgewählte schreiben": "Write the selected ones",
     "Content": "Content",
     "Vorschlag": "Suggested",
+    # The third way to a guide: what the tool already holds.
+    "Entwurf aus Profil und Berichterstattung": "Draft from profile and coverage",
+    "Liest, was im Profil steht und wie die Presse über diesen Mandanten schreibt, und schlägt daraus einen Guide vor. Schwächere Grundlage als ein Markenhandbuch oder der Kickoff — gespeichert wird nur, was Sie übernehmen.":
+        "Reads what the profile records and how the press writes about this "
+        "mandate, and proposes a guide from it. Weaker ground than a brand book "
+        "or the kick-off — only what you accept is saved.",
     "Ohne Häkchen werden alle noch fehlenden geschrieben.":
         "With nothing ticked, every one still missing is written.",
     "Wird geschrieben": "Writing",

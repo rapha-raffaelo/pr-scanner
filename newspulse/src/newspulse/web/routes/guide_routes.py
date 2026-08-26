@@ -141,6 +141,30 @@ def distill_guide(
     return _render(request, session, client, proposal=proposal)
 
 
+@router.post("/client/{client_id}/guide/vorschlag")
+def draft_from_record(
+    request: Request, client_id: int, session: Session = Depends(get_db)
+) -> Response:
+    """Draft a guide from the profile and the coverage — shown, not stored.
+
+    The way in for a mandate that has neither a brand book nor an answered
+    kick-off, which is most of them on the day they are created. Same preview
+    step as the other two, for the same reason: the guide is what every later
+    text is checked against, and a rule nobody read before it was saved is a
+    rule nobody agreed to.
+    """
+    client = _client_or_404(session, client_id)
+    try:
+        proposal = guide.from_record(session, client)
+    except guide.ExtractionError as exc:
+        return _render(request, session, client, error=str(exc))
+    except AnalyzerError as exc:
+        return _render(
+            request, session, client, error=f"Der Vorschlag ist fehlgeschlagen: {exc}"
+        )
+    return _render(request, session, client, proposal=proposal)
+
+
 @router.post("/client/{client_id}/guide/kickoff")
 def draft_from_kickoff(
     request: Request, client_id: int, session: Session = Depends(get_db)

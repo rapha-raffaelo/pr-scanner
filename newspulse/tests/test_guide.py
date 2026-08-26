@@ -8,6 +8,7 @@ applied without a person seeing it first.
 
 from __future__ import annotations
 
+import datetime as dt
 import io
 
 import pytest
@@ -558,3 +559,132 @@ def test_running_the_coach_without_a_guide_says_so_on_the_page(factory, client):
     body = client.post(f"/client/{client_id}/guide/coach").text
 
     assert "Kein Kommunikations-Guide hinterlegt." in body
+
+
+# --- The third way in: what the tool already holds ------------------------------
+
+
+def _record_coverage(session, client, *, title: str, summary: str, when: dt.datetime) -> None:
+    """One stored article with its analysis, the way a sweep leaves them."""
+    from newspulse.models import Analysis, Article, Category
+
+    article = Article(
+        title=title,
+        url=f"https://ex.de/{abs(hash(title)) % 10**8}",
+        source="Handelsblatt",
+        published_at=when,
+        fetched_at=when,
+        summary_text=None,
+        language="de",
+        title_hash=str(abs(hash(title)) % 10**8),
+    )
+    session.add(article)
+    session.flush()
+    session.add(
+        Analysis(
+            article_id=article.id, client_id=client.id, summary=summary,
+            category=Category.SONSTIGES, relevance_score=7, importance_score=7,
+            is_alert=False,
+        )
+    )
+    session.commit()
+
+
+def test_the_material_carries_the_profile_and_the_coverage(session):
+    """Both, labelled, because they are different kinds of evidence.
+
+    The profile is what somebody recorded about the company. The coverage is what
+    the press actually wrote — the half that says how this mandate is talked
+    about, and therefore the half a guide built without a brand book is made of.
+    """
+    from newspulse import profile as profiles
+
+    client = _client(session)
+    profiles.save(session, client, "geschaeftsfeld", "Tokenisierte Anleihen.")
+    _record_coverage(
+        session, client,
+        title="Arrakis öffnet den Sekundärmarkt",
+        summary="Das Unternehmen lässt Anleihen weiterverkaufen.",
+        when=dt.datetime(2026, 8, 20, 9, 0, tzinfo=dt.UTC),
+    )
+
+    material = guide._record_text(session, client)
+
+    assert "PROFIL" in material and "Tokenisierte Anleihen." in material
+    assert "BERICHTERSTATTUNG" in material
+    assert "Arrakis öffnet den Sekundärmarkt" in material
+    assert "Das Unternehmen lässt Anleihen weiterverkaufen." in material
+
+
+def test_an_empty_profile_says_so_rather_than_leaving_a_gap(session):
+    """An empty block reads as one the builder forgot, and the model should know
+    it is working from coverage alone rather than quietly filling the hole."""
+    client = _client(session)
+
+    material = guide._record_text(session, client)
+
+    assert "(keine Angaben hinterlegt)" in material
+    assert "(noch keine Berichterstattung erfasst)" in material
+
+
+def test_the_coverage_is_bounded_and_says_what_it_left_out(session, monkeypatch):
+    """"Alles lesen" is bounded by what a model call can hold.
+
+    Newest first, so the budget is spent on what is current rather than on the
+    first month this mandate was ever tracked — and the count of what was dropped
+    goes into the material, because a silent truncation reads as "this is all of
+    it" to the one reader who cannot check.
+    """
+    monkeypatch.setattr(guide, "_COVERAGE_CHARS", 200)
+    client = _client(session)
+    for day in range(1, 9):
+        _record_coverage(
+            session, client,
+            title=f"Meldung Nummer {day} über Arrakis und den Markt",
+            summary="Eine Zusammenfassung, lang genug um Platz zu kosten.",
+            when=dt.datetime(2026, 8, day, 9, 0, tzinfo=dt.UTC),
+        )
+
+    material = guide._record_text(session, client)
+
+    assert "Meldung Nummer 8" in material, "the newest is in"
+    assert "Meldung Nummer 1" not in material, "the oldest fell outside the budget"
+    assert "ältere Beiträge nicht mitgelesen" in material
+
+
+def test_the_record_draft_is_filed_as_a_source_and_stored_as_nothing(session):
+    """Same door as an uploaded brand book: filed, distilled, shown.
+
+    One path to a guide rather than three, and the rule that dictated material is
+    never applied directly holds here too.
+    """
+    client = _client(session, comms_guide="Was vorher dastand")
+    _record_coverage(
+        session, client, title="Arrakis wächst", summary="Zahlen.",
+        when=dt.datetime(2026, 8, 20, 9, 0, tzinfo=dt.UTC),
+    )
+
+    proposed = guide.from_record(
+        session, client, invoke=lambda *a, **k: "Positionierung: aus dem Bestand."
+    )
+
+    assert proposed == "Positionierung: aus dem Bestand."
+    assert client.comms_guide == "Was vorher dastand", "nothing was saved"
+    filed = [s.filename for s in guide.sources(session, client.id)]
+    assert guide.RECORD_SOURCE_NAME in filed, "its provenance is on the record"
+
+
+def test_a_second_record_draft_replaces_the_first_source(session):
+    """``replace_source``, not ``store_source``: the profile and the coverage move,
+    and two snapshots of the same thing would both feed the next distillation."""
+    client = _client(session)
+    _record_coverage(
+        session, client, title="Arrakis wächst", summary="Zahlen.",
+        when=dt.datetime(2026, 8, 20, 9, 0, tzinfo=dt.UTC),
+    )
+
+    guide.from_record(session, client, invoke=lambda *a, **k: "eins")
+    guide.from_record(session, client, invoke=lambda *a, **k: "zwei")
+
+    named = [s.filename for s in guide.sources(session, client.id)]
+    assert named.count(guide.RECORD_SOURCE_NAME) == 1
