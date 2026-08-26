@@ -495,18 +495,33 @@ def _is_own(key: str, name: str, host: str) -> bool:
     return bool(name) and visibility._named_in(key, name)
 
 
+def _source_key(raw: str) -> str:
+    """One publisher, one key: a stated locator folded to the host it names.
+
+    The path is dropped *before* the tally and not only at display time. A model
+    states "https://www.pv-magazine.de/2026/artikel" as readily as it states
+    "pv-magazine.de" — routinely both inside one set — and keying the count on the
+    whole string put that publisher in the panel twice, under an identical visible
+    label, with its citations split between the two rows. Which is exactly the
+    quietly-changed count this panel may not produce.
+
+    A stated *name* carries no scheme and no path and comes back untouched, so
+    "pv-magazine" and "pv-magazine.de" still stand apart: folding those together
+    needs a publisher identity this schema does not have, and inventing one here
+    would be the same offence in the other direction.
+    """
+    key = raw.strip().casefold().removeprefix("https://").removeprefix("http://")
+    return key.removeprefix("www.").split("/", 1)[0].strip()
+
+
 def _source_name(key: str, stated: str) -> str:
     """How the panel writes one source: the publisher, not the path it came on.
 
-    A model states "https://www.pv-magazine.de/artikel/…" as readily as it states
-    "pv-magazine", and this panel is a list of publishers. So a stated URL is
-    shown as its host and a stated name is left exactly as it was written —
-    nothing is invented, and no publisher gets a capitalisation the answer did not
-    give it. Two spellings of one publisher therefore still stand as two rows:
-    merging them needs a publisher identity this schema does not have, and
-    inventing one here would quietly change a count.
+    A stated locator is shown as its host — that is the key itself — and a stated
+    name is left exactly as it was written, so no publisher gets a capitalisation
+    the answer did not give it.
     """
-    return key.split("/", 1)[0] if "/" in key or stated.casefold() != key else stated
+    return stated if stated.casefold() == key else key
 
 
 def _sources(client: Client, run: VisibilityRun) -> list[Source]:
@@ -521,8 +536,7 @@ def _sources(client: Client, run: VisibilityRun) -> list[Source]:
     spelling: dict[str, str] = {}
     for answer in run.answers:
         for raw in answer.sources:
-            key = raw.casefold().removeprefix("https://").removeprefix("http://")
-            key = key.removeprefix("www.").rstrip("/")
+            key = _source_key(raw)
             if not key:
                 continue
             spelling.setdefault(key, raw)

@@ -699,6 +699,33 @@ def test_a_publisher_containing_the_mandates_host_is_not_its_own_page(web, sessi
     assert body.count("eigene Seite") == 1, "an unrelated publisher was badged as our own"
 
 
+def test_one_publisher_stated_two_ways_is_one_row_with_one_count(web, session, mandate):
+    """A model states a bare domain and a deep link to the same page in one set.
+    Keyed on the whole string, that publisher appeared twice under an identical
+    visible label with its citations split between the two rows."""
+    question = _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    _run(
+        session,
+        mandate,
+        at=_NOW,
+        cells=[
+            (
+                question,
+                _CLAUDE,
+                1,
+                ["Enpal"],
+                ["https://www.pv-magazine.de/2026/artikel", "pv-magazine.de"],
+            )
+        ],
+        asked=[_CLAUDE],
+    )
+
+    body = _text(web.get(f"/client/{mandate.id}/ki").text)
+
+    assert body.count("pv-magazine.de") == 1
+    assert "pv-magazine.de 2×" in body
+
+
 def test_a_measurement_still_running_is_reported_and_not_read_as_the_standing(
     web, session, mandate
 ):
