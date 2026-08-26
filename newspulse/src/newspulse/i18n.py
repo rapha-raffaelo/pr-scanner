@@ -949,6 +949,9 @@ _EN: dict[str, str] = {
     "Texte": "Drafts",
     "Anlass": "Occasion",
     "Anderer Zeitraum": "Another period",
+    "Der Fragensatz wird vorgeschlagen — die Seite aktualisiert sich, sobald er steht.":
+        "The question set is being proposed — the page refreshes as soon as it "
+        "is ready.",
     "Vergleichsunternehmen. Hier steht seine Berichterstattung — Impulse, Berichte und Profil führt RauteOS nur für Mandanten.":
         "A benchmark company. What is here is its coverage — openings, reports "
         "and profiles are kept for mandates only.",

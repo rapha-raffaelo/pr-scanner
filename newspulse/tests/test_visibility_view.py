@@ -471,18 +471,49 @@ def test_an_empty_set_shows_the_proposal_flow_rather_than_an_empty_chart(
     assert "Wer den Markt besetzt" not in body
 
 
+
+@pytest.fixture(autouse=True)
+def no_proposal_left_behind():
+    """The proposal buffer is module state, so one test's answer is the next
+    test's fixture unless it is cleared."""
+    yield
+    visibility_view._proposed.clear()
+    visibility_view._proposal_error.clear()
+    if visibility_view._proposing.locked():
+        visibility_view._proposing.release()
+
+
+def _delivered(client_id: int, proposals: list) -> None:
+    """What the worker leaves behind when it is done, without running one.
+
+    The worker opens its own session against ``config.DATABASE_PATH`` — it has to,
+    the request's is closed by the time it runs — which is not this test's
+    in-memory database. So the route's half and the render's half are tested
+    apart: that a worker is *asked for* is one test, and what the page does with
+    an answer is these.
+    """
+    visibility_view._proposed[client_id] = proposals
+
 def test_proposing_renders_the_questions_and_stores_none_of_them(
     web, session, mandate, monkeypatch
 ):
     """The rule ``rivals.py`` set and this feature inherits: a click stores, a
-    proposal does not."""
+    proposal does not.
+
+    Two steps now, because the panel is asked on a thread: measured against the
+    live database one run took twenty-nine seconds, and doing that inside the
+    response left a browser on a submitted form with nothing on screen — reported
+    as "this does not work". The click starts it and redirects; the page collects.
+    """
     offered = [
         visibility.Proposal(text=_AUSWAHL, band=VisibilityBand.AUSWAHL),
         visibility.Proposal(text=_PROBLEM, band=VisibilityBand.PROBLEM),
     ]
     monkeypatch.setattr(visibility, "propose", lambda session, client: offered)
 
-    page = web.post(f"/client/{mandate.id}/ki/vorschlag")
+    _delivered(mandate.id, offered)
+
+    page = web.get(f"/client/{mandate.id}/ki")
 
     assert page.status_code == 200
     assert _AUSWAHL in _text(page.text)
@@ -929,7 +960,8 @@ def test_the_proposal_answers_where_it_was_asked_for(web, session, mandate, monk
     offered = [visibility.Proposal(text=_AUSWAHL, band=VisibilityBand.AUSWAHL)]
     monkeypatch.setattr(visibility, "propose", lambda session, client: offered)
 
-    body = web.post(f"/client/{mandate.id}/ki/vorschlag").text
+    _delivered(mandate.id, offered)
+    body = web.get(f"/client/{mandate.id}/ki").text
 
     asked = body.index("Fragen vorschlagen")
     answered = body.index("Vorgeschlagene Fragen")
@@ -938,3 +970,54 @@ def test_the_proposal_answers_where_it_was_asked_for(web, session, mandate, monk
     assert body.count("Vorgeschlagene Fragen") == 1, "and only once"
     # A mandate with no set draws none of these; the panel must not be behind them.
     assert "Wer den Markt besetzt" not in body
+
+
+def test_the_panel_is_never_asked_inside_the_response(web, mandate, monkeypatch):
+    """Reported as "this does not work here", and it did — for twenty-nine seconds.
+
+    Measured against the live database: one run took that long. Done inside the
+    POST it is half a minute of a browser sitting on a submitted form with
+    nothing on screen to explain the wait, and a proxy timing out in the middle
+    throws away a model call that has already been paid for. The click starts a
+    worker and redirects, the same shape the measurement beside it always had.
+    """
+    started: list[str] = []
+    monkeypatch.setattr(
+        visibility_view.spawn,
+        "start_or_release",
+        lambda target, *, args, name, release: started.append(name),
+    )
+    monkeypatch.setattr(
+        visibility,
+        "propose",
+        lambda *a, **k: pytest.fail("the panel was asked inside the response"),
+    )
+
+    response = web.post(f"/client/{mandate.id}/ki/vorschlag", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/client/{mandate.id}/ki"
+    assert started == [f"newspulse-vis-proposal-{mandate.id}"]
+
+
+def test_the_page_says_a_proposal_is_under_way(web, mandate):
+    """Thirty seconds of silence is what made a working button look broken."""
+    assert visibility_view._proposing.acquire(blocking=False)
+
+    body = web.get(f"/client/{mandate.id}/ki").text
+
+    assert "wird vorgeschlagen" in body
+    assert 'hx-trigger="every 3s"' in body, "and it collects the answer itself"
+
+
+def test_a_new_run_drops_the_previous_answer(web, mandate, monkeypatch):
+    """Otherwise the page shows a stale set beside a notice saying a new one is
+    being written, and the reader cannot tell which they are looking at."""
+    monkeypatch.setattr(
+        visibility_view.spawn, "start_or_release", lambda *a, **k: None
+    )
+    _delivered(mandate.id, [visibility.Proposal(text=_AUSWAHL, band=VisibilityBand.AUSWAHL)])
+
+    web.post(f"/client/{mandate.id}/ki/vorschlag", follow_redirects=False)
+
+    assert mandate.id not in visibility_view._proposed

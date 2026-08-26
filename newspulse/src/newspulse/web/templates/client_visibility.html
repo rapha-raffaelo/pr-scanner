@@ -56,6 +56,19 @@
    the same card again and reported the feature as broken. It was not: the answer
    was below the fold. #}
 {% macro proposal_panel() %}
+  {# The run takes about half a minute — a model call, not a lookup. Said out
+     loud and polled for, because the alternative is what the old synchronous
+     route did: a browser sitting on a submitted form with nothing on screen to
+     explain the wait, which reads as a button that does nothing. The swap
+     targets the whole body, so whichever of the two places asked gets the
+     answer. #}
+  {% if proposing %}
+    <div class="notice notice--ok"
+         hx-get="/client/{{ client.id }}/ki" hx-trigger="every 3s"
+         hx-select="#visbody" hx-target="#visbody" hx-swap="outerHTML">
+      <span class="spinner" aria-hidden="true"></span>{{ t("Der Fragensatz wird vorgeschlagen — die Seite aktualisiert sich, sobald er steht.") }}
+    </div>
+  {% endif %}
   {% if proposals is not none %}
     {% if proposals %}
       <div class="vis-panel">
@@ -80,6 +93,8 @@
     {% endif %}
   {% endif %}
 {% endmacro %}
+
+<div id="visbody">
 
 {% if visibility_error %}
   <div class="notice notice--error">{{ visibility_error }}</div>
@@ -385,4 +400,6 @@
 
 {{ proposal_panel() if questions else '' }}
 <p class="vis-foot">{{ t("Gemessen wird, was die angebundenen Assistenten auf denselben Fragensatz antworten, nicht was „die KI“ denkt. RauteOS misst und berichtet, es optimiert nichts und verschickt nichts.") }}</p>
+
+</div>{# /visbody #}
 {% endblock %}

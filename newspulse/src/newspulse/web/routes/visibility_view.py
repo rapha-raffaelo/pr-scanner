@@ -76,6 +76,18 @@ _SEE_OTHER = 303
 # same providers twice.
 _measuring = threading.Lock()
 
+#: One proposal run at a time, and what the last one for each mandate produced.
+#:
+#: In memory rather than in a table, deliberately: ``visibility.propose`` stores
+#: nothing, which is the whole of the preview step — a set nobody accepted must
+#: not outlive the process as though somebody had. The page collects the answer
+#: on its next render and the reader accepts what they want; a restart in between
+#: costs one button press, which is the right price for not persisting a set that
+#: was never agreed to.
+_proposing = threading.Lock()
+_proposed: dict[int, list[visibility.Proposal]] = {}
+_proposal_error: dict[int, str] = {}
+
 #: How many measurements the trend line carries. Two months of a weekly
 #: measurement: far enough back that a seasonal swing is visible, short enough
 #: that the line stays readable at the width of half a page.
@@ -915,8 +927,14 @@ def _render(
         _context(session, client, questions, measurements)
         | {
             "client": client,
-            "proposals": proposals,
-            "visibility_error": error,
+            # Whatever the worker left, unless a caller passed something itself.
+            "proposals": (
+                proposals if proposals is not None else _proposed.get(client.id)
+            ),
+            "visibility_error": error or _proposal_error.get(client.id),
+            # Only for *this* mandate: the lock is process-wide, so asking it
+            # alone would put a spinner on every other mandate's page too.
+            "proposing": _proposing.locked() and client.id not in _proposed,
             "every_days": config.VISIBILITY_EVERY_DAYS,
             "max_questions": visibility.MAX_QUESTIONS,
             "chart_width": CHART_WIDTH,
@@ -938,24 +956,55 @@ def visibility_page(
     return _render(request, session, _client_or_404(session, client_id))
 
 
-@router.post("/client/{client_id}/ki/vorschlag", response_class=HTMLResponse)
-def propose_questions(
-    request: Request, client_id: int, session: Session = Depends(get_db)
-) -> HTMLResponse:
-    """Ask for a question set and render it. Stores nothing.
+def _run_proposal(client_id: int) -> None:
+    """Ask the panel on a worker thread; always give the lock back.
 
-    Behind a button rather than on the page load, for two reasons that point the
-    same way: it costs a model call, and a proposal that regenerates on every
-    refresh is a set nobody can read twice. The answer is rendered straight into
-    this response because there is nothing to redirect to — no row was created.
+    Its own session, because the request's is closed by the time this runs.
+    """
+    try:
+        with get_session() as session:
+            client = session.get(Client, client_id)
+            if client is None or client.is_competitor:
+                return
+            _proposal_error.pop(client_id, None)
+            _proposed[client_id] = visibility.propose(session, client)
+    except AnalyzerError as exc:
+        _proposal_error[client_id] = str(exc)
+    except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
+        _proposal_error[client_id] = f"Der Vorschlag ist fehlgeschlagen: {exc}"
+        _log.exception("the visibility proposal failed")
+    finally:
+        _proposing.release()
+
+
+@router.post("/client/{client_id}/ki/vorschlag")
+def propose_questions(client_id: int, session: Session = Depends(get_db)) -> Response:
+    """Ask for a question set on a thread, never inside this response.
+
+    Measured against the live database: twenty-nine seconds for one mandate. Done
+    inline that is half a minute of a browser sitting on a submitted form with
+    nothing on screen to say why — reported, correctly, as "this does not work" —
+    and a proxy timing out in the middle would throw away a model call that had
+    already been paid for. So the click starts the run and redirects, and the page
+    says a proposal is under way until it can show one, the same shape the
+    measurement beside it has always had.
+
+    Stores nothing, still. The answer waits in ``_proposed`` for the page to
+    collect it; only accepting a question writes a row.
     """
     client = _client_or_404(session, client_id)
-    try:
-        proposals = visibility.propose(session, client)
-    except AnalyzerError as exc:
-        session.rollback()
-        return _render(request, session, client, error=str(exc))
-    return _render(request, session, client, proposals=proposals)
+    # Last time's answer goes before this one is asked, or the page would show a
+    # stale set beside a notice saying a new one is being written.
+    _proposed.pop(client.id, None)
+    _proposal_error.pop(client.id, None)
+    if _proposing.acquire(blocking=False):
+        spawn.start_or_release(
+            _run_proposal,
+            args=(client.id,),
+            name=f"newspulse-vis-proposal-{client.id}",
+            release=_proposing.release,
+        )
+    return RedirectResponse(f"/client/{client_id}/ki", status_code=_SEE_OTHER)
 
 
 def _measure_one(client_id: int) -> None:
