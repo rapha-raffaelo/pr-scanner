@@ -102,11 +102,11 @@
         <div class="vis-score__d">
           <div class="vis-score__l">{{ t("der Fragen nennen %(name)s") | format(name=client.name) }}</div>
           <div class="vis-score__c">{{ t("%(named)s von %(measured)s gemessenen Fragen") | format(named=standing.named, measured=standing.measured) }}</div>
-          {# Whole percentage points, and only when the change is one. A set of at
-             most two dozen questions moves in chunks of four points and up, so a
-             decimal here is noise; and "0 Prozentpunkte" beside a movement panel
-             that lists what changed reads as a contradiction. #}
-          {% set points = (standing.delta | round | int) if standing.delta is not none else 0 %}
+          {# Whole percentage points, and only when the change is one: "0
+             Prozentpunkte" beside a movement panel that lists what changed reads
+             as a contradiction. The rounding itself happens in Python, because
+             Jinja's round is Python's and turns a half into its even neighbour. #}
+          {% set points = standing.points or 0 %}
           {% if points %}
             <div class="vis-score__c{{ ' vis-score__c--up' if points > 0 else ' vis-score__c--down' }}">{{ t("%(points)s Prozentpunkte seit der Messung davor") | format(points=('+' if points > 0 else '') ~ points) }}</div>
           {% endif %}
@@ -121,9 +121,12 @@
               <line x1="34" y1="{{ (chart_top + chart_bottom) / 2 }}" x2="470" y2="{{ (chart_top + chart_bottom) / 2 }}"></line>
               <line x1="34" y1="{{ chart_bottom }}" x2="470" y2="{{ chart_bottom }}"></line>
             </g>
+            {# The labels come off the same ceiling the marks were placed against.
+               A chart whose plot area and whose axis disagree is worse than no
+               chart, so neither number here is written by hand. #}
             <g class="vis-axis">
-              <text x="0" y="{{ chart_top + 4 }}">100 %</text>
-              <text x="4" y="{{ (chart_top + chart_bottom) / 2 + 4 }}">50 %</text>
+              <text x="0" y="{{ chart_top + 4 }}">{{ (trend.ceiling * 100) | round | int }} %</text>
+              <text x="4" y="{{ (chart_top + chart_bottom) / 2 + 4 }}">{{ (trend.ceiling * 50) | round | int }} %</text>
               <text x="10" y="{{ chart_bottom + 4 }}">0 %</text>
               {% for mark in trend.mandate %}
                 {% if loop.first or loop.last or trend.mandate | length <= 5 %}
@@ -160,7 +163,9 @@
     <div class="vis-panel">
       <div class="vis-panel__h">
         <span class="vis-panel__t">{{ t("Wer den Markt besetzt") }}</span>
-        <span class="vis-panel__s">{{ t("Nennungen über %(n)s gemessene Fragen, alle Modelle") | format(n=standing.measured) }}</span>
+        <span class="vis-panel__s">
+          {%- if standing.measured == 1 %}{{ t("Nennungen über eine gemessene Frage, alle Modelle") }}
+          {%- else %}{{ t("Nennungen über %(n)s gemessene Fragen, alle Modelle") | format(n=standing.measured) }}{% endif %}</span>
       </div>
       {% for row in occupants %}
         <div class="vis-bar">
@@ -191,6 +196,13 @@
       <div class="vis-panel__h">
         <span class="vis-panel__t">{{ t("Woher die Antworten kommen") }}</span>
         <span class="vis-panel__s">{{ t("genannte Quellen") }}</span>
+        {# Deviation from the locked mock, recorded rather than quietly dropped:
+           the mock badges every source with a category ("Ratgeber",
+           "Fachpresse"). A model states a locator or a name and nothing else, so
+           the category exists nowhere in the schema — inventing one here would
+           put a classification on the page that no measurement supports. The one
+           badge below is a fact this tool holds itself: the mandate's own host.
+           Against DEC-3. #}
       </div>
       {% for source in sources %}
         <div class="vis-src">

@@ -1739,6 +1739,9 @@ _EN: dict[str, str] = {
         "There is no earlier measurement for it to fall back on.",
     "Wer den Markt besetzt": "Who occupies the market",
     "Nennungen über %(n)s gemessene Fragen, alle Modelle": "Mentions across %(n)s measured questions, all models",
+    # Counted, not "über 1 gemessene Fragen": a mandate sits on a set of one for
+    # as long as it takes to accept the second question, and reads the page in it.
+    "Nennungen über eine gemessene Frage, alle Modelle": "Mentions across one measured question, all models",
     "In dieser Messung wurde kein einziges Unternehmen genannt.": "This measurement named no company at all.",
     # The mandate's place, said out loud where the ranking shows only its head. The
     # one row the cut never takes is the mandate's.

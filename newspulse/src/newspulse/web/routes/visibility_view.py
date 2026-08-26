@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import math
 import threading
 import urllib.parse
 from collections import defaultdict
@@ -93,6 +94,13 @@ CHART_LEFT = 80.0
 CHART_RIGHT = 416.0
 CHART_TOP = 14.0
 CHART_BOTTOM = 80.0
+
+#: Where the trend's vertical axis stops while every point still fits under it.
+#: The locked mock draws 0–60 %, which is the range a mandate's share actually
+#: moves in; against a fixed 0–100 % axis a typical 20–40 % line hugs the floor
+#: and a four-point week is invisible on it. A share above this opens the axis to
+#: the full range rather than letting the line run off the top of the chart.
+_TREND_CEILING = 0.6
 
 
 class CellState(StrEnum):
@@ -234,7 +242,11 @@ class Standing:
     measured: int
     accepted: int
     share: float
-    delta: float | None
+    #: The move against the previous measurement, in whole percentage points, or
+    #: ``None`` where there is no previous measurement. Whole because a set of at
+    #: most two dozen questions moves in chunks of four points and up, so a
+    #: decimal here is noise.
+    points: int | None
     previous_at: dt.datetime | None
     providers_failed: tuple[str, ...]
     unread: int
@@ -256,6 +268,10 @@ class Trend:
     mandate: tuple[Mark, ...]
     rival: tuple[Mark, ...]
     rival_name: str
+    #: The share the top of the chart stands for. Carried because the template
+    #: writes the axis labels, and a chart whose plot area and whose axis disagree
+    #: is worse than no chart.
+    ceiling: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -415,11 +431,24 @@ def _standing(
         measured=len(current.tally.measured),
         accepted=accepted,
         share=share,
-        delta=delta,
+        points=_points(delta),
         previous_at=previous.run.ran_at if previous is not None else None,
         providers_failed=tuple(current.run.providers_failed),
         unread=current.run.answers_unread,
     )
+
+
+def _points(delta: float | None) -> int | None:
+    """A delta in whole percentage points, rounded away from zero at the half.
+
+    Rounded here rather than by the template, because Jinja's ``round`` is
+    Python's and Python's rounds a half to its even neighbour: a move of exactly
+    +0.5 points came out as zero and lost its line entirely — beside a movement
+    panel that had just listed the question that produced it.
+    """
+    if delta is None:
+        return None
+    return math.floor(delta + 0.5) if delta >= 0 else math.ceil(delta - 0.5)
 
 
 def _occupants(client: Client, tally: _Tally) -> list[Occupant]:
@@ -709,12 +738,30 @@ def _movement(
 # --- The trend -------------------------------------------------------------------
 
 
-def _mark(at: dt.datetime, index: int, total: int, share: float) -> Mark:
-    """One share, placed in the chart's frame. Shares run 0–1 over the full height."""
+def _mark(at: dt.datetime, index: int, total: int, share: float, ceiling: float) -> Mark:
+    """One share, placed in the chart's frame. ``ceiling`` is the top of the axis."""
     span = CHART_RIGHT - CHART_LEFT
     x = CHART_LEFT if total < 2 else CHART_LEFT + index * span / (total - 1)
-    y = CHART_BOTTOM - min(max(share, 0.0), 1.0) * (CHART_BOTTOM - CHART_TOP)
+    reach = min(max(share, 0.0), ceiling) / ceiling
+    y = CHART_BOTTOM - reach * (CHART_BOTTOM - CHART_TOP)
     return Mark(x=round(x, 1), y=round(y, 1), at=at)
+
+
+def _ceiling(shares: list[float]) -> float:
+    """The top of the axis: the mock's range while everything fits under it."""
+    return _TREND_CEILING if max(shares, default=0.0) <= _TREND_CEILING else 1.0
+
+
+def _line(
+    ordered: list[_Measurement], shares: list[float], ceiling: float
+) -> tuple[Mark, ...]:
+    """One polyline's marks, or nothing where there is no such line to draw."""
+    if not shares:
+        return ()
+    return tuple(
+        _mark(row.run.ran_at, index, len(ordered), share, ceiling)
+        for index, (row, share) in enumerate(zip(ordered, shares, strict=True))
+    )
 
 
 def _trend(client: Client, measurements: list[_Measurement]) -> Trend | None:
@@ -728,22 +775,15 @@ def _trend(client: Client, measurements: list[_Measurement]) -> Trend | None:
         return None
     ordered = list(reversed(measurements))
     key = client.name.casefold()
-    total = len(ordered)
-    mandate = tuple(
-        _mark(row.run.ran_at, index, total, _share(row.tally, key))
-        for index, row in enumerate(ordered)
-    )
-    newest = ordered[-1].tally
-    rival = _strongest_rival(client, newest)
-    if rival is None:
-        return Trend(mandate=mandate, rival=(), rival_name="")
+    rival = _strongest_rival(client, ordered[-1].tally)
+    mandate_shares = [_share(row.tally, key) for row in ordered]
+    rival_shares = [] if rival is None else [_share(row.tally, rival) for row in ordered]
+    ceiling = _ceiling([*mandate_shares, *rival_shares])
     return Trend(
-        mandate=mandate,
-        rival=tuple(
-            _mark(row.run.ran_at, index, total, _share(row.tally, rival))
-            for index, row in enumerate(ordered)
-        ),
-        rival_name=newest.spelling[rival],
+        mandate=_line(ordered, mandate_shares, ceiling),
+        rival=_line(ordered, rival_shares, ceiling),
+        rival_name="" if rival is None else ordered[-1].tally.spelling[rival],
+        ceiling=ceiling,
     )
 
 
