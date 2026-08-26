@@ -1869,13 +1869,6 @@ def _run_real(
         status = RunStatus.FAILED
         session.rollback()
     run = _finalize_run(session, started, now_fn(), status, new_articles, errors)
-    # Before the post-run stages, not after them. Everything an alert notification
-    # reports — the analyses flagged since ``started`` — is committed by the line
-    # above; everything below is a model call that can take minutes (a weekly
-    # visibility measurement, a monthly report draft). Delivering afterwards meant
-    # the one message a reader actually waits for was held behind work that has
-    # nothing to do with it.
-    _notify(session, run)
     post = _post_run(
         session,
         run,
@@ -1908,6 +1901,14 @@ def _run_real(
         post.replies,
         len(errors),
     )
+    # The run's data is committed; deliver any fired-alert notification now. This is
+    # the wiring for AC #1 ("after a run, if any alerts fired, a notification ... is
+    # delivered") — read-only and fault-isolated, so it can't roll the sweep back.
+    # After the post-run stages rather than before them, because the row a
+    # notification is about may still be downgraded to ``partial`` there by an
+    # unreadable mailbox or a dark market class. Moving it earlier is a change to
+    # every story's sweep and belongs to whichever one wants it.
+    _notify(session, run)
     return RunReport(
         status=status,
         feeds_total=len(feeds) + len(radar),
