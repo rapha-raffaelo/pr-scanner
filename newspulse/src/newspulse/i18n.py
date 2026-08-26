@@ -1842,8 +1842,10 @@ _EN: dict[str, str] = {
     "Weitere Fragen vorschlagen": "Propose more questions",
     "Vorgeschlagene Fragen": "Proposed questions",
     "gespeichert ist noch keine": "none stored yet",
-    "Erst ein Klick auf \u201eÜbernehmen\u201c legt eine Frage an. Höchstens %(n)s Fragen stehen im Satz.":
-        "Only a click on \"Accept\" creates a question. The set holds at most %(n)s of them.",
+    "Erst ein Klick auf \u201eAusgewählte übernehmen\u201c legt Fragen an. Höchstens %(n)s Fragen stehen im Satz.":
+        "Only \"Take the selected ones\" files a question. At most %(n)s "
+        "questions stand in the set.",
+    "Ausgewählte übernehmen": "Take the selected ones",
     "Der Vorschlag hat nichts ergeben. Meist fehlt dem Profil noch der Text zum Geschäftsfeld, aus dem eine Kaufentscheidungsfrage gebaut wird.":
         "The proposal produced nothing. Usually the profile is still missing the text "
         "about the business field a purchase question is built from.",

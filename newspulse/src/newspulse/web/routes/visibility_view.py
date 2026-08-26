@@ -907,6 +907,22 @@ def _context(
     }
 
 
+def _still_open(
+    session: Session, client: Client, proposals: list | None
+) -> list | None:
+    """The offers this mandate has not already taken.
+
+    Folded the way :func:`newspulse.visibility.accept` folds, so "Ist X seriös?"
+    and "ist x seriös?" are the same question here and there. ``None`` stays
+    ``None``: no run has been asked for, which the page draws differently from a
+    run that came back with nothing left to offer.
+    """
+    if proposals is None:
+        return None
+    taken = {q.text.strip().casefold() for q in visibility.accepted(session, client)}
+    return [p for p in proposals if p.text.strip().casefold() not in taken]
+
+
 def _render(
     request: Request,
     session: Session,
@@ -927,9 +943,15 @@ def _render(
         _context(session, client, questions, measurements)
         | {
             "client": client,
-            # Whatever the worker left, unless a caller passed something itself.
-            "proposals": (
-                proposals if proposals is not None else _proposed.get(client.id)
+            # Whatever the worker left, unless a caller passed something itself —
+            # with anything already in the set filtered out. ``propose`` applies
+            # that rule when it asks, but the answer is a snapshot: accepting one
+            # of its questions left the same question standing in the offer list
+            # beside the set it had just joined.
+            "proposals": _still_open(
+                session,
+                client,
+                proposals if proposals is not None else _proposed.get(client.id),
             ),
             "visibility_error": error or _proposal_error.get(client.id),
             # Only for *this* mandate: the lock is process-wide, so asking it
@@ -1085,17 +1107,43 @@ def measure_now(client_id: int, session: Session = Depends(get_db)) -> Response:
 def accept_question(
     request: Request,
     client_id: int,
-    text: str = Form(...),
-    band: str = Form(...),
+    text: list[str] = Form(default_factory=list),
+    band: list[str] = Form(default_factory=list),
     session: Session = Depends(get_db),
 ) -> Response:
-    """Put one proposed question into the set. The only thing here that stores one."""
+    """Put the ticked questions into the set. The only thing here that stores one.
+
+    A list rather than one, because the page asks with tick boxes now. It used to
+    be a button per proposal: seventeen questions meant seventeen clicks and
+    seventeen page loads, and the reader's own summary of that was that it did not
+    keep the earlier ones.
+
+    Paired by position — the boxes carry the text and a hidden field carries the
+    band beside it, so a row travels whole. A pair that arrives half-formed is
+    skipped rather than filed under a default band, which is precisely what
+    ``propose`` drops proposals to prevent.
+
+    The cap ends the run rather than the request: what fitted stays accepted and
+    the page says what did not, because refusing the lot over the last tick would
+    throw away the twenty-three the reader did choose.
+    """
     client = _client_or_404(session, client_id)
-    try:
-        visibility.accept(session, client, text, band)
-    except (visibility.SetFull, ValueError) as exc:
-        session.rollback()
-        return _render(request, session, client, error=str(exc))
+    error: str | None = None
+    for question, banded in zip(text, band, strict=False):
+        if not question.strip() or not banded.strip():
+            continue
+        try:
+            visibility.accept(session, client, question, banded)
+        except visibility.SetFull as exc:
+            session.rollback()
+            error = str(exc)
+            break
+        except ValueError as exc:
+            session.rollback()
+            error = str(exc)
+            continue
+    if error:
+        return _render(request, session, client, error=error)
     return RedirectResponse(f"/client/{client_id}/ki", status_code=_SEE_OTHER)
 
 

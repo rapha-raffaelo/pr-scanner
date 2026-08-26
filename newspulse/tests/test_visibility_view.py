@@ -1021,3 +1021,68 @@ def test_a_new_run_drops_the_previous_answer(web, mandate, monkeypatch):
     web.post(f"/client/{mandate.id}/ki/vorschlag", follow_redirects=False)
 
     assert mandate.id not in visibility_view._proposed
+
+
+def test_ticking_several_questions_files_all_of_them(web, session, mandate):
+    """Reported as "es speichert die alten Fragen nicht mehr zu".
+
+    It did keep them — there was simply no way to take more than one at a time.
+    A run comes back with up to seventeen questions and every row carried its own
+    button, so building a set meant seventeen clicks and seventeen page loads.
+    """
+    _delivered(mandate.id, [
+        visibility.Proposal(text="Frage A?", band=VisibilityBand.AUSWAHL),
+        visibility.Proposal(text="Frage B?", band=VisibilityBand.PROBLEM),
+        visibility.Proposal(text="Frage C?", band=VisibilityBand.AUSWAHL),
+    ])
+
+    answer = web.post(
+        f"/client/{mandate.id}/ki/fragen",
+        data={"text": ["Frage A?", "Frage C?"], "band": ["auswahl", "auswahl"]},
+        follow_redirects=False,
+    )
+
+    assert answer.status_code == 303
+    stored = {q.text for q in visibility.accepted(session, mandate)}
+    assert stored == {"Frage A?", "Frage C?"}, "both, and not the one left unticked"
+
+
+def test_a_question_already_in_the_set_stops_being_offered(web, session, mandate):
+    """``propose`` applies that rule when it asks, but its answer is a snapshot.
+
+    Accepting one of its questions left the same question standing in the offer
+    list beside the set it had just joined — the page showed it twice, once as
+    taken and once as available.
+    """
+    _delivered(mandate.id, [
+        visibility.Proposal(text="Frage A?", band=VisibilityBand.AUSWAHL),
+        visibility.Proposal(text="Frage B?", band=VisibilityBand.PROBLEM),
+    ])
+    web.post(
+        f"/client/{mandate.id}/ki/fragen",
+        data={"text": ["Frage A?"], "band": ["auswahl"]},
+        follow_redirects=False,
+    )
+
+    offers = web.get(f"/client/{mandate.id}/ki").text
+    panel = offers.split("Vorgeschlagene Fragen", 1)[1]
+
+    assert "Frage B?" in panel, "the one nobody took is still on offer"
+    assert "Frage A?" not in panel, "the one now in the set is not offered again"
+    assert "Frage A?" in offers, "it is on the page — in the set"
+
+
+def test_a_half_formed_pair_is_skipped_rather_than_filed_under_a_default(
+    web, session, mandate
+):
+    """A question filed under a default band is what ``propose`` drops proposals
+    to prevent; the write boundary must not undo that."""
+    answer = web.post(
+        f"/client/{mandate.id}/ki/fragen",
+        data={"text": ["Frage ohne Band?", "Frage B?"], "band": ["", "problem"]},
+        follow_redirects=False,
+    )
+
+    assert answer.status_code == 303
+    stored = {q.text for q in visibility.accepted(session, mandate)}
+    assert stored == {"Frage B?"}

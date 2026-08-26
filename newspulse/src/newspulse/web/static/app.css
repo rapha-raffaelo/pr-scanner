@@ -1964,6 +1964,12 @@ button:disabled { opacity: .55; cursor: default; }
 
 /* Proposed, not stored. The accept control sits on the row it would create. */
 .vis-prop { display: flex; align-items: baseline; gap: var(--s3); padding: var(--s3) var(--s4); border-top: 1px solid var(--line); }
+/* The whole row is the label, so the question itself is the hit area — a 14px
+   box is a small target for a list somebody works through. */
+.vis-prop { cursor: pointer; }
+.vis-prop:hover { background: var(--fill-2); }
+.vis-prop__tick { margin: 0; accent-color: var(--accent); flex: none; }
+.vis-take { padding: var(--s3) var(--s4) 0; }
 .vis-prop__q { flex: 1; font-size: var(--t-subhead); color: var(--ink-2); min-width: 0; }
 .vis-band {
   flex: none; font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;

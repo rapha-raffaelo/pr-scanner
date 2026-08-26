@@ -77,16 +77,27 @@
           <span class="vis-panel__s">{{ t("gespeichert ist noch keine") }}</span>
           <span class="vis-panel__r">{{ proposals | length }}</span>
         </div>
+        {# A tick box per proposal and one button, rather than a button per row.
+           A run comes back with up to seventeen questions, so the old shape cost
+           seventeen clicks and seventeen page loads to take them — read, fairly,
+           as a page that does not keep the earlier ones. The box carries the
+           text and the band travels beside it, so a row arrives whole and no
+           question is ever filed under a default band. #}
         {% for proposal in proposals %}
-          <form method="post" action="/client/{{ client.id }}/ki/fragen" class="vis-prop">
-            <input type="hidden" name="text" value="{{ proposal.text }}">
-            <input type="hidden" name="band" value="{{ proposal.band }}">
+          <label class="vis-prop">
+            <input class="vis-prop__tick" type="checkbox" name="text"
+                   value="{{ proposal.text }}" form="take-{{ client.id }}">
+            <input type="hidden" name="band" value="{{ proposal.band }}"
+                   form="take-{{ client.id }}">
             <span class="vis-band">{{ band_names.get(proposal.band | string, proposal.band) }}</span>
             <span class="vis-prop__q">{{ proposal.text }}</span>
-            <button type="submit" class="linkbtn">{{ t("Übernehmen") }}</button>
-          </form>
+          </label>
         {% endfor %}
-        <div class="vis-note">{{ t("Erst ein Klick auf „Übernehmen“ legt eine Frage an. Höchstens %(n)s Fragen stehen im Satz.") | format(n=max_questions) }}</div>
+        <form id="take-{{ client.id }}" method="post"
+              action="/client/{{ client.id }}/ki/fragen" class="vis-take">
+          <button type="submit" class="btn">{{ t("Ausgewählte übernehmen") }}</button>
+        </form>
+        <div class="vis-note">{{ t("Erst ein Klick auf „Ausgewählte übernehmen“ legt Fragen an. Höchstens %(n)s Fragen stehen im Satz.") | format(n=max_questions) }}</div>
       </div>
     {% else %}
       <div class="notice">{{ t("Der Vorschlag hat nichts ergeben. Meist fehlt dem Profil noch der Text zum Geschäftsfeld, aus dem eine Kaufentscheidungsfrage gebaut wird.") }}</div>
