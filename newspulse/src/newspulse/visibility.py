@@ -47,14 +47,16 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import lru_cache
 from importlib import resources
 from string import Template
 from typing import TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from . import brain, company_names, config, gemini, profile
@@ -138,6 +140,43 @@ _GENITIVE_ENDINGS = ("s", "x", "z")
 #: because the next measurement is seven days away.
 _PROVIDER_STRIKES = 2
 
+#: How many answers may come back unreadable before the measurement stops. The
+#: reading model is a second call on every cell and it fails identically for all
+#: of them when it is down — without a budget here a broken reader spends every
+#: provider call in the set (up to twenty-four questions times two providers) and
+#: stores nothing, on this sweep and on every one after it. Same size as
+#: :data:`_PROVIDER_STRIKES` and for the same reason: one answer nobody could
+#: parse is not an outage.
+_READ_STRIKES = 2
+
+#: How long a started measurement may still be running before another one may
+#: begin beside it. The run row is committed before the first provider is asked,
+#: so a second sweep sees the claim and stays out; this is only the ceiling on
+#: how long a process that died mid-run may keep the next attempt out. Well past
+#: what a full set can take at ``ANALYZER_TIMEOUT``, and a small fraction of the
+#: window, so a crash costs one attempt rather than the mandate's week.
+_IN_FLIGHT_MAX = dt.timedelta(hours=6)
+
+#: The fewest characters a stated source's host may keep, once its domain ending
+#: is dropped, before it is looked for as a publisher's name. "finanztip.de"
+#: against an answer that writes "Finanztip" is the citation this rescues;
+#: "test.de" against an answer containing the ordinary word "Test" is the one it
+#: must not invent, and five characters is where those two part — the same floor
+#: :func:`~newspulse.matching.radar_matcher` uses to keep short tokens out of an
+#: alternation.
+_SOURCE_NAME_MIN = 5
+
+#: List markers stripped off the front of a question before it is stored. A
+#: question pasted out of a bulleted list carries one and it is not part of what
+#: a buyer types — and a text beginning with a dash is read by ``claude -p`` as a
+#: flag rather than as the prompt, so that provider would fail on it every week.
+_LIST_MARKERS = "-–—*•·"
+
+#: How many compiled matchers are kept. One measurement reads up to forty-eight
+#: answers against the mandate and every stored competitor, and recompiling the
+#: same alternation for each of them is most of what the reading itself costs.
+_MATCHER_CACHE = 512
+
 
 class SetFull(ValueError):
     """The accepted set is at :data:`MAX_QUESTIONS` and cannot take another.
@@ -167,8 +206,14 @@ class Reading:
     """What one answer says, in the terms every figure on the page is built from.
 
     ``companies`` is ordered by first appearance in the answer, and ``position``
-    is this mandate's index in it. Keeping the order rather than only the rank is
-    what lets the number be checked against the answer beside it.
+    is this mandate's rank among them. Keeping the order rather than only the
+    rank is what lets the number be checked against the answer beside it.
+
+    The one place the two part company is an answer that names more than
+    :data:`_LISTED_MAX` firms: the rank is counted over all of them and the list
+    keeps the first of them, so ``position`` can point past the end of
+    ``companies``. That way round on purpose — a rank counted over a cut list
+    would read better than the answer supports.
     """
 
     named: bool
@@ -279,17 +324,41 @@ def _terms_for(company: Client) -> list[str]:
     )
 
 
+@lru_cache(maxsize=_MATCHER_CACHE)
+def _matcher(terms: tuple[str, ...]) -> re.Pattern[str] | None:
+    """:func:`~newspulse.matching.terms_matcher`, compiled once per term set.
+
+    The same handful of alternations — the mandate's, each competitor's — is
+    searched against every one of a run's forty-eight answers, and the compile is
+    the expensive half. Keyed on the terms themselves rather than on the company,
+    so a name edited between two runs cannot be answered out of the cache.
+    """
+    return terms_matcher(terms)
+
+
 def _first_at(folded: str, terms: Sequence[str]) -> int | None:
     """Where ``terms`` first appears in an already case-folded text, or ``None``.
 
     Word-boundary matching, so "Zolar" is not found inside "Zolarion" and a
     mandate called "Bahn" is not named by every "Autobahn".
     """
-    matcher = terms_matcher(terms)
+    matcher = _matcher(tuple(terms))
     if matcher is None:
         return None
     found = matcher.search(folded)
     return found.start() if found else None
+
+
+def _one_line(text: str) -> str:
+    """``text`` as one line, without the list marker a paste brings with it.
+
+    Whitespace is collapsed because two spellings of one question are one
+    question, and a leading "-" or "•" is dropped because it is punctuation from
+    the list the consultant copied out of rather than part of what a buyer types
+    — and because ``claude -p`` reads a leading dash as a flag, which would make
+    that question fail on that provider every single week.
+    """
+    return " ".join((text or "").split()).lstrip(_LIST_MARKERS + " ").strip()
 
 
 def _profile_block(session: Session, client: Client) -> str:
@@ -512,14 +581,26 @@ def retire(session: Session, question: VisibilityQuestion) -> VisibilityQuestion
 
 
 def _ordered(placed: list[tuple[int, str]]) -> tuple[str, ...]:
-    """Company names ordered by where they first appear, each named once."""
+    """Company names ordered by where they first appear, each named once.
+
+    Deduped on the offset as well as on the name, because the two spellings of
+    one company do not have to look alike: a stored "1Komma5°" and the "1Komma5"
+    a model writes start at the same character of the answer, and they are one
+    mention of one firm. Counting them twice would put a company in the list that
+    is not in the market and push the mandate — and everything under it — one
+    rank down, which is the figure the agency reports.
+
+    The stored spelling wins a tie: it is appended first and this sort is stable.
+    """
     seen: set[str] = set()
+    at: set[int] = set()
     ordered: list[str] = []
-    for _, name in sorted(placed, key=lambda entry: entry[0]):
+    for offset, name in sorted(placed, key=lambda entry: entry[0]):
         key = name.casefold()
-        if key in seen:
+        if key in seen or offset in at:
             continue
         seen.add(key)
+        at.add(offset)
         ordered.append(name)
     return tuple(ordered)
 
@@ -542,15 +623,47 @@ def _rank_of(companies: tuple[str, ...], name: str) -> int | None:
     return None
 
 
+@lru_cache(maxsize=_MATCHER_CACHE)
+def _locator_matcher(probe: str) -> re.Pattern[str]:
+    """Match a domain or path where the answer really writes it.
+
+    Anchored left on something that is neither a word character nor a hyphen, so
+    "test.de" is not found inside "warentest.de" or "stiftung-warentest.de" —
+    a different publisher, and a citation the answer never made is the one thing
+    the source list may not record. A dot to the left is allowed, because
+    "www.test.de" and "hilfe.test.de" are that publisher. Anchored right on a
+    word character so "handelsblatt.com" is not read out of ".company".
+    """
+    return re.compile(rf"(?<![\w-]){re.escape(probe)}(?!\w)")
+
+
+def _publisher_name(probe: str) -> str | None:
+    """The publisher inside a stated locator: its host, without its domain ending.
+
+    The reading model normalises "Finanztip" to "finanztip.de" as readily as it
+    copies a URL out of the answer, and an answer that names the publisher in
+    words would otherwise lose the citation over a domain form it never wrote.
+    The host only — a path is not a name — and only where enough of it survives
+    to be one: "test.de" leaves "test", which half the German sentences about a
+    comparison contain. Punctuation inside the host becomes a gap, so
+    "stiftung-warentest.de" is found in "die Stiftung Warentest".
+    """
+    host = probe.split("/", 1)[0]
+    name, _, ending = host.rpartition(".")
+    if not name or not ending or len(name) < _SOURCE_NAME_MIN:
+        return None
+    return " ".join(part for part in re.split(r"[\W_]+", name) if part)
+
+
 def _appears(folded_answer: str, source: str) -> bool:
     """Whether the answer really states this source, scheme and www aside.
 
-    A locator — anything carrying a dot or a slash — is matched as a substring,
-    because "pv-magazine.de" is written into a sentence exactly as it is. A
-    publisher's name is matched on word boundaries instead: a short one ("FAZ",
-    "taz") occurs inside ordinary words often enough that a substring test would
-    record a citation the answer never made, which is the one thing the source
-    list may not do.
+    A locator — anything carrying a dot or a slash — is looked for where the
+    answer writes it, and failing that under the publisher's name inside it. A
+    publisher's name is matched on word boundaries: a short one ("FAZ", "taz")
+    occurs inside ordinary words often enough that a substring test would record
+    a citation the answer never made, which is the one thing the source list may
+    not do.
     """
     probe = source.casefold().strip()
     for prefix in _URL_PREFIXES:
@@ -558,9 +671,17 @@ def _appears(folded_answer: str, source: str) -> bool:
     probe = probe.rstrip("/")
     if not probe:
         return False
-    if any(mark in probe for mark in _LOCATOR_MARKS):
-        return probe in folded_answer
-    matcher = terms_matcher([probe])
+    if not any(mark in probe for mark in _LOCATOR_MARKS):
+        return _named_in(folded_answer, probe)
+    if _locator_matcher(probe).search(folded_answer) is not None:
+        return True
+    name = _publisher_name(probe)
+    return name is not None and _named_in(folded_answer, name)
+
+
+def _named_in(folded_answer: str, name: str) -> bool:
+    """Whether the answer names ``name`` as a word rather than inside one."""
+    matcher = _matcher((name,))
     return matcher is not None and matcher.search(folded_answer) is not None
 
 
@@ -608,9 +729,9 @@ def read_answer(
     actually contain is dropped rather than counted.
     """
     folded = answer.casefold()
-    placed: list[tuple[int, str]] = []
     known: list[Client] = [client, *client.competitors]
 
+    placed: list[tuple[int, str]] = []
     at = _first_at(folded, _terms_for(client))
     if at is not None:
         placed.append((at, client.name))
@@ -621,39 +742,70 @@ def read_answer(
             continue
         placed.append((found, rival.name))
         rivals.append(rival.name)
+    placed.extend(_placed_unknown(folded, listed, known))
 
-    named_by_model = list(listed)
-    if len(named_by_model) > _LISTED_MAX:
+    ordered = _ordered(placed)
+    if len(ordered) > _LISTED_MAX:
         _log.debug(
-            "an answer listed %d companies; reading the first %d",
-            len(named_by_model),
+            "an answer named %d companies; the rank is counted over all of them "
+            "and the first %d are stored",
+            len(ordered),
             _LISTED_MAX,
         )
-    for raw in named_by_model[:_LISTED_MAX]:
-        name = " ".join((raw or "").split())
-        if not name:
-            continue
-        # Already placed above, under the name this tool stores for it.
-        if any(_first_at(name.casefold(), _terms_for(one)) is not None for one in known):
-            continue
-        found = _first_at(folded, company_names.variants(name))
-        if found is None:
-            _log.debug("dropping company %r: the answer does not name it", name)
-            continue
-        placed.append((found, name))
-
-    companies = _ordered(placed)
     named = at is not None
     stored_rivals = set(rivals)
     return Reading(
         named=named,
-        position=_rank_of(companies, client.name) if named else None,
-        companies=companies,
+        # Counted over every company the answer names, before the list is cut:
+        # a rank against a truncated field is wrong in the direction that
+        # flatters the mandate, which is the direction a client acts on.
+        position=_rank_of(ordered, client.name) if named else None,
+        companies=ordered[:_LISTED_MAX],
         # In the order they were named, not in the order they are stored: the
         # panel beside the answer reads down the answer.
-        rivals=tuple(name for name in companies if name in stored_rivals),
+        rivals=tuple(name for name in ordered if name in stored_rivals),
         sources=_sources(folded, stated),
     )
+
+
+def _placed_unknown(
+    folded: str, listed: Sequence[str], known: Sequence[Client]
+) -> list[tuple[int, str]]:
+    """Where the companies this tool stores no name for appear in the answer.
+
+    Every one of them, not a first :data:`_LISTED_MAX` of them: the mandate's
+    position is a rank among all the companies the answer names, so the counting
+    happens over the whole list and only the stored list is cut.
+
+    A company that is already placed under a stored name is skipped, and that is
+    checked in both directions. A stored name ending in a symbol — "1Komma5°",
+    "E.ON" — is not found inside the shorter spelling a model writes, so testing
+    only one way lets the same firm in twice under two names.
+    """
+    placed: list[tuple[int, str]] = []
+    for raw in listed:
+        name = _one_line(raw)
+        if not name or _is_stored(name, known):
+            continue
+        found = _first_at(folded, _with_genitive(company_names.variants(name)))
+        if found is None:
+            _log.debug("dropping company %r: the answer does not name it", name)
+            continue
+        placed.append((found, name))
+    return placed
+
+
+def _is_stored(name: str, known: Sequence[Client]) -> bool:
+    """Whether ``name`` is one of these companies under either side's spelling."""
+    folded = name.casefold()
+    probes = company_names.variants(name)
+    for one in known:
+        terms = _terms_for(one)
+        if _first_at(folded, terms) is not None:
+            return True
+        if any(_first_at(term.casefold(), probes) is not None for term in terms):
+            return True
+    return False
 
 
 def _read(
