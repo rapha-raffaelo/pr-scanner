@@ -930,6 +930,10 @@ _EN: dict[str, str] = {
     # The offers are rendered into the fields they are offers for, so the page is
     # one list instead of a proposal list above a duplicate empty form.
     "Vorschlag, noch nicht gespeichert": "Proposed, not saved yet",
+    "Export": "Export",
+    "Der Mandantenmonat als Excel-Mappe: Berichterstattung, Anteil am Gespräch und die Beiträge dahinter. Die Messung oben steht nicht darin.":
+        "The mandate's month as an Excel workbook: coverage, share of voice and "
+        "the articles behind it. The measurement above is not in it.",
     "%(n)s Vorschläge stehen unten schon in ihren Feldern, markiert und noch nicht gespeichert.":
         "%(n)s proposals are already in their fields below, marked and not saved "
         "yet.",

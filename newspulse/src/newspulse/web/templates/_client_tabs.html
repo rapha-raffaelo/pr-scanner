@@ -5,7 +5,11 @@
    week looks like, not offer a menu. Excel sits apart because it is a download,
    not a place: styling it as a fourth tab would promise a page that never loads.
 
-   Included by client_detail, advice and coverage_map; `active` names which one. #}
+   Included by client_detail, advice and coverage_map; `active` names which one.
+
+   The Excel download used to sit here as a trailing link. It is not a place, and
+   next to ten tabs it read as an eleventh that had slipped — so it now lives on
+   a page, with a heading above it saying what it contains. #}
 <nav class="subtabs" aria-label="{{ t('Mandant') }}">
   <div class="subtabs__id">
     {% if client.logo_url %}
@@ -35,5 +39,4 @@
      weekly rather than every morning: what an assistant answers when somebody
      asks about this market (DEC-3). #}
   <a href="/client/{{ client.id }}/ki"{% if active == 'visibility' %} class="active" aria-current="page"{% endif %}>{{ t("KI-Sichtbarkeit") }}</a>
-  <a class="subtabs__dl" href="/client/{{ client.id }}/export.xlsx" download>↓ {{ t("Excel") }}</a>
 </nav>

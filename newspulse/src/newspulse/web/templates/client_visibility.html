@@ -384,5 +384,21 @@
 {% endif %}
 
 {{ proposal_panel() if questions else '' }}
+{# The mandate's workbook. It used to be a trailing link in the tab strip, where
+   it read as an eleventh tab that had slipped. It is a download, not a place, so
+   it belongs on a page with a line above it saying what is in it — and what is
+   in it is the month's coverage, not the measurement above: the share of voice,
+   the articles behind it and what to say about them, the sheet that goes into
+   the meeting. #}
+<div class="vis-panel vis-export">
+  <div class="vis-panel__h">
+    <span class="vis-panel__t">{{ t("Export") }}</span>
+  </div>
+  <div class="vis-panel__b">
+    <p class="vis-note__p">{{ t("Der Mandantenmonat als Excel-Mappe: Berichterstattung, Anteil am Gespräch und die Beiträge dahinter. Die Messung oben steht nicht darin.") }}</p>
+    <a class="btn" href="/client/{{ client.id }}/export.xlsx" download>↓ {{ t("Excel") }}</a>
+  </div>
+</div>
+
 <p class="vis-foot">{{ t("Gemessen wird, was die angebundenen Assistenten auf denselben Fragensatz antworten, nicht was „die KI“ denkt. RauteOS misst und berichtet, es optimiert nichts und verschickt nichts.") }}</p>
 {% endblock %}
