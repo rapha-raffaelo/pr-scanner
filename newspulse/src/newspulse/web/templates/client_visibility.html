@@ -48,6 +48,39 @@
   {% endif %}
 </div>
 
+{# The proposal panel, as a macro, because it is asked for in two places and has
+   to answer in the place it was asked. It used to be one block at the foot of
+   the page. Pressed from the empty-set card at the top, the questions it
+   produced were rendered past every section that is empty on a mandate with no
+   set — a screen and a half of nothing — so the reader pressed the button, saw
+   the same card again and reported the feature as broken. It was not: the answer
+   was below the fold. #}
+{% macro proposal_panel() %}
+  {% if proposals is not none %}
+    {% if proposals %}
+      <div class="vis-panel">
+        <div class="vis-panel__h">
+          <span class="vis-panel__t">{{ t("Vorgeschlagene Fragen") }}</span>
+          <span class="vis-panel__s">{{ t("gespeichert ist noch keine") }}</span>
+          <span class="vis-panel__r">{{ proposals | length }}</span>
+        </div>
+        {% for proposal in proposals %}
+          <form method="post" action="/client/{{ client.id }}/ki/fragen" class="vis-prop">
+            <input type="hidden" name="text" value="{{ proposal.text }}">
+            <input type="hidden" name="band" value="{{ proposal.band }}">
+            <span class="vis-band">{{ band_names.get(proposal.band | string, proposal.band) }}</span>
+            <span class="vis-prop__q">{{ proposal.text }}</span>
+            <button type="submit" class="linkbtn">{{ t("Übernehmen") }}</button>
+          </form>
+        {% endfor %}
+        <div class="vis-note">{{ t("Erst ein Klick auf „Übernehmen“ legt eine Frage an. Höchstens %(n)s Fragen stehen im Satz.") | format(n=max_questions) }}</div>
+      </div>
+    {% else %}
+      <div class="notice">{{ t("Der Vorschlag hat nichts ergeben. Meist fehlt dem Profil noch der Text zum Geschäftsfeld, aus dem eine Kaufentscheidungsfrage gebaut wird.") }}</div>
+    {% endif %}
+  {% endif %}
+{% endmacro %}
+
 {% if visibility_error %}
   <div class="notice notice--error">{{ visibility_error }}</div>
 {% endif %}
@@ -82,6 +115,8 @@
       </form>
     </div>
   </div>
+  {# Asked here, so answered here. #}
+  {{ proposal_panel() }}
 
 {% else %}
 
@@ -348,33 +383,6 @@
 </div>
 {% endif %}
 
-{# Outside both branches on purpose. A proposal is rendered wherever it was asked
-   for. Rendered only inside the empty-set branch, it was thrown away the moment
-   the set held one question — and the model call that produced it had been spent
-   to show the reader nothing. #}
-{% if proposals is not none %}
-  {% if proposals %}
-    <div class="vis-panel">
-      <div class="vis-panel__h">
-        <span class="vis-panel__t">{{ t("Vorgeschlagene Fragen") }}</span>
-        <span class="vis-panel__s">{{ t("gespeichert ist noch keine") }}</span>
-        <span class="vis-panel__r">{{ proposals | length }}</span>
-      </div>
-      {% for proposal in proposals %}
-        <form method="post" action="/client/{{ client.id }}/ki/fragen" class="vis-prop">
-          <input type="hidden" name="text" value="{{ proposal.text }}">
-          <input type="hidden" name="band" value="{{ proposal.band }}">
-          <span class="vis-band">{{ band_names.get(proposal.band | string, proposal.band) }}</span>
-          <span class="vis-prop__q">{{ proposal.text }}</span>
-          <button type="submit" class="linkbtn">{{ t("Übernehmen") }}</button>
-        </form>
-      {% endfor %}
-      <div class="vis-note">{{ t("Erst ein Klick auf „Übernehmen“ legt eine Frage an. Höchstens %(n)s Fragen stehen im Satz.") | format(n=max_questions) }}</div>
-    </div>
-  {% else %}
-    <div class="notice">{{ t("Der Vorschlag hat nichts ergeben. Meist fehlt dem Profil noch der Text zum Geschäftsfeld, aus dem eine Kaufentscheidungsfrage gebaut wird.") }}</div>
-  {% endif %}
-{% endif %}
-
+{{ proposal_panel() if questions else '' }}
 <p class="vis-foot">{{ t("Gemessen wird, was die angebundenen Assistenten auf denselben Fragensatz antworten, nicht was „die KI“ denkt. RauteOS misst und berichtet, es optimiert nichts und verschickt nichts.") }}</p>
 {% endblock %}

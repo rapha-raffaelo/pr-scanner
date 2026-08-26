@@ -912,3 +912,29 @@ def test_every_german_string_on_the_visibility_page_is_translated():
         "German strings on the visibility page with no English entry in i18n._EN: "
         f"{sorted(called - known)}"
     )
+
+
+def test_the_proposal_answers_where_it_was_asked_for(web, session, mandate, monkeypatch):
+    """Reported as "das funktioniert auch nicht". It did work.
+
+    The panel was one block at the foot of the page. Pressed from the empty-set
+    card at the top — the only button a mandate without a set has — the questions
+    it produced were rendered past every section that is empty in exactly that
+    state, a screen and a half of nothing. The reader pressed the button, saw the
+    same card again, and had no reason to think a model call had just answered.
+
+    So the distance is the assertion, not merely the presence: the panel has to
+    come before the sections it used to sit behind.
+    """
+    offered = [visibility.Proposal(text=_AUSWAHL, band=VisibilityBand.AUSWAHL)]
+    monkeypatch.setattr(visibility, "propose", lambda session, client: offered)
+
+    body = web.post(f"/client/{mandate.id}/ki/vorschlag").text
+
+    asked = body.index("Fragen vorschlagen")
+    answered = body.index("Vorgeschlagene Fragen")
+    foot = body.index("vis-foot")
+    assert asked < answered < foot, "the answer sits between the button and the foot"
+    assert body.count("Vorgeschlagene Fragen") == 1, "and only once"
+    # A mandate with no set draws none of these; the panel must not be behind them.
+    assert "Wer den Markt besetzt" not in body
