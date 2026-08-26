@@ -1690,6 +1690,106 @@ _EN: dict[str, str] = {
         "The connection to Google failed. Nothing was stored.",
     "Der Zugriff wurde bei Google entzogen, die Verbindung wurde deshalb beendet.":
         "Access was withdrawn at Google, so the connection was ended.",
+    # --- KI-Sichtbarkeit ------------------------------------------------------
+    # The measurement names the assistants it asked rather than speaking of "die
+    # KI", so the English keeps that too: what two named models answered on a
+    # stated date, never a claim about machines in general.
+    "KI-Sichtbarkeit": "AI visibility",
+    "Wo das Mandat steht, wenn ein Assistent nach diesem Markt gefragt wird, und was sich seit der letzten Messung bewegt hat.":
+        "Where the client stands when an assistant is asked about this market, and "
+        "what has moved since the last measurement.",
+    "%(n)s Fragen, gemessen alle %(days)s Tage.": "%(n)s questions, measured every %(days)s days.",
+    "Alle Fragen": "Every question",
+    # The four bands, by distance from the brand. Only the first may name the client.
+    "Marke": "Brand",
+    "Auswahl": "Shortlist",
+    "Problem": "Problem",
+    "Stand": "Standing",
+    "Messung vom": "Measured on",
+    "der Fragen nennen %(name)s": "of the questions name %(name)s",
+    "%(named)s von %(measured)s gemessenen Fragen": "%(named)s of %(measured)s measured questions",
+    "%(points)s Prozentpunkte seit der Messung davor": "%(points)s percentage points since the previous measurement",
+    "Anteil der Fragen, die das Mandat nennen, über die letzten Messungen":
+        "Share of questions naming the client, over the last measurements",
+    "Die gestrichelte Linie ist %(name)s, das im selben Fragensatz am häufigsten genannte Unternehmen.":
+        "The dashed line is %(name)s, the company named most often in the same question set.",
+    # A single measurement is a point, not a direction: said in one line rather
+    # than drawn as a flat trend somebody would read as stability.
+    "Erst eine Messung: es gibt noch nichts, wogegen sich das vergleichen ließe.":
+        "Only one measurement so far: there is nothing yet to compare this against.",
+    "%(n)s Frage(n) des Satzes wurden nicht gemessen und zählen in der Zahl oben nicht mit.":
+        "%(n)s question(s) in the set were not measured and are not counted in the figure above.",
+    "%(n)s Antwort(en) kamen zurück und ließen sich nicht auslesen.":
+        "%(n)s answer(s) came back and could not be read.",
+    "Ohne Antwort geblieben:": "No answer from:",
+    "Die Messung vom": "The measurement of",
+    "hat keine Antwort geliefert.": "produced no answer at all.",
+    "Der Stand darunter ist der der Messung davor.": "The standing below is the one from the measurement before it.",
+    "Wer den Markt besetzt": "Who occupies the market",
+    "Nennungen über %(n)s gemessene Fragen, alle Modelle": "Mentions across %(n)s measured questions, all models",
+    "In dieser Messung wurde kein einziges Unternehmen genannt.": "This measurement named no company at all.",
+    "Woher die Antworten kommen": "What the answers lean on",
+    "genannte Quellen": "sources the models stated",
+    "eigene Seite": "own site",
+    "Die Modelle haben in diesen Antworten keine Quelle genannt. Das ist ein Befund, keine Lücke in der Messung.":
+        "The models stated no source in these answers. That is a finding, not a gap "
+        "in the measurement.",
+    "Bewegung": "Movement",
+    "gegenüber dem": "against",
+    "%(changed)s von %(total)s Fragen verändert": "%(changed)s of %(total)s questions changed",
+    "Erstmals genannt, bei %(provider)s auf Position %(position)s.":
+        "Named for the first time, at %(provider)s in position %(position)s.",
+    "Bei %(provider)s nicht mehr genannt.": "No longer named at %(provider)s.",
+    "Position %(before)s auf %(after)s bei %(provider)s.": "Position %(before)s to %(after)s at %(provider)s.",
+    "%(n)s Frage(n) sind unverändert und stehen deshalb nicht hier. Eine einzelne Antwort schwankt; erst eine Bewegung über zwei Messungen ist eine Bewegung.":
+        "%(n)s question(s) are unchanged and are therefore not listed here. A single "
+        "answer varies; a move counts as a move only once it survives two measurements.",
+    "Nichts hat sich verändert: alle %(n)s vergleichbaren Fragen antworten wie in der Messung davor.":
+        "Nothing changed: all %(n)s comparable questions answer as they did in the "
+        "measurement before.",
+    "Beobachtungen, nichts wird ausgelöst": "Observations, nothing is triggered",
+    "%(n)s Frage(n) nennen überhaupt kein Unternehmen": "%(n)s question(s) name no company at all",
+    "Auf diesen Feldern steht kein Wettbewerber im Weg. Was dort beantwortet wird, konkurriert mit niemandem.":
+        "No competitor is in the way on those fields. Whatever answers them competes "
+        "with nobody.",
+    "%(n)s Frage(n) nennen den Wettbewerb, aber nicht %(name)s": "%(n)s question(s) name competitors but not %(name)s",
+    "Dort wird die Kategorie beantwortet und das Mandat kommt darin nicht vor. Das ist die Lücke, die diese Messung sichtbar macht.":
+        "The category is answered there and the client does not appear in it. That is "
+        "the gap this measurement makes visible.",
+    "Zum Wettbewerb": "To the competitor view",
+    "Jede gemessene Frage nennt das Mandat. Aus dieser Messung folgt nichts, was hier stehen müsste.":
+        "Every measured question names the client. Nothing follows from this "
+        "measurement that would belong here.",
+    "der ganze Satz, Frage für Frage": "the whole set, question by question",
+    "Diese Frage aus dem Satz nehmen": "Take this question out of the set",
+    "Position %(n)s": "Position %(n)s",
+    "genannt": "named",
+    # The three states of one cell. "nicht gemessen" and "nicht genannt" must stay
+    # different sentences in every language: a missing answer and a negative answer
+    # are different facts, and only one of them is about the client.
+    "nicht genannt": "not named",
+    "nicht gemessen": "not measured",
+    "noch nicht gemessen": "not measured yet",
+    # --- The question set, before anything is stored --------------------------
+    "Noch kein Fragensatz": "No question set yet",
+    "Ohne Fragen gibt es nichts zu messen. RauteOS schlägt einen Satz vor, gebaut aus dem Profil und dem gemessenen Branchenbegriff — gespeichert wird nur, was Sie übernehmen.":
+        "Without questions there is nothing to measure. RauteOS proposes a set built "
+        "from the profile and the measured industry term \u2014 only what you accept is stored.",
+    "Fragen vorschlagen": "Propose questions",
+    "Vorgeschlagene Fragen": "Proposed questions",
+    "gespeichert ist noch keine": "none stored yet",
+    "Erst ein Klick auf \u201eÜbernehmen\u201c legt eine Frage an. Höchstens %(n)s Fragen stehen im Satz.":
+        "Only a click on \"Accept\" creates a question. The set holds at most %(n)s of them.",
+    "Der Vorschlag hat nichts ergeben. Meist fehlt dem Profil noch der Text zum Geschäftsfeld, aus dem eine Kaufentscheidungsfrage gebaut wird.":
+        "The proposal produced nothing. Usually the profile is still missing the text "
+        "about the business field a purchase question is built from.",
+    "Der Fragensatz steht, gemessen wurde noch nicht. Die erste Messung läuft mit dem nächsten täglichen Lauf.":
+        "The question set is in place and nothing has been measured yet. The first "
+        "measurement runs with the next daily sweep.",
+    "Gemessen wird, was die angebundenen Assistenten auf denselben Fragensatz antworten, nicht was \u201edie KI\u201c denkt. RauteOS misst und berichtet, es optimiert nichts und verschickt nichts.":
+        "What is measured is what the connected assistants answer to the same set of "
+        "questions, not what \"AI\" thinks. RauteOS measures and reports; it optimises "
+        "nothing and sends nothing.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

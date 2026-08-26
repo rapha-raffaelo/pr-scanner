@@ -31,5 +31,9 @@
   <a href="/client/{{ client.id }}/profil"{% if active == 'profile' %} class="active" aria-current="page"{% endif %}>{{ t("Profil") }}</a>
   <a href="/client/{{ client.id }}/guide"{% if active == 'guide' %} class="active" aria-current="page"{% endif %}>{{ t("Guide") }}</a>
   <a href="/client/{{ client.id }}/market"{% if active == 'market' %} class="active" aria-current="page"{% endif %}>{{ t("Marktumfeld") }}</a>
+  {# The other channel, last because it is the newest and because it is measured
+     weekly rather than every morning: what an assistant answers when somebody
+     asks about this market (DEC-3). #}
+  <a href="/client/{{ client.id }}/ki"{% if active == 'visibility' %} class="active" aria-current="page"{% endif %}>{{ t("KI-Sichtbarkeit") }}</a>
   <a class="subtabs__dl" href="/client/{{ client.id }}/export.xlsx" download>↓ {{ t("Excel") }}</a>
 </nav>
