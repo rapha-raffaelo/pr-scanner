@@ -41,7 +41,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
-import re
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
@@ -151,9 +151,19 @@ _REPORT_DRAFT_DAYS = 7
 # same reason ``_REPORTS_PER_SWEEP`` exists and rather more sharply: one
 # measurement is the whole accepted set times every configured provider times two
 # model calls each, all of it inside the run guard. Three a night clears a
-# portfolio inside the weekly window without a morning being held for an hour,
-# and a mandate deferred today is simply still due tomorrow.
+# portfolio inside the weekly window, and a mandate deferred today is simply still
+# due tomorrow.
 _VISIBILITY_PER_SWEEP = 3
+
+# How long the whole visibility stage may hold the sweep before it stops starting
+# new measurements. The count above is not a time budget and cannot be one: a set
+# is up to twenty-four questions times two providers times two model calls, each
+# bounded only by ``ANALYZER_TIMEOUT`` — three mandates behind one slow provider is
+# hours, and everything after this stage (the monthly draft, and the notification
+# that tells Lucas what fired) waits behind it. Twenty minutes is comfortably more
+# than a healthy measurement takes and far less than a morning; a mandate the
+# budget defers is still due tomorrow, which is what makes deferring cheap.
+_VISIBILITY_BUDGET = dt.timedelta(minutes=20)
 
 # Rotating-log knobs. The whole point of the file is week-three survivability, so
 # it must never grow without bound or silently truncate: rotate at 5 MB and keep 5
@@ -1136,6 +1146,11 @@ def _measure_visibility(
     question is not due and costs no call: the question set is proposed and
     accepted by a person, and until somebody has, there is nothing to measure.
 
+    Bounded twice, by :data:`_VISIBILITY_PER_SWEEP` and by
+    :data:`_VISIBILITY_BUDGET`, because the count alone bounds calls and not
+    minutes. Whatever either bound defers is still due tomorrow, and the stages
+    behind this one — the monthly draft — get their morning back.
+
     Failures are logged and nothing is appended to the run's errors, exactly as
     :func:`_generate_angles` behaves and for the same reason: a missed measurement
     is a missing figure on one tab, not a broken morning, and marking the sweep
@@ -1149,34 +1164,47 @@ def _measure_visibility(
         return 0
     measured = 0
     deferred = 0
+    # Monotonic rather than the sweep's ``now``: this bounds how long the stage
+    # runs, which is a different question from which mandates the window says are
+    # due, and a clock the caller injects would answer the wrong one.
+    until = time.monotonic() + _VISIBILITY_BUDGET.total_seconds()
     for client in clients:
         # A yardstick is tracked to compare its share of the conversation; nobody
         # reports its AI visibility, and DEC-3 gives it no page to read one on.
         if client.is_competitor:
             continue
+        # Read before anything is asked, and used in the fault handler below: a
+        # caught exception may have left the session unusable, and a rollback
+        # expires every loaded attribute, so reaching for ``client.name`` down
+        # there is a fresh SELECT — on exactly the connection that just failed.
+        name = client.name
         try:
             if not visibility.due(session, client, now=now):
                 continue
-            if measured >= _VISIBILITY_PER_SWEEP:
+            if measured >= _VISIBILITY_PER_SWEEP or time.monotonic() >= until:
                 deferred += 1
                 continue
+            # ``measure`` hands back an existing run rather than a new one when
+            # another process has one in flight. That is not a measurement this
+            # sweep made: counting it would spend a slot on work nobody did and
+            # log answers this sweep never asked for.
+            before = visibility.latest_run(session, client)
+            before_id = None if before is None else before.id
             run = visibility.measure(session, client, now=now)
-        except Exception as exc:  # noqa: BLE001 — a measurement is not worth a failed sweep
+        except Exception:  # noqa: BLE001 — a measurement is not worth a failed sweep
             # First, before the log line: a caught exception is not a clean
-            # session, and ``client.name`` on an expired attribute is a query that
-            # would raise PendingRollbackError straight out of this handler — past
-            # a runs row already written as ok.
+            # session, and a query on an expired attribute would raise
+            # PendingRollbackError straight out of this handler — past a runs row
+            # already written as ok.
             session.rollback()
-            _log.warning(
-                "the visibility measurement for %r failed: %s; skipping", client.name, exc
-            )
+            _log.exception("the visibility measurement for %r failed; skipping", name)
             continue
-        if run is None:
+        if run is None or run.id == before_id:
             continue
         measured += 1
         _log.info(
             "visibility measured for %r: %d answer(s)%s",
-            client.name,
+            name,
             len(run.answers),
             f", no answer from {', '.join(run.providers_failed)}"
             if run.providers_failed
@@ -1184,9 +1212,11 @@ def _measure_visibility(
         )
     if deferred:
         _log.info(
-            "%d further visibility measurement(s) deferred to a later sweep (cap %d per run)",
+            "%d further visibility measurement(s) deferred to a later sweep "
+            "(cap %d per run, budget %s)",
             deferred,
             _VISIBILITY_PER_SWEEP,
+            _VISIBILITY_BUDGET,
         )
     return measured
 
@@ -1836,6 +1866,13 @@ def _run_real(
         status = RunStatus.FAILED
         session.rollback()
     run = _finalize_run(session, started, now_fn(), status, new_articles, errors)
+    # Before the post-run stages, not after them. Everything an alert notification
+    # reports — the analyses flagged since ``started`` — is committed by the line
+    # above; everything below is a model call that can take minutes (a weekly
+    # visibility measurement, a monthly report draft). Delivering afterwards meant
+    # the one message a reader actually waits for was held behind work that has
+    # nothing to do with it.
+    _notify(session, run)
     post = _post_run(
         session,
         run,
@@ -1852,7 +1889,8 @@ def _run_real(
     status = run.status
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
-        "%d market signal(s), %d profile(s), %d repl(y/ies), %d error(s)",
+        "%d market signal(s), %d profile(s), %d visibility measurement(s), "
+        "%d repl(y/ies), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
@@ -1860,15 +1898,13 @@ def _run_real(
         post.signals,
         # On the run's own line because a refresh that quietly returns zero for
         # weeks looks exactly like a portfolio where nothing was due, and the
-        # difference is only visible here.
+        # difference is only visible here. The same holds, harder, for a weekly
+        # measurement that fires on one morning in seven.
         post.profiles,
+        post.visibility,
         post.replies,
         len(errors),
     )
-    # The run's data is committed; deliver any fired-alert notification now. This is
-    # the wiring for AC #1 ("after a run, if any alerts fired, a notification ... is
-    # delivered") — read-only and fault-isolated, so it can't roll the sweep back.
-    _notify(session, run)
     return RunReport(
         status=status,
         feeds_total=len(feeds) + len(radar),
