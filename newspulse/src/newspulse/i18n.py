@@ -451,6 +451,8 @@ _EN: dict[str, str] = {
     # The tick boxes beside the format list: which of the six the reader
     # actually wants written, answered once instead of six times.
     "Ausgewählte schreiben": "Write the selected ones",
+    "Content": "Content",
+    "Vorschlag": "Suggested",
     "Ohne Häkchen werden alle noch fehlenden geschrieben.":
         "With nothing ticked, every one still missing is written.",
     "Wird geschrieben": "Writing",

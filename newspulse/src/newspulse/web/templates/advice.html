@@ -108,6 +108,8 @@
   .fmtrow__tick:disabled { opacity: 0.35; }
   .fmtwrite { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
   .fmtwrite .panel-hint { margin: 0; }
+  .makemsg__why { font-size: var(--t-caption); color: var(--muted); margin: var(--s1) 0 var(--s2); max-width: 72ch; }
+  .makemsg__why b { color: var(--ink-2); font-weight: 600; }
   .fmttab { font: inherit; font-size: var(--t-subhead); font-weight: 500; background: none; border: 0;
             cursor: pointer; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent;
             white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; }
@@ -354,7 +356,7 @@
         {% set running = asset_progress and asset_progress.angle_id == angle.id %}
         <div class="pack" id="pack-{{ angle.id }}">
           <div class="pack__head">
-            <span class="pack__t">{{ t("Das Paket zu diesem Anlass") }}</span>
+            <span class="pack__t">{{ t("Content") }}</span>
             <span class="pack__st">
               {% if pack.written %}
                 {{ pack.written }} {{ t("von") }} {{ pack.total }} {{ t("Formaten geschrieben") }}{% if pack.released %} <span class="dot">·</span> {{ pack.released }} {{ t("freigegeben") }}{% endif %}
@@ -458,19 +460,6 @@
                 </button>
               </div>
             {% endfor %}
-            {# The letter is the seventh format of the package. It keeps its own
-               table and its own recipient, so the strip counts it rather than
-               owning it. No tick box: it is not written in a batch, it is
-               written to somebody, and the recipient is chosen in its own pane. #}
-            <div class="fmtrow fmtrow--noselect">
-            <button type="button" class="fmttab" role="tab"
-                    id="tab-{{ angle.id }}-anschreiben" aria-selected="false"
-                    aria-controls="pane-{{ angle.id }}-anschreiben" tabindex="-1"
-                    data-pane="pane-{{ angle.id }}-anschreiben">
-              <span class="fmt-dot fmt-dot--{{ 'entwurf' if written else 'ungeschrieben' }}" aria-hidden="true"></span>{{ t("Anschreiben") }}
-              {% if written %}<span class="fmttab__n">{{ written | length }}</span>{% endif %}
-            </button>
-            </div>
           </div>
           {# The write form itself carries no boxes — they reach it by ``form=``
              from the rows above, so the list stays one list. #}
@@ -639,9 +628,16 @@
               {% endif %}
             </div>
           {% endfor %}
+        </div>{# /content #}
 
-          <div class="fmtpane" id="pane-{{ angle.id }}-anschreiben" role="tabpanel"
-               aria-labelledby="tab-{{ angle.id }}-anschreiben" tabindex="0">
+        {# Outreach: its own stage, not the seventh tab of the package.
+
+           Three forms of output and no more — the idea, the texts written from
+           it, and the letter that goes to a person. The letter was a tab beside
+           six document formats, which put the only thing on this page that can
+           reach a journalist behind the same control as a Q&A, one click deep
+           and easy to miss. It is a stage now, always open, under the texts. #}
+        <div class="stage" id="outreach-{{ angle.id }}">
         {# Stage three. This pane is the only one that can put a text in front of
            a journalist, and it used to open straight onto a recipient dropdown
            with the letters that already exist running on below it, unlabelled —
@@ -679,6 +675,7 @@
                     <option value="{{ loop.index0 }}"
                             data-journalist="{{ target.journalist or '' }}"
                             data-outlet="{{ target.outlet }}">
+                      {%- if loop.first %}{{ t("Vorschlag") }}: {% endif -%}
                       {% if target.journalist %}{{ target.journalist }} · {% endif %}{{ target.outlet }}
                     </option>
                   {% endfor %}
@@ -690,6 +687,19 @@
                  server-side against the same list, in the same order. #}
               <input type="hidden" name="journalist" value="{{ targets[0].journalist or '' }}">
               <input type="hidden" name="outlet" value="{{ targets[0].outlet }}">
+            {% endif %}
+            {# The list is already sorted best-signal-first, so the top entry is
+               the tool's pick — it was simply never named as one. A reader who
+               does not know that reads a dropdown of five strangers and has no
+               reason to trust the one that happens to be selected. The reason
+               comes from the target itself, so the recommendation can be
+               checked rather than taken. #}
+            {% if targets and targets[0].reason %}
+              <p class="makemsg__why">
+                <b>{{ t("Vorschlag") }}:</b> {{ targets[0].reason }}
+              </p>
+            {% endif %}
+            {% if targets %}
             {% endif %}
             <button type="submit" class="btn btn--big"{% if writing %} disabled{% endif %}>
               {{ t("Personalisierte Nachricht erzeugen") }}
@@ -1193,8 +1203,7 @@
             </p>
           </div>
         {% endif %}
-          </div>{# /pane-anschreiben #}
-        </div>{# /pack #}
+        </div>{# /outreach #}
       </article>
     {% else %}
       {# Three reasons for an empty section, and they need different answers: the

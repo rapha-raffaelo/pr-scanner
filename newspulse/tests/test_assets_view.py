@@ -604,7 +604,11 @@ def test_the_strip_shows_every_format_and_the_state_it_is_in(factory, web):
 
     for fmt in assets.FORMATS:
         assert f'data-pane="pane-{angle.id}-{fmt.key}"' in body, fmt.key
-    assert f'data-pane="pane-{angle.id}-anschreiben"' in body, "the letter is a tab too"
+    # The letter is no longer one of them. It is the only thing on this page that
+    # can reach a journalist, and putting it behind the same control as a Q&A
+    # made it one click deep and easy to miss; it is a stage of its own now.
+    assert f'data-pane="pane-{angle.id}-anschreiben"' not in body
+    assert f'id="outreach-{angle.id}"' in body, "and it is open, not tabbed away"
     assert "fmt-dot--geprueft" in body, "the written statement is checked"
     assert "fmt-dot--ungeschrieben" in body, "the six others do not exist yet"
     assert "1 von 7 Formaten geschrieben" in " ".join(body.split())
@@ -1212,9 +1216,15 @@ _ADVICE = (
 
 
 def _package_markup() -> str:
-    """The package block of the impulse page, without the page around it."""
+    """The package block of the impulse page, without the page around it.
+
+    Runs to the end of the outreach stage rather than to the end of the package.
+    The letter used to be the seventh tab inside it and is now a stage of its
+    own beside it, so stopping at the package would quietly drop half the
+    strings this guard exists to check.
+    """
     text = _ADVICE.read_text(encoding="utf-8")
-    return text[text.index('<div class="pack"') : text.index("{# /pack #}")]
+    return text[text.index('<div class="pack"') : text.index("{# /outreach #}")]
 
 
 def test_every_german_string_on_the_package_has_an_english_entry():
