@@ -1699,7 +1699,17 @@ _EN: dict[str, str] = {
         "Where the client stands when an assistant is asked about this market, and "
         "what has moved since the last measurement.",
     "%(n)s Fragen, gemessen alle %(days)s Tage.": "%(n)s questions, measured every %(days)s days.",
+    # Counted, not "1 Fragen": a set of one is the state a mandate is in for as
+    # long as it takes to accept the second question, and the page is read in it.
+    "Eine Frage, gemessen alle %(days)s Tage.": "One question, measured every %(days)s days.",
+    "Wieder fällig ab dem %(date)s": "Due again from %(date)s",
     "Alle Fragen": "Every question",
+    "Jetzt messen": "Measure now",
+    # A measurement takes minutes and its answers arrive one at a time, so a page
+    # loaded while one runs says so rather than reporting a half-spent set.
+    "Eine Messung läuft gerade.": "A measurement is running right now.",
+    "Die Zahlen unten sind die der Messung davor.":
+        "The figures below are those of the measurement before it.",
     # The four bands, by distance from the brand. Only the first may name the client.
     "Marke": "Brand",
     "Auswahl": "Shortlist",
@@ -1725,9 +1735,14 @@ _EN: dict[str, str] = {
     "Die Messung vom": "The measurement of",
     "hat keine Antwort geliefert.": "produced no answer at all.",
     "Der Stand darunter ist der der Messung davor.": "The standing below is the one from the measurement before it.",
+    "Eine frühere Messung, auf die er zurückfallen könnte, gibt es nicht.":
+        "There is no earlier measurement for it to fall back on.",
     "Wer den Markt besetzt": "Who occupies the market",
     "Nennungen über %(n)s gemessene Fragen, alle Modelle": "Mentions across %(n)s measured questions, all models",
     "In dieser Messung wurde kein einziges Unternehmen genannt.": "This measurement named no company at all.",
+    # The mandate's place, said out loud where the ranking shows only its head. The
+    # one row the cut never takes is the mandate's.
+    "Platz %(n)s": "Rank %(n)s",
     "Woher die Antworten kommen": "What the answers lean on",
     "genannte Quellen": "sources the models stated",
     "eigene Seite": "own site",
@@ -1739,6 +1754,14 @@ _EN: dict[str, str] = {
     "%(changed)s von %(total)s Fragen verändert": "%(changed)s of %(total)s questions changed",
     "Erstmals genannt, bei %(provider)s auf Position %(position)s.":
         "Named for the first time, at %(provider)s in position %(position)s.",
+    # A model may name the mandate in prose without placing it in a list at all.
+    # Winning or losing that place is its own move, and is never written as a jump
+    # between two ranks — one of the two sides was never measured.
+    "Erstmals genannt, bei %(provider)s.": "Named for the first time, at %(provider)s.",
+    "Bei %(provider)s erstmals in der Aufzählung, auf Position %(after)s.":
+        "Placed in the list at %(provider)s for the first time, in position %(after)s.",
+    "Bei %(provider)s nur noch erwähnt, ohne Platz in der Aufzählung.":
+        "Only mentioned at %(provider)s now, with no place in the list.",
     "Bei %(provider)s nicht mehr genannt.": "No longer named at %(provider)s.",
     "Position %(before)s auf %(after)s bei %(provider)s.": "Position %(before)s to %(after)s at %(provider)s.",
     "%(n)s Frage(n) sind unverändert und stehen deshalb nicht hier. Eine einzelne Antwort schwankt; erst eine Bewegung über zwei Messungen ist eine Bewegung.":

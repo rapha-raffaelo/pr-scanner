@@ -27,14 +27,22 @@ agency would otherwise report wrongly.
 Benchmarks (``is_competitor``) get no page here at all. They appear inside a
 mandate's ranking as named companies, which is the same exclusion the sidebar and
 the portfolio already apply.
+
+One thing DEC-3 asks for is not here yet. "Der Wortlaut jeder Antwort bleibt einen
+Klick entfernt" needs a route onto a single stored answer, and the mock for it
+(``features/mocks/visibility-answers.html``) is unbuilt; every figure on this page
+resolves to a count of answers that *are* stored, and reading one back verbatim is
+the story after this one. Nothing here claims otherwise.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import logging
+import threading
 import urllib.parse
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -44,18 +52,28 @@ from sqlalchemy.orm import Session
 
 from ... import config, visibility
 from ...analyzer import AnalyzerError
+from ...db import get_session
 from ...models import (
     Client,
     VisibilityAnswer,
     VisibilityQuestion,
     VisibilityRun,
 )
+from .. import spawn
 from ..app import get_db, templates
+from ..runlock import guard as _run_guard
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
+_log = logging.getLogger(__name__)
 
 _SEE_OTHER = 303
+
+# One measurement at a time in this process, and the sweep's own guard around it:
+# a full set is up to twenty-four questions times every provider times two model
+# calls, and a second click while one is running would put the same set to the
+# same providers twice.
+_measuring = threading.Lock()
 
 #: How many measurements the trend line carries. Two months of a weekly
 #: measurement: far enough back that a seasonal swing is visible, short enough
@@ -92,12 +110,21 @@ class CellState(StrEnum):
 
 
 class MoveKind(StrEnum):
-    """What changed about one cell between two measurements."""
+    """What changed about one cell between two measurements.
+
+    The last two exist because a named answer may carry no position at all — the
+    model mentions the company in prose without placing it in a list, which
+    ``VisibilityAnswer``'s CHECK (``named OR position IS NULL``) permits. Gaining
+    or losing that place is reported as what it is rather than compared as a rank
+    against a number that was never measured.
+    """
 
     ENTERED = "entered"
     LEFT = "left"
     ROSE = "rose"
     FELL = "fell"
+    RANKED = "ranked"
+    UNRANKED = "unranked"
 
 
 class Direction(StrEnum):
@@ -161,6 +188,10 @@ class Occupant:
     questions: int
     share: float
     is_mandate: bool
+    #: Its place in the ranking, counted from one over every company named. Carried
+    #: because the panel shows only the head of the list and the mandate is never
+    #: cut from it: a row shown below the cut has to say which place it holds.
+    rank: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,8 +240,8 @@ class Trend:
 class Openings:
     """The two findings this measurement supports on its own arithmetic.
 
-    Deliberately only these two. Both resolve to a count of stored answers a
-    reader can open; anything richer would be a judgement, and this page reports
+    Deliberately only these two. Both are a count over answers this run stored,
+    and nothing else; anything richer would be a judgement, and this page reports
     rather than advises.
     """
 
@@ -226,6 +257,32 @@ class _Tally:
     named_by: dict[str, set[int]]
     #: The first spelling each company was seen under, keyed by its folded name.
     spelling: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class _Measurement:
+    """One stored run beside the tally read off it.
+
+    Bundled so the tally is counted once per run and per request. The standing,
+    the ranking and the trend all read the newest one, and three passes over the
+    same answer rows are three places a later filter can be added to only two.
+    """
+
+    run: VisibilityRun
+    tally: _Tally
+
+
+@dataclass(frozen=True, slots=True)
+class Attempt:
+    """The newest attempt, where it is not the standing the page reports.
+
+    Two states, and neither is a figure: a measurement that is still running, and
+    one that finished having reached nobody at all. They are the sentences that
+    stop a reader from taking the standing below them for this week's.
+    """
+
+    running: VisibilityRun | None
+    barren: VisibilityRun | None
 
 
 # --- Reading one run -------------------------------------------------------------
@@ -251,12 +308,19 @@ def _history(session: Session, client: Client, *, limit: int) -> list[Visibility
     A run with no answer row is not a measurement of anything — every provider
     was down — so it is not what a standing is read off and not a point on a
     trend. It is still reported, separately, as the failed attempt it was.
+
+    A run that has not finished is left out for the same reason and a sharper
+    one: its answers arrive question by question over minutes, so reading one as
+    the standing would put a partial share at the top of the page and then
+    explain the shortfall with a sentence about providers that were down. What is
+    running is reported as running (:class:`Attempt`), not as a figure.
     """
     return list(
         session.scalars(
             select(VisibilityRun)
             .where(
                 VisibilityRun.client_id == client.id,
+                VisibilityRun.finished_at.is_not(None),
                 VisibilityRun.answers.any(),
             )
             .order_by(VisibilityRun.ran_at.desc(), VisibilityRun.id.desc())
@@ -308,8 +372,8 @@ def _share(tally: _Tally, key: str) -> float:
 
 def _standing(
     client: Client,
-    run: VisibilityRun,
-    previous: VisibilityRun | None,
+    current: _Measurement,
+    previous: _Measurement | None,
     *,
     accepted: int,
 ) -> Standing:
@@ -320,55 +384,104 @@ def _standing(
     towards zero and read as "the models stopped naming us". The gap between the
     two counts is stated on the page instead.
     """
-    tally = _tally(run, client)
     key = client.name.casefold()
-    share = _share(tally, key)
-    delta = None
-    if previous is not None:
-        delta = (share - _share(_tally(previous, client), key)) * 100
+    share = _share(current.tally, key)
+    delta = None if previous is None else (share - _share(previous.tally, key)) * 100
     return Standing(
-        ran_at=run.ran_at,
-        named=len(tally.named_by.get(key, ())),
-        measured=len(tally.measured),
+        ran_at=current.run.ran_at,
+        named=len(current.tally.named_by.get(key, ())),
+        measured=len(current.tally.measured),
         accepted=accepted,
         share=share,
         delta=delta,
-        previous_at=previous.ran_at if previous is not None else None,
-        providers_failed=tuple(run.providers_failed),
-        unread=run.answers_unread,
+        previous_at=previous.run.ran_at if previous is not None else None,
+        providers_failed=tuple(current.run.providers_failed),
+        unread=current.run.answers_unread,
     )
 
 
 def _occupants(client: Client, tally: _Tally) -> list[Occupant]:
-    """Who occupies this market, the mandate marked and in the same list.
+    """Who occupies this market, ranked, the mandate marked and in the same list.
 
     In the same list on purpose: the mandate's rank among the companies an
     assistant names *is* the finding, and lifting it out into its own row would
     let a reader miss that four other firms sit above it.
+
+    The mandate gets a row even where no answer named it. "0 von 18" is precisely
+    the reading a consultant opens this tab for, and a mandate simply missing from
+    the ranking reads as one nobody measured — which is the other fact this page
+    exists to tell apart.
     """
     key = client.name.casefold()
+    counted = {name: len(questions) for name, questions in tally.named_by.items()}
+    counted.setdefault(key, 0)
+    spelling = {key: client.name} | tally.spelling
     rows = [
         Occupant(
-            name=tally.spelling[name],
-            questions=len(questions),
-            share=len(questions) / len(tally.measured) if tally.measured else 0.0,
+            name=spelling[name],
+            questions=questions,
+            share=questions / len(tally.measured) if tally.measured else 0.0,
             is_mandate=name == key,
+            rank=0,
         )
-        for name, questions in tally.named_by.items()
+        for name, questions in counted.items()
     ]
     rows.sort(key=lambda row: (-row.questions, row.name.casefold()))
-    return rows
+    return [replace(row, rank=index + 1) for index, row in enumerate(rows)]
 
 
-def _own_marks(client: Client) -> tuple[str, ...]:
+def _ranking(occupants: list[Occupant]) -> tuple[list[Occupant], int, Occupant | None]:
+    """The rows the panel shows, how many it left out, and the mandate if it fell out.
+
+    The list is cut at :data:`_OCCUPANTS_MAX` because past a handful the ranking
+    is a long tail nobody competes against. The one row that is never cut is the
+    mandate's: a mandate sitting below nine rivals is exactly what this page
+    exists to state, and folding it into "und N weitere" would hide it in the case
+    that matters most. It is shown apart, carrying its rank, rather than promoted
+    into a place it does not hold.
+    """
+    visible = occupants[:_OCCUPANTS_MAX]
+    left = occupants[_OCCUPANTS_MAX:]
+    apart = next((row for row in left if row.is_mandate), None)
+    return visible, len(left) - (1 if apart is not None else 0), apart
+
+
+def _own_marks(client: Client) -> tuple[str, str]:
     """What makes a stated source the mandate's own: its name, and its host."""
-    marks = [client.name.casefold()]
     raw = (client.website or "").strip()
     host = urllib.parse.urlparse(raw if "//" in raw else f"//{raw}").netloc
-    host = host.removeprefix("www.").casefold().strip("/")
-    if host:
-        marks.append(host)
-    return tuple(mark for mark in marks if mark)
+    return client.name.casefold(), host.removeprefix("www.").casefold().strip("/")
+
+
+def _is_own(key: str, name: str, host: str) -> bool:
+    """Whether a stated source really is the mandate's own page.
+
+    Anchored, never a bare substring. ``mark in key`` is what this was, and it
+    badges a stranger's publication as the client's: "test.de" sits inside
+    "warentest.de" and a mandate called Test sits inside "Kontest GmbH", and a
+    citation the models never made is the one thing this panel may not record.
+    The host is matched the way :func:`newspulse.visibility._locator_matcher`
+    matches a stated locator — a dot to the left is the same publisher, a word
+    character is not — and the name on word boundaries, which is the answer this
+    feature's own reader already gives.
+    """
+    if host and visibility._locator_matcher(host).search(key) is not None:
+        return True
+    return bool(name) and visibility._named_in(key, name)
+
+
+def _source_name(key: str, stated: str) -> str:
+    """How the panel writes one source: the publisher, not the path it came on.
+
+    A model states "https://www.pv-magazine.de/artikel/…" as readily as it states
+    "pv-magazine", and this panel is a list of publishers. So a stated URL is
+    shown as its host and a stated name is left exactly as it was written —
+    nothing is invented, and no publisher gets a capitalisation the answer did not
+    give it. Two spellings of one publisher therefore still stand as two rows:
+    merging them needs a publisher identity this schema does not have, and
+    inventing one here would quietly change a count.
+    """
+    return key.split("/", 1)[0] if "/" in key or stated.casefold() != key else stated
 
 
 def _sources(client: Client, run: VisibilityRun) -> list[Source]:
@@ -378,7 +491,7 @@ def _sources(client: Client, run: VisibilityRun) -> list[Source]:
     two citations, and this figure is about what the models lean on, not about
     how many questions it reached.
     """
-    marks = _own_marks(client)
+    name, host = _own_marks(client)
     counts: dict[str, int] = defaultdict(int)
     spelling: dict[str, str] = {}
     for answer in run.answers:
@@ -391,9 +504,9 @@ def _sources(client: Client, run: VisibilityRun) -> list[Source]:
             counts[key] += 1
     rows = [
         Source(
-            name=spelling[key],
+            name=_source_name(key, spelling[key]),
             count=count,
-            own=any(mark in key for mark in marks),
+            own=_is_own(key, name, host),
         )
         for key, count in counts.items()
     ]
@@ -470,25 +583,38 @@ def _question_rows(
 
 
 def _move(provider: str, before: VisibilityAnswer, after: VisibilityAnswer) -> Move | None:
-    """The change between one provider's two answers to one question, if any."""
+    """The change between one provider's two answers to one question, if any.
+
+    A cell that names the mandate without placing it — ``named`` true,
+    ``position`` null, which the row's own CHECK permits — is never compared as a
+    rank. Taking the missing side for a zero read a first placement as a fall.
+    Winning or losing the place is its own move, and two answers that both name
+    the mandate without one are unchanged.
+    """
     if not before.named and after.named:
         return Move(MoveKind.ENTERED, provider, None, after.position)
     if before.named and not after.named:
         return Move(MoveKind.LEFT, provider, before.position, None)
     if not before.named or before.position == after.position:
         return None
+    if before.position is None:
+        return Move(MoveKind.RANKED, provider, None, after.position)
+    if after.position is None:
+        return Move(MoveKind.UNRANKED, provider, before.position, None)
     # A rank counts down: position 3 becoming position 2 is a gain.
-    kind = (
-        MoveKind.ROSE
-        if (after.position or 0) < (before.position or 0)
-        else MoveKind.FELL
-    )
+    kind = MoveKind.ROSE if after.position < before.position else MoveKind.FELL
     return Move(kind, provider, before.position, after.position)
 
 
+#: Which way each kind of move points. Winning a place in the enumeration counts
+#: with being named at all; losing it counts with being dropped.
+_UP_KINDS = (MoveKind.ENTERED, MoveKind.ROSE, MoveKind.RANKED)
+_DOWN_KINDS = (MoveKind.LEFT, MoveKind.FELL, MoveKind.UNRANKED)
+
+
 def _direction(moves: tuple[Move, ...]) -> Direction:
-    up = sum(1 for move in moves if move.kind in (MoveKind.ENTERED, MoveKind.ROSE))
-    down = sum(1 for move in moves if move.kind in (MoveKind.LEFT, MoveKind.FELL))
+    up = sum(1 for move in moves if move.kind in _UP_KINDS)
+    down = sum(1 for move in moves if move.kind in _DOWN_KINDS)
     if up and not down:
         return Direction.UP
     if down and not up:
@@ -549,33 +675,33 @@ def _mark(at: dt.datetime, index: int, total: int, share: float) -> Mark:
     return Mark(x=round(x, 1), y=round(y, 1), at=at)
 
 
-def _trend(client: Client, history: list[VisibilityRun]) -> Trend | None:
+def _trend(client: Client, measurements: list[_Measurement]) -> Trend | None:
     """The mandate's share over the measurements, against its strongest rival.
 
     ``None`` below two measurements: a single point is a dot, and drawing a line
     through it would suggest a direction the tool has no second measurement for.
     The page says so in one line instead.
     """
-    if len(history) < 2:
+    if len(measurements) < 2:
         return None
-    runs = list(reversed(history))
-    tallies = [_tally(run, client) for run in runs]
+    ordered = list(reversed(measurements))
     key = client.name.casefold()
-    total = len(runs)
+    total = len(ordered)
     mandate = tuple(
-        _mark(run.ran_at, index, total, _share(tally, key))
-        for index, (run, tally) in enumerate(zip(runs, tallies, strict=True))
+        _mark(row.run.ran_at, index, total, _share(row.tally, key))
+        for index, row in enumerate(ordered)
     )
-    rival = _strongest_rival(client, tallies[-1])
+    newest = ordered[-1].tally
+    rival = _strongest_rival(client, newest)
     if rival is None:
         return Trend(mandate=mandate, rival=(), rival_name="")
     return Trend(
         mandate=mandate,
         rival=tuple(
-            _mark(run.ran_at, index, total, _share(tally, rival))
-            for index, (run, tally) in enumerate(zip(runs, tallies, strict=True))
+            _mark(row.run.ran_at, index, total, _share(row.tally, rival))
+            for index, row in enumerate(ordered)
         ),
-        rival_name=tallies[-1].spelling[rival],
+        rival_name=newest.spelling[rival],
     )
 
 
@@ -592,6 +718,77 @@ def _strongest_rival(client: Client, tally: _Tally) -> str | None:
 # --- The page --------------------------------------------------------------------
 
 
+def _attempt(session: Session, client: Client) -> Attempt:
+    """What the newest run is doing, where that is not a standing.
+
+    Only one of the two can be true at a time, and both are about the same row:
+    the newest run there is. Running, it has no finished stamp and its answers are
+    still arriving. Barren, it finished having stored nothing — every provider was
+    down — which is the difference between "nobody named us this week" and "nobody
+    answered", and the page has to say which.
+    """
+    latest = visibility.latest_run(session, client)
+    if latest is None:
+        return Attempt(running=None, barren=None)
+    if latest.finished_at is None:
+        return Attempt(running=latest, barren=None)
+    return Attempt(running=None, barren=None if latest.answers else latest)
+
+
+def _next_due(standing: Standing | None) -> dt.datetime | None:
+    """When the window opens again, or ``None`` if there is no window to wait out."""
+    if standing is None or config.VISIBILITY_EVERY_DAYS <= 0:
+        return None
+    return standing.ran_at + dt.timedelta(days=config.VISIBILITY_EVERY_DAYS)
+
+
+def _context(
+    session: Session,
+    client: Client,
+    questions: list[VisibilityQuestion],
+    measurements: list[_Measurement],
+) -> dict[str, object]:
+    """Everything the page states about the measurements themselves."""
+    current = measurements[0] if measurements else None
+    previous = measurements[1] if len(measurements) > 1 else None
+    standing = (
+        None
+        if current is None
+        else _standing(client, current, previous, accepted=len(questions))
+    )
+    occupants, left_over, apart = _ranking(
+        [] if current is None else _occupants(client, current.tally)
+    )
+    moved, unchanged = _movement(
+        None if current is None else current.run,
+        None if previous is None else previous.run,
+        questions,
+    )
+    attempt = _attempt(session, client)
+    return {
+        "questions": questions,
+        "question_rows": _question_rows(None if current is None else current.run, questions),
+        "standing": standing,
+        "occupants": occupants,
+        "occupants_left": left_over,
+        "mandate_row": apart,
+        "sources": [] if current is None else _sources(client, current.run),
+        "openings": None if current is None else _openings(current.run),
+        "movement": moved,
+        "unchanged": unchanged,
+        "trend": _trend(client, measurements),
+        "running": attempt.running,
+        "barren": attempt.barren,
+        # The button only where pressing it would spend a measurement; where it
+        # would not, the page says when the window opens instead of offering a
+        # control that quietly does nothing.
+        "can_measure": (
+            bool(questions) and attempt.running is None and visibility.due(session, client)
+        ),
+        "next_due": _next_due(standing),
+    }
+
+
 def _render(
     request: Request,
     session: Session,
@@ -602,40 +799,16 @@ def _render(
 ) -> HTMLResponse:
     """Assemble everything the page states from the stored measurements."""
     questions = visibility.accepted(session, client)
-    history = _history(session, client, limit=_TREND_RUNS)
-    run = history[0] if history else None
-    previous = history[1] if len(history) > 1 else None
-    tally = _tally(run, client) if run is not None else None
-    occupants = _occupants(client, tally) if tally is not None else []
-    moved, unchanged = _movement(run, previous, questions)
-    latest = visibility.latest_run(session, client)
-    # A run that spent two providers and stored nothing is the failed attempt it
-    # was, and it is newer than the standing the page is built from. Saying so is
-    # the difference between "nobody named us this week" and "nobody answered".
-    barren = (
-        latest
-        if latest is not None and latest.finished_at is not None and not latest.answers
-        else None
-    )
+    measurements = [
+        _Measurement(run, _tally(run, client))
+        for run in _history(session, client, limit=_TREND_RUNS)
+    ]
     return templates.TemplateResponse(
         request,
         "client_visibility.html",
-        {
+        _context(session, client, questions, measurements)
+        | {
             "client": client,
-            "questions": questions,
-            "question_rows": _question_rows(run, questions),
-            "standing": _standing(client, run, previous, accepted=len(questions))
-            if run is not None
-            else None,
-            "occupants": occupants[:_OCCUPANTS_MAX],
-            "occupants_left": max(len(occupants) - _OCCUPANTS_MAX, 0),
-            "sources": _sources(client, run) if run is not None else [],
-            "openings": _openings(run) if run is not None else None,
-            "movement": moved,
-            "unchanged": unchanged,
-            "trend": _trend(client, history),
-            "measurements": len(history),
-            "barren": barren,
             "proposals": proposals,
             "visibility_error": error,
             "every_days": config.VISIBILITY_EVERY_DAYS,
@@ -673,10 +846,65 @@ def propose_questions(
     client = _client_or_404(session, client_id)
     try:
         proposals = visibility.propose(session, client)
-    except (AnalyzerError, visibility.ParseError) as exc:
+    except AnalyzerError as exc:
         session.rollback()
         return _render(request, session, client, error=str(exc))
     return _render(request, session, client, proposals=proposals)
+
+
+def _run_measurement(client_id: int) -> None:
+    """Measure one mandate on a worker thread; always give the lock back.
+
+    Behind :data:`newspulse.web.runlock.guard`, the same lock a dashboard-started
+    sweep takes, so a click and the 06:10 run cannot put the same set to the same
+    providers at once — and the header's spinner says the machine is busy while it
+    does. :func:`newspulse.visibility.measure` is the same call the sweep makes and
+    obeys the same window: pressed inside it, it hands back the stored run and
+    spends nothing.
+    """
+    try:
+        with _run_guard:
+            with get_session() as session:
+                client = session.get(Client, client_id)
+                if client is None or client.is_competitor:
+                    return
+                name = client.name
+                run = visibility.measure(session, client)
+                if run is None:
+                    _log.info("nothing to measure for %r", name)
+                    return
+                _log.info(
+                    "visibility measured for %r on request: %d answer(s)",
+                    name,
+                    len(run.answers),
+                )
+    except Exception:  # noqa: BLE001 — a worker thread must never die silently
+        _log.exception("the requested visibility measurement failed")
+    finally:
+        _measuring.release()
+
+
+@router.post("/client/{client_id}/ki/messen")
+def measure_now(client_id: int, session: Session = Depends(get_db)) -> Response:
+    """Put the set to the providers now — on a thread, never inside this response.
+
+    A full set is up to :data:`newspulse.visibility.MAX_QUESTIONS` questions times
+    every provider times two model calls, each bounded only by ``ANALYZER_TIMEOUT``:
+    measuring inside the request would hold a worker for as long as that takes and
+    hand the reader a timed-out page for work that did in fact happen. So the
+    click starts the same call the sweep makes and redirects; the page then reports
+    the run as running, because the row is committed before the first provider is
+    asked.
+    """
+    client = _client_or_404(session, client_id)
+    if visibility.due(session, client) and _measuring.acquire(blocking=False):
+        spawn.start_or_release(
+            _run_measurement,
+            args=(client_id,),
+            name=f"newspulse-visibility-{client_id}",
+            release=_measuring.release,
+        )
+    return RedirectResponse(f"/client/{client_id}/ki", status_code=_SEE_OTHER)
 
 
 @router.post("/client/{client_id}/ki/fragen")
@@ -715,6 +943,7 @@ def reject_question(
 
 
 __all__ = [
+    "Attempt",
     "Cell",
     "CellState",
     "Direction",

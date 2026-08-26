@@ -1863,6 +1863,9 @@ button:disabled { opacity: .55; cursor: default; }
 .vis-head__t { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.025em; margin: 0; }
 .vis-head__d { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s1); max-width: 62ch; }
 .vis-head__r { margin-left: auto; display: flex; gap: var(--s2); align-items: center; flex: none; }
+/* The measure control is a post, so it is a form; .run-form's own bottom margin
+   would push it out of line with the anchor beside it. */
+.vis-head__f { margin: 0; }
 
 /* Left: where the mandate stands. Right: what moved. Collapses to one column
    before the bars get too short to compare. */
