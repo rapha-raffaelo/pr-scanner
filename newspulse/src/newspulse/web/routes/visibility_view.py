@@ -841,9 +841,15 @@ def _context(
         "barren": attempt.barren,
         # The button only where pressing it would spend a measurement; where it
         # would not, the page says when the window opens instead of offering a
-        # control that quietly does nothing.
+        # control that quietly does nothing. ``_measuring`` is consulted for the
+        # same reason: between the click and the run row this process commits
+        # there is a gap, and inside it the lock is the only thing that knows a
+        # measurement was already asked for.
         "can_measure": (
-            bool(questions) and attempt.running is None and visibility.due(session, client)
+            bool(questions)
+            and attempt.running is None
+            and not _measuring.locked()
+            and visibility.due(session, client)
         ),
         "next_due": _next_due(standing),
     }
@@ -912,32 +918,51 @@ def propose_questions(
     return _render(request, session, client, proposals=proposals)
 
 
+def _measure_one(client_id: int) -> None:
+    """Put one mandate's set to the providers. Both guards are already held.
+
+    :func:`newspulse.visibility.measure` is the same call the sweep makes and
+    obeys the same window: pressed inside it, it hands back the stored run and
+    spends nothing.
+    """
+    with get_session() as session:
+        client = session.get(Client, client_id)
+        if client is None or client.is_competitor:
+            return
+        name = client.name
+        run = visibility.measure(session, client)
+        if run is None:
+            _log.info("nothing to measure for %r", name)
+            return
+        _log.info(
+            "visibility measured for %r on request: %d answer(s)", name, len(run.answers)
+        )
+
+
 def _run_measurement(client_id: int) -> None:
     """Measure one mandate on a worker thread; always give the lock back.
 
     Behind :data:`newspulse.web.runlock.guard`, the same lock a dashboard-started
     sweep takes, so a click and the 06:10 run cannot put the same set to the same
     providers at once — and the header's spinner says the machine is busy while it
-    does. :func:`newspulse.visibility.measure` is the same call the sweep makes and
-    obeys the same window: pressed inside it, it hands back the stored run and
-    spends nothing.
+    does. Taken without blocking, never waited on: waiting held :data:`_measuring`
+    for the whole length of a sweep, and ``can_measure`` on the page cannot see
+    that lock, so the button kept being offered while every further click was a
+    silent no-op. A mandate the sweep is standing in the way of is one the sweep
+    itself measures — it is due, and the click costs nothing to drop.
     """
     try:
-        with _run_guard:
-            with get_session() as session:
-                client = session.get(Client, client_id)
-                if client is None or client.is_competitor:
-                    return
-                name = client.name
-                run = visibility.measure(session, client)
-                if run is None:
-                    _log.info("nothing to measure for %r", name)
-                    return
-                _log.info(
-                    "visibility measured for %r on request: %d answer(s)",
-                    name,
-                    len(run.answers),
-                )
+        if not _run_guard.acquire(blocking=False):
+            _log.info(
+                "a sweep holds the run guard; leaving the visibility measurement "
+                "for client %d to it",
+                client_id,
+            )
+            return
+        try:
+            _measure_one(client_id)
+        finally:
+            _run_guard.release()
     except Exception:  # noqa: BLE001 — a worker thread must never die silently
         _log.exception("the requested visibility measurement failed")
     finally:
