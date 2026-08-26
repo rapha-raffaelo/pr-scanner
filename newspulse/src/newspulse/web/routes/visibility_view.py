@@ -754,12 +754,21 @@ def _attempt(session: Session, client: Client) -> Attempt:
     still arriving. Barren, it finished having stored nothing — every provider was
     down — which is the difference between "nobody named us this week" and "nobody
     answered", and the page has to say which.
+
+    "Running" is :func:`newspulse.visibility.is_running` and not merely a missing
+    finished stamp, because the same predicate decides whether the mandate may be
+    measured again. ``measure`` commits the run row before the first provider is
+    asked and the sweep catches and rolls back a failed measurement, so an
+    unfinished row is what a crash *normally* leaves behind. Read as running, it
+    put "Eine Messung läuft gerade." on the page and took the only manual control
+    away — while :func:`newspulse.visibility.due` was answering yes — until some
+    later sweep happened to write a finished run.
     """
     latest = visibility.latest_run(session, client)
     if latest is None:
         return Attempt(running=None, barren=None)
     if latest.finished_at is None:
-        return Attempt(running=latest, barren=None)
+        return Attempt(running=latest if visibility.is_running(latest) else None, barren=None)
     return Attempt(running=None, barren=None if latest.answers else latest)
 
 

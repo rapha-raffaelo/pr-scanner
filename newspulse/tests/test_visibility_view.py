@@ -46,6 +46,10 @@ from newspulse.web.routes import visibility_view
 
 _NOW = dt.datetime(2026, 8, 24, 9, 0, tzinfo=dt.UTC)
 _WEEK = dt.timedelta(days=7)
+#: The wall clock, for the one question that is about it: whether a measurement is
+#: running *now*. Everything else on this page is stated against stored dates, and
+#: a claim staked days ago is by definition not one a live process is holding.
+_FRESH = dt.datetime.now(dt.UTC)
 
 _TEMPLATES = Path(visibility_view.__file__).resolve().parents[1] / "templates"
 
@@ -699,15 +703,40 @@ def test_a_measurement_still_running_is_reported_and_not_read_as_the_standing(
     web, session, mandate
 ):
     """Its answers arrive over minutes. Read as the standing, a half-spent set puts
-    a partial share at the top of the page and blames providers that were never down."""
+    a partial share at the top of the page and blames providers that were never down.
+
+    Claimed against the wall clock rather than against ``_NOW``: "running" is a
+    statement about a process that exists right now, and the stored fixture date
+    is days in the past.
+    """
     question = _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
     _run(session, mandate, at=_NOW - _WEEK, cells=[(question, _CLAUDE, 1, ["Enpal"])], asked=[_CLAUDE])
-    _unfinished(session, mandate, at=_NOW, cells=[(question, False, None)])
+    _unfinished(session, mandate, at=_FRESH, cells=[(question, False, None)])
 
     body = _text(web.get(f"/client/{mandate.id}/ki").text)
 
     assert "Eine Messung läuft gerade." in body
     assert "100 %" in body, "the running measurement was read as this week's standing"
+
+
+def test_a_claim_left_behind_by_a_crash_is_not_a_running_measurement(
+    web, session, mandate
+):
+    """``measure`` commits the run row before the first provider is asked and the
+    sweep rolls a failed measurement back, so an unfinished row is what a crash
+    normally leaves. Read as running, it said "Eine Messung läuft gerade." and took
+    the only manual control away — while ``due`` was answering yes."""
+    question = _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    _run(session, mandate, at=_NOW - _WEEK * 2, cells=[(question, _CLAUDE, 1, ["Enpal"])], asked=[_CLAUDE])
+    _unfinished(session, mandate, at=_FRESH - dt.timedelta(days=3), cells=[])
+
+    assert visibility._in_flight(session, mandate) is None, "the claim is stale"
+    assert visibility.due(session, mandate) is True
+
+    body = _text(web.get(f"/client/{mandate.id}/ki").text)
+
+    assert "Eine Messung läuft gerade." not in body
+    assert "Jetzt messen" in body
 
 
 def test_a_barren_first_attempt_claims_no_standing_before_it(web, session, mandate):
