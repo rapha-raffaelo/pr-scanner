@@ -676,7 +676,13 @@ def test_a_dark_curated_source_is_asked_once_and_still_fails_every_mandate(
     session, serve
 ):
     """Caching the answer must not soften the fault boundary: the class is dark for
-    each mandate, and each of them has to hear about it."""
+    each mandate, and each of them has to hear about it.
+
+    ``SourcesUnreachable`` rather than the transport error the fetch raised: with
+    a per-source boundary in front of it, a class only fails when every one of
+    its sources did, and the message that reaches the run names them. Here there
+    is one source and it is dark, which is the same claim it always was.
+    """
     serve({})  # nothing is reachable
     asked: list[str] = []
 
@@ -688,8 +694,9 @@ def test_a_dark_curated_source_is_asked_once_and_still_fails_every_mandate(
     portfolio = [_client(session, name) for name in ("Alpha AG", "Beta AG")]
 
     for client in portfolio:
-        with pytest.raises(urllib.error.URLError):
+        with pytest.raises(market_sources.SourcesUnreachable) as caught:
             fetcher.collect(client, since=_SINCE, now=_NOW)
+        assert _STUDY_SOURCE.name in str(caught.value)
 
     assert asked == [_STUDIES_URL]
 

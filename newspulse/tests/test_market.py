@@ -30,6 +30,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from newspulse import clients, config, i18n, industry, job, market_sources
+from newspulse.ingest import FeedItem
 from newspulse.models import (
     Analysis,
     Article,
@@ -1219,3 +1220,94 @@ def test_every_german_string_on_the_market_page_is_translated():
         "German strings on the market page with no English entry in i18n._EN: "
         f"{sorted(called - known)}"
     )
+
+
+# --- One dead feed is not a dark class -----------------------------------------
+
+
+def _feed_item(title: str, link: str, when: dt.datetime) -> FeedItem:
+    return FeedItem(
+        title=title, link=link, source="Institut",
+        published_at=when, summary="", language="de",
+    )
+
+
+def _study_fetcher(fetch, *sources: market_sources.MarketSource):
+    return market_sources.StudyFetcher(fetch=fetch, sources=list(sources))
+
+
+def _source(name: str, url: str) -> market_sources.MarketSource:
+    return market_sources.MarketSource(name=name, url=url, kind=SignalKind.STUDIE)
+
+
+def test_a_dead_source_does_not_take_its_working_neighbours_with_it(factory):
+    """The bug that produced twenty-one errors on the morning this shipped.
+
+    ``collect`` had one fault boundary and it was the whole class, so the first
+    source to raise ended the loop — and everything the sources before it had
+    already returned went with it. Seven of the twelve curated feeds answered 404
+    that morning, which is a registry problem; all three classes reporting
+    themselves dark for all seven mandates is this one.
+    """
+    now = dt.datetime(2026, 8, 26, 6, 10, tzinfo=dt.UTC)
+    dead, alive = _source("Tot", "https://tot.example/rss"), _source("Lebt", "https://lebt.example/rss")
+
+    def _fetch(url, since, **kwargs):
+        if url == dead.url:
+            raise RuntimeError("HTTP Error 404: Not Found")
+        return [_feed_item("Neue Studie zum Markt", "https://lebt.example/1", now)]
+
+    with factory() as session:
+        client = _client(session, industry="")
+        drafts = _study_fetcher(_fetch, dead, alive).collect(
+            client, since=now - dt.timedelta(days=7), now=now
+        )
+
+    assert [d.title for d in drafts] == ["Neue Studie zum Markt"], (
+        "what the live source answered is kept"
+    )
+
+
+def test_a_class_whose_every_source_failed_is_still_reported_dark(factory):
+    """The boundary must not swallow the claim it was protecting.
+
+    A class with one or two sources going quiet is indistinguishable from a quiet
+    fortnight, and a forward calendar may never be wrong about that — so when
+    nothing answers at all it still raises, and the message names them so a stale
+    registry entry is identifiable from the run rather than from a reproduction.
+    """
+    now = dt.datetime(2026, 8, 26, 6, 10, tzinfo=dt.UTC)
+    one, two = _source("Tot A", "https://a.example/rss"), _source("Tot B", "https://b.example/rss")
+
+    def _fetch(url, since, **kwargs):
+        raise RuntimeError("HTTP Error 404: Not Found")
+
+    with factory() as session:
+        client = _client(session, industry="")
+        with pytest.raises(market_sources.SourcesUnreachable) as caught:
+            _study_fetcher(_fetch, one, two).collect(
+                client, since=now - dt.timedelta(days=7), now=now
+            )
+
+    assert "Tot A" in str(caught.value) and "Tot B" in str(caught.value)
+
+
+def test_every_curated_source_is_named_once_and_classified(factory):
+    """Registry hygiene, the half that does not need the network.
+
+    Reachability cannot be asserted here — the suite must not depend on eight
+    external sites being up — but a duplicate name silently shadows a source in
+    the per-sweep fetch cache, which is keyed by (url, name), and an entry
+    without a valid kind is dropped at load with a log line nobody reads.
+    """
+    sources = market_sources.load_sources()
+
+    assert sources, "the registry parsed to nothing"
+    names = [s.name for s in sources]
+    assert len(names) == len(set(names)), "a duplicate name shares a cache entry"
+    urls = [s.url for s in sources]
+    assert len(urls) == len(set(urls))
+    assert all(s.url.startswith("https://") for s in sources)
+    # Every class the sweep runs has at least one curated source, or it leans
+    # entirely on the per-mandate search without saying so anywhere.
+    assert {s.kind for s in sources} == set(SignalKind)

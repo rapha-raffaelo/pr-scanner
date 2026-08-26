@@ -75,6 +75,15 @@ _SEARCH_LABEL = "Feldsuche {kind}: {client}"
 FetchFeed = Callable[..., list[FeedItem]]
 
 
+class SourcesUnreachable(RuntimeError):
+    """Every source for one class refused. The class really is dark.
+
+    Distinct from one feed among several being down, which is a warning and a
+    smaller list — the difference the per-source boundary in ``collect`` exists
+    to draw, and the one the run's ERROR is making a claim about.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class MarketSource:
     """One place a class of signal is fetched from.
@@ -480,14 +489,44 @@ class MarketFetcher:
     def collect(
         self, client: Client, *, since: dt.datetime, now: dt.datetime
     ) -> list[SignalDraft]:
-        """Fetch every source for this class and parse each item into a draft."""
+        """Fetch every source for this class and parse each item into a draft.
+
+        One fault boundary per *source*, not per class. On the morning this
+        shipped, seven of the twelve curated feeds answered 404, and because the
+        first of them ended the loop the two that did answer were discarded with
+        it: all three classes reported themselves dark for all seven mandates,
+        twenty-one errors on a run that had material in hand.
+
+        A source that fails is logged and skipped. The class only raises — which
+        is what the caller turns into "this class is dark", an ERROR and a partial
+        run — when *every* source for it failed, because that is the claim the
+        ERROR was written to make. The message names them, so a registry entry
+        that has gone stale is identifiable from the run instead of from a
+        reproduction.
+        """
         drafts: list[SignalDraft] = []
-        for source in self.sources_for(client):
-            items = self._items(source, since=since, now=now)
+        failures: list[str] = []
+        sources = list(self.sources_for(client))
+        for source in sources:
+            try:
+                items = self._items(source, since=since, now=now)
+            except Exception as exc:  # noqa: BLE001 — one dead feed is not a dark class
+                failures.append(f"{source.name} ({exc})")
+                _log.warning(
+                    "market source %r for class %s failed: %s; skipping it",
+                    source.name,
+                    self.kind.value,
+                    exc,
+                )
+                continue
             drafts.extend(
                 self._draft(item, source, now)
                 for item in items
                 if item.title.strip() and item.link.strip()
+            )
+        if sources and len(failures) == len(sources):
+            raise SourcesUnreachable(
+                f"every source failed: {'; '.join(failures)}"
             )
         return drafts
 

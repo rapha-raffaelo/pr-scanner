@@ -15,9 +15,20 @@
 # The list is global on purpose for now: a mandate that wants its own trade
 # association added is a settings change once the shape here has proven itself.
 #
-# Reachability is not checked in the test suite (nothing here touches the
-# network). A source that has moved or gone dark logs at ERROR on the next sweep
-# and stores nothing for its class, which is how a stale entry announces itself.
+# Every URL below was fetched and parsed before it was written here, and the
+# entry count it returned is in the comment beside it. The first version of this
+# file was not: seven of its twelve feeds answered 404 on the first sweep that
+# used them, and because `collect` had no per-source boundary the first failure
+# ended the whole class — twenty-one errors on a run that had material in hand.
+# Five of those seven publish no feed that could be found: destatis and its own
+# advertised feed URL both 404, ZEW, BaFin, AUMA and the BDI advertise none.
+# They are gone rather than left in to fail every morning. A source that cannot
+# be verified does not belong in a curated list.
+#
+# Reachability is still not checked in the test suite (nothing here touches the
+# network). A source that goes dark now logs at WARNING and is skipped; only a
+# class whose every source failed is an ERROR, which is the claim that was
+# always meant.
 #
 # Only feed-provided fields are ever ingested. Full article bodies are never
 # fetched or stored (Leistungsschutzrecht) — see ingest.py.
@@ -25,28 +36,18 @@
 # --- Studien: who measures the German market -----------------------------------
 
 [[sources]]
-name = "Statistisches Bundesamt"
-url = "https://www.destatis.de/SiteGlobals/Functions/RSSFeed/DE/RSSNewsfeed_Pressemitteilungen.xml"
-kind = "studie"
-
-[[sources]]
 name = "ifo Institut"
-url = "https://www.ifo.de/rss/news.xml"
-kind = "studie"
-
-[[sources]]
-name = "ZEW"
-url = "https://www.zew.de/rss/pressemitteilungen.xml"
+url = "https://www.ifo.de/rss.xml"          # 50 Einträge, geprüft 2026-08-26
 kind = "studie"
 
 [[sources]]
 name = "DIW Berlin"
-url = "https://www.diw.de/de/diw_01.c.413888.de/rss.xml"
+url = "https://www.diw.de/de/rss_news.xml"  # 20 Einträge, geprüft 2026-08-26
 kind = "studie"
 
 [[sources]]
 name = "Bitkom"
-url = "https://www.bitkom.org/rss.xml"
+url = "https://www.bitkom.org/rss.xml"      # geprüft 2026-08-26
 kind = "studie"
 
 # --- Regulierung: what is coming, and when it lands -----------------------------
@@ -62,13 +63,10 @@ url = "https://www.bundestag.de/static/appdata/includes/rss/aktuellethemen.rss"
 kind = "regulierung"
 
 [[sources]]
-name = "BaFin"
-url = "https://www.bafin.de/SiteGlobals/Functions/RSSFeed/DE/RSSNewsfeed_Meldungen.xml"
-kind = "regulierung"
-
-[[sources]]
 name = "Bundeskartellamt"
-url = "https://www.bundeskartellamt.de/SiteGlobals/Functions/RSSFeed/DE/RSSNewsfeed_Meldungen.xml"
+# The one the site itself advertises; the path in the first version of this file
+# was not a page that has ever existed.
+url = "https://www.bundeskartellamt.de/DE/Service/RSS/_documents/rssnewsfeed.xml"  # 30 Einträge
 kind = "regulierung"
 
 [[sources]]
@@ -77,13 +75,13 @@ url = "https://ec.europa.eu/commission/presscorner/api/rss?language=de"
 kind = "regulierung"
 
 # --- Veranstaltungen: where this field is staged --------------------------------
+#
+# One entry, and it is the only verified events feed of the several this class
+# was written with. The class leans on the per-mandate field search for the rest,
+# which is a thinner answer than the other two get and worth saying out loud
+# rather than papering over with sources that 404.
 
 [[sources]]
-name = "AUMA Messedatenbank"
-url = "https://www.auma.de/de/rss/messetermine"
-kind = "veranstaltung"
-
-[[sources]]
-name = "Bundesverband der Deutschen Industrie"
-url = "https://bdi.eu/rss/veranstaltungen"
+name = "DIW Berlin Veranstaltungen"
+url = "https://www.diw.de/de/rss_events.xml"  # 20 Einträge, geprüft 2026-08-26
 kind = "veranstaltung"
