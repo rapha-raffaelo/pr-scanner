@@ -981,6 +981,25 @@ def _standing(session: Session, client: Client) -> VisibilityRun | None:
     )
 
 
+def is_running(run: VisibilityRun, *, now: dt.datetime | None = None) -> bool:
+    """Whether one run row is a measurement still under way.
+
+    One predicate, because two callers ask the question and a page that answers
+    it differently from the scheduler contradicts itself out loud: it would say
+    "eine Messung läuft gerade" and hide the manual control while :func:`due`
+    says the mandate may be measured right now.
+
+    A run carrying a finished stamp is not running. A claim older than
+    :data:`_IN_FLIGHT_MAX` is not running either: the run row is committed before
+    the first provider is asked, so a process that died mid-run leaves exactly
+    that row behind, and honouring it until something finishes would cost the
+    mandate its week rather than one attempt.
+    """
+    if run.finished_at is not None:
+        return False
+    return _reference(now) - run.ran_at < _IN_FLIGHT_MAX
+
+
 def _in_flight(
     session: Session, client: Client, *, now: dt.datetime | None = None
 ) -> VisibilityRun | None:
@@ -1008,7 +1027,7 @@ def _in_flight(
     )
     if running is None:
         return None
-    if _reference(now) - running.ran_at >= _IN_FLIGHT_MAX:
+    if not is_running(running, now=now):
         _log.warning(
             "visibility run %s for %r never finished; measuring again rather "
             "than waiting on a process that is gone",
@@ -1302,6 +1321,7 @@ __all__ = [
     "accepted",
     "askers",
     "due",
+    "is_running",
     "latest_run",
     "measure",
     "propose",

@@ -181,6 +181,28 @@ class Movement:
 
 
 @dataclass(frozen=True, slots=True)
+class Comparison:
+    """What the movement panel may say about two measurements.
+
+    :attr:`comparable` is carried rather than left to be inferred from an empty
+    list, because zero of it is its own sentence. Two runs that overlap on no
+    cell at all — a provider reached one slice of the set last week and another
+    slice this week — have nothing to compare, and rendering that as "nothing
+    changed" tells a consultant the week was stable when in truth it was never
+    measured against. That is the same outage-reported-as-a-finding this module
+    guards against everywhere else, only in the reassuring direction.
+    """
+
+    moved: tuple[Movement, ...]
+    unchanged: int
+
+    @property
+    def comparable(self) -> int:
+        """The questions measured in both runs — the ones the panel speaks for."""
+        return len(self.moved) + self.unchanged
+
+
+@dataclass(frozen=True, slots=True)
 class Occupant:
     """One company named across the set, and in how many questions."""
 
@@ -634,15 +656,18 @@ def _movement(
     run: VisibilityRun | None,
     previous: VisibilityRun | None,
     questions: list[VisibilityQuestion],
-) -> tuple[list[Movement], int]:
+) -> Comparison:
     """What changed against the previous measurement, and how many did not.
 
     Only cells measured in *both* runs are compared. A question one run reached
     and the other did not is neither changed nor unchanged — it is a gap — and
-    counting it either way would report an outage as a finding.
+    counting it either way would report an outage as a finding. Which is why the
+    result is a :class:`Comparison` rather than a list and a count: where the two
+    runs overlap on nothing, an empty list of changes means "there was nothing to
+    compare", and the page has to say that instead of "nothing changed".
     """
     if run is None or previous is None:
-        return [], 0
+        return Comparison(moved=(), unchanged=0)
     now, then = _cells(run), _cells(previous)
     moved: list[Movement] = []
     unchanged = 0
@@ -664,7 +689,7 @@ def _movement(
             continue
         moved.append(Movement(question.text, _direction(moves), moves))
     moved.sort(key=lambda row: (_DIRECTION_ORDER[row.direction], row.text.casefold()))
-    return moved, unchanged
+    return Comparison(moved=tuple(moved), unchanged=unchanged)
 
 
 # --- The trend -------------------------------------------------------------------
@@ -770,7 +795,7 @@ def _context(
     occupants, left_over, apart = _ranking(
         [] if current is None else _occupants(client, current.tally)
     )
-    moved, unchanged = _movement(
+    comparison = _movement(
         None if current is None else current.run,
         None if previous is None else previous.run,
         questions,
@@ -785,8 +810,9 @@ def _context(
         "mandate_row": apart,
         "sources": [] if current is None else _sources(client, current.run),
         "openings": None if current is None else _openings(current.run),
-        "movement": moved,
-        "unchanged": unchanged,
+        "movement": comparison.moved,
+        "unchanged": comparison.unchanged,
+        "comparable": comparison.comparable,
         "trend": _trend(client, measurements),
         "running": attempt.running,
         "barren": attempt.barren,
@@ -957,6 +983,7 @@ __all__ = [
     "Attempt",
     "Cell",
     "CellState",
+    "Comparison",
     "Direction",
     "Move",
     "MoveKind",

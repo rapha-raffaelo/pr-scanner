@@ -1767,6 +1767,12 @@ _EN: dict[str, str] = {
     "%(n)s Frage(n) sind unverändert und stehen deshalb nicht hier. Eine einzelne Antwort schwankt; erst eine Bewegung über zwei Messungen ist eine Bewegung.":
         "%(n)s question(s) are unchanged and are therefore not listed here. A single "
         "answer varies; a move counts as a move only once it survives two measurements.",
+    # Neither "verändert" nor "unverändert": two runs that overlap on no cell at
+    # all have nothing to compare, and the reassuring reading of that is the one
+    # nobody double-checks.
+    "Keine Frage wurde in beiden Messungen gemessen, es gibt also nichts zu vergleichen. Die beiden Messungen haben verschiedene Teile des Satzes erreicht.":
+        "No question was measured in both measurements, so there is nothing to "
+        "compare. The two measurements reached different parts of the set.",
     "Nichts hat sich verändert: alle %(n)s vergleichbaren Fragen antworten wie in der Messung davor.":
         "Nothing changed: all %(n)s comparable questions answer as they did in the "
         "measurement before.",

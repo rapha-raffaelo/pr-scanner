@@ -235,11 +235,20 @@
         <span class="vis-panel__t">{{ t("Bewegung") }}</span>
         {% if standing.previous_at %}
           <span class="vis-panel__s">{{ t("gegenüber dem") }} {{ standing.previous_at | de_short_date }}</span>
-          <span class="vis-panel__r">{{ t("%(changed)s von %(total)s Fragen verändert") | format(changed=movement | length, total=movement | length + unchanged) }}</span>
+          {# Only where there is something to count. "0 von 0 Fragen verändert" is
+             the sentence a week with no overlap produced, and it reads as calm. #}
+          {% if comparable %}
+            <span class="vis-panel__r">{{ t("%(changed)s von %(total)s Fragen verändert") | format(changed=movement | length, total=comparable) }}</span>
+          {% endif %}
         {% endif %}
       </div>
       {% if not standing.previous_at %}
         <div class="vis-note">{{ t("Erst eine Messung: es gibt noch nichts, wogegen sich das vergleichen ließe.") }}</div>
+      {% elif not comparable %}
+        {# Two measurements that share no cell. Neither "verändert" nor
+           "unverändert" is true of them, and saying nothing changed would report
+           an outage as a stable week — the one direction nobody checks. #}
+        <div class="vis-note">{{ t("Keine Frage wurde in beiden Messungen gemessen, es gibt also nichts zu vergleichen. Die beiden Messungen haben verschiedene Teile des Satzes erreicht.") }}</div>
       {% elif movement %}
         {% for row in movement %}
           <div class="vis-mv">
