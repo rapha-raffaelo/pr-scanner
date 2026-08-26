@@ -1199,7 +1199,10 @@ def _measure_visibility(
             session.rollback()
             _log.exception("the visibility measurement for %r failed; skipping", name)
             continue
-        if run is None or run.id == before_id:
+        # ``before_id`` is None where the mandate had no run at all, and a fresh
+        # run is never that: comparing against None would drop the first
+        # measurement a mandate ever gets.
+        if run is None or (before_id is not None and run.id == before_id):
             continue
         measured += 1
         _log.info(

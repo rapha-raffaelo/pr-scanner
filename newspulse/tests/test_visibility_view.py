@@ -595,6 +595,215 @@ def test_the_measurement_is_skipped_when_the_feature_is_off(session, mandate, mo
     assert job._measure_visibility(session, [mandate], now=_NOW) == 0
 
 
+# --- What the review found ---------------------------------------------------------
+
+
+def _unfinished(session, client: Client, *, at: dt.datetime, cells) -> VisibilityRun:
+    """A run with no ``finished_at``: one that is still putting the set."""
+    run = VisibilityRun(
+        client_id=client.id, ran_at=at, providers_asked=[_CLAUDE], providers_failed=[]
+    )
+    for question, named, position in cells:
+        run.answers.append(
+            VisibilityAnswer(
+                question_id=question.id,
+                provider=_CLAUDE,
+                answer="Antwort",
+                named=named,
+                position=position,
+                companies=["Enpal"] if named else ["Zolar"],
+                rivals=[] if named else ["Zolar"],
+                sources=[],
+            )
+        )
+    session.add(run)
+    session.commit()
+    return run
+
+
+def test_the_mandate_keeps_its_row_when_the_ranking_is_cut(web, session, mandate):
+    """The panel shows the head of the list, and the mandate is never what the cut
+    takes: sitting below nine rivals is the finding, not a row to fold into a count."""
+    questions = [_question(session, mandate, f"Frage {index}?") for index in range(10)]
+    rivals = [f"Rivale {index}" for index in range(9)]
+    _run(
+        session,
+        mandate,
+        at=_NOW,
+        cells=[
+            (
+                question,
+                _CLAUDE,
+                1 if index == 0 else None,
+                [*rivals, "Enpal"] if index == 0 else rivals,
+            )
+            for index, question in enumerate(questions)
+        ],
+        asked=[_CLAUDE],
+    )
+
+    html = web.get(f"/client/{mandate.id}/ki").text
+    body = _text(html)
+
+    assert 'vis-bar__n vis-bar__n--us"' in html, "the mandate fell out of the ranking"
+    assert "Enpal · Platz 10" in body
+    assert "1 / 10" in body
+    assert "und 1 weitere" in body
+
+
+def test_a_mandate_no_answer_named_still_holds_a_row(web, session, mandate):
+    """Zero of one is the reading this tab is opened for. A mandate simply missing
+    from the ranking reads as one nobody measured, which is the other fact."""
+    question = _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    _run(session, mandate, at=_NOW, cells=[(question, _CLAUDE, None, ["Zolar"])], asked=[_CLAUDE])
+
+    html = web.get(f"/client/{mandate.id}/ki").text
+
+    assert re.search(r'vis-bar__n vis-bar__n--us">\s*Enpal', html), (
+        "a mandate no answer named has no row in the ranking at all"
+    )
+    assert "0 / 1" in _text(html)
+
+
+def test_a_publisher_containing_the_mandates_host_is_not_its_own_page(web, session, mandate):
+    """The substring test badged a stranger's publication as the client's own."""
+    mandate.website = "https://enpal.de"
+    session.commit()
+    question = _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    _run(
+        session,
+        mandate,
+        at=_NOW,
+        cells=[
+            (
+                question,
+                _CLAUDE,
+                1,
+                ["Enpal"],
+                ["https://www.enpal-kritik.de/test", "https://enpal.de/ratgeber"],
+            )
+        ],
+        asked=[_CLAUDE],
+    )
+
+    body = _text(web.get(f"/client/{mandate.id}/ki").text)
+
+    # Both are listed, by publisher rather than by the path they arrived on, and
+    # only the mandate's own host carries the badge.
+    assert "enpal-kritik.de 1×" in body
+    assert "enpal.de eigene Seite 1×" in body
+    assert body.count("eigene Seite") == 1, "an unrelated publisher was badged as our own"
+
+
+def test_a_measurement_still_running_is_reported_and_not_read_as_the_standing(
+    web, session, mandate
+):
+    """Its answers arrive over minutes. Read as the standing, a half-spent set puts
+    a partial share at the top of the page and blames providers that were never down."""
+    question = _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    _run(session, mandate, at=_NOW - _WEEK, cells=[(question, _CLAUDE, 1, ["Enpal"])], asked=[_CLAUDE])
+    _unfinished(session, mandate, at=_NOW, cells=[(question, False, None)])
+
+    body = _text(web.get(f"/client/{mandate.id}/ki").text)
+
+    assert "Eine Messung läuft gerade." in body
+    assert "100 %" in body, "the running measurement was read as this week's standing"
+
+
+def test_a_barren_first_attempt_claims_no_standing_before_it(web, session, mandate):
+    """"Der Stand darunter" is a sentence about a measurement that exists."""
+    _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    _run(session, mandate, at=_NOW, cells=[], failed=[_CLAUDE, _GEMINI])
+
+    body = _text(web.get(f"/client/{mandate.id}/ki").text)
+
+    assert "hat keine Antwort geliefert." in body
+    assert "Der Stand darunter ist der der Messung davor." not in body
+    assert "Eine frühere Messung, auf die er zurückfallen könnte, gibt es nicht." in body
+
+
+def test_a_set_of_one_question_is_not_called_one_fragen(web, session, mandate):
+    _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+
+    body = _text(web.get(f"/client/{mandate.id}/ki").text)
+
+    assert "Eine Frage, gemessen alle 7 Tage." in body
+    assert "1 Fragen" not in body
+
+
+def test_a_named_answer_without_a_position_is_not_reported_as_a_fall(web, session, mandate):
+    """``named`` with a null ``position`` is what the row's own CHECK permits — the
+    model names the mandate in prose without placing it. Reading the missing side as
+    a zero turned a first placement into a fall, and wrote "Position None"."""
+    question = _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    before = _unfinished(session, mandate, at=_NOW - _WEEK, cells=[(question, True, None)])
+    before.finished_at = _NOW - _WEEK
+    after = _unfinished(session, mandate, at=_NOW, cells=[(question, True, 2)])
+    after.finished_at = _NOW
+    session.commit()
+
+    body = _text(web.get(f"/client/{mandate.id}/ki").text)
+
+    assert f"Bei {_CLAUDE} erstmals in der Aufzählung, auf Position 2." in body
+    assert "Position None" not in body
+
+
+def test_the_measure_control_hands_the_work_to_a_worker_thread(
+    web, session, mandate, monkeypatch
+):
+    """A full set is two model calls per question per provider; measuring inside the
+    response would hold a worker for as long as that takes."""
+    _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    assert f'action="/client/{mandate.id}/ki/messen"' in web.get(f"/client/{mandate.id}/ki").text
+
+    started: list[str] = []
+    monkeypatch.setattr(
+        visibility_view.spawn,
+        "start_or_release",
+        lambda target, *, args, name, release: started.append(name),
+    )
+    monkeypatch.setattr(
+        visibility,
+        "measure",
+        lambda *args, **kwargs: pytest.fail("the set was put to the providers in the response"),
+    )
+    try:
+        response = web.post(f"/client/{mandate.id}/ki/messen", follow_redirects=False)
+    finally:
+        # The route takes the lock in the request thread and the worker gives it
+        # back; the worker is stubbed out here, so this stands in for it.
+        visibility_view._measuring.release()
+
+    assert response.status_code == 303
+    assert started == [f"newspulse-visibility-{mandate.id}"]
+
+
+def test_the_sweep_does_not_count_a_measurement_it_did_not_make(session, mandate, monkeypatch):
+    """``measure`` hands back the run already in flight rather than a new one. Counted,
+    it would spend a slot of the per-sweep cap on work nobody did."""
+    _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    running = _unfinished(session, mandate, at=_NOW, cells=[])
+    monkeypatch.setattr(visibility, "measure", lambda *args, **kwargs: running)
+
+    assert job._measure_visibility(session, [mandate], now=_NOW) == 0
+
+
+def test_the_sweep_stops_starting_measurements_once_its_clock_budget_is_spent(
+    session, mandate, monkeypatch
+):
+    """The per-sweep cap bounds calls, not minutes, and everything behind this stage
+    waits on it."""
+    _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    monkeypatch.setattr(job, "_VISIBILITY_BUDGET", dt.timedelta(0))
+    monkeypatch.setattr(
+        visibility,
+        "measure",
+        lambda *args, **kwargs: pytest.fail("a measurement started past the stage's budget"),
+    )
+
+    assert job._measure_visibility(session, [mandate], now=_NOW) == 0
+
+
 # --- Every German string on the page has an English one ---------------------------
 
 

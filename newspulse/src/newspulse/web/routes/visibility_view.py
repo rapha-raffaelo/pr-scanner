@@ -460,13 +460,16 @@ def _is_own(key: str, name: str, host: str) -> bool:
     badges a stranger's publication as the client's: "test.de" sits inside
     "warentest.de" and a mandate called Test sits inside "Kontest GmbH", and a
     citation the models never made is the one thing this panel may not record.
-    The host is matched the way :func:`newspulse.visibility._locator_matcher`
-    matches a stated locator — a dot to the left is the same publisher, a word
-    character is not — and the name on word boundaries, which is the answer this
-    feature's own reader already gives.
+    Split the way :func:`newspulse.visibility._appears` splits it, because the two
+    halves answer different questions. A stated locator is a domain and is judged
+    against the mandate's host alone, anchored so a dot to the left is the same
+    publisher and a word character is not — "enpal.de" is not found inside
+    "enpal-kritik.de". A stated name is judged against the mandate's name on word
+    boundaries. Neither is ever asked about the other: a critic's domain carrying
+    the client's name is not the client's page.
     """
-    if host and visibility._locator_matcher(host).search(key) is not None:
-        return True
+    if any(mark in key for mark in visibility._LOCATOR_MARKS):
+        return bool(host) and visibility._locator_matcher(host).search(key) is not None
     return bool(name) and visibility._named_in(key, name)
 
 
