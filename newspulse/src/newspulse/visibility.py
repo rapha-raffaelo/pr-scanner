@@ -383,7 +383,11 @@ def _banded(raw: str) -> VisibilityBand | None:
 
 
 def _proposals(
-    client: Client, items: Iterable[_PanelQuestion], taken: Iterable[str]
+    client: Client,
+    items: Iterable[_PanelQuestion],
+    taken: Iterable[str],
+    *,
+    room: int,
 ) -> list[Proposal]:
     """The proposals worth putting in front of a person, in the order proposed.
 
@@ -396,12 +400,16 @@ def _proposals(
     * outside ``marke``, a question containing the client's name or a stored
       alias, which cannot measure whether the client is found because the answer
       is already in the question.
+
+    ``room`` is what the set can still take, not the cap: a mandate holding
+    twenty-three accepted questions is offered one, because the other twenty-three
+    proposals could only be clicked into a :class:`SetFull`.
     """
     names = terms_matcher(_terms_for(client))
     seen = {value.casefold() for value in taken}
     kept: list[Proposal] = []
     for item in items:
-        text = " ".join((item.frage or "").split())
+        text = _one_line(item.frage)
         band = _banded(item.band)
         if not text:
             continue
@@ -426,14 +434,15 @@ def _proposals(
             continue
         seen.add(key)
         kept.append(Proposal(text=text, band=band))
-    if len(kept) > MAX_QUESTIONS:
+    if len(kept) > room:
         _log.info(
-            "the panel for %r proposed %d usable questions; offering the first %d",
+            "the panel for %r proposed %d usable questions; offering the %d the "
+            "set still has room for",
             client.name,
             len(kept),
-            MAX_QUESTIONS,
+            room,
         )
-    return kept[:MAX_QUESTIONS]
+    return kept[:room]
 
 
 def propose(
@@ -450,11 +459,21 @@ def propose(
     accept for it would be a no-op, and an unclickable proposal is noise on a page
     that is otherwise all decisions.
 
-    Returns an empty list when the feature is switched off, and — via the prompt's
-    own refusal standard — when the model does not know the market well enough,
-    which is the normal case for a young mandate.
+    Returns an empty list when the feature is switched off, when the set is
+    already full — no call is spent on proposals nobody could accept — and, via
+    the prompt's own refusal standard, when the model does not know the market
+    well enough, which is the normal case for a young mandate.
     """
     if not config.VISIBILITY_ENABLED:
+        return []
+    room = MAX_QUESTIONS - len(accepted(session, client))
+    if room <= 0:
+        _log.info(
+            "%r already carries the full set of %d visibility questions; no "
+            "panel is asked, because nothing proposed could be accepted",
+            client.name,
+            MAX_QUESTIONS,
+        )
         return []
     prompt = _template(_PANEL_RESOURCE).substitute(
         client_name=client.name,
@@ -466,7 +485,7 @@ def propose(
         invoke(prompt, timeout=config.ANALYZER_TIMEOUT), _Panel, "the question set"
     )
     taken = [row.text for row in _questions(session, client)]
-    return _proposals(client, panel.fragen, taken)
+    return _proposals(client, panel.fragen, taken, room=room)
 
 
 def _questions(session: Session, client: Client) -> list[VisibilityQuestion]:
@@ -512,15 +531,56 @@ def accepted(session: Session, client: Client) -> list[VisibilityQuestion]:
     return rows[:MAX_QUESTIONS]
 
 
-def _stored(
-    session: Session, client: Client, text: str
-) -> VisibilityQuestion | None:
-    return session.scalar(
-        select(VisibilityQuestion).where(
-            VisibilityQuestion.client_id == client.id,
-            VisibilityQuestion.text == text,
-        )
+def _stored(session: Session, client: Client, text: str) -> VisibilityQuestion | None:
+    """The row this mandate already carries for this wording, whatever its case.
+
+    Compared in Python rather than in SQL, because the UNIQUE this leans on is
+    case-sensitive in SQLite: "Was kostet X?" accepted beside "was kostet X?"
+    would be two rows, one question, and double the weight in every share it
+    appears in. The set is capped, so this reads a few dozen rows at most.
+    """
+    key = text.casefold()
+    for row in _questions(session, client):
+        if row.text.casefold() == key:
+            return row
+    return None
+
+
+def _band(band: VisibilityBand | str) -> VisibilityBand:
+    """One of the four, however it was spelled. ``ValueError`` for anything else.
+
+    Case-folded the way :func:`_banded` folds a model's answer: a band that comes
+    back from a form field under the casing of its label ("Marke") is the same
+    band, and refusing the accept over that spelling would fail a click nobody
+    got wrong.
+    """
+    value = getattr(band, "value", band)
+    return VisibilityBand(str(value or "").strip().casefold())
+
+
+def _rebanded(
+    session: Session, question: VisibilityQuestion, band: VisibilityBand
+) -> VisibilityQuestion:
+    """``question`` under ``band``, stored when that is a correction.
+
+    The one thing a second accept of the same wording is not a no-op for. A
+    misfiled band is exactly what :func:`_proposals` drops proposals to prevent —
+    it changes the share the question is counted in and reads correctly while it
+    does — so a consultant re-accepting a question under the right band has to be
+    able to move it, rather than silently changing nothing.
+    """
+    if question.band is band:
+        return question
+    _log.info(
+        "re-banding visibility question %s of client %s: %s -> %s",
+        question.id,
+        question.client_id,
+        question.band.value,
+        band.value,
     )
+    question.band = band
+    session.commit()
+    return question
 
 
 def accept(
@@ -533,24 +593,25 @@ def accept(
 ) -> VisibilityQuestion:
     """Put one proposed question into the set. The only thing that stores one.
 
-    Idempotent: a second click on the same wording returns the row the first one
-    created rather than adding a duplicate, so a double submit cannot make one
-    question count twice in a share. A retired question accepted again is taken
-    back up rather than inserted beside itself, which is what keeps the answers it
-    already produced attached to it.
+    Idempotent in the wording and only in the wording: a second click on the same
+    question — in any casing — returns the row the first one created rather than
+    adding a duplicate, so a double submit cannot make one question count twice in
+    a share, while a band that differs is taken as the correction it is. A retired
+    question accepted again is taken back up rather than inserted beside itself,
+    which is what keeps the answers it already produced attached to it.
 
     Raises :class:`SetFull` at the cap and ``ValueError`` for a band that is not
     one of the four — a question filed under a default is exactly what
     :func:`propose` drops proposals to prevent.
     """
-    text = " ".join((question or "").split())
+    text = _one_line(question)
     if not text:
         raise ValueError("a visibility question needs a text")
-    banded = VisibilityBand(getattr(band, "value", band))
+    banded = _band(band)
     reference = _reference(now)
     standing = _stored(session, client, text)
     if standing is not None and standing.accepted:
-        return standing
+        return _rebanded(session, standing, banded)
     if len(accepted(session, client)) >= MAX_QUESTIONS:
         raise SetFull(client.name)
     if standing is None:
@@ -558,6 +619,7 @@ def accept(
             client_id=client.id, text=text, band=banded, created_at=reference
         )
         session.add(standing)
+    standing.band = banded
     standing.accepted = True
     standing.accepted_at = reference
     session.commit()
@@ -883,14 +945,20 @@ def latest_run(session: Session, client: Client) -> VisibilityRun | None:
 
 
 def _standing(session: Session, client: Client) -> VisibilityRun | None:
-    """The most recent run that actually measured something.
+    """The most recent run the window is counted from: one that spent the set.
 
-    Not the most recent run. A run whose providers all errored carries no answer
-    row, and letting it hold the window would mean one broken morning costs the
-    whole week: the next request would hand back that empty run instead of
-    retrying, and :func:`due` would say no for seven days over a momentary 503.
-    A run that measured nothing is not a measurement, so the window is counted
-    from the last run that produced an answer.
+    Not simply the most recent run. A run whose providers all errored carries no
+    answer row and cost two calls per provider (:data:`_PROVIDER_STRIKES`), and
+    letting it hold the window would mean one broken morning costs the whole
+    week: the next request would hand back that empty run instead of retrying,
+    and :func:`due` would say no for seven days over a momentary 503.
+
+    A run whose answers came back and could not be *read* is the opposite case
+    and counts. Nothing is stored either way, but the providers were paid: it is
+    a measurement that was spent, and letting it fail open would put the whole
+    set on every sweep for as long as the reading model is down. That is what
+    ``answers_unread`` is on the run for — the page can say the answers arrived
+    unreadable, which is neither "nobody answered" nor "we were not named".
 
     :func:`latest_run` deliberately still returns the newest run whatever it
     holds — a barren run is exactly what tells the page that both providers were
@@ -898,10 +966,51 @@ def _standing(session: Session, client: Client) -> VisibilityRun | None:
     """
     return session.scalar(
         select(VisibilityRun)
-        .where(VisibilityRun.client_id == client.id, VisibilityRun.answers.any())
+        .where(
+            VisibilityRun.client_id == client.id,
+            or_(VisibilityRun.answers.any(), VisibilityRun.answers_unread > 0),
+        )
         .order_by(VisibilityRun.ran_at.desc(), VisibilityRun.id.desc())
         .limit(1)
     )
+
+
+def _in_flight(
+    session: Session, client: Client, *, now: dt.datetime | None = None
+) -> VisibilityRun | None:
+    """A measurement of this mandate that is still running, if there is one.
+
+    The run row is committed before the first provider is asked, so a second
+    sweep — or a manual trigger beside the nightly one — finds the claim and
+    stays out instead of putting the same set to the same providers twice. Not a
+    lock: two callers reading this in the same instant can still both proceed.
+    It narrows the overlap from the length of a whole run, which is minutes, to
+    the gap between one SELECT and one INSERT, which is what a single-writer
+    deployment can honestly offer without a lock table.
+
+    A claim older than :data:`_IN_FLIGHT_MAX` belongs to a process that died
+    mid-run and is ignored: a crash has to cost one attempt, not the week.
+    """
+    running = session.scalar(
+        select(VisibilityRun)
+        .where(
+            VisibilityRun.client_id == client.id,
+            VisibilityRun.finished_at.is_(None),
+        )
+        .order_by(VisibilityRun.ran_at.desc(), VisibilityRun.id.desc())
+        .limit(1)
+    )
+    if running is None:
+        return None
+    if _reference(now) - running.ran_at >= _IN_FLIGHT_MAX:
+        _log.warning(
+            "visibility run %s for %r never finished; measuring again rather "
+            "than waiting on a process that is gone",
+            running.id,
+            client.name,
+        )
+        return None
+    return running
 
 
 def _is_due(standing: VisibilityRun, *, now: dt.datetime | None = None) -> bool:
@@ -941,6 +1050,146 @@ def _row(
     )
 
 
+@dataclass(slots=True)
+class _Spend:
+    """What one measurement has spent so far, and what stops it spending more.
+
+    Both counters are stopping conditions rather than statistics. A provider that
+    keeps erroring stops being asked, because an exhausted subscription fails
+    identically twenty-four times. A reader that keeps failing stops the whole
+    run, because it fails identically for every cell too — and its cells cost a
+    provider call each before the reading is even attempted, so a broken reader
+    with no budget spends the entire set to store nothing at all.
+    """
+
+    strikes: dict[str, int] = field(default_factory=dict)
+    failed: set[str] = field(default_factory=set)
+    unread: int = 0
+
+    def strike(self, provider: str, client_name: str, reason: str) -> None:
+        self.strikes[provider] = self.strikes.get(provider, 0) + 1
+        self.failed.add(provider)
+        _log.warning(
+            "%s could not answer for %r (%s); recorded as a failed provider, "
+            "not as an answer that did not name the mandate (strike %d of %d)",
+            provider,
+            client_name,
+            reason,
+            self.strikes[provider],
+            _PROVIDER_STRIKES,
+        )
+
+    def exhausted(self, provider: str) -> bool:
+        return self.strikes.get(provider, 0) >= _PROVIDER_STRIKES
+
+    def unreadable(self) -> bool:
+        return self.unread >= _READ_STRIKES
+
+
+def _answer_from(
+    provider: str,
+    put: Callable[[str], str],
+    question: str,
+    client_name: str,
+    spend: _Spend,
+) -> str | None:
+    """One provider call, or ``None`` when it did not produce an answer.
+
+    A blank answer is one of those. Nothing came back, and storing it would put
+    ``named=False`` on the page — "the answer did not name us" — for an answer
+    that does not exist, which is the one confusion this feature is built to
+    prevent. Both shipped providers already raise on empty output; this is what
+    keeps a third one from quietly writing a negative fact.
+    """
+    try:
+        answer = put(question)
+    except AnalyzerError as exc:
+        spend.strike(provider, client_name, str(exc))
+        return None
+    if not (answer or "").strip():
+        spend.strike(provider, client_name, "an empty answer")
+        return None
+    return answer
+
+
+def _reading_from(
+    client: Client,
+    question: VisibilityQuestion,
+    answer: str,
+    provider: str,
+    *,
+    template: Template,
+    invoke: Callable[..., str],
+    spend: _Spend,
+) -> Reading | None:
+    """One answer read back, or ``None`` when the reading model could not.
+
+    The provider is *not* recorded as failed here: it answered.
+    ``providers_failed`` means "this one could not answer", and one unparseable
+    answer out of twenty-four must not flag the twenty-three that were measured
+    as an outage. The cell is counted on the run instead, both as the budget that
+    stops a dead reader from spending the rest of the set and as the fact that
+    tells the page these answers arrived and could not be read.
+    """
+    try:
+        return _read(client, question.text, answer, template=template, invoke=invoke)
+    except AnalyzerError as exc:
+        spend.unread += 1
+        _log.warning(
+            "could not read the %s answer for %r to question %s "
+            "(%d characters, discarded unstored): %s",
+            provider,
+            client.name,
+            question.id,
+            len(answer),
+            exc,
+        )
+        return None
+
+
+def _measure_set(
+    client: Client,
+    questions: Sequence[VisibilityQuestion],
+    asking: dict[str, Callable[[str], str]],
+    *,
+    run: VisibilityRun,
+    reader: Template,
+    invoke: Callable[..., str],
+) -> None:
+    """Put every question to every provider still standing, storing what reads."""
+    spend = _Spend()
+    for question in questions:
+        for provider, put in asking.items():
+            if spend.exhausted(provider) or spend.unreadable():
+                continue
+            answer = _answer_from(provider, put, question.text, client.name, spend)
+            if answer is None:
+                continue
+            reading = _reading_from(
+                client,
+                question,
+                answer,
+                provider,
+                template=reader,
+                invoke=invoke,
+                spend=spend,
+            )
+            if reading is None:
+                continue
+            run.answers.append(_row(question, provider, answer, reading))
+        if spend.unreadable():
+            _log.warning(
+                "stopping the visibility measurement for %r: %d answers came "
+                "back and none of them could be read, so the rest of the set "
+                "would cost a provider call each and store nothing",
+                client.name,
+                spend.unread,
+            )
+            break
+    run.providers_failed = sorted(spend.failed)
+    run.answers_unread = spend.unread
+
+
 def measure(
     session: Session,
     client: Client,
@@ -965,6 +1214,10 @@ def measure(
     can say both providers were down, but it does not hold the window: see
     :func:`_standing`.
 
+    The run row is written before the first provider is asked, so a second sweep
+    starting beside this one finds the claim and stays out rather than spending
+    the same set twice.
+
     Synchronous and unbatched, and sized for the nightly sweep rather than for a
     request: a full set is up to :data:`MAX_QUESTIONS` questions times two
     providers times two model calls, each bounded only by ``ANALYZER_TIMEOUT``.
@@ -979,72 +1232,42 @@ def measure(
     standing = _standing(session, client)
     if standing is not None and not _is_due(standing, now=now):
         return standing
+    running = _in_flight(session, client, now=now)
+    if running is not None:
+        _log.info(
+            "a visibility measurement for %r has been running since %s; not "
+            "starting a second one beside it",
+            client.name,
+            running.ran_at.isoformat(),
+        )
+        return running
     asking = askers() if ask is None else dict(ask)
     if not asking:
         _log.warning("no visibility provider is configured; %r not measured", client.name)
         return None
 
     reader = _template(_READ_RESOURCE)
+    reference = _reference(now)
     run = VisibilityRun(
         client_id=client.id,
-        ran_at=_reference(now),
+        ran_at=reference,
         providers_asked=list(asking),
         providers_failed=[],
     )
     session.add(run)
-    failed: set[str] = set()
-    strikes: dict[str, int] = {}
-    for question in questions:
-        for provider, put in asking.items():
-            if strikes.get(provider, 0) >= _PROVIDER_STRIKES:
-                continue
-            try:
-                answer = put(question.text)
-            except AnalyzerError as exc:
-                strikes[provider] = strikes.get(provider, 0) + 1
-                _log.warning(
-                    "%s could not answer for %r (%s); recorded as a failed provider, "
-                    "not as an answer that did not name the mandate (strike %d of %d)",
-                    provider,
-                    client.name,
-                    exc,
-                    strikes[provider],
-                    _PROVIDER_STRIKES,
-                )
-                failed.add(provider)
-                continue
-            try:
-                reading = _read(
-                    client, question.text, answer, template=reader, invoke=invoke
-                )
-            except AnalyzerError as exc:
-                # The provider answered; reading it back failed. This cell gets no
-                # row — but the provider is *not* recorded as failed, because it
-                # did answer. ``providers_failed`` means "this one could not
-                # answer", and one unreadable answer out of twenty-four must not
-                # flag the twenty-three it answered correctly as an outage. It is
-                # not retired either: the reader is a separate call and may well
-                # work on the next question.
-                _log.warning(
-                    "could not read the %s answer for %r to question %s "
-                    "(%d characters, discarded unstored): %s",
-                    provider,
-                    client.name,
-                    question.id,
-                    len(answer),
-                    exc,
-                )
-                continue
-            run.answers.append(_row(question, provider, answer, reading))
-    run.providers_failed = sorted(failed)
+    # Committed before anything is asked: this row is the claim the guard above
+    # reads, and a claim nobody can see stops nothing.
+    session.commit()
+    _measure_set(client, questions, asking, run=run, reader=reader, invoke=invoke)
+    run.finished_at = _reference(now)
     if not run.answers:
         _log.warning(
             "the visibility measurement for %r produced no answer at all "
-            "(asked %s, failed %s); it is stored as an attempt and the next "
-            "request will measure again rather than return it",
+            "(asked %s, failed %s, unreadable %d)",
             client.name,
             ", ".join(run.providers_asked) or "nobody",
             ", ".join(run.providers_failed) or "nobody",
+            run.answers_unread,
         )
     session.commit()
     return run

@@ -1966,6 +1966,11 @@ class VisibilityRun(Base):
     without this list that absence is indistinguishable from "the mandate was not
     named" - which is the one wrong number this feature could produce, because it
     is wrong in the direction a client would act on.
+
+    ``answers_unread`` is the third state of the same distinction: the provider
+    answered and the reading model could not read it. Nobody failed to answer, so
+    the provider does not belong in the list above, and there is no row - the run
+    has to say so itself.
     """
 
     __tablename__ = "visibility_runs"
@@ -1991,6 +1996,23 @@ class VisibilityRun(Base):
         default=list,
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
+    )
+    #: When the measurement stopped, whatever it produced. NULL while it is still
+    #: running, and that is what stops a second sweep from spending the same set:
+    #: the row is written before the first provider is asked, so a run in flight
+    #: is visible to anybody else who looks.
+    finished_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+    #: Answers that came back and could not be read. A provider that answered is
+    #: not a provider that failed, so these cells are in neither ``answers`` nor
+    #: ``providers_failed`` - and without the count, a run whose reading model was
+    #: down is indistinguishable from a run nobody answered, while having cost
+    #: every call those answers took. It is also what lets such a run hold the
+    #: window instead of putting the whole set to the providers again on the next
+    #: sweep.
+    answers_unread: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
     )
 
     answers: Mapped[list["VisibilityAnswer"]] = relationship(

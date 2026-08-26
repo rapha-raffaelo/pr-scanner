@@ -107,6 +107,16 @@ def upgrade() -> None:
             nullable=False,
             server_default=_EMPTY_JSON_ARRAY,
         ),
+        # NULL while the run is still going. The row is written before the first
+        # provider is asked, so this is what a second sweep reads to see that a
+        # measurement of this mandate is already under way.
+        sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
+        # Answers that came back unreadable: neither an answer row nor a failed
+        # provider, and without the count a reader outage looks exactly like an
+        # outage of both providers while having cost every call the answers took.
+        sa.Column(
+            "answers_unread", sa.Integer(), nullable=False, server_default=sa.text("0")
+        ),
     )
     op.create_index("ix_visibility_runs_client_id", "visibility_runs", ["client_id"])
     # Every read of this table asks for the newest run of one mandate, and the
