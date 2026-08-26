@@ -33,10 +33,12 @@ Three properties of the reading are load-bearing:
 * **Rivals are the intersection with the stored competitor set.** A firm nobody
   put in that set counts as market, not as a rival, so the comparison stays the
   one share of voice already runs on.
-* **A failure is a failure.** A provider that errors goes into
-  ``providers_failed`` on the run and writes no row. "Nobody answered" and "the
-  answer did not name us" are different facts, and the second is the one a client
-  acts on.
+* **A failure is a failure.** A provider that errors — or hands back nothing —
+  goes into ``providers_failed`` on the run and writes no row. "Nobody answered"
+  and "the answer did not name us" are different facts, and the second is the one
+  a client acts on. An answer that came back and could not be read is a third
+  fact again, counted on the run as ``answers_unread``: nobody failed to answer,
+  so no provider is flagged, and the calls it cost were still spent.
 
 Nothing here optimises anything and nothing here sends anything: it measures two
 named assistants on a stated date, and says so.
