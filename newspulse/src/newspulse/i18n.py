@@ -927,6 +927,16 @@ _EN: dict[str, str] = {
         "What you accept is stored as your entry, with its source but under your "
         "name, because you are the one who decided it. What you discard is not "
         "proposed again at the next check.",
+    # The offers are rendered into the fields they are offers for, so the page is
+    # one list instead of a proposal list above a duplicate empty form.
+    "Vorschlag, noch nicht gespeichert": "Proposed, not saved yet",
+    "%(n)s Vorschläge stehen unten schon in ihren Feldern, markiert und noch nicht gespeichert.":
+        "%(n)s proposals are already in their fields below, marked and not saved "
+        "yet.",
+    "Klicken Sie in ein Feld, um einen Wert zu ändern, oder leeren Sie es, wenn Sie ihn nicht wollen. Was Sie speichern, gilt als Ihre Angabe; unveränderte Vorschläge behalten ihre Quelle.":
+        "Click into a field to change a value, or empty it if you do not want it. "
+        "What you save counts as your own answer; a proposal left unchanged keeps "
+        "its source.",
     "Regel: Eine Angabe von Hand wird nie überschrieben. Das Netz widerspricht hier nur — ändern können Sie den Wert selbst, unten im Feld.":
         "Rule: an entry you made by hand is never overwritten. The web only "
         "contradicts it here; only you can change the value, in the field below.",

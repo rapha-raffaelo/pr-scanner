@@ -241,21 +241,58 @@ async def save_profile(
         raise HTTPException(status_code=404, detail="Client not found")
     form = await request.form()
     facts = profiles.stored(session, client_id)
+    # The research and kick-off offers, which the page now renders *into* the
+    # fields they are offers for rather than as a separate list above the form.
+    # Not filtered again here: ``_pending`` has already applied DEC-2 — a
+    # researched value against a field a person filled never becomes an offer,
+    # it becomes a contradiction — so what is left may stand in the box, over an
+    # empty field or over the machine's own earlier answer.
+    offers = {p.key: p for p in _pending(session, client_id)}
+    accepted: list[profiles.Proposal] = []
     for field in profiles.FIELDS:
-        if field.key in form:
-            stored = facts.get(field.key)
-            value = str(form[field.key])
-            # Untouched machine answers keep their source; a changed one becomes
-            # the consultant's, because that is what it now is.
-            unchanged = stored is not None and stored.value == value.strip()
-            profiles.save(
-                session, client, field.key, value,
-                source_url=stored.source_url if unchanged and stored else "",
-                source_title=stored.source_title if unchanged and stored else "",
-                filled_by=(
-                    stored.filled_by if unchanged and stored else profiles.BY_HAND
-                ),
-            )
+        if field.key not in form:
+            continue
+        stored = facts.get(field.key)
+        value = str(form[field.key])
+        # Untouched machine answers keep their source; a changed one becomes
+        # the consultant's, because that is what it now is.
+        unchanged = stored is not None and stored.value == value.strip()
+        # An offer that comes back exactly as proposed keeps the citation it was
+        # proposed with. One that was typed over is the consultant's own — the
+        # value is no longer what the source says, so the source must not follow
+        # it. One that was emptied is not saved at all and stays on offer.
+        offer = offers.get(field.key)
+        took_offer = bool(
+            offer is not None
+            and value.strip()
+            and offer.value.strip() == value.strip()
+        )
+        if took_offer and offer is not None:
+            accepted.append(offer)
+        profiles.save(
+            session, client, field.key, value,
+            source_url=(
+                stored.source_url if unchanged and stored
+                else offer.source_url if took_offer and offer else ""
+            ),
+            source_title=(
+                stored.source_title if unchanged and stored
+                else offer.source_title if took_offer and offer else ""
+            ),
+            filled_by=(
+                stored.filled_by if unchanged and stored
+                else (offer.filled_by or profiles.BY_HAND)
+                if took_offer and offer
+                else profiles.BY_HAND
+            ),
+            supersede=bool(offer.supersedes) if took_offer and offer else False,
+        )
+    # The researched rows that were taken are answered and must stop being
+    # offered. The kick-off half has no row to clear: it is derived from the
+    # questionnaire on every render and an accepted one simply stops matching.
+    profile_refresh.clear(
+        session, client_id, [o.row_id for o in accepted if o.row_id is not None]
+    )
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
 
 
@@ -304,7 +341,8 @@ def _chosen(
 
 
 @router.post("/client/{client_id}/profil/accept")
-def accept_proposals(
+async def accept_proposals(
+    request: Request,
     client_id: int,
     pid: list[int] = Form(default_factory=list),
     key: list[str] = Form(default_factory=list),
@@ -343,19 +381,43 @@ def accept_proposals(
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
+    form = await request.form()
+
+    def _edited(proposal, name: str) -> str:
+        """The text the reader left in the field, or the value as proposed.
+
+        Only the *text* comes from the form. Which field it lands on still comes
+        from the row named by id, so an edited value cannot become a way to write
+        a field the 06:10 sweep replaced between the page being drawn and the
+        button being pressed — the property the id naming was built for.
+
+        A field emptied on purpose is a "not this one": nothing is written and
+        the row stays on offer, because a decision not made is not a decision to
+        discard. A row nobody touched arrives unchanged and is simply accepted.
+        """
+        typed = form.get(name)
+        if typed is None:
+            return proposal.value
+        return str(typed).strip()
+
     facts = profiles.stored(session, client_id)
     taken = [
         p for p in _chosen(session, client_id, pid)
         if profile_refresh.may_replace(facts, p.key)
     ]
+    written = []
     for proposal in taken:
+        value = _edited(proposal, f"v{proposal.id}")
+        if not value:
+            continue
+        written.append(proposal)
         profiles.save(
-            session, client, proposal.key, proposal.value,
+            session, client, proposal.key, value,
             source_url=proposal.source_url,
             source_title=proposal.source_title,
             filled_by=profiles.BY_HAND,
         )
-    profile_refresh.clear(session, client_id, [p.id for p in taken])
+    profile_refresh.clear(session, client_id, [p.id for p in written])
 
     # The kick-off half. No bookkeeping to do afterwards: these are derived from
     # the answers on every render, and an accepted one stops matching.
@@ -363,9 +425,14 @@ def accept_proposals(
     kickoff_taken = [
         p for p in _pending(session, client_id) if p.key in wanted and p.from_person
     ]
+    kickoff_written = []
     for proposal in kickoff_taken:
+        value = _edited(proposal, f"k{proposal.key}")
+        if not value:
+            continue
+        kickoff_written.append(proposal)
         profiles.save(
-            session, client, proposal.key, proposal.value,
+            session, client, proposal.key, value,
             source_url=proposal.source_url,
             source_title=proposal.source_title,
             # Its own author, not BY_HAND: "Kickoff-Fragebogen" says the client
@@ -375,7 +442,7 @@ def accept_proposals(
             filled_by=proposal.filled_by or profiles.BY_HAND,
             supersede=proposal.supersedes,
         )
-    return _back(client_id, acted=bool(taken or kickoff_taken) or not (pid or key))
+    return _back(client_id, acted=bool(written or kickoff_written) or not (pid or key))
 
 
 @router.post("/client/{client_id}/profil/{key}/forget")

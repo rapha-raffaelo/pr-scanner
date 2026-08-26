@@ -649,16 +649,20 @@ def _pids(body: str) -> list[int]:
     return [int(found) for found in re.findall(r'name="pid" value="(\d+)"', body)]
 
 
-def _review(body: str, client_id: int) -> str:
-    """Just the review pile, cut out of the page before anything is asserted.
+def _field_row(body: str, key: str) -> str:
+    """The one row this field owns, cut out of the profile list.
 
-    The whole body is the wrong haystack: every proposed field is also an
-    editable input further down, carrying its current value and its source, so
-    ``"Berlin" in body`` passes on a page whose review block prints nothing at
-    all. The block ends where the profile form begins.
+    The whole body is the wrong haystack: a value can appear in a heading, in a
+    contradiction further down, or in another field entirely, so ``"Berlin" in
+    body`` passes on a page whose ``sitz`` row prints nothing at all. This used
+    to cut out the offers block, which sat above the form as a list of its own;
+    offers are now rendered *into* the field each one is an offer for, so the row
+    is the unit — from its opening div to the start of the next one.
     """
-    after = body.split('<div class="props">', 1)[1]
-    return after.split(f'<form method="post" action="/client/{client_id}/profil">', 1)[0]
+    for chunk in body.split('<div class="prof__row')[1:]:
+        if f'id="f-{key}"' in chunk:
+            return chunk
+    raise AssertionError(f"the page draws no row for {key!r}")
 
 
 def _file_proposal(session, client_id: int, key: str, value: str) -> ProfileProposal:
@@ -689,11 +693,11 @@ def test_a_proposal_shows_the_old_value_the_new_one_and_its_source(web_factory, 
             session, client, now=_NOW, generate=_answer(sitz="Paris")
         )
 
-    review = _review(web.get(f"/client/{client_id}/profil").text, client_id)
+    row = _field_row(web.get(f"/client/{client_id}/profil").text, "sitz")
 
-    assert "Berlin" in review, "the value it argues against"
-    assert "Paris" in review, "the value it proposes"
-    assert "https://qonto.com/ueber-uns" in review, "and the page it was read on"
+    assert "Berlin" in row, "the value it argues against"
+    assert "Paris" in row, "the value it proposes"
+    assert "https://qonto.com/ueber-uns" in row, "and the page it was read on"
 
 
 def test_a_row_argues_against_the_value_the_profile_holds_now(web_factory, web):
@@ -710,10 +714,11 @@ def test_a_row_argues_against_the_value_the_profile_holds_now(web_factory, web):
 
     # The consultant clears the field through the form, then reviews the pile.
     web.post(f"/client/{client_id}/profil", data={"sitz": ""}, follow_redirects=False)
-    review = _review(web.get(f"/client/{client_id}/profil").text, client_id)
+    row = _field_row(web.get(f"/client/{client_id}/profil").text, "sitz")
 
-    assert "Berlin" not in review, "there is nothing on file to argue against"
-    assert "bisher nicht gefüllt" in review
+    assert "Berlin" not in row, "there is nothing on file to argue against"
+    assert "props__was" not in row, "and so nothing to strike through"
+    assert "Paris" in row, "the offer itself still stands in the field"
 
 
 def test_a_proposal_the_profile_caught_up_with_is_not_drawn(web_factory, web):
@@ -745,10 +750,10 @@ def test_an_empty_field_is_not_struck_through(web_factory, web):
             session, client, now=_NOW, generate=_answer(sitz="Paris")
         )
 
-    review = _review(web.get(f"/client/{client_id}/profil").text, client_id)
+    row = _field_row(web.get(f"/client/{client_id}/profil").text, "sitz")
 
-    assert 'class="props__empty"' in review
-    assert "props__was" not in review
+    assert "Paris" in row, "the offer is in the field"
+    assert "props__was" not in row, "with nothing struck through above it"
 
 
 def test_a_proposal_without_a_source_is_not_shown(web_factory, web):

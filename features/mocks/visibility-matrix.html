@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KI-Sichtbarkeit: Tafel · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --neutral:#a1a1aa;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px; --t-large:32px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--neutral)}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7) 0;border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.tabs{display:flex;gap:var(--s4);padding:var(--s4) var(--s7) 0;border-bottom:1px solid var(--line);
+  background:rgba(247,247,250,.92);overflow-x:auto}
+.tabs a{font-size:var(--t-subhead);color:var(--muted);padding:0 0 10px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a:hover{text-decoration:none;color:var(--ink-2)}
+.tabs a.is-on{color:var(--ink);font-weight:600;border-bottom-color:var(--tint)}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.head{display:flex;align-items:flex-start;gap:var(--s4);margin-bottom:var(--s5)}
+.head__t{font-size:var(--t-title1);font-weight:700;letter-spacing:-.025em}
+.head__d{font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s1);max-width:60ch}
+.head__r{margin-left:auto;display:flex;gap:var(--s2);align-items:center}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:var(--s3);margin-bottom:var(--s5)}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:var(--s4)}
+.tile__n{font-size:var(--t-large);font-weight:700;letter-spacing:-.03em;line-height:1.05;font-variant-numeric:tabular-nums}
+.tile__d{font-size:var(--t-footnote);color:var(--muted);margin-top:2px}
+.tile__c{font-size:var(--t-footnote);font-weight:600;margin-top:6px}
+.up{color:var(--good)} .down{color:var(--alert)} .flat{color:var(--muted)}
+
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:var(--s5);overflow:hidden}
+.panel__h{display:flex;align-items:baseline;gap:var(--s2);padding:var(--s4) var(--s4) var(--s3);flex-wrap:wrap}
+.panel__t{font-size:var(--t-subhead);font-weight:600}
+.panel__s{font-size:var(--t-caption);color:var(--muted)}
+.panel__r{margin-left:auto;font-size:var(--t-caption);color:var(--muted)}
+
+.wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:760px}
+th,td{text-align:left;padding:9px var(--s4);border-top:1px solid var(--line);vertical-align:middle}
+thead th{border-top:0;font-size:var(--t-caption2);text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);font-weight:700;padding-bottom:var(--s2);white-space:nowrap}
+.band{background:var(--fill-2)}
+.band td{font-size:var(--t-caption);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);padding-top:var(--s3);padding-bottom:var(--s2)}
+.band span{font-weight:500;text-transform:none;letter-spacing:0;color:var(--faint);margin-left:var(--s2)}
+.q{font-size:var(--t-subhead);color:var(--ink-2);max-width:44ch}
+.q a{color:inherit} .q a:hover{color:var(--tint)}
+.cell{text-align:center;width:118px;white-space:nowrap}
+.mark{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-footnote);font-weight:600;
+  padding:3px 9px;border-radius:20px}
+.m-yes{background:rgba(36,138,61,.10);color:var(--good)}
+.m-late{background:rgba(178,80,0,.10);color:var(--warn)}
+.m-no{background:var(--fill);color:var(--faint);font-weight:500}
+.pos{font-variant-numeric:tabular-nums}
+.trend{width:64px;text-align:right;font-size:var(--t-caption);color:var(--muted);font-variant-numeric:tabular-nums}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--s4);margin-bottom:var(--s5)}
+@media (max-width:940px){.two{grid-template-columns:1fr}}
+.bar{display:flex;align-items:center;gap:var(--s3);padding:7px var(--s4);border-top:1px solid var(--line)}
+.bar__n{font-size:var(--t-subhead);width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar__n.is-us{font-weight:700;color:var(--tint)}
+.bar__t{flex:1;height:7px;border-radius:4px;background:var(--fill);overflow:hidden;min-width:60px}
+.bar__t i{display:block;height:100%;background:var(--neutral);border-radius:4px}
+.bar__t i.is-us{background:var(--tint)}
+.bar__v{font-size:var(--t-footnote);color:var(--muted);width:46px;text-align:right;font-variant-numeric:tabular-nums}
+.src{display:flex;align-items:baseline;gap:var(--s3);padding:7px var(--s4);border-top:1px solid var(--line);font-size:var(--t-subhead)}
+.src__c{margin-left:auto;font-size:var(--t-footnote);color:var(--muted);font-variant-numeric:tabular-nums}
+.src__b{font-size:var(--t-caption);padding:1px 7px;border-radius:20px;background:var(--fill);color:var(--muted)}
+.src__b.own{background:rgba(0,113,227,.10);color:var(--tint)}
+
+.note{font-size:var(--t-footnote);color:var(--muted);padding:var(--s3) var(--s4);
+  background:var(--fill-2);border-top:1px solid var(--line)}
+.foot{font-size:var(--t-caption);color:var(--faint);margin-top:var(--s5);max-width:76ch}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandate</div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#fff"></span>Enpal</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>TeamViewer<span class="side__count">2</span></a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Celonis</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <div class="tbar">
+      <div>
+        <div class="tbar__title">Enpal</div>
+        <div class="tbar__sub">Solarenergie · Berlin · Mandant seit März 2025</div>
+      </div>
+    </div>
+    <nav class="tabs">
+      <a href="#">Heute</a>
+      <a href="#">Impulse</a>
+      <a href="#">Wettbewerb</a>
+      <a href="#">Berichte</a>
+      <a href="#">Archiv</a>
+      <a href="#">Kickoff</a>
+      <a href="#">Profil</a>
+      <a href="#">Guide</a>
+      <a href="#">Marktumfeld</a>
+      <a href="#" class="is-on">KI-Sichtbarkeit</a>
+    </nav>
+
+    <div class="content">
+      <div class="head">
+        <div>
+          <div class="head__t">KI-Sichtbarkeit</div>
+          <div class="head__d">Was Assistenten antworten, wenn jemand nach diesem Markt fragt. 18 Fragen,
+            zweimal gestellt, zuletzt am 24. August.</div>
+        </div>
+        <div class="head__r">
+          <button class="btn--ghost btn">Fragen bearbeiten</button>
+          <button class="btn">Jetzt messen</button>
+        </div>
+      </div>
+
+      <div class="tiles">
+        <div class="tile">
+          <div class="tile__n">39 %</div>
+          <div class="tile__d">der Fragen nennen Enpal</div>
+          <div class="tile__c up">+11 Pp. seit Juli</div>
+        </div>
+        <div class="tile">
+          <div class="tile__n">7 / 18</div>
+          <div class="tile__d">Fragen mit Nennung</div>
+          <div class="tile__c up">+2 Fragen</div>
+        </div>
+        <div class="tile">
+          <div class="tile__n">2,9</div>
+          <div class="tile__d">Durchschnittliche Position</div>
+          <div class="tile__c flat">unverändert</div>
+        </div>
+        <div class="tile">
+          <div class="tile__n">1&#8202;900</div>
+          <div class="tile__d">Wettbewerber vor uns</div>
+          <div class="tile__c down">1Komma5° in 11 Antworten</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel__h">
+          <span class="panel__t">Frage für Frage</span>
+          <span class="panel__s">gruppiert nach Nähe zur Marke</span>
+          <span class="panel__r">Claude · Gemini · Verlauf über 4 Messungen</span>
+        </div>
+        <div class="wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Frage</th>
+              <th class="cell">Claude</th>
+              <th class="cell">Gemini</th>
+              <th class="trend">Verlauf</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="band"><td colspan="4">Marke <span>wir werden namentlich gefragt</span></td></tr>
+            <tr>
+              <td class="q"><a href="#">Was macht Enpal?</a></td>
+              <td class="cell"><span class="mark m-yes">genannt <span class="pos">1</span></span></td>
+              <td class="cell"><span class="mark m-yes">genannt <span class="pos">1</span></span></td>
+              <td class="trend">1 · 1 · 1 · 1</td>
+            </tr>
+            <tr>
+              <td class="q"><a href="#">Ist Enpal seriös?</a></td>
+              <td class="cell"><span class="mark m-yes">genannt <span class="pos">1</span></span></td>
+              <td class="cell"><span class="mark m-late">mit Kritik</span></td>
+              <td class="trend">1 · 1 · 2 · 1</td>
+            </tr>
+
+            <tr class="band"><td colspan="4">Auswahlliste <span>wer kommt in Frage</span></td></tr>
+            <tr>
+              <td class="q"><a href="#">Welche Anbieter für Solaranlagen mit Speicher gibt es in Deutschland?</a></td>
+              <td class="cell"><span class="mark m-yes">genannt <span class="pos">2</span></span></td>
+              <td class="cell"><span class="mark m-yes">genannt <span class="pos">4</span></span></td>
+              <td class="trend">4 · 3 · 3 · 2</td>
+            </tr>
+            <tr>
+              <td class="q"><a href="#">Wer ist Marktführer bei Solaranlagen für Eigenheime?</a></td>
+              <td class="cell"><span class="mark m-yes">genannt <span class="pos">1</span></span></td>
+              <td class="cell"><span class="mark m-no">nicht genannt</span></td>
+              <td class="trend">– · 2 · 1 · 1</td>
+            </tr>
+            <tr>
+              <td class="q"><a href="#">Solaranbieter mit eigener Montage: welche Firmen?</a></td>
+              <td class="cell"><span class="mark m-no">nicht genannt</span></td>
+              <td class="cell"><span class="mark m-no">nicht genannt</span></td>
+              <td class="trend">– · – · – · –</td>
+            </tr>
+
+            <tr class="band"><td colspan="4">Kategorie <span>der Markt, ohne Namen</span></td></tr>
+            <tr>
+              <td class="q"><a href="#">Lohnt sich eine Photovoltaikanlage 2026 noch?</a></td>
+              <td class="cell"><span class="mark m-no">nicht genannt</span></td>
+              <td class="cell"><span class="mark m-yes">genannt <span class="pos">5</span></span></td>
+              <td class="trend">– · – · 6 · 5</td>
+            </tr>
+            <tr>
+              <td class="q"><a href="#">Was kostet eine Solaranlage mit Speicher im Schnitt?</a></td>
+              <td class="cell"><span class="mark m-no">nicht genannt</span></td>
+              <td class="cell"><span class="mark m-no">nicht genannt</span></td>
+              <td class="trend">– · – · – · –</td>
+            </tr>
+
+            <tr class="band"><td colspan="4">Problem <span>die Frage vor der Kaufentscheidung</span></td></tr>
+            <tr>
+              <td class="q"><a href="#">Mein Dach ist verschattet, lohnt Solar trotzdem?</a></td>
+              <td class="cell"><span class="mark m-no">nicht genannt</span></td>
+              <td class="cell"><span class="mark m-no">nicht genannt</span></td>
+              <td class="trend">– · – · – · –</td>
+            </tr>
+            <tr>
+              <td class="q"><a href="#">Wie finde ich einen seriösen Solarteur?</a></td>
+              <td class="cell"><span class="mark m-yes">genannt <span class="pos">3</span></span></td>
+              <td class="cell"><span class="mark m-no">nicht genannt</span></td>
+              <td class="trend">– · – · 3 · 3</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+        <div class="note">Neun von achtzehn Fragen sind hier gekürzt. Jede Zeile öffnet die Antwort im Wortlaut,
+          mit dem Datum der Messung und dem Modell, das sie gegeben hat.</div>
+      </div>
+
+      <div class="two">
+        <div class="panel" style="margin:0">
+          <div class="panel__h">
+            <span class="panel__t">Wer stattdessen genannt wird</span>
+            <span class="panel__s">über alle 18 Fragen, beide Modelle</span>
+          </div>
+          <div class="bar"><span class="bar__n">1Komma5°</span><span class="bar__t"><i style="width:61%"></i></span><span class="bar__v">11</span></div>
+          <div class="bar"><span class="bar__n is-us">Enpal</span><span class="bar__t"><i class="is-us" style="width:39%"></i></span><span class="bar__v">7</span></div>
+          <div class="bar"><span class="bar__n">Zolar</span><span class="bar__t"><i style="width:33%"></i></span><span class="bar__v">6</span></div>
+          <div class="bar"><span class="bar__n">EON Solar</span><span class="bar__t"><i style="width:28%"></i></span><span class="bar__v">5</span></div>
+          <div class="bar"><span class="bar__n">Wegatech</span><span class="bar__t"><i style="width:11%"></i></span><span class="bar__v">2</span></div>
+          <div class="note">Nur Namen, die im Wettbewerbsfeld dieses Mandats stehen. Alles andere zählt als Markt.</div>
+        </div>
+
+        <div class="panel" style="margin:0">
+          <div class="panel__h">
+            <span class="panel__t">Woher die Antworten kommen</span>
+            <span class="panel__s">zitierte Quellen, sofern das Modell welche nennt</span>
+          </div>
+          <div class="src"><span>Verbraucherzentrale</span><span class="src__b">Ratgeber</span><span class="src__c">6&times;</span></div>
+          <div class="src"><span>Finanztip</span><span class="src__b">Ratgeber</span><span class="src__c">5&times;</span></div>
+          <div class="src"><span>pv-magazine</span><span class="src__b">Fachpresse</span><span class="src__c">4&times;</span></div>
+          <div class="src"><span>enpal.de</span><span class="src__b own">eigene Seite</span><span class="src__c">3&times;</span></div>
+          <div class="src"><span>Test.de</span><span class="src__b">Ratgeber</span><span class="src__c">2&times;</span></div>
+          <div class="note">Vier der fünf Quellen sind Ratgeberportale, keine Presse. Wo Enpal dort nicht
+            vorkommt, hilft Pressearbeit an dieser Stelle wenig.</div>
+        </div>
+      </div>
+
+      <div class="foot">Gemessen wird, was zwei Assistenten auf dieselben Fragen antworten, nicht was
+        &bdquo;die KI&ldquo; denkt. Eine Antwort ist eine Stichprobe: sie schwankt, deshalb steht neben jedem Wert der
+        Verlauf. RauteOS misst und berichtet, es optimiert nichts.</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -53,6 +53,18 @@ def web(factory):
     return TestClient(app)
 
 
+def _field_row(body: str, key: str) -> str:
+    """The one row this field owns. See the twin in ``test_profile_refresh``.
+
+    A value can appear in a heading, in a contradiction, or in another field, so
+    the whole body is the wrong haystack for "is this offered *here*".
+    """
+    for chunk in body.split('<div class="prof__row')[1:]:
+        if f'id="f-{key}"' in chunk:
+            return chunk
+    raise AssertionError(f"the page draws no row for {key!r}")
+
+
 def _client(session) -> Client:
     c = Client(name="Qonto", aliases=[], industry="Neobank", country="DE",
                website="https://qonto.com", keywords=[], alert_topics=[])
@@ -326,14 +338,16 @@ def test_a_field_the_consultant_filled_is_not_proposed_over(factory, web):
 
     body = web.get(f"/client/{client_id}/profil").text
 
-    assert "Paris" in body, "the ordinary offer is drawn"
-    assert "Weiß ich besser" in body, "and his own value still stands beside it"
-    accept_forms = body.split('/profil/accept"')[1:]
-    offered = {form.split("</form>")[0] for form in accept_forms}
-    assert not any(f'value="{ids["ceo"]}"' in form for form in offered), (
-        "no button on the page offers to write the machine over him"
+    assert "Weiß ich besser" in body, "his own value still stands"
+    # The offers are rendered into the fields they are offers for, so the field
+    # itself is the assertion: an ordinary offer sits in its box, and the one
+    # arguing with a hand-filled answer does not sit in his.
+    assert "Jemand anderes" not in _field_row(body, "ceo"), (
+        "nothing on the page puts the machine's version in the field he filled"
     )
-    assert any(f'value="{ids["sitz"]}"' in form for form in offered)
+    assert "Weiß ich besser" in _field_row(body, "ceo")
+    assert "Paris" in _field_row(body, "sitz"), "an ordinary offer does stand in its field"
+    assert ids  # the rows were filed; what is drawn from them is the point above
 
 
 def test_posting_a_hand_filled_key_to_accept_does_not_overwrite_it(factory, web):
@@ -552,3 +566,71 @@ def test_the_fill_button_answers_and_gives_its_lock_back(web, session, monkeypat
     assert seen == [client.id]
     assert route._researching.acquire(blocking=False), "the lock never came back"
     route._researching.release()
+
+
+def test_saving_an_untouched_offer_keeps_the_source_it_was_read_from(factory, web):
+    """The offers are in the fields now, so saving the form is how one is taken.
+
+    That has to keep what accepting used to keep: a value the machine read on a
+    page is worth having only with the page named beside it, and the citation
+    would be the easy thing to drop when the accept form became the profile form.
+    """
+    with factory() as session:
+        client = _client(session)
+        client_id = client.id
+        _propose(session, client_id, sitz=("Paris", "https://qonto.com", "Qonto"))
+
+    web.post(
+        f"/client/{client_id}/profil", data={"sitz": "Paris"}, follow_redirects=False
+    )
+
+    with factory() as session:
+        fact = profiles.stored(session, client_id)["sitz"]
+    assert fact.value == "Paris"
+    assert fact.source_url == "https://qonto.com", "the page it was read on"
+    assert fact.filled_by == profiles.BY_HAND, "and a person decided to keep it"
+
+
+def test_typing_over_an_offer_drops_the_citation_with_it(factory, web):
+    """A source backs a claim, not a field.
+
+    Once the consultant has rewritten the value, the page it was read from no
+    longer says what the field says — carrying the link along would put a
+    citation under a sentence it does not support, which is worse than none.
+    """
+    with factory() as session:
+        client = _client(session)
+        client_id = client.id
+        _propose(session, client_id, sitz=("Paris", "https://qonto.com", "Qonto"))
+
+    web.post(
+        f"/client/{client_id}/profil",
+        data={"sitz": "Berlin, seit dem Umzug"},
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        fact = profiles.stored(session, client_id)["sitz"]
+    assert fact.value == "Berlin, seit dem Umzug"
+    assert fact.source_url == "", "his sentence, not the page's"
+    assert fact.filled_by == profiles.BY_HAND
+
+
+def test_an_emptied_offer_is_not_saved_and_stays_on_offer(factory, web):
+    """Clearing a field is the "no" that used to be a Verwerfen button.
+
+    It must not write an empty fact, and it must not count as a decision either:
+    a row nobody accepted stays on offer, because a decision not made is not a
+    decision to discard.
+    """
+    with factory() as session:
+        client = _client(session)
+        client_id = client.id
+        _propose(session, client_id, sitz=("Paris", "https://qonto.com", "Qonto"))
+
+    web.post(f"/client/{client_id}/profil", data={"sitz": ""}, follow_redirects=False)
+
+    with factory() as session:
+        assert "sitz" not in profiles.stored(session, client_id)
+        still = profile_refresh.outstanding(session, client_id)
+    assert [p.key for p in still] == ["sitz"], "it comes back next time"

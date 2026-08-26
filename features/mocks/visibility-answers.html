@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KI-Sichtbarkeit: Antworten · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --neutral:#a1a1aa;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px; --t-large:32px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--neutral)}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7) 0;border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.tabs{display:flex;gap:var(--s4);padding:var(--s4) var(--s7) 0;border-bottom:1px solid var(--line);
+  background:rgba(247,247,250,.92);overflow-x:auto}
+.tabs a{font-size:var(--t-subhead);color:var(--muted);padding:0 0 10px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a:hover{text-decoration:none;color:var(--ink-2)}
+.tabs a.is-on{color:var(--ink);font-weight:600;border-bottom-color:var(--tint)}
+.content{padding:var(--s6) var(--s7);max-width:calc(880px + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.head{display:flex;align-items:flex-start;gap:var(--s4);margin-bottom:var(--s4)}
+.head__t{font-size:var(--t-title1);font-weight:700;letter-spacing:-.025em}
+.head__d{font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s1);max-width:62ch}
+.head__r{margin-left:auto;display:flex;gap:var(--s2);align-items:center}
+
+.strip{display:flex;align-items:center;gap:var(--s4);background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);padding:var(--s3) var(--s4);margin-bottom:var(--s5);flex-wrap:wrap}
+.strip__n{font-size:var(--t-title1);font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.strip__d{font-size:var(--t-footnote);color:var(--muted)}
+.strip__sep{width:1px;align-self:stretch;background:var(--line)}
+.strip__r{margin-left:auto;display:flex;gap:var(--s2);align-items:center}
+.seg{display:inline-flex;background:var(--fill);border-radius:var(--radius-s);padding:2px}
+.seg button{font:inherit;font-size:var(--t-footnote);font-weight:500;background:none;border:0;
+  padding:5px 12px;border-radius:4px;cursor:pointer;color:var(--ink-2)}
+.seg button.is-on{background:var(--card);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+
+.qa{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:var(--s4);margin-bottom:var(--s3)}
+.qa__top{display:flex;align-items:baseline;gap:var(--s2);margin-bottom:var(--s2);flex-wrap:wrap}
+.band{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:2px 7px;border-radius:4px;background:var(--fill-2)}
+.verdict{margin-left:auto;font-size:var(--t-footnote);font-weight:600;padding:3px 10px;border-radius:20px}
+.v-yes{background:rgba(36,138,61,.10);color:var(--good)}
+.v-no{background:var(--fill);color:var(--muted)}
+.v-mix{background:rgba(178,80,0,.10);color:var(--warn)}
+.qa__q{font-size:var(--t-title3);font-weight:600;letter-spacing:-.012em;margin-bottom:var(--s3)}
+.ans{border-left:2px solid var(--line-strong);padding:2px 0 2px var(--s3);margin-bottom:var(--s3)}
+.ans__m{font-size:var(--t-caption);color:var(--faint);font-weight:600;text-transform:uppercase;
+  letter-spacing:.05em;margin-bottom:var(--s1)}
+.ans__t{font-size:var(--t-subhead);color:var(--ink-2);line-height:1.55}
+.ans__t mark{background:rgba(0,113,227,.14);color:var(--ink);border-radius:3px;padding:0 2px;font-weight:600}
+.ans__t .rival{background:var(--fill);border-radius:3px;padding:0 2px}
+.qa__foot{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center;
+  border-top:1px solid var(--line);padding-top:var(--s3)}
+.chip{font-size:var(--t-caption);padding:3px 9px;border-radius:20px;background:var(--fill);color:var(--muted)}
+.chip.us{background:rgba(0,113,227,.10);color:var(--tint);font-weight:600}
+.chip__k{color:var(--faint);margin-right:5px}
+.qa__more{margin-left:auto;font-size:var(--t-footnote);color:var(--tint);cursor:pointer}
+.spark{display:inline-flex;align-items:flex-end;gap:3px;height:16px;vertical-align:-3px;margin-left:var(--s2)}
+.spark i{width:5px;border-radius:1px;background:var(--neutral);display:block}
+.spark i.on{background:var(--tint)}
+.empty{border-style:dashed;background:var(--fill-2)}
+.empty .qa__q{color:var(--muted)}
+.hint{font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s2)}
+.foot{font-size:var(--t-caption);color:var(--faint);margin-top:var(--s5);max-width:76ch}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandate</div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#fff"></span>Enpal</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>TeamViewer<span class="side__count">2</span></a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Celonis</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <div class="tbar">
+      <div>
+        <div class="tbar__title">Enpal</div>
+        <div class="tbar__sub">Solarenergie · Berlin · Mandant seit März 2025</div>
+      </div>
+    </div>
+    <nav class="tabs">
+      <a href="#">Heute</a>
+      <a href="#">Impulse</a>
+      <a href="#">Wettbewerb</a>
+      <a href="#">Berichte</a>
+      <a href="#">Archiv</a>
+      <a href="#">Kickoff</a>
+      <a href="#">Profil</a>
+      <a href="#">Guide</a>
+      <a href="#">Marktumfeld</a>
+      <a href="#" class="is-on">KI-Sichtbarkeit</a>
+    </nav>
+
+    <div class="content">
+      <div class="head">
+        <div>
+          <div class="head__t">KI-Sichtbarkeit</div>
+          <div class="head__d">Die Antworten im Wortlaut. Jede Frage wurde zwei Assistenten gestellt,
+            zuletzt am 24. August. Was hier steht, hat das Modell wirklich geschrieben.</div>
+        </div>
+        <div class="head__r">
+          <button class="btn--ghost btn">Fragen bearbeiten</button>
+          <button class="btn">Jetzt messen</button>
+        </div>
+      </div>
+
+      <div class="strip">
+        <div>
+          <div class="strip__n">7 <span style="font-size:var(--t-subhead);color:var(--muted);font-weight:500">von 18</span></div>
+          <div class="strip__d">Fragen nennen Enpal</div>
+        </div>
+        <div class="strip__sep"></div>
+        <div>
+          <div class="strip__n">1Komma5°</div>
+          <div class="strip__d">wird häufiger genannt als das Mandat</div>
+        </div>
+        <div class="strip__r">
+          <div class="seg">
+            <button class="is-on">Alle 18</button>
+            <button>Genannt 7</button>
+            <button>Fehlt 11</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="qa__top">
+          <span class="band">Auswahlliste</span>
+          <span class="verdict v-yes">In beiden Antworten genannt</span>
+        </div>
+        <div class="qa__q">Welche Anbieter für Solaranlagen mit Speicher gibt es in Deutschland?</div>
+        <div class="ans">
+          <div class="ans__m">Claude · 24. August</div>
+          <div class="ans__t">In Deutschland sind vor allem <span class="rival">1Komma5°</span>,
+            <mark>Enpal</mark> und <span class="rival">Zolar</span> als Komplettanbieter aktiv. Sie
+            übernehmen Planung, Montage und Speicher aus einer Hand&hellip;</div>
+        </div>
+        <div class="ans">
+          <div class="ans__m">Gemini · 24. August</div>
+          <div class="ans__t">Zu den größeren Anbietern zählen <span class="rival">EON</span>,
+            <span class="rival">1Komma5°</span>, <span class="rival">Zolar</span> und <mark>Enpal</mark>.
+            Regional kommen zahlreiche Handwerksbetriebe hinzu&hellip;</div>
+        </div>
+        <div class="qa__foot">
+          <span class="chip us"><span class="chip__k">Position</span>2 und 4</span>
+          <span class="chip"><span class="chip__k">Auch genannt</span>1Komma5°, Zolar, EON</span>
+          <span class="chip"><span class="chip__k">Quellen</span>Verbraucherzentrale, Finanztip</span>
+          <span class="spark" title="vier Messungen"><i style="height:40%"></i><i style="height:55%"></i><i class="on" style="height:70%"></i><i class="on" style="height:90%"></i></span>
+          <span class="qa__more">Ganze Antwort</span>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="qa__top">
+          <span class="band">Marke</span>
+          <span class="verdict v-mix">Genannt, aber mit Einschränkung</span>
+        </div>
+        <div class="qa__q">Ist Enpal seriös?</div>
+        <div class="ans">
+          <div class="ans__m">Gemini · 24. August</div>
+          <div class="ans__t"><mark>Enpal</mark> ist ein etabliertes Unternehmen mit über 100.000 Anlagen.
+            Kritik gab es wiederholt an der Vertriebspraxis an der Haustür und an der Laufzeit der
+            Mietverträge; Verbraucherschützer raten, Angebote zu vergleichen&hellip;</div>
+        </div>
+        <div class="qa__foot">
+          <span class="chip us"><span class="chip__k">Position</span>1</span>
+          <span class="chip"><span class="chip__k">Tenor</span>gemischt, Vertrieb und Mietvertrag</span>
+          <span class="chip"><span class="chip__k">Quellen</span>Verbraucherzentrale, Test.de</span>
+          <span class="spark"><i class="on" style="height:90%"></i><i class="on" style="height:90%"></i><i style="height:55%"></i><i class="on" style="height:80%"></i></span>
+          <span class="qa__more">Ganze Antwort</span>
+        </div>
+      </div>
+
+      <div class="qa empty">
+        <div class="qa__top">
+          <span class="band">Problem</span>
+          <span class="verdict v-no">In keiner Antwort genannt</span>
+        </div>
+        <div class="qa__q">Mein Dach ist verschattet, lohnt sich Solar trotzdem?</div>
+        <div class="ans">
+          <div class="ans__m">Claude · 24. August</div>
+          <div class="ans__t">Bei Teilverschattung helfen Leistungsoptimierer oder Modulwechselrichter.
+            Eine Fachplanung sollte den Ertrag simulieren; die <span class="rival">Verbraucherzentrale</span>
+            bietet dazu eine unabhängige Beratung an&hellip;</div>
+        </div>
+        <div class="qa__foot">
+          <span class="chip"><span class="chip__k">Genannt wird</span>niemand aus dem Wettbewerbsfeld</span>
+          <span class="chip"><span class="chip__k">Quellen</span>Verbraucherzentrale</span>
+          <span class="spark"><i style="height:20%"></i><i style="height:20%"></i><i style="height:20%"></i><i style="height:20%"></i></span>
+          <span class="qa__more">Ganze Antwort</span>
+        </div>
+        <div class="hint">Auf diese Frage antwortet kein Modell mit einem Anbieter. Das ist keine Lücke
+          gegenüber dem Wettbewerb, sondern eine offene Fläche.</div>
+      </div>
+
+      <div class="qa empty">
+        <div class="qa__top">
+          <span class="band">Kategorie</span>
+          <span class="verdict v-no">In keiner Antwort genannt</span>
+        </div>
+        <div class="qa__q">Was kostet eine Solaranlage mit Speicher im Schnitt?</div>
+        <div class="ans">
+          <div class="ans__m">Claude · 24. August</div>
+          <div class="ans__t">Für ein Einfamilienhaus liegen die Kosten je nach Größe zwischen 15.000 und
+            25.000 Euro inklusive Speicher. <span class="rival">1Komma5°</span> und
+            <span class="rival">Zolar</span> veröffentlichen Richtpreise&hellip;</div>
+        </div>
+        <div class="qa__foot">
+          <span class="chip"><span class="chip__k">Auch genannt</span>1Komma5°, Zolar</span>
+          <span class="chip"><span class="chip__k">Quellen</span>Finanztip, pv-magazine</span>
+          <span class="spark"><i style="height:20%"></i><i style="height:20%"></i><i style="height:20%"></i><i style="height:20%"></i></span>
+          <span class="qa__more">Ganze Antwort</span>
+        </div>
+      </div>
+
+      <div class="foot">Vierzehn weitere Fragen unterhalb. Eine Antwort ist eine Stichprobe und schwankt,
+        deshalb steht neben jeder der Verlauf über die letzten vier Messungen. RauteOS misst und berichtet,
+        es optimiert nichts.</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
