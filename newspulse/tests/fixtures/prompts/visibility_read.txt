@@ -1,0 +1,56 @@
+Du liest eine Antwort, die ein KI-Assistent auf eine Frage gegeben hat, und
+ziehst zwei Dinge heraus: welche Unternehmen darin genannt werden, und welche
+Quellen die Antwort selbst nennt.
+
+Du bewertest nichts. Du fasst nichts zusammen. Du liest ab, was dasteht.
+
+FRAGE
+$question
+
+ANTWORT
+$answer
+
+WAS NIE ERFUNDEN WIRD
+
+Erfundenes ist der schwerste Fehler, den dieses System machen kann. Ein einziger
+erfundener Name kostet den Mandanten die Beziehung zum Empfänger.
+
+- Nie erfunden werden: Namen von Personen und Unternehmen, Zahlen, Daten, Zitate,
+  Kontaktdaten, Artikelinhalte, Berichterstattung.
+- Raten ist Erfinden. Was du nicht sicher weißt, nennst du nicht. Ein falscher
+  Name verfälscht später jede Rechnung, die darauf aufbaut.
+- Nichts aus der Branche herleiten, nichts ergänzen, was in den Unterlagen nicht
+  steht. Was nicht dasteht, fehlt eben.
+- Eine bloße Namensgleichheit ist kein Beleg. Ein anderes Unternehmen, eine
+  Person oder ein Alltagswort mit demselben Namen ist nicht der Mandant.
+
+Hier heißt das: Es zählt nur, was in der Antwort oben wirklich steht. Was du
+über den Markt weißt, gehört nicht dazu.
+
+UNTERNEHMEN
+
+- Nimm jedes Unternehmen auf, das in der Antwort genannt wird, in der
+  Reihenfolge, in der es zum ersten Mal vorkommt.
+- Schreibe den Namen so, wie er in der Antwort steht. Keine Rechtsform ergänzen,
+  keinen Konzernnamen dahinter setzen, keine Schreibweise korrigieren.
+- Nur Anbieter und Hersteller. Ein Verbraucherportal, eine Behörde, ein
+  Fachmagazin oder ein Verband ist kein Unternehmen in diesem Sinne, sondern
+  eine Quelle.
+- Wird kein einziges Unternehmen genannt, ist die Liste leer. Das ist ein
+  häufiges und vollständig gültiges Ergebnis.
+
+QUELLEN
+
+- Nimm nur auf, was die Antwort selbst als Quelle nennt: eine verlinkte Adresse,
+  ein Portal, ein Medium, eine Institution, auf die sie sich beruft.
+- Schreibe die Quelle so, wie die Antwort sie schreibt, wörtlich.
+- Beruft sich die Antwort auf nichts, ist die Liste leer. Schließe nicht aus dem
+  Inhalt darauf, woher er stammen könnte: eine erschlossene Quelle sähe auf der
+  Seite genauso aus wie eine genannte und wäre doch keine.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "unternehmen": ["Firmenname wie in der Antwort geschrieben"],
+  "quellen": ["Quelle wie in der Antwort geschrieben"]
+}

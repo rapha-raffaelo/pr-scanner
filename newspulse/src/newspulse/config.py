@@ -82,6 +82,8 @@ _ENV_SESSION_SECRET = "NEWSPULSE_SESSION_SECRET"
 _ENV_BASE_URL = "NEWSPULSE_BASE_URL"
 _ENV_GEMINI_API_KEY = "NEWSPULSE_GEMINI_API_KEY"
 _ENV_GEMINI_MODEL = "NEWSPULSE_GEMINI_MODEL"
+_ENV_VISIBILITY = "NEWSPULSE_VISIBILITY"
+_ENV_VISIBILITY_EVERY_DAYS = "NEWSPULSE_VISIBILITY_EVERY_DAYS"
 
 # The OAuth client of the Google Cloud project the mailbox is connected through
 # (DEC-5: an *Internal* app inside RAUTE's own Workspace, so no Google
@@ -148,6 +150,30 @@ _DEFAULT_CLAUDE_CONFIG_DIR = ""
 # the curated registry only — one extra HTTP request per client per run, against
 # an endpoint Google publishes but does not contract to keep stable.
 _DEFAULT_GOOGLE_NEWS = True
+
+# Whether a mandate is measured against what an assistant answers about its
+# market at all. On by default, like the Google News search above and for the
+# same reason: the deployment that needs it is the one where nobody thought
+# about it. Set NEWSPULSE_VISIBILITY=0 to switch the whole feature off — no
+# proposal is generated, no measurement is run, and no model call is spent.
+#
+# Note what enabling it costs, because it is not free the way a search is. One
+# measurement puts a whole accepted set (capped at
+# ``newspulse.visibility.MAX_QUESTIONS``) to every configured provider, so it is
+# the largest single burst of model calls this tool makes.
+_DEFAULT_VISIBILITY = True
+
+# How long one measurement stands before the next one is due. Weekly, because
+# that is the resolution the answer actually has: the same question asked twice
+# on the same day returns different words, so a daily figure would report
+# sampling noise as movement, and a monthly one would notice a change five weeks
+# after a consultant could have said something about it.
+#
+# It is also the spend ceiling. Seven days times two providers times a
+# twenty-four question set is what one mandate costs a week; a day would be
+# seven times that for a number nobody could read.
+_DEFAULT_VISIBILITY_EVERY_DAYS = 7
+
 _ENV_WEB_HOST = "NEWSPULSE_WEB_HOST"
 _ENV_WEB_PORT = "NEWSPULSE_WEB_PORT"
 
@@ -294,6 +320,13 @@ WEB_HOST: str = os.environ.get(_ENV_WEB_HOST, _DEFAULT_WEB_HOST)
 # precedence so a local override is never silently ignored.
 WEB_PORT: int = _env_int(_ENV_WEB_PORT, _env_int("PORT", _DEFAULT_WEB_PORT))
 GOOGLE_NEWS_ENABLED: bool = _env_bool(_ENV_GOOGLE_NEWS, _DEFAULT_GOOGLE_NEWS)
+VISIBILITY_ENABLED: bool = _env_bool(_ENV_VISIBILITY, _DEFAULT_VISIBILITY)
+# Zero or less means "no window": every request measures. A legitimate setting
+# for an operator working a single mandate by hand, and a bad default for a
+# portfolio, which is why it is not the default.
+VISIBILITY_EVERY_DAYS: int = _env_int(
+    _ENV_VISIBILITY_EVERY_DAYS, _DEFAULT_VISIBILITY_EVERY_DAYS
+)
 CLAUDE_CONFIG_DIR: str = os.environ.get(
     _ENV_CLAUDE_CONFIG_DIR, _DEFAULT_CLAUDE_CONFIG_DIR
 )
