@@ -106,8 +106,13 @@
         <div class="vis-score__d">
           <div class="vis-score__l">{{ t("der Fragen nennen %(name)s") | format(name=client.name) }}</div>
           <div class="vis-score__c">{{ t("%(named)s von %(measured)s gemessenen Fragen") | format(named=standing.named, measured=standing.measured) }}</div>
-          {% if standing.delta is not none %}
-            <div class="vis-score__c{{ ' vis-score__c--up' if standing.delta > 0 else (' vis-score__c--down' if standing.delta < 0 else '') }}">{{ t("%(points)s Prozentpunkte seit der Messung davor") | format(points=('+' if standing.delta > 0 else '') ~ (standing.delta | round(1))) }}</div>
+          {# Whole percentage points, and only when the change is one. A set of at
+             most two dozen questions moves in chunks of four points and up, so a
+             decimal here is noise; and "0 Prozentpunkte" beside a movement panel
+             that lists what changed reads as a contradiction. #}
+          {% set points = (standing.delta | round | int) if standing.delta is not none else 0 %}
+          {% if points %}
+            <div class="vis-score__c{{ ' vis-score__c--up' if points > 0 else ' vis-score__c--down' }}">{{ t("%(points)s Prozentpunkte seit der Messung davor") | format(points=('+' if points > 0 else '') ~ points) }}</div>
           {% endif %}
         </div>
       </div>
