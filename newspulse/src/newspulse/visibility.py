@@ -109,10 +109,12 @@ _PROFILE_KEYS = ("geschaeftsfeld", "zielgruppe", "produkte", "positionierung")
 #: of the model's attention.
 _PROFILE_VALUE_MAX = 400
 
-#: How many companies and sources one answer may yield. A single answer that
+#: How many companies and sources one answer may *store*. A single answer that
 #: names more than this is a list article, not a recommendation, and the extra
-#: entries are noise in a ranking. Sliced rather than refused: a long answer is
-#: still a measurement.
+#: entries are noise beside a ranking. Sliced rather than refused: a long answer
+#: is still a measurement — and the slice happens after the mandate's rank has
+#: been counted, over every company the answer named, because a rank against a
+#: cut list flatters the client (see :func:`read_answer`).
 _LISTED_MAX = 24
 
 #: Prefixes stripped from a stated source before it is checked against the
@@ -121,12 +123,12 @@ _LISTED_MAX = 24
 #: understate what the assistants are leaning on.
 _URL_PREFIXES = ("https://", "http://", "www.")
 
-#: What makes a stated source a locator rather than a name. A probe that
-#: carries one of these is a domain or a path and is checked as a substring,
-#: because that is how it is written into a sentence. Everything else is a
+#: What makes a stated source a locator rather than a name. A probe that carries
+#: one of these is a domain or a path and is looked for the way a sentence writes
+#: it, anchored so it is not found inside a longer domain. Everything else is a
 #: publisher's name and is checked on word boundaries: "FAZ" must be found in
-#: "die FAZ schreibt" and never inside a longer word, which a bare substring
-#: test cannot tell apart.
+#: "die FAZ schreibt" and never inside a longer word, which a bare substring test
+#: cannot tell apart.
 _LOCATOR_MARKS = (".", "/")
 
 #: Endings that take no genitive -s in German. Compared against the case-folded
