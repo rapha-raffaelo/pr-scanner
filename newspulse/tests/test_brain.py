@@ -376,6 +376,11 @@ CARRIED_BEFORE = {
     # "Keine Selbstbeschreibung ... daraus entsteht kein Impuls, sondern
     # Eigenwerbung." Same clause, same reason as industry.txt.
     "themes.txt": {"press_relevance"},
+    # New with KIS-01, so there is no "before" to carry. Both entries are empty
+    # rather than absent: the accounting is what makes a new prompt a decision,
+    # and a missing key would fail the map test rather than record one.
+    "visibility_panel.txt": set(),
+    "visibility_read.txt": set(),
 }
 
 #: Standards a prompt did *not* carry before and now does. Every one is a
@@ -431,6 +436,24 @@ ADDED_IN_MIGRATION = {
     "outreach.txt": set(),
     "rivals.txt": set(),
     "themes.txt": set(),
+    # The panel emits the questions a *buyer* would type about this market, which
+    # is by construction derived from the field and the profile. no_invention is
+    # deliberately absent for exactly the reason industry.txt does without it —
+    # "Nichts aus der Branche herleiten" forbids the inference the task asks for
+    # — and journalistic_value and position would put advice about writing to an
+    # editor in front of a prompt that writes to nobody. refusal is the one that
+    # earns its place: it is what keeps a mandate whose market the model does not
+    # know from receiving eighteen plausible questions about a market nobody
+    # established.
+    "visibility_panel.txt": {"refusal"},
+    # The reader extracts companies and stated sources from one verbatim answer,
+    # and no_invention is the whole safety argument of that pass: a company that
+    # is not in the answer, or a source it never cited, would become a figure on
+    # a page a client is shown. refusal is *not* here on purpose — the empty
+    # answer is already the prompt's own instruction for both lists, and the
+    # block's "Empfehlung mit Begründung" clauses address a recommender, which a
+    # reader is not.
+    "visibility_read.txt": {"no_invention"},
 }
 
 #: Phrases that only appear in a prompt if somebody wrote a standard out again
@@ -573,6 +596,26 @@ def test_industry_does_not_forbid_the_inference_it_asks_for():
     raw = (PROMPTS / "industry.txt").read_text("utf-8")
     assert "no_invention" not in brain.included(raw)
     assert _flat("leite die Branche aus Name und Website ab") in _flat(raw)
+
+
+def test_the_question_panel_does_not_forbid_the_inference_it_asks_for():
+    """visibility_panel.txt asks the model to write the questions a buyer of this
+    field would type, which is derived from the field and from the profile by
+    construction. no_invention says "Nichts aus der Branche herleiten", so
+    composing it would put a contradiction in front of the one prompt whose task
+    is that derivation — the same hole test_industry_does_not_forbid... closes
+    one prompt earlier, and including a block costs one line."""
+    raw = (PROMPTS / "visibility_panel.txt").read_text("utf-8")
+    assert "no_invention" not in brain.included(raw)
+    assert _flat("Frag nach dem, was vor einem Kauf wirklich gefragt wird") in _flat(raw)
+
+
+def test_the_answer_reader_carries_the_invention_rule():
+    """The other half of the same decision. The reader turns one answer into the
+    figures a client is shown, so a company the answer does not name or a source
+    it never cited is the failure that matters there, and it is the block's."""
+    raw = (PROMPTS / "visibility_read.txt").read_text("utf-8")
+    assert "no_invention" in brain.included(raw)
 
 
 @pytest.mark.parametrize("path", _prompt_files(), ids=lambda p: p.name)
@@ -1620,9 +1663,19 @@ _BUILDS = re.compile(r"(?<![\w.])([A-Z]\w*)\(")
 #: back, so there is nowhere for a version to live and nothing it would explain.
 #: The ``Setting`` rows it builds are its own retry bookkeeping.
 #:
-#: If either becomes something the tool stores on the model's word as a text,
+#: ``visibility`` — it composes ``visibility_read.txt`` and writes rows, and what
+#: it writes is not this house's text at all: ``VisibilityAnswer.answer`` is what
+#: Claude or Gemini said when asked a buyer's question, kept verbatim precisely so
+#: a figure on the page resolves to something a person can read. The brain prompt
+#: there is a *reader*, and the standards it composes govern how the answer is
+#: extracted, not what it says. A version stamp on such a row would claim the
+#: agency's standards produced a sentence another vendor's model wrote — and the
+#: one thing that must never happen to a measurement is being edited to match
+#: them. The questions it stores are a person's accepted list, not prose.
+#:
+#: If any of them becomes something the tool stores on the model's word as a text,
 #: its entry here is what has to come out.
-_NOT_ARTEFACT_GENERATORS = {"guide", "themes"}
+_NOT_ARTEFACT_GENERATORS = {"guide", "themes", "visibility"}
 
 
 def _generating_modules() -> set[str]:

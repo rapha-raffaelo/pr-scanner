@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("KI-Sichtbarkeit") }} · {{ client.name }} · RauteOS{% endblock %}
+
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'visibility' %}
+{% include '_client_tabs.html' %}
+
+{# DEC-3 C, "Stand und Bewegung": left where the mandate stands and who occupies
+   the market, right what moved since the last measurement. Every class used here
+   is declared in app.css rather than in a page-local <style>, so a component this
+   page shares with a later one cannot silently render unstyled over there. #}
+
+{# One label per stored band, keyed on the enum value and never on a translated
+   word: the band decides what a question measures, and a set filed under a label
+   the reader's language invented would measure something else. #}
+{% set band_names = {
+  'marke': t("Marke"),
+  'auswahl': t("Auswahl"),
+  'kategorie': t("Kategorie"),
+  'problem': t("Problem"),
+} %}
+
+<div class="vis-head">
+  <div>
+    <h1 class="vis-head__t">{{ t("KI-Sichtbarkeit") }}</h1>
+    <p class="vis-head__d">{{ t("Wo das Mandat steht, wenn ein Assistent nach diesem Markt gefragt wird, und was sich seit der letzten Messung bewegt hat.") }}
+      {% if questions %}
+        {%- if questions | length == 1 %}{{ t("Eine Frage, gemessen alle %(days)s Tage.") | format(days=every_days) }}
+        {%- else %}{{ t("%(n)s Fragen, gemessen alle %(days)s Tage.") | format(n=questions | length, days=every_days) }}{% endif %}
+        {%- if not can_measure and next_due %} {{ t("Wieder fällig ab dem %(date)s") | format(date=next_due | de_short_date) }}{% endif %}
+      {% endif %}</p>
+  </div>
+  {% if questions %}
+    <div class="vis-head__r">
+      <a class="btn btn--ghost" href="#alle-fragen">{{ t("Alle Fragen") }}</a>
+      {# The measurement itself never runs inside this response: the post hands it to
+         a worker thread behind the sweep's own guard, and the page then reports the
+         run as running. A full set is two model calls per question per provider. #}
+      {% if can_measure %}
+        <form method="post" action="/client/{{ client.id }}/ki/messen" class="vis-head__f">
+          <button type="submit" class="btn">{{ t("Jetzt messen") }}</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+{% if visibility_error %}
+  <div class="notice notice--error">{{ visibility_error }}</div>
+{% endif %}
+
+{# A measurement that is still under way. Its answers arrive over minutes, so it
+   is reported as running rather than read as this week's figure. #}
+{% if running %}
+  <div class="notice">{{ t("Eine Messung läuft gerade.") }}
+    {% if standing %}{{ t("Die Zahlen unten sind die der Messung davor.") }}{% endif %}</div>
+{% endif %}
+
+{# A measurement that reached nobody at all. Said out loud and separately from the
+   standing below it: "kein Modell hat geantwortet" and "kein Modell hat uns
+   genannt" are different facts, and only one of them is about the mandate. #}
+{% if barren %}
+  <div class="notice">{{ t("Die Messung vom") }} {{ barren.ran_at | de_short_date }} {{ t("hat keine Antwort geliefert.") }}
+    {% if barren.providers_failed %}{{ t("Ohne Antwort geblieben:") }} {{ barren.providers_failed | join(', ') }}.{% endif %}
+    {% if standing %}{{ t("Der Stand darunter ist der der Messung davor.") }}
+    {%- else %}{{ t("Eine frühere Messung, auf die er zurückfallen könnte, gibt es nicht.") }}{% endif %}</div>
+{% endif %}
+
+{% if not questions %}
+  {# --- Nothing accepted yet: the proposal flow, never an empty chart -------- #}
+  <div class="vis-panel">
+    <div class="vis-panel__h">
+      <span class="vis-panel__t">{{ t("Noch kein Fragensatz") }}</span>
+    </div>
+    <div class="vis-panel__b">
+      <p class="vis-note__p">{{ t("Ohne Fragen gibt es nichts zu messen. RauteOS schlägt einen Satz vor, gebaut aus dem Profil und dem gemessenen Branchenbegriff — gespeichert wird nur, was Sie übernehmen.") }}</p>
+      <form method="post" action="/client/{{ client.id }}/ki/vorschlag" class="run-form">
+        <button type="submit" class="btn">{{ t("Fragen vorschlagen") }}</button>
+      </form>
+    </div>
+  </div>
+
+{% else %}
+
+{% if not standing %}
+  {# The set stands and nothing has been measured against it yet. #}
+  <div class="notice">{{ t("Der Fragensatz steht, gemessen wurde noch nicht. Die erste Messung läuft mit dem nächsten täglichen Lauf.") }}</div>
+{% else %}
+<div class="vis-split">
+  <div>
+    {# --- Where the mandate stands ------------------------------------------ #}
+    <div class="vis-panel">
+      <div class="vis-panel__h">
+        <span class="vis-panel__t">{{ t("Stand") }}</span>
+        <span class="vis-panel__s">{{ t("Messung vom") }} {{ standing.ran_at | de_short_date }}</span>
+      </div>
+      <div class="vis-score">
+        <div class="vis-score__n">{{ (standing.share * 100) | round | int }}<span class="vis-score__pc"> %</span></div>
+        <div class="vis-score__d">
+          <div class="vis-score__l">{{ t("der Fragen nennen %(name)s") | format(name=client.name) }}</div>
+          <div class="vis-score__c">{{ t("%(named)s von %(measured)s gemessenen Fragen") | format(named=standing.named, measured=standing.measured) }}</div>
+          {# Whole percentage points, and only when the change is one: "0
+             Prozentpunkte" beside a movement panel that lists what changed reads
+             as a contradiction. The rounding itself happens in Python, because
+             Jinja's round is Python's and turns a half into its even neighbour. #}
+          {% set points = standing.points or 0 %}
+          {% if points %}
+            <div class="vis-score__c{{ ' vis-score__c--up' if points > 0 else ' vis-score__c--down' }}">{{ t("%(points)s Prozentpunkte seit der Messung davor") | format(points=('+' if points > 0 else '') ~ points) }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if trend %}
+        <div class="vis-trendbox">
+          <svg viewBox="0 0 {{ chart_width }} 110" role="img" aria-label="{{ t('Anteil der Fragen, die das Mandat nennen, über die letzten Messungen') }}">
+            <g class="vis-grid">
+              <line x1="34" y1="{{ chart_top }}" x2="470" y2="{{ chart_top }}"></line>
+              <line x1="34" y1="{{ (chart_top + chart_bottom) / 2 }}" x2="470" y2="{{ (chart_top + chart_bottom) / 2 }}"></line>
+              <line x1="34" y1="{{ chart_bottom }}" x2="470" y2="{{ chart_bottom }}"></line>
+            </g>
+            {# The labels come off the same ceiling the marks were placed against.
+               A chart whose plot area and whose axis disagree is worse than no
+               chart, so neither number here is written by hand. #}
+            <g class="vis-axis">
+              <text x="0" y="{{ chart_top + 4 }}">{{ (trend.ceiling * 100) | round | int }} %</text>
+              <text x="4" y="{{ (chart_top + chart_bottom) / 2 + 4 }}">{{ (trend.ceiling * 50) | round | int }} %</text>
+              <text x="10" y="{{ chart_bottom + 4 }}">0 %</text>
+              {% for mark in trend.mandate %}
+                {% if loop.first or loop.last or trend.mandate | length <= 5 %}
+                  <text x="{{ mark.x - 14 }}" y="102">{{ mark.at | de_short_date }}</text>
+                {% endif %}
+              {% endfor %}
+            </g>
+            {% if trend.rival %}
+              <polyline points="{% for mark in trend.rival %}{{ mark.x }},{{ mark.y }} {% endfor %}" fill="none" stroke="#a1a1aa" stroke-width="2" stroke-dasharray="4 4" stroke-linejoin="round"></polyline>
+            {% endif %}
+            <polyline points="{% for mark in trend.mandate %}{{ mark.x }},{{ mark.y }} {% endfor %}" fill="none" stroke="#0071e3" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+            <circle cx="{{ trend.mandate[-1].x }}" cy="{{ trend.mandate[-1].y }}" r="4" fill="#0071e3"></circle>
+          </svg>
+        </div>
+        {% if trend.rival %}
+          <div class="vis-note">{{ t("Die gestrichelte Linie ist %(name)s, das im selben Fragensatz am häufigsten genannte Unternehmen.") | format(name=trend.rival_name) }}</div>
+        {% endif %}
+      {% else %}
+        {# One measurement is a point, not a direction. Saying so beats drawing a
+           flat line through a single value and letting it read as stability. #}
+        <div class="vis-note">{{ t("Erst eine Messung: es gibt noch nichts, wogegen sich das vergleichen ließe.") }}</div>
+      {% endif %}
+
+      {% if standing.measured < standing.accepted %}
+        <div class="vis-note">{{ t("%(n)s Frage(n) des Satzes wurden nicht gemessen und zählen in der Zahl oben nicht mit.") | format(n=standing.accepted - standing.measured) }}
+          {% if standing.providers_failed %}{{ t("Ohne Antwort geblieben:") }} {{ standing.providers_failed | join(', ') }}.{% endif %}</div>
+      {% endif %}
+      {% if standing.unread %}
+        <div class="vis-note">{{ t("%(n)s Antwort(en) kamen zurück und ließen sich nicht auslesen.") | format(n=standing.unread) }}</div>
+      {% endif %}
+    </div>
+
+    {# --- Who occupies the market ------------------------------------------- #}
+    <div class="vis-panel">
+      <div class="vis-panel__h">
+        <span class="vis-panel__t">{{ t("Wer den Markt besetzt") }}</span>
+        <span class="vis-panel__s">
+          {%- if standing.measured == 1 %}{{ t("Nennungen über eine gemessene Frage, alle Modelle") }}
+          {%- else %}{{ t("Nennungen über %(n)s gemessene Fragen, alle Modelle") | format(n=standing.measured) }}{% endif %}</span>
+      </div>
+      {% for row in occupants %}
+        <div class="vis-bar">
+          <span class="vis-bar__n{{ ' vis-bar__n--us' if row.is_mandate }}">{{ row.name }}{% if row.is_mandate %} · {{ t("Mandant") }}{% endif %}</span>
+          <span class="vis-bar__t"><i class="vis-bar__f{{ ' vis-bar__f--us' if row.is_mandate }}" style="width: {{ (row.share * 100) | round(1) }}%"></i></span>
+          <span class="vis-bar__v">{{ row.questions }} / {{ standing.measured }}</span>
+        </div>
+      {% else %}
+        <div class="vis-note">{{ t("In dieser Messung wurde kein einziges Unternehmen genannt.") }}</div>
+      {% endfor %}
+      {% if occupants_left %}
+        <div class="vis-note">{{ t("und %(n)s weitere") | format(n=occupants_left) }}</div>
+      {% endif %}
+      {# The list is cut at the head, and the mandate is never what the cut takes: a
+         mandate sitting below nine rivals is the finding, not a row to fold into the
+         count above. Shown where it stands, with the place it actually holds. #}
+      {% if mandate_row %}
+        <div class="vis-bar">
+          <span class="vis-bar__n vis-bar__n--us">{{ mandate_row.name }} · {{ t("Platz %(n)s") | format(n=mandate_row.rank) }}</span>
+          <span class="vis-bar__t"><i class="vis-bar__f vis-bar__f--us" style="width: {{ (mandate_row.share * 100) | round(1) }}%"></i></span>
+          <span class="vis-bar__v">{{ mandate_row.questions }} / {{ standing.measured }}</span>
+        </div>
+      {% endif %}
+    </div>
+
+    {# --- What the models leaned on ----------------------------------------- #}
+    <div class="vis-panel">
+      <div class="vis-panel__h">
+        <span class="vis-panel__t">{{ t("Woher die Antworten kommen") }}</span>
+        <span class="vis-panel__s">{{ t("genannte Quellen") }}</span>
+        {# Deviation from the locked mock, recorded rather than quietly dropped:
+           the mock badges every source with a category ("Ratgeber",
+           "Fachpresse"). A model states a locator or a name and nothing else, so
+           the category exists nowhere in the schema — inventing one here would
+           put a classification on the page that no measurement supports. The one
+           badge below is a fact this tool holds itself: the mandate's own host.
+           Against DEC-3. #}
+      </div>
+      {% for source in sources %}
+        <div class="vis-src">
+          <span>{{ source.name }}</span>
+          {% if source.own %}<span class="vis-src__b vis-src__b--own">{{ t("eigene Seite") }}</span>{% endif %}
+          <span class="vis-src__c">{{ source.count }}&times;</span>
+        </div>
+      {% else %}
+        <div class="vis-note">{{ t("Die Modelle haben in diesen Antworten keine Quelle genannt. Das ist ein Befund, keine Lücke in der Messung.") }}</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    {# --- What moved -------------------------------------------------------- #}
+    <div class="vis-panel">
+      <div class="vis-panel__h">
+        <span class="vis-panel__t">{{ t("Bewegung") }}</span>
+        {% if standing.previous_at %}
+          <span class="vis-panel__s">{{ t("gegenüber dem") }} {{ standing.previous_at | de_short_date }}</span>
+          {# Only where there is something to count. "0 von 0 Fragen verändert" is
+             the sentence a week with no overlap produced, and it reads as calm. #}
+          {% if comparable %}
+            <span class="vis-panel__r">{{ t("%(changed)s von %(total)s Fragen verändert") | format(changed=movement | length, total=comparable) }}</span>
+          {% endif %}
+        {% endif %}
+      </div>
+      {% if not standing.previous_at %}
+        <div class="vis-note">{{ t("Erst eine Messung: es gibt noch nichts, wogegen sich das vergleichen ließe.") }}</div>
+      {% elif not comparable %}
+        {# Two measurements that share no cell. Neither "verändert" nor
+           "unverändert" is true of them, and saying nothing changed would report
+           an outage as a stable week — the one direction nobody checks. #}
+        <div class="vis-note">{{ t("Keine Frage wurde in beiden Messungen gemessen, es gibt also nichts zu vergleichen. Die beiden Messungen haben verschiedene Teile des Satzes erreicht.") }}</div>
+      {% elif movement %}
+        {% for row in movement %}
+          <div class="vis-mv">
+            <span class="vis-mv__i vis-mv__i--{{ row.direction }}" aria-hidden="true">{% if row.direction == 'up' %}&uarr;{% elif row.direction == 'down' %}&darr;{% else %}&bull;{% endif %}</span>
+            <div class="vis-mv__b">
+              <div class="vis-mv__q">{{ row.text }}</div>
+              {% for move in row.moves %}
+                <div class="vis-mv__m">
+                  {%- if move.kind == 'entered' and move.after -%}
+                    {{ t("Erstmals genannt, bei %(provider)s auf Position %(position)s.") | format(provider=move.provider, position=move.after) }}
+                  {%- elif move.kind == 'entered' -%}
+                    {{ t("Erstmals genannt, bei %(provider)s.") | format(provider=move.provider) }}
+                  {%- elif move.kind == 'left' -%}
+                    {{ t("Bei %(provider)s nicht mehr genannt.") | format(provider=move.provider) }}
+                  {%- elif move.kind == 'ranked' -%}
+                    {{ t("Bei %(provider)s erstmals in der Aufzählung, auf Position %(after)s.") | format(provider=move.provider, after=move.after) }}
+                  {%- elif move.kind == 'unranked' -%}
+                    {{ t("Bei %(provider)s nur noch erwähnt, ohne Platz in der Aufzählung.") | format(provider=move.provider) }}
+                  {%- else -%}
+                    {{ t("Position %(before)s auf %(after)s bei %(provider)s.") | format(before=move.before, after=move.after, provider=move.provider) }}
+                  {%- endif -%}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+        <div class="vis-note">{{ t("%(n)s Frage(n) sind unverändert und stehen deshalb nicht hier. Eine einzelne Antwort schwankt; erst eine Bewegung über zwei Messungen ist eine Bewegung.") | format(n=unchanged) }}</div>
+      {% else %}
+        <div class="vis-note">{{ t("Nichts hat sich verändert: alle %(n)s vergleichbaren Fragen antworten wie in der Messung davor.") | format(n=unchanged) }}</div>
+      {% endif %}
+    </div>
+
+    {# --- What follows from it ---------------------------------------------- #}
+    {# Only what this measurement's own arithmetic supports. Both lines resolve to
+       a count of stored answers a reader can open; the tool reports, it advises
+       nothing and it triggers nothing. #}
+    <div class="vis-panel">
+      <div class="vis-panel__h">
+        <span class="vis-panel__t">{{ t("Was daraus folgt") }}</span>
+        <span class="vis-panel__s">{{ t("Beobachtungen, nichts wird ausgelöst") }}</span>
+      </div>
+      {% if openings.nobody %}
+        <div class="vis-act">
+          <span class="vis-act__n">1</span>
+          <div class="vis-act__b">
+            <div class="vis-act__t">{{ t("%(n)s Frage(n) nennen überhaupt kein Unternehmen") | format(n=openings.nobody) }}</div>
+            <div class="vis-act__d">{{ t("Auf diesen Feldern steht kein Wettbewerber im Weg. Was dort beantwortet wird, konkurriert mit niemandem.") }}</div>
+          </div>
+        </div>
+      {% endif %}
+      {% if openings.rivals_only %}
+        <div class="vis-act">
+          <span class="vis-act__n">{{ 2 if openings.nobody else 1 }}</span>
+          <div class="vis-act__b">
+            <div class="vis-act__t">{{ t("%(n)s Frage(n) nennen den Wettbewerb, aber nicht %(name)s") | format(n=openings.rivals_only, name=client.name) }}</div>
+            <div class="vis-act__d">{{ t("Dort wird die Kategorie beantwortet und das Mandat kommt darin nicht vor. Das ist die Lücke, die diese Messung sichtbar macht.") }}</div>
+            <a class="vis-act__l" href="/client/{{ client.id }}/wettbewerb">{{ t("Zum Wettbewerb") }} &rarr;</a>
+          </div>
+        </div>
+      {% endif %}
+      {% if not openings.nobody and not openings.rivals_only %}
+        <div class="vis-note">{{ t("Jede gemessene Frage nennt das Mandat. Aus dieser Messung folgt nichts, was hier stehen müsste.") }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# --- The whole set, question by question ---------------------------------- #}
+{# Where a provider that failed is told apart from a model that answered without
+   the mandate. The two must never render as one another: a missing answer and a
+   negative answer are different facts about the same week. #}
+<div class="vis-panel" id="alle-fragen">
+  <div class="vis-panel__h">
+    <span class="vis-panel__t">{{ t("Alle Fragen") }}</span>
+    <span class="vis-panel__s">{{ t("der ganze Satz, Frage für Frage") }}</span>
+    <span class="vis-panel__r">{{ questions | length }} / {{ max_questions }}</span>
+    {# Without this, a set could only be grown by retiring it down to nothing
+       first, however much room the cap left in it. #}
+    {% if questions | length < max_questions %}
+      <form method="post" action="/client/{{ client.id }}/ki/vorschlag" class="vis-panel__f">
+        <button type="submit" class="linkbtn">{{ t("Weitere Fragen vorschlagen") }}</button>
+      </form>
+    {% endif %}
+  </div>
+  {% for row in question_rows %}
+    <div class="vis-q">
+      <div class="vis-q__head">
+        <span class="vis-band">{{ band_names.get(row.band, row.band) }}</span>
+        <span class="vis-q__t">{{ row.text }}</span>
+        <form method="post" action="/client/{{ client.id }}/ki/fragen/{{ row.id }}/verwerfen" class="vis-q__f">
+          <button type="submit" class="linkbtn linkbtn--danger" title="{{ t('Diese Frage aus dem Satz nehmen') }}">{{ t("Verwerfen") }}</button>
+        </form>
+      </div>
+      <div class="vis-q__cells">
+        {% for cell in row.cells %}
+          <span class="vis-cell vis-cell--{{ cell.state }}"><b>{{ cell.provider }}</b>
+            {%- if cell.state == 'named' %} {{ t("genannt") }}{% if cell.position %} · {{ t("Position %(n)s") | format(n=cell.position) }}{% endif %}
+            {%- elif cell.state == 'unnamed' %} {{ t("nicht genannt") }}
+            {%- else %} {{ t("nicht gemessen") }}
+            {%- endif -%}
+          </span>
+        {% else %}
+          <span class="vis-cell vis-cell--unmeasured">{{ t("noch nicht gemessen") }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# Outside both branches on purpose. A proposal is rendered wherever it was asked
+   for. Rendered only inside the empty-set branch, it was thrown away the moment
+   the set held one question — and the model call that produced it had been spent
+   to show the reader nothing. #}
+{% if proposals is not none %}
+  {% if proposals %}
+    <div class="vis-panel">
+      <div class="vis-panel__h">
+        <span class="vis-panel__t">{{ t("Vorgeschlagene Fragen") }}</span>
+        <span class="vis-panel__s">{{ t("gespeichert ist noch keine") }}</span>
+        <span class="vis-panel__r">{{ proposals | length }}</span>
+      </div>
+      {% for proposal in proposals %}
+        <form method="post" action="/client/{{ client.id }}/ki/fragen" class="vis-prop">
+          <input type="hidden" name="text" value="{{ proposal.text }}">
+          <input type="hidden" name="band" value="{{ proposal.band }}">
+          <span class="vis-band">{{ band_names.get(proposal.band | string, proposal.band) }}</span>
+          <span class="vis-prop__q">{{ proposal.text }}</span>
+          <button type="submit" class="linkbtn">{{ t("Übernehmen") }}</button>
+        </form>
+      {% endfor %}
+      <div class="vis-note">{{ t("Erst ein Klick auf „Übernehmen“ legt eine Frage an. Höchstens %(n)s Fragen stehen im Satz.") | format(n=max_questions) }}</div>
+    </div>
+  {% else %}
+    <div class="notice">{{ t("Der Vorschlag hat nichts ergeben. Meist fehlt dem Profil noch der Text zum Geschäftsfeld, aus dem eine Kaufentscheidungsfrage gebaut wird.") }}</div>
+  {% endif %}
+{% endif %}
+
+<p class="vis-foot">{{ t("Gemessen wird, was die angebundenen Assistenten auf denselben Fragensatz antworten, nicht was „die KI“ denkt. RauteOS misst und berichtet, es optimiert nichts und verschickt nichts.") }}</p>
+{% endblock %}

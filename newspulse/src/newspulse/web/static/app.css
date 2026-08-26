@@ -49,6 +49,9 @@
   --alert: #d70015;
   --good: #248a3d;
   --warn: #b25000;
+  /* The bar a company that is neither the mandate nor an alert is drawn in.
+     Named because the KI-Sichtbarkeit ranking draws every other firm in it. */
+  --neutral: #a1a1aa;
   --purple: #8944ab;
   --pink: #d30f45;
   --teal: #0071a4;
@@ -1849,3 +1852,111 @@ button:disabled { opacity: .55; cursor: default; }
   font-size: var(--t-footnote); color: var(--muted);
   border-bottom: 1px solid var(--line);
 }
+
+/* --- KI-Sichtbarkeit (DEC-3 C: Stand und Bewegung) ------------------------- */
+/* In the global stylesheet rather than in the page's own <style> for the reason
+   test_styles encodes: a component declared inside one template renders unstyled
+   on the second page that reaches for it, and the panel/bar/cell shapes below are
+   exactly the kind another measurement page would reuse. */
+
+.vis-head { display: flex; align-items: flex-start; gap: var(--s4); margin-bottom: var(--s5); }
+.vis-head__t { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.025em; margin: 0; }
+.vis-head__d { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s1); max-width: 62ch; }
+.vis-head__r { margin-left: auto; display: flex; gap: var(--s2); align-items: center; flex: none; }
+/* The measure control is a post, so it is a form; .run-form's own bottom margin
+   would push it out of line with the anchor beside it. */
+.vis-head__f { margin: 0; }
+
+/* Left: where the mandate stands. Right: what moved. Collapses to one column
+   before the bars get too short to compare. */
+.vis-split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); align-items: start; }
+@media (max-width: 980px) { .vis-split { grid-template-columns: 1fr; } }
+
+.vis-panel {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  margin-bottom: var(--s4); overflow: hidden;
+}
+.vis-panel__h { display: flex; align-items: baseline; gap: var(--s2); padding: var(--s4) var(--s4) var(--s3); flex-wrap: wrap; }
+.vis-panel__t { font-size: var(--t-subhead); font-weight: 600; }
+.vis-panel__s { font-size: var(--t-caption); color: var(--muted); }
+.vis-panel__r { margin-left: auto; font-size: var(--t-caption); color: var(--muted); }
+/* A post is a form, and .run-form's own bottom margin would drop it out of the
+   panel head's baseline row. */
+.vis-panel__f { flex: none; margin: 0; }
+.vis-panel__b { padding: 0 var(--s4) var(--s4); }
+
+/* The figure a consultant repeats in a client meeting, and what earns it. */
+.vis-score { display: flex; align-items: flex-end; gap: var(--s3); padding: var(--s2) var(--s4) var(--s4); }
+.vis-score__n { font-size: 52px; font-weight: 700; letter-spacing: -0.04em; line-height: 0.95; font-variant-numeric: tabular-nums; }
+.vis-score__pc { font-size: var(--t-title2); font-weight: 600; }
+.vis-score__d { padding-bottom: 6px; }
+.vis-score__l { font-size: var(--t-subhead); color: var(--ink-2); }
+.vis-score__c { font-size: var(--t-footnote); color: var(--muted); margin-top: 2px; }
+.vis-score__c--up { color: var(--good); font-weight: 600; }
+.vis-score__c--down { color: var(--alert); font-weight: 600; }
+
+.vis-trendbox { padding: 0 var(--s4) var(--s4); }
+.vis-trendbox svg { display: block; max-width: 100%; }
+.vis-axis text { font-size: 10px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.vis-grid line { stroke: var(--line); stroke-width: 1; }
+
+/* A share is a length, and a length is read faster than a percentage. */
+.vis-bar { display: flex; align-items: center; gap: var(--s3); padding: 7px var(--s4); border-top: 1px solid var(--line); }
+.vis-bar__n { font-size: var(--t-subhead); width: 168px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vis-bar__n--us { font-weight: 700; color: var(--tint); }
+.vis-bar__t { flex: 1; height: 7px; border-radius: 4px; background: var(--fill); overflow: hidden; min-width: 50px; }
+.vis-bar__f { display: block; height: 100%; background: var(--neutral); border-radius: 4px; }
+.vis-bar__f--us { background: var(--tint); }
+.vis-bar__v { font-size: var(--t-footnote); color: var(--muted); width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.vis-src { display: flex; align-items: baseline; gap: var(--s3); padding: 7px var(--s4); border-top: 1px solid var(--line); font-size: var(--t-subhead); }
+.vis-src__b { font-size: var(--t-caption); padding: 1px 7px; border-radius: 20px; background: var(--fill); color: var(--muted); }
+.vis-src__b--own { background: var(--tint-wash); color: var(--tint); }
+.vis-src__c { margin-left: auto; font-size: var(--t-footnote); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* One row per question that changed. Unchanged questions are counted in the note
+   underneath, never listed — that counting is what a weekly measurement is for. */
+.vis-mv { display: flex; gap: var(--s3); padding: var(--s3) var(--s4); border-top: 1px solid var(--line); align-items: flex-start; }
+.vis-mv__i { width: 22px; flex: none; text-align: center; font-size: var(--t-subhead); font-weight: 700; line-height: 1.5; }
+.vis-mv__i--up { color: var(--good); }
+.vis-mv__i--down { color: var(--alert); }
+.vis-mv__i--mixed { color: var(--faint); }
+.vis-mv__b { min-width: 0; }
+.vis-mv__q { font-size: var(--t-subhead); color: var(--ink-2); }
+.vis-mv__m { font-size: var(--t-caption); color: var(--muted); margin-top: 2px; }
+
+.vis-act { display: flex; gap: var(--s3); padding: var(--s4); border-top: 1px solid var(--line); align-items: flex-start; }
+.vis-act__n { width: 20px; flex: none; font-size: var(--t-caption); font-weight: 700; color: var(--faint); line-height: 1.6; }
+.vis-act__b { min-width: 0; flex: 1; }
+.vis-act__t { font-size: var(--t-subhead); font-weight: 600; }
+.vis-act__d { font-size: var(--t-footnote); color: var(--muted); margin-top: 3px; line-height: 1.5; }
+.vis-act__l { font-size: var(--t-footnote); margin-top: 6px; display: inline-block; }
+
+.vis-note { font-size: var(--t-footnote); color: var(--muted); padding: var(--s3) var(--s4); background: var(--fill-2); border-top: 1px solid var(--line); }
+.vis-note__p { font-size: var(--t-footnote); color: var(--muted); max-width: 62ch; margin-bottom: var(--s3); }
+
+/* Proposed, not stored. The accept control sits on the row it would create. */
+.vis-prop { display: flex; align-items: baseline; gap: var(--s3); padding: var(--s3) var(--s4); border-top: 1px solid var(--line); }
+.vis-prop__q { flex: 1; font-size: var(--t-subhead); color: var(--ink-2); min-width: 0; }
+.vis-band {
+  flex: none; font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; padding: 2px 7px; border-radius: 20px;
+  background: var(--fill); color: var(--muted); width: 82px; text-align: center;
+}
+
+.vis-q { padding: var(--s3) var(--s4); border-top: 1px solid var(--line); }
+.vis-q__head { display: flex; align-items: baseline; gap: var(--s3); }
+.vis-q__t { flex: 1; font-size: var(--t-subhead); color: var(--ink-2); min-width: 0; }
+.vis-q__f { flex: none; }
+.vis-q__cells { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s2) 0 0 calc(82px + var(--s3)); }
+/* Three states, three surfaces. "nicht gemessen" must never be able to read as
+   "nicht genannt": a missing answer and a negative answer are different facts. */
+.vis-cell { font-size: var(--t-caption); padding: 2px 8px; border-radius: 20px; background: var(--fill-2); color: var(--muted); }
+.vis-cell b { font-weight: 600; color: var(--ink-2); }
+.vis-cell--named { background: var(--good-wash); color: var(--good); }
+.vis-cell--named b { color: var(--good); }
+.vis-cell--unnamed { background: var(--fill); color: var(--muted); }
+.vis-cell--unmeasured { background: var(--warn-wash); color: var(--warn); }
+.vis-cell--unmeasured b { color: var(--warn); }
+
+.vis-foot { font-size: var(--t-caption); color: var(--faint); margin-top: var(--s4); max-width: 76ch; }
