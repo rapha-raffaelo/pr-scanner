@@ -25,10 +25,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, select
+from sqlalchemy import text as sql_text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import config, visibility
+from newspulse import config, gemini, visibility
 from newspulse.analyzer import BackendError
 from newspulse.models import (
     Base,
@@ -36,6 +38,7 @@ from newspulse.models import (
     VisibilityAnswer,
     VisibilityBand,
     VisibilityQuestion,
+    VisibilityRun,
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -204,6 +207,22 @@ def test_a_question_naming_a_stored_alias_outside_the_brand_band_is_rejected(
     )
 
     assert proposed == []
+
+
+def test_a_question_naming_the_client_in_the_genitive_is_rejected(session, mandate):
+    """German writes the name into the sentence as "Enpals", and a word-boundary
+    match ends at the name — so without the genitive form the guard would pass a
+    question whose answer is already in the question."""
+    proposed = visibility.propose(
+        session,
+        mandate,
+        invoke=_panel(
+            ("Was kostet Enpals Solaranlage mit Speicher?", "kategorie"),
+            ("Welche Anbieter für Solaranlagen gibt es?", "auswahl"),
+        ),
+    )
+
+    assert [p.text for p in proposed] == ["Welche Anbieter für Solaranlagen gibt es?"]
 
 
 def test_the_brand_band_may_name_the_client(session, mandate):
@@ -375,6 +394,22 @@ def test_a_company_counts_as_named_through_a_stored_alias(session):
     assert reading.position == 1
 
 
+def test_an_answer_naming_the_mandate_in_the_genitive_counts_as_named(mandate):
+    """The wrong number in the direction a client acts on: an answer that opens
+    with "Enpals Angebot" named the mandate, and storing named=False for it is
+    exactly the reading this feature exists to prevent."""
+    reading = visibility.read_answer(
+        mandate,
+        "Enpals Angebot umfasst Planung und Montage; Zolar vermittelt nur.",
+        ["Zolar"],
+        [],
+    )
+
+    assert reading.named is True
+    assert reading.position == 1
+    assert reading.rivals == ("Zolar",)
+
+
 def test_a_company_the_answer_does_not_contain_is_not_counted(mandate):
     """The reading model lists what it read; a name that is not in the answer is
     a name it did not read, and the answer beside the figure has to support it."""
@@ -412,6 +447,33 @@ def test_an_answer_citing_nothing_yields_an_empty_source_list(mandate):
     assert reading.sources == ()
     assert reading.named is True
     assert reading.position == 1
+
+
+def test_a_stated_source_is_not_found_inside_a_longer_word(mandate):
+    """A publisher's name is matched as a word. "FAZ" inside "Fazit" is not a
+    citation, and the source list is the one figure whose whole job is to resolve
+    to something a person can find in the text underneath it."""
+    reading = visibility.read_answer(
+        mandate,
+        "Enpal wird häufig genannt. Fazit: der Markt ist unübersichtlich.",
+        [],
+        ["FAZ"],
+    )
+
+    assert reading.sources == ()
+
+
+def test_a_short_publisher_name_the_answer_does_name_still_counts(mandate):
+    """The other half of the same rule: matching on words rather than substrings
+    must not cost a three-letter publisher its citation."""
+    reading = visibility.read_answer(
+        mandate,
+        "Enpal wird häufig genannt; die FAZ hat darüber berichtet.",
+        [],
+        ["FAZ"],
+    )
+
+    assert reading.sources == ("FAZ",)
 
 
 def test_a_source_written_as_a_url_still_counts_as_stated(mandate):
@@ -559,10 +621,17 @@ def test_a_provider_that_errors_is_recorded_as_failed_and_never_as_not_named(
     assert not any(row.provider == "claude" for row in run.answers)
 
 
-def test_a_failing_provider_is_asked_once_rather_than_once_per_question(session, mandate):
-    """An exhausted subscription fails identically twenty-four times. Retiring it
-    after the first failure keeps a bad morning from costing a full set."""
-    _two_questions(session, mandate)
+def test_a_failing_provider_is_dropped_after_two_strikes_not_asked_every_question(
+    session, mandate
+):
+    """An exhausted subscription fails identically twenty-four times, so it must
+    not be asked twenty-four times. Two strikes rather than one, because the next
+    measurement is a week away and a single 503 must not cost the provider all
+    of it."""
+    for index in range(5):
+        visibility.accept(
+            session, mandate, f"Frage {index}?", VisibilityBand.KATEGORIE, now=_NOW
+        )
     asked: list[str] = []
 
     def _broken(question: str) -> str:
@@ -571,13 +640,39 @@ def test_a_failing_provider_is_asked_once_rather_than_once_per_question(session,
 
     _measure(session, mandate, ask={visibility.PROVIDER_CLAUDE: _broken})
 
-    assert asked == [_AUSWAHL]
+    assert asked == ["Frage 0?", "Frage 1?"]
 
 
-def test_a_reading_failure_marks_the_provider_failed_without_retiring_it(session, mandate):
-    """The provider answered and the reader could not parse it. Same consequence
-    for the page — that cell was not measured — but the reader is a different
-    call, so the next question is still put to the provider."""
+def test_one_transient_failure_does_not_cost_a_provider_the_rest_of_the_run(
+    session, mandate
+):
+    """One timeout on a long answer used to retire the provider for the whole
+    week. The questions after it are still put to it, and the run keeps what it
+    answered."""
+    _two_questions(session, mandate)
+    seen: list[str] = []
+
+    def _flaky(question: str) -> str:
+        seen.append(question)
+        if len(seen) == 1:
+            raise BackendError("Gemini unreachable: timed out")
+        return _answer("kategorie_ohne_quelle")
+
+    run = _measure(session, mandate, ask={visibility.PROVIDER_CLAUDE: _flaky})
+
+    assert seen == [_AUSWAHL, _KATEGORIE]
+    assert [row.question.text for row in run.answers] == [_KATEGORIE]
+    assert run.providers_failed == ["claude"]
+
+
+def test_a_reading_failure_leaves_the_provider_unflagged_and_still_asked(
+    session, mandate
+):
+    """The provider answered and the reader could not parse it. That cell gets no
+    row — but the provider is not in ``providers_failed``, because it answered:
+    that column says "this one could not answer", and one unreadable cell must
+    not flag the ones that were measured as an outage. It is not dropped from the
+    run either: the reader is a separate call."""
     _two_questions(session, mandate)
     readings = iter(["not json at all", json.dumps(_READING_KATEGORIE)])
 
@@ -596,8 +691,43 @@ def test_a_reading_failure_marks_the_provider_failed_without_retiring_it(session
         now=_NOW,
     )
 
-    assert run.providers_failed == ["claude"]
+    assert run.providers_failed == []
     assert [row.question.text for row in run.answers] == [_KATEGORIE]
+
+
+def test_a_run_in_which_every_provider_failed_does_not_hold_the_window(
+    session, mandate
+):
+    """A broken key on Monday must not take the rest of the week with it. The
+    attempt is stored, so the page can say both providers were down — but a run
+    that measured nothing is not the measurement the window is counted from."""
+    _two_questions(session, mandate)
+
+    def _broken(question: str) -> str:
+        raise BackendError("claude -p exited 1: usage limit reached")
+
+    barren = _measure(session, mandate, ask={visibility.PROVIDER_CLAUDE: _broken})
+
+    assert barren is not None
+    assert list(barren.answers) == []
+    assert barren.providers_failed == ["claude"]
+    assert visibility.due(session, mandate, now=_NOW) is True
+
+    again = _measure(
+        session,
+        mandate,
+        ask={
+            visibility.PROVIDER_CLAUDE: _asker(
+                {
+                    _AUSWAHL: _answer("auswahl_claude"),
+                    _KATEGORIE: _answer("kategorie_ohne_quelle"),
+                }
+            )
+        },
+    )
+
+    assert again.id != barren.id
+    assert len(again.answers) == 2
 
 
 def test_a_second_measurement_inside_the_window_returns_the_stored_run(session, mandate):
@@ -640,6 +770,92 @@ def test_a_measurement_after_the_window_runs_again(session, mandate):
     assert visibility.latest_run(session, mandate).id == later.id
 
 
+def test_claude_alone_is_asked_when_no_gemini_key_is_configured(monkeypatch):
+    """DEC-2 asks the two assistants that are already connected. A provider the
+    deployment never set up must not be asked and then recorded as failing every
+    week, which reads as an outage rather than as a choice nobody made."""
+    monkeypatch.setattr(config, "gemini_configured", lambda: False)
+
+    assert list(visibility.askers()) == [visibility.PROVIDER_CLAUDE]
+
+
+def test_both_assistants_are_asked_when_gemini_has_a_key(monkeypatch):
+    monkeypatch.setattr(config, "gemini_configured", lambda: True)
+
+    assert list(visibility.askers()) == [
+        visibility.PROVIDER_CLAUDE,
+        visibility.PROVIDER_GEMINI,
+    ]
+
+
+def test_a_provider_call_that_fails_raises_an_analyzer_error(monkeypatch):
+    """The whole failed-provider path catches ``AnalyzerError`` and nothing else.
+    A provider raising anything outside that hierarchy would abort the run rather
+    than be recorded, and every stored row already collected would go with it."""
+    monkeypatch.setattr(config, "gemini_configured", lambda: True)
+
+    def _broken_cli(prompt: str, **_) -> str:
+        raise BackendError("claude -p exited 1: usage limit reached")
+
+    def _broken_gemini(prompt: str, **_) -> str:
+        raise BackendError("Gemini unreachable: timed out")
+
+    monkeypatch.setattr(visibility, "invoke_claude_cli", _broken_cli)
+    monkeypatch.setattr(gemini, "generate", _broken_gemini)
+
+    for put in visibility.askers().values():
+        with pytest.raises(visibility.AnalyzerError):
+            put("Welche Anbieter für Solaranlagen gibt es?")
+
+
+def test_a_window_of_zero_days_measures_on_every_request(session, mandate, monkeypatch):
+    """Documented in ``config`` as "no window": a legitimate setting for an
+    operator working a single mandate by hand, and a bad one for a portfolio."""
+    monkeypatch.setattr(config, "VISIBILITY_EVERY_DAYS", 0)
+    _two_questions(session, mandate)
+    answers = {
+        _AUSWAHL: _answer("auswahl_claude"),
+        _KATEGORIE: _answer("kategorie_ohne_quelle"),
+    }
+    first = _measure(session, mandate, ask={visibility.PROVIDER_CLAUDE: _asker(answers)})
+
+    again = _measure(session, mandate, ask={visibility.PROVIDER_CLAUDE: _asker(answers)})
+
+    assert again.id != first.id
+    assert visibility.due(session, mandate, now=_NOW) is True
+
+
+def test_the_feature_switch_makes_no_mandate_due(session, mandate, monkeypatch):
+    """The sweep asks ``due`` before it asks anything else, so the switch has to
+    be answered here as well as inside ``measure``."""
+    _two_questions(session, mandate)
+    monkeypatch.setattr(config, "VISIBILITY_ENABLED", False)
+
+    assert visibility.due(session, mandate, now=_NOW) is False
+
+
+def test_a_naive_now_is_read_as_utc_rather_than_raising(session, mandate):
+    """``ran_at`` always comes back timezone-aware. A naive ``now`` subtracted
+    against it raises TypeError instead of answering the question, so it is read
+    as UTC — the same reading the column type gives one on the way in."""
+    _two_questions(session, mandate)
+    answers = {
+        _AUSWAHL: _answer("auswahl_claude"),
+        _KATEGORIE: _answer("kategorie_ohne_quelle"),
+    }
+    _measure(session, mandate, ask={visibility.PROVIDER_CLAUDE: _asker(answers)})
+
+    assert visibility.due(session, mandate, now=_NOW.replace(tzinfo=None)) is False
+    assert (
+        visibility.due(
+            session,
+            mandate,
+            now=(_NOW + dt.timedelta(days=8)).replace(tzinfo=None),
+        )
+        is True
+    )
+
+
 def test_a_mandate_is_due_when_it_has_never_been_measured(session, mandate):
     _two_questions(session, mandate)
 
@@ -654,25 +870,136 @@ def test_a_mandate_with_no_question_is_never_due(session, mandate):
 # --- The schema the hand-authored migration owns ----------------------------------
 
 
-def test_the_migration_creates_the_three_visibility_tables(tmp_path, monkeypatch):
-    """``Base.metadata.create_all`` builds the schema every test above runs on;
-    Alembic is what builds the one in production. They have to agree."""
+@pytest.fixture
+def migrated(tmp_path, monkeypatch):
+    """A database built by Alembic rather than by ``Base.metadata.create_all``.
+
+    Every other test in this file runs on the metadata, so a migration that left
+    a constraint out would pass all of them. This is the only place the schema
+    that actually reaches production is exercised.
+    """
     db_path = tmp_path / "migrated.db"
     monkeypatch.setattr(config, "DATABASE_PATH", db_path)
     cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(_PROJECT_ROOT / "migrations"))
-
     command.upgrade(cfg, "head")
-
     engine = create_engine(f"sqlite:///{db_path.as_posix()}")
     try:
-        tables = set(inspect(engine).get_table_names())
-        assert {
-            "visibility_questions",
-            "visibility_runs",
-            "visibility_answers",
-        } <= tables
-        columns = {c["name"] for c in inspect(engine).get_columns("visibility_answers")}
-        assert {"answer", "named", "position", "rivals", "sources"} <= columns
+        yield engine
     finally:
         engine.dispose()
+
+
+def _one_cell(engine) -> tuple[int, int]:
+    """A mandate, one accepted question and one run, on the migrated schema."""
+    with sessionmaker(bind=engine, expire_on_commit=False)() as open_session:
+        client = Client(name="Enpal")
+        open_session.add(client)
+        open_session.flush()
+        question = VisibilityQuestion(
+            client_id=client.id, text=_AUSWAHL, band=VisibilityBand.AUSWAHL
+        )
+        run = VisibilityRun(
+            client_id=client.id, providers_asked=["claude"], providers_failed=[]
+        )
+        open_session.add_all([question, run])
+        open_session.commit()
+        return question.id, run.id
+
+
+_INSERT_ANSWER = sql_text(
+    "INSERT INTO visibility_answers "
+    "(run_id, question_id, provider, answer, named, position) "
+    "VALUES (:run_id, :question_id, :provider, :answer, :named, :position)"
+)
+
+
+def _insert_answer(engine, **values) -> None:
+    with engine.begin() as connection:
+        connection.execute(_INSERT_ANSWER, values)
+
+
+def test_the_migration_creates_the_three_visibility_tables(migrated):
+    """``Base.metadata.create_all`` builds the schema every test above runs on;
+    Alembic is what builds the one in production. They have to agree."""
+    tables = set(inspect(migrated).get_table_names())
+    assert {
+        "visibility_questions",
+        "visibility_runs",
+        "visibility_answers",
+    } <= tables
+    columns = {c["name"] for c in inspect(migrated).get_columns("visibility_answers")}
+    assert {"answer", "named", "position", "rivals", "sources"} <= columns
+
+
+def test_the_migrated_schema_refuses_a_rank_beside_an_answer_that_did_not_name_it(
+    migrated,
+):
+    """The CHECK the model docstring calls a schema guarantee rather than an
+    invariant three readers have to remember. If the migration dropped it, the
+    guarantee would hold in every test above and nowhere in production."""
+    question_id, run_id = _one_cell(migrated)
+
+    with pytest.raises(IntegrityError):
+        _insert_answer(
+            migrated,
+            run_id=run_id,
+            question_id=question_id,
+            provider="claude",
+            answer="Enpal kommt darin nicht vor.",
+            named=0,
+            position=3,
+        )
+
+
+def test_the_migrated_schema_refuses_a_rank_below_one(migrated):
+    """"Position 0" reads as a bug on a page that prints the number."""
+    question_id, run_id = _one_cell(migrated)
+
+    with pytest.raises(IntegrityError):
+        _insert_answer(
+            migrated,
+            run_id=run_id,
+            question_id=question_id,
+            provider="claude",
+            answer="Enpal wird zuerst genannt.",
+            named=1,
+            position=0,
+        )
+
+
+def test_the_migrated_schema_refuses_a_second_row_for_the_same_cell(migrated):
+    """One measurement writes one row per (question, provider). Two would count
+    the same answer twice in every share computed off the run."""
+    question_id, run_id = _one_cell(migrated)
+    cell = {
+        "run_id": run_id,
+        "question_id": question_id,
+        "provider": "claude",
+        "answer": "Enpal wird zuerst genannt.",
+        "named": 1,
+        "position": 1,
+    }
+    _insert_answer(migrated, **cell)
+
+    with pytest.raises(IntegrityError):
+        _insert_answer(migrated, **cell)
+
+
+def test_the_migrated_schema_refuses_the_same_wording_twice_for_one_mandate(
+    migrated,
+):
+    """The UNIQUE ``accept`` leans on for its idempotency: two identical
+    questions are one question counted twice in a share."""
+    _one_cell(migrated)
+
+    with sessionmaker(bind=migrated, expire_on_commit=False)() as open_session:
+        client = open_session.scalars(select(Client)).one()
+        open_session.add(
+            VisibilityQuestion(
+                client_id=client.id, text=_AUSWAHL, band=VisibilityBand.KATEGORIE
+            )
+        )
+
+        with pytest.raises(IntegrityError):
+            open_session.commit()
