@@ -487,6 +487,45 @@ def test_a_source_written_as_a_url_still_counts_as_stated(mandate):
     assert reading.sources == ("https://www.pv-magazine.de/",)
 
 
+def test_the_same_company_under_two_spellings_is_counted_once(mandate):
+    """A stored name ending in a symbol is not found inside the shorter spelling a
+    model writes, so the firm was placed twice — once as stored, once as written —
+    and everything below it, the mandate included, came out one rank worse than
+    the answer supports. Two names starting at the same character are one firm."""
+    reading = visibility.read_answer(
+        mandate,
+        "1Komma5° verkauft Komplettpakete. Enpal vermietet die Anlage.",
+        ["1Komma5", "Enpal"],
+        [],
+    )
+
+    assert reading.companies == ("1Komma5°", "Enpal")
+    assert reading.position == 2
+
+
+def test_the_rank_counts_every_company_the_answer_names(mandate):
+    """The stored list is cut at twenty-four; the count behind the rank is not. A
+    position measured against a truncated field errs in the direction that
+    flatters the client, which is the direction the agency reports."""
+    firms = [f"Firma{index}" for index in range(30)]
+    answer = ". ".join(firms) + ". Und Enpal."
+
+    reading = visibility.read_answer(mandate, answer, firms, [])
+
+    assert reading.position == 31
+    assert len(reading.companies) == 24
+
+
+def test_a_domain_inside_a_longer_domain_is_not_a_citation(mandate):
+    """"test.de" inside "warentest.de" is a different publisher. Recording a
+    source the answer never stated is the one thing the source list may not do."""
+    reading = visibility.read_answer(
+        mandate, "Laut warentest.de ist der Markt unübersichtlich.", [], ["test.de"]
+    )
+
+    assert reading.sources == ()
+
+
 # --- The measurement --------------------------------------------------------------
 
 
@@ -693,6 +732,56 @@ def test_a_reading_failure_leaves_the_provider_unflagged_and_still_asked(
 
     assert run.providers_failed == []
     assert [row.question.text for row in run.answers] == [_KATEGORIE]
+
+
+def test_a_reader_that_is_down_stops_the_run_and_holds_the_window(session, mandate):
+    """The providers answered and not one answer could be read: the calls were
+    spent and nothing was stored. Without a budget on the reader the whole set was
+    put to the providers again on the very next request — the spend ceiling
+    failing open — for as long as the reading model stayed down."""
+    for index in range(5):
+        visibility.accept(
+            session, mandate, f"Frage {index}?", VisibilityBand.KATEGORIE, now=_NOW
+        )
+    asked: list[str] = []
+
+    def _ask(question: str) -> str:
+        asked.append(question)
+        return _answer("kategorie_ohne_quelle")
+
+    def _unreadable(prompt: str, **_) -> str:
+        raise BackendError("the reading model is unreachable")
+
+    run = visibility.measure(
+        session,
+        mandate,
+        ask={visibility.PROVIDER_CLAUDE: _ask},
+        invoke=_unreadable,
+        now=_NOW,
+    )
+
+    assert asked == ["Frage 0?", "Frage 1?"]
+    assert run.answers_unread == 2
+    assert run.providers_failed == []
+    assert visibility.due(session, mandate, now=_NOW + dt.timedelta(minutes=1)) is False
+
+
+def test_a_blank_answer_is_a_failed_provider_and_never_a_row(session, mandate):
+    """An empty string is not an answer that did not name the mandate; it is no
+    answer at all. Storing it would put "nicht genannt" on the page for a call
+    that produced nothing, which is the confusion this feature exists to end."""
+    visibility.accept(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL, now=_NOW)
+
+    run = visibility.measure(
+        session,
+        mandate,
+        ask={visibility.PROVIDER_CLAUDE: lambda question: "   "},
+        invoke=_never_called,
+        now=_NOW,
+    )
+
+    assert list(run.answers) == []
+    assert run.providers_failed == ["claude"]
 
 
 def test_a_run_in_which_every_provider_failed_does_not_hold_the_window(
