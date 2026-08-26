@@ -722,29 +722,48 @@ def _start(client_id: int, angle_id: int, kinds: tuple[str, ...]) -> None:
 def write_assets(
     client_id: int,
     angle_id: int,
-    kind: str = Form(""),
+    kind: list[str] = Form(default_factory=list),
     session: Session = Depends(get_db),
 ) -> Response:
-    """Write one format off this impulse, or every one that is still missing.
+    """Write the formats named off this impulse, or every one still missing.
 
-    An empty ``kind`` is "Fehlende schreiben": the formats with no text yet whose
-    required facts are on file. A format that is blocked stays blocked rather than
-    being attempted and refused six seconds later, and the pane already names the
-    field it wants.
+    A list rather than one name, because the page now asks with tick boxes: the
+    reader says which of the six he actually wants written and presses once. One
+    box ticked posts one ``kind`` and behaves exactly as the old single-format
+    button did, so nothing about the per-format action changed.
+
+    An empty list is still "Fehlende schreiben": the formats with no text yet
+    whose required facts are on file. A format that is blocked stays blocked
+    rather than being attempted and refused six seconds later, and its row names
+    the field it wants.
+
+    A released format is dropped from the selection rather than refusing the
+    whole click — with six boxes on screen, one stale tick must not cost the five
+    beside it, and the note it leaves says which one was skipped.
     """
     client = session.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     angle = _impulse_or_404(session, client_id, angle_id)
-    if kind and kind not in assets.REGISTRY:
-        raise HTTPException(status_code=404, detail="Format not found")
+    # A form that posts ``kind=`` means "the missing ones", and did so before this
+    # took a list. Unfiltered it now arrives as [""], which is neither a format
+    # nor an empty selection.
+    kind = [name for name in kind if name.strip()]
+    for name in kind:
+        if name not in assets.REGISTRY:
+            raise HTTPException(status_code=404, detail="Format not found")
     stored = assets.current(session, [angle_id]).get(angle_id, {})
     if kind:
-        existing = stored.get(kind)
-        if existing is not None and existing.released:
-            _remember(angle_id, kind, assets.RELEASED_IS_FINAL)
+        wanted = []
+        for name in kind:
+            existing = stored.get(name)
+            if existing is not None and existing.released:
+                _remember(angle_id, name, assets.RELEASED_IS_FINAL)
+                continue
+            wanted.append(name)
+        if not wanted:
             return _back(client_id, angle_id)
-        kinds: tuple[str, ...] = (kind,)
+        kinds: tuple[str, ...] = tuple(dict.fromkeys(wanted))
     else:
         kinds = _missing(session, client, angle, stored)
     _start(client_id, angle_id, kinds)

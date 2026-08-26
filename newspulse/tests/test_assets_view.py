@@ -1351,3 +1351,64 @@ def test_a_release_landing_mid_recheck_is_not_written_over(factory, monkeypatch)
     assert assets.CHECK_UNAVAILABLE not in (row.review or ""), (
         "and no verdict was written over the release"
     )
+
+
+# --- The tick boxes: which of the six the reader actually wants -----------------
+
+
+def test_ticking_two_formats_writes_exactly_those_two(factory, web, worker):
+    """The question the strip could not answer.
+
+    It offered one format or every missing one, so a reader who wanted the press
+    release and the Q&A and none of the four others had to press six times or
+    take all six. The list now carries a box per format and one button.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        client_id, angle_id = client.id, angle.id
+
+    web.post(
+        f"/client/{client_id}/impulse/{angle_id}/assets",
+        data={"kind": [AssetKind.QA.value, AssetKind.TALKING_POINTS.value]},
+    )
+
+    (_, _, kinds), = worker.wait()
+    assert set(kinds) == {AssetKind.QA.value, AssetKind.TALKING_POINTS.value}
+
+
+def test_a_released_tick_is_dropped_and_the_rest_still_go(factory, web, worker):
+    """One stale box must not cost the five beside it.
+
+    A released text is final, and refusing the whole click over one of them would
+    make the reader find which — with six boxes on screen that is the failure
+    mode worth designing out. It is skipped, and the note says which.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        _produce(session, client, angle)
+        stored = assets.current(session, [angle.id])[angle.id][AssetKind.STATEMENT.value]
+        stored.released_at = dt.datetime(2026, 8, 26, 9, 0, tzinfo=dt.UTC)
+        session.commit()
+        client_id, angle_id = client.id, angle.id
+
+    web.post(
+        f"/client/{client_id}/impulse/{angle_id}/assets",
+        data={"kind": [AssetKind.STATEMENT.value, AssetKind.QA.value]},
+    )
+
+    (_, _, kinds), = worker.wait()
+    assert kinds == (AssetKind.QA.value,)
+
+
+def test_ticking_nothing_still_means_the_missing_ones(factory, web, worker):
+    """The button that was there before this one, unchanged."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        _produce(session, client, angle)
+        client_id, angle_id = client.id, angle.id
+
+    web.post(f"/client/{client_id}/impulse/{angle_id}/assets", data={"kind": ""})
+
+    (_, _, kinds), = worker.wait()
+    assert AssetKind.STATEMENT.value not in kinds
+    assert AssetKind.TALKING_POINTS.value in kinds

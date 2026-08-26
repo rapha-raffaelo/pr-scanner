@@ -98,7 +98,16 @@
   .pack__empty { text-align: center; padding: var(--s5) 0; }
   .pack__empty p { font-size: var(--t-subhead); color: var(--muted); margin-bottom: var(--s3); max-width: 54ch;
                    margin-left: auto; margin-right: auto; }
-  .fmttabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: var(--s3); overflow-x: auto; }
+  /* The format list. Was a tab strip; the tick box beside each tab turns the
+     same row into the answer to "which of these do I want written", which the
+     strip could only answer as all-or-one. */
+  .fmtlist { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: var(--s3); overflow-x: auto; }
+  .fmtrow { display: flex; align-items: center; gap: 2px; padding-left: 6px; }
+  .fmtrow--noselect { padding-left: 12px; }
+  .fmtrow__tick { margin: 0; accent-color: var(--accent); }
+  .fmtrow__tick:disabled { opacity: 0.35; }
+  .fmtwrite { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
+  .fmtwrite .panel-hint { margin: 0; }
   .fmttab { font: inherit; font-size: var(--t-subhead); font-weight: 500; background: none; border: 0;
             cursor: pointer; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent;
             white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; }
@@ -423,21 +432,37 @@
           {# The strip. "+ Format" from the mock has no counterpart on purpose:
              every format the registry knows is already a tab, and adding one is a
              FormatDef and a prompt file rather than something a button can open. #}
-          <div class="fmttabs" id="fmttabs-{{ angle.id }}" role="tablist" aria-label="{{ t('Formate') }}">
+          {# A tick box per format, beside the tab that opens it. Two jobs, one
+             row, because they are the same question asked twice: which of these
+             do I want. The strip alone could only offer "write everything that
+             is missing", so a reader who wanted the press release and the Q&A
+             and not the four others had to press six times or take all six. #}
+          <div class="fmtlist" id="fmttabs-{{ angle.id }}" role="tablist" aria-label="{{ t('Formate') }}">
             {% for slot in pack.slots %}
-              <button type="button" class="fmttab{% if loop.first %} is-on{% endif %}"
-                      role="tab" id="tab-{{ angle.id }}-{{ slot.key }}"
-                      aria-selected="{{ 'true' if loop.first else 'false' }}"
-                      aria-controls="pane-{{ angle.id }}-{{ slot.key }}"
-                      tabindex="{{ '0' if loop.first else '-1' }}"
-                      data-pane="pane-{{ angle.id }}-{{ slot.key }}">
-                <span class="fmt-dot fmt-dot--{{ slot.state }}{% if slot.objected %} fmt-dot--einwand{% endif %}"
-                      aria-hidden="true"></span>{{ t(slot.fmt.name) }}
-              </button>
+              <div class="fmtrow">
+                {# Released texts are final; the box is drawn and disabled rather
+                   than left out, so the row still lines up with the five others. #}
+                <input class="fmtrow__tick" type="checkbox" name="kind"
+                       value="{{ slot.key }}" form="write-{{ angle.id }}"
+                       id="tick-{{ angle.id }}-{{ slot.key }}"
+                       aria-label="{{ t(slot.fmt.name) }}"
+                       {% if slot.state == 'freigegeben' or busy %}disabled{% endif %}>
+                <button type="button" class="fmttab{% if loop.first %} is-on{% endif %}"
+                        role="tab" id="tab-{{ angle.id }}-{{ slot.key }}"
+                        aria-selected="{{ 'true' if loop.first else 'false' }}"
+                        aria-controls="pane-{{ angle.id }}-{{ slot.key }}"
+                        tabindex="{{ '0' if loop.first else '-1' }}"
+                        data-pane="pane-{{ angle.id }}-{{ slot.key }}">
+                  <span class="fmt-dot fmt-dot--{{ slot.state }}{% if slot.objected %} fmt-dot--einwand{% endif %}"
+                        aria-hidden="true"></span>{{ t(slot.fmt.name) }}
+                </button>
+              </div>
             {% endfor %}
             {# The letter is the seventh format of the package. It keeps its own
                table and its own recipient, so the strip counts it rather than
-               owning it. #}
+               owning it. No tick box: it is not written in a batch, it is
+               written to somebody, and the recipient is chosen in its own pane. #}
+            <div class="fmtrow fmtrow--noselect">
             <button type="button" class="fmttab" role="tab"
                     id="tab-{{ angle.id }}-anschreiben" aria-selected="false"
                     aria-controls="pane-{{ angle.id }}-anschreiben" tabindex="-1"
@@ -445,7 +470,15 @@
               <span class="fmt-dot fmt-dot--{{ 'entwurf' if written else 'ungeschrieben' }}" aria-hidden="true"></span>{{ t("Anschreiben") }}
               {% if written %}<span class="fmttab__n">{{ written | length }}</span>{% endif %}
             </button>
+            </div>
           </div>
+          {# The write form itself carries no boxes — they reach it by ``form=``
+             from the rows above, so the list stays one list. #}
+          <form id="write-{{ angle.id }}" class="fmtwrite" method="post"
+                action="/client/{{ client.id }}/impulse/{{ angle.id }}/assets">
+            <button type="submit" class="btn"{% if busy %} disabled{% endif %}>{{ t("Ausgewählte schreiben") }}</button>
+            <span class="panel-hint">{{ t("Ohne Häkchen werden alle noch fehlenden geschrieben.") }}</span>
+          </form>
 
           {% for slot in pack.slots %}
             <div class="fmtpane{% if loop.first %} is-on{% endif %}"

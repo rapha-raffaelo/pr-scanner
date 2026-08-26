@@ -448,6 +448,11 @@ _EN: dict[str, str] = {
     "verschickt": "sent",
     "Alles kopieren": "Copy all",
     "Fehlende schreiben": "Write the missing ones",
+    # The tick boxes beside the format list: which of the six the reader
+    # actually wants written, answered once instead of six times.
+    "Ausgewählte schreiben": "Write the selected ones",
+    "Ohne Häkchen werden alle noch fehlenden geschrieben.":
+        "With nothing ticked, every one still missing is written.",
     "Wird geschrieben": "Writing",
     "Anschreiben": "Letter",
     "Nicht geschrieben": "Not written",
