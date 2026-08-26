@@ -30,6 +30,11 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+
+# The same ``text`` under a second name. ``VisibilityQuestion`` has a column
+# called ``text``, which shadows the import inside that class body, and
+# ``server_default=text("1")`` there would call the column object instead.
+from sqlalchemy import text as sql_text
 from sqlalchemy import Column, Table
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import JSON
@@ -1865,7 +1870,227 @@ class ReportFinding(Base):
 
     report: Mapped["Report"] = relationship(back_populates="findings")
 
+
+class VisibilityBand(StrEnum):
+    """How far one question stands from the brand it is asked about.
+
+    The band is the whole reason a question set measures anything. "Was macht
+    Enpal" is trivia: the assistant was handed the answer in the question, and a
+    set full of those reports a hundred per cent visibility for a mandate no
+    buyer would ever find. "Welche Anbieter fuer Solaranlagen mit Speicher gibt
+    es" is where a purchase starts, and it is the question the mandate is either
+    in or not.
+
+    So the four are ordered by distance from the brand, and only :attr:`MARKE`
+    may name the client:
+
+    * ``marke`` - the question names the company. What an assistant says about
+      it to somebody who already knows it exists.
+    * ``auswahl`` - a buyer choosing between named suppliers of this thing.
+    * ``kategorie`` - the product category, no supplier named.
+    * ``problem`` - the problem the category solves, the category not named
+      either. The earliest point a buyer can be reached at all.
+
+    A closed set, and there is deliberately no fifth member and no default. A
+    proposal whose band nobody recognises is dropped in
+    :mod:`newspulse.visibility` rather than filed under one of these, because a
+    misfiled question changes a percentage the agency reports to a client.
+    """
+
+    MARKE = "marke"
+    AUSWAHL = "auswahl"
+    KATEGORIE = "kategorie"
+    PROBLEM = "problem"
+
+
+class VisibilityQuestion(Base):
+    """One question a mandate is measured on, after a person accepted it.
+
+    A row exists only once somebody clicked. :func:`newspulse.visibility.propose`
+    returns candidates and stores none of them, for the reason ``rivals.py``
+    states about competitors and this feature inherits unchanged: a wrong
+    question silently changes a number the agency reports to a client, and the
+    number reads exactly as well when it is wrong.
+
+    ``accepted`` is therefore not "has been through the review" - a stored row is
+    accepted by construction - it is whether the question is still in the set.
+    Retiring one clears the flag instead of deleting the row, because
+    :class:`VisibilityAnswer` points here: a deleted question would take every
+    measurement it was ever part of with it, and the movement panel compares this
+    week against a week whose questions have to still resolve.
+
+    UNIQUE on (client, text) so the same wording cannot be accepted twice. Two
+    identical questions are not two measurements, they are one question counted
+    twice in a share.
+    """
+
+    __tablename__ = "visibility_questions"
+    __table_args__ = (
+        UniqueConstraint("client_id", "text", name="uq_visibility_question_client_text"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The question exactly as it will be put to a provider. No template, no
+    #: placeholder: what is asked is what is stored, so the answer beside it can
+    #: be read as the answer to this.
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    band: Mapped[VisibilityBand] = mapped_column(
+        SAEnum(
+            VisibilityBand,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="visibility_band",
+        ),
+        nullable=False,
+    )
+    accepted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sql_text("1")
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: When a person put it into the set. Distinct from ``created_at`` because a
+    #: retired question that is taken back up is accepted a second time, and the
+    #: page says since when the set has looked the way it does.
+    accepted_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class VisibilityRun(Base):
+    """One measurement of one mandate: which providers were asked, which failed.
+
+    ``providers_failed`` is the column the whole feature turns on. A provider
+    that errored has no answer row for the questions it did not reach, and
+    without this list that absence is indistinguishable from "the mandate was not
+    named" - which is the one wrong number this feature could produce, because it
+    is wrong in the direction a client would act on.
+    """
+
+    __tablename__ = "visibility_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ran_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow, index=True
+    )
+    #: Every provider this run put the set to, whatever came back.
+    providers_asked: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+    #: Those of them that could not answer. A subset of the above, never a
+    #: separate vocabulary.
+    providers_failed: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+
+    answers: Mapped[list["VisibilityAnswer"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="VisibilityAnswer.id",
+        lazy="selectin",
+    )
+
+
+class VisibilityAnswer(Base):
+    """What one provider answered to one question, and what that answer says.
+
+    ``answer`` is verbatim and stays verbatim. Every figure the page shows is
+    computed from this column, so each of them resolves to something a person can
+    open and read rather than trust - which is the difference between a claim an
+    agency can make to a client and one it can only repeat. It is deliberately
+    not run through :func:`newspulse.prose.plain`: that rule governs text this
+    tool *writes*, and editing a measurement is falsifying it.
+
+    ``position`` is a rank among the companies named in this one answer, not a
+    ranking of the market. It is NULL exactly when ``named`` is false, and the
+    CHECK below makes that a schema guarantee rather than an invariant three
+    readers have to remember.
+    """
+
+    __tablename__ = "visibility_answers"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id", "question_id", "provider", name="uq_visibility_answer_cell"
+        ),
+        # 1-based, because the page prints it: "Position 2" reads as a rank and
+        # "Position 1" as a rank; "Position 0" reads as a bug.
+        CheckConstraint(
+            "position IS NULL OR position >= 1", name="ck_visibility_answer_position"
+        ),
+        # An answer that does not name the mandate cannot rank it. Storing a
+        # position beside named=0 would put a number on the page that the answer
+        # underneath it does not support.
+        CheckConstraint(
+            "named = 1 OR position IS NULL", name="ck_visibility_answer_unnamed_rank"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("visibility_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: RESTRICT rather than CASCADE, and the one place in this schema that is not
+    #: a cascade: a question is retired by clearing its flag precisely so the
+    #: answers it produced keep resolving. Deleting one would silently rewrite
+    #: what past measurements said.
+    question_id: Mapped[int] = mapped_column(
+        ForeignKey("visibility_questions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    #: Which assistant answered. A plain string and not an enum: DEC-2 keeps the
+    #: door open for a third provider, and the PRD says so in as many words - a
+    #: further one is meant to be a definition, not a migration.
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    named: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Every company named in this answer, in the order they first appear. The
+    #: ground ``position`` is a rank in, kept so the number can be checked rather
+    #: than recomputed against an answer that is no longer being read the same way.
+    companies: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+    #: Those of them that are this mandate's stored competitors. The intersection
+    #: is what keeps an unrelated firm counting as market rather than as a rival.
+    rivals: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+    #: What the model itself said it was going on. Never derived from the answer
+    #: text: a model that cited nothing gets an empty list, because "we do not
+    #: know what it read" and "it read these four things" are different facts.
+    sources: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+
+    run: Mapped["VisibilityRun"] = relationship(back_populates="answers")
+    question: Mapped["VisibilityQuestion"] = relationship(lazy="selectin")
+
+
 __all__ = [
+    "VisibilityBand",
+    "VisibilityQuestion",
+    "VisibilityRun",
+    "VisibilityAnswer",
     "ReportState",
     "ReportFindingKind",
     "Report",

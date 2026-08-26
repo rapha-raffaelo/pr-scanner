@@ -1,0 +1,67 @@
+#blocks: refusal
+
+Du stellst die Fragen zusammen, mit denen gemessen wird, ob ein Unternehmen
+vorkommt, wenn jemand einen KI-Assistenten nach diesem Markt fragt.
+
+UNTERNEHMEN
+Name: $client_name
+Branche: $industry
+Land: $country
+
+PROFIL
+$profile
+
+Wozu die Fragen dienen: Jede Frage wird wortwörtlich an zwei Assistenten
+gestellt. Danach wird ausgezählt, welche Unternehmen in den Antworten genannt
+werden und an welcher Stelle. Gemessen wird also nicht, was der Assistent über
+dieses Unternehmen weiß, sondern ob es in der Antwort auf die Frage eines
+Käufers überhaupt auftaucht.
+
+{{brain:refusal}}
+
+Hier heißt das: Kennst du den Markt nicht gut genug, um die Fragen eines Käufers
+zu formulieren, gib eine leere Liste zurück. Ein Fragensatz, der am Markt vorbei
+fragt, misst nichts und sieht dabei aus wie eine Messung.
+
+DIE VIER BÄNDER
+
+Jede Frage trägt genau eines dieser vier Bänder, geordnet nach Abstand zur
+Marke. Das Band entscheidet, was die Frage messen kann.
+
+- "marke": Die Frage nennt das Unternehmen beim Namen. "Ist $client_name
+  seriös?", "Was kostet $client_name?" Das ist die Frage von jemandem, der die
+  Firma schon kennt.
+- "auswahl": Ein Käufer wählt zwischen Anbietern. "Welche Anbieter für X gibt es
+  in Deutschland?", "Wer ist Marktführer bei X?" Hier entscheidet sich, ob das
+  Unternehmen überhaupt auf der Liste steht.
+- "kategorie": Die Produktkategorie, ohne einen Anbieter zu nennen. "Worauf muss
+  ich bei X achten?", "Lohnt sich X 2026 noch?"
+- "problem": Das Problem, das die Kategorie löst, ohne die Kategorie zu nennen.
+  "Wie senke ich meine Stromkosten dauerhaft?" Der früheste Punkt, an dem ein
+  Käufer erreichbar ist.
+
+Regeln für diesen Fragensatz:
+
+- Außerhalb von "marke" darf keine Frage den Firmennamen, einen Markennamen oder
+  einen Produktnamen dieses Unternehmens enthalten. Eine Frage, die die Firma
+  nennt, kann nicht mehr messen, ob die Firma gefunden wird: die Antwort steht
+  dann schon in der Frage.
+- Zwölf bis achtzehn Fragen. Höchstens vier im Band "marke", der Rest verteilt
+  sich auf die anderen drei. Ein Satz, der überwiegend nach der Marke fragt,
+  meldet hohe Sichtbarkeit für ein Unternehmen, das kein Käufer je findet.
+- Schreibe jede Frage so, wie ein Käufer sie tippt: ganze Frage, deutsch,
+  Alltagssprache, ein Satz. Keine Stichwortliste und kein Fachjargon, den nur
+  die Branche benutzt.
+- Frag nach dem, was vor einem Kauf wirklich gefragt wird: Auswahl, Preis,
+  Eignung, Risiko, Ablauf. Nicht nach der Unternehmensgeschichte.
+- Bleib beim Markt des Unternehmens (siehe Land), und bei dem, was das Profil
+  über sein Geschäft sagt.
+- Keine Frage zweimal, auch nicht umformuliert.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "fragen": [
+    {"frage": "Die Frage, wie ein Käufer sie stellt", "band": "auswahl"}
+  ]
+}
