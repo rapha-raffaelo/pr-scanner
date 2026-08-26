@@ -1880,6 +1880,9 @@ button:disabled { opacity: .55; cursor: default; }
 .vis-panel__t { font-size: var(--t-subhead); font-weight: 600; }
 .vis-panel__s { font-size: var(--t-caption); color: var(--muted); }
 .vis-panel__r { margin-left: auto; font-size: var(--t-caption); color: var(--muted); }
+/* A post is a form, and .run-form's own bottom margin would drop it out of the
+   panel head's baseline row. */
+.vis-panel__f { flex: none; margin: 0; }
 .vis-panel__b { padding: 0 var(--s4) var(--s4); }
 
 /* The figure a consultant repeats in a client meeting, and what earns it. */

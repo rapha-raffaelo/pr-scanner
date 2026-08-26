@@ -83,30 +83,6 @@
     </div>
   </div>
 
-  {% if proposals is not none %}
-    {% if proposals %}
-      <div class="vis-panel">
-        <div class="vis-panel__h">
-          <span class="vis-panel__t">{{ t("Vorgeschlagene Fragen") }}</span>
-          <span class="vis-panel__s">{{ t("gespeichert ist noch keine") }}</span>
-          <span class="vis-panel__r">{{ proposals | length }}</span>
-        </div>
-        {% for proposal in proposals %}
-          <form method="post" action="/client/{{ client.id }}/ki/fragen" class="vis-prop">
-            <input type="hidden" name="text" value="{{ proposal.text }}">
-            <input type="hidden" name="band" value="{{ proposal.band }}">
-            <span class="vis-band">{{ band_names.get(proposal.band | string, proposal.band) }}</span>
-            <span class="vis-prop__q">{{ proposal.text }}</span>
-            <button type="submit" class="linkbtn">{{ t("Übernehmen") }}</button>
-          </form>
-        {% endfor %}
-        <div class="vis-note">{{ t("Erst ein Klick auf „Übernehmen“ legt eine Frage an. Höchstens %(n)s Fragen stehen im Satz.") | format(n=max_questions) }}</div>
-      </div>
-    {% else %}
-      <div class="notice">{{ t("Der Vorschlag hat nichts ergeben. Meist fehlt dem Profil noch der Text zum Geschäftsfeld, aus dem eine Kaufentscheidungsfrage gebaut wird.") }}</div>
-    {% endif %}
-  {% endif %}
-
 {% else %}
 
 {% if not standing %}
@@ -325,7 +301,14 @@
   <div class="vis-panel__h">
     <span class="vis-panel__t">{{ t("Alle Fragen") }}</span>
     <span class="vis-panel__s">{{ t("der ganze Satz, Frage für Frage") }}</span>
-    <span class="vis-panel__r">{{ questions | length }}</span>
+    <span class="vis-panel__r">{{ questions | length }} / {{ max_questions }}</span>
+    {# Without this, a set could only be grown by retiring it down to nothing
+       first, however much room the cap left in it. #}
+    {% if questions | length < max_questions %}
+      <form method="post" action="/client/{{ client.id }}/ki/vorschlag" class="vis-panel__f">
+        <button type="submit" class="linkbtn">{{ t("Weitere Fragen vorschlagen") }}</button>
+      </form>
+    {% endif %}
   </div>
   {% for row in question_rows %}
     <div class="vis-q">
@@ -351,6 +334,34 @@
     </div>
   {% endfor %}
 </div>
+{% endif %}
+
+{# Outside both branches on purpose. A proposal is rendered wherever it was asked
+   for. Rendered only inside the empty-set branch, it was thrown away the moment
+   the set held one question — and the model call that produced it had been spent
+   to show the reader nothing. #}
+{% if proposals is not none %}
+  {% if proposals %}
+    <div class="vis-panel">
+      <div class="vis-panel__h">
+        <span class="vis-panel__t">{{ t("Vorgeschlagene Fragen") }}</span>
+        <span class="vis-panel__s">{{ t("gespeichert ist noch keine") }}</span>
+        <span class="vis-panel__r">{{ proposals | length }}</span>
+      </div>
+      {% for proposal in proposals %}
+        <form method="post" action="/client/{{ client.id }}/ki/fragen" class="vis-prop">
+          <input type="hidden" name="text" value="{{ proposal.text }}">
+          <input type="hidden" name="band" value="{{ proposal.band }}">
+          <span class="vis-band">{{ band_names.get(proposal.band | string, proposal.band) }}</span>
+          <span class="vis-prop__q">{{ proposal.text }}</span>
+          <button type="submit" class="linkbtn">{{ t("Übernehmen") }}</button>
+        </form>
+      {% endfor %}
+      <div class="vis-note">{{ t("Erst ein Klick auf „Übernehmen“ legt eine Frage an. Höchstens %(n)s Fragen stehen im Satz.") | format(n=max_questions) }}</div>
+    </div>
+  {% else %}
+    <div class="notice">{{ t("Der Vorschlag hat nichts ergeben. Meist fehlt dem Profil noch der Text zum Geschäftsfeld, aus dem eine Kaufentscheidungsfrage gebaut wird.") }}</div>
+  {% endif %}
 {% endif %}
 
 <p class="vis-foot">{{ t("Gemessen wird, was die angebundenen Assistenten auf denselben Fragensatz antworten, nicht was „die KI“ denkt. RauteOS misst und berichtet, es optimiert nichts und verschickt nichts.") }}</p>

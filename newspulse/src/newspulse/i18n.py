@@ -1805,6 +1805,9 @@ _EN: dict[str, str] = {
         "Without questions there is nothing to measure. RauteOS proposes a set built "
         "from the profile and the measured industry term \u2014 only what you accept is stored.",
     "Fragen vorschlagen": "Propose questions",
+    # Offered wherever the cap leaves room, because a set that already stands
+    # could otherwise only be grown by retiring it down to nothing first.
+    "Weitere Fragen vorschlagen": "Propose more questions",
     "Vorgeschlagene Fragen": "Proposed questions",
     "gespeichert ist noch keine": "none stored yet",
     "Erst ein Klick auf \u201eÜbernehmen\u201c legt eine Frage an. Höchstens %(n)s Fragen stehen im Satz.":
