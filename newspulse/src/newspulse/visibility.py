@@ -142,13 +142,15 @@ _GENITIVE_ENDINGS = ("s", "x", "z")
 #: because the next measurement is seven days away.
 _PROVIDER_STRIKES = 2
 
-#: How many answers may come back unreadable before the measurement stops. The
-#: reading model is a second call on every cell and it fails identically for all
-#: of them when it is down — without a budget here a broken reader spends every
-#: provider call in the set (up to twenty-four questions times two providers) and
-#: stores nothing, on this sweep and on every one after it. Same size as
-#: :data:`_PROVIDER_STRIKES` and for the same reason: one answer nobody could
-#: parse is not an outage.
+#: How many answers may come back unreadable *in a row* before the measurement
+#: stops. The reading model is a second call on every cell and it fails
+#: identically for all of them once it is down — without a budget here a broken
+#: reader spends every provider call in the set (up to twenty-four questions
+#: times two providers) to store nothing, on this sweep and on every one after
+#: it. In a row rather than in total, and two rather than one, for the reason
+#: :data:`_PROVIDER_STRIKES` is two: one answer nobody could parse is a strange
+#: answer, and a run that has been reading fine all along should not be stopped
+#: by it.
 _READ_STRIKES = 2
 
 #: How long a started measurement may still be running before another one may
@@ -1066,7 +1068,12 @@ class _Spend:
 
     strikes: dict[str, int] = field(default_factory=dict)
     failed: set[str] = field(default_factory=set)
+    #: Every cell whose answer could not be read, for the run to record.
     unread: int = 0
+    #: How many of them came in a row. Reset by every answer that does read, so
+    #: this counts a reader that is down rather than a run with an odd answer in
+    #: it.
+    since_read: int = 0
 
     def strike(self, provider: str, client_name: str, reason: str) -> None:
         self.strikes[provider] = self.strikes.get(provider, 0) + 1
@@ -1084,8 +1091,8 @@ class _Spend:
     def exhausted(self, provider: str) -> bool:
         return self.strikes.get(provider, 0) >= _PROVIDER_STRIKES
 
-    def unreadable(self) -> bool:
-        return self.unread >= _READ_STRIKES
+    def reader_down(self) -> bool:
+        return self.since_read >= _READ_STRIKES
 
 
 def _answer_from(
@@ -1134,9 +1141,12 @@ def _reading_from(
     tells the page these answers arrived and could not be read.
     """
     try:
-        return _read(client, question.text, answer, template=template, invoke=invoke)
+        reading = _read(
+            client, question.text, answer, template=template, invoke=invoke
+        )
     except AnalyzerError as exc:
         spend.unread += 1
+        spend.since_read += 1
         _log.warning(
             "could not read the %s answer for %r to question %s "
             "(%d characters, discarded unstored): %s",
@@ -1147,6 +1157,8 @@ def _reading_from(
             exc,
         )
         return None
+    spend.since_read = 0
+    return reading
 
 
 def _measure_set(
@@ -1162,7 +1174,7 @@ def _measure_set(
     spend = _Spend()
     for question in questions:
         for provider, put in asking.items():
-            if spend.exhausted(provider) or spend.unreadable():
+            if spend.exhausted(provider) or spend.reader_down():
                 continue
             answer = _answer_from(provider, put, question.text, client.name, spend)
             if answer is None:
@@ -1179,13 +1191,13 @@ def _measure_set(
             if reading is None:
                 continue
             run.answers.append(_row(question, provider, answer, reading))
-        if spend.unreadable():
+        if spend.reader_down():
             _log.warning(
-                "stopping the visibility measurement for %r: %d answers came "
-                "back and none of them could be read, so the rest of the set "
-                "would cost a provider call each and store nothing",
+                "stopping the visibility measurement for %r: the last %d answers "
+                "came back and could not be read, so every question left would "
+                "cost a provider call and store nothing",
                 client.name,
-                spend.unread,
+                spend.since_read,
             )
             break
     run.providers_failed = sorted(spend.failed)
