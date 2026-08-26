@@ -12,6 +12,14 @@ restricts, because a question is retired by clearing ``accepted`` precisely so
 the answers it produced keep resolving. A cascade would let a click in the
 question list silently rewrite what a past measurement said.
 
+That leaves one ordering dependency worth writing down, because nothing in the
+app exercises it today: deleting a *client* cascades into both
+``visibility_questions`` and ``visibility_runs``, and the questions can only go
+once the run cascade has cleared the answers pointing at them. There is no
+delete-mandate path in this tool, so no code depends on the engine getting that
+order right — but whoever adds one should delete ``visibility_answers``
+explicitly first rather than rely on it.
+
 ``provider`` is a plain string and not an enum. DEC-2 asks the two assistants
 that are already connected and says in as many words that a third is meant to be
 added later without touching these tables; a CHECK constraint here would make
@@ -138,7 +146,7 @@ def upgrade() -> None:
             "position IS NULL OR position >= 1", name="ck_visibility_answer_position"
         ),
         sa.CheckConstraint(
-            "named = 1 OR position IS NULL", name="ck_visibility_answer_unnamed_rank"
+            "named OR position IS NULL", name="ck_visibility_answer_unnamed_rank"
         ),
     )
     op.create_index("ix_visibility_answers_run_id", "visibility_answers", ["run_id"])

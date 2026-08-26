@@ -2030,8 +2030,13 @@ class VisibilityAnswer(Base):
         # An answer that does not name the mandate cannot rank it. Storing a
         # position beside named=0 would put a number on the page that the answer
         # underneath it does not support.
+        #
+        # Written as a bare boolean rather than "named = 1": SQLite stores the
+        # column as 0/1 and reads either spelling, but a stricter dialect types
+        # it as a real boolean and rejects the comparison against an integer
+        # outright. This form is the one both understand.
         CheckConstraint(
-            "named = 1 OR position IS NULL", name="ck_visibility_answer_unnamed_rank"
+            "named OR position IS NULL", name="ck_visibility_answer_unnamed_rank"
         ),
     )
 

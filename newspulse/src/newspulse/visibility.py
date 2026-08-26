@@ -117,6 +117,27 @@ _LISTED_MAX = 24
 #: understate what the assistants are leaning on.
 _URL_PREFIXES = ("https://", "http://", "www.")
 
+#: What makes a stated source a locator rather than a name. A probe that
+#: carries one of these is a domain or a path and is checked as a substring,
+#: because that is how it is written into a sentence. Everything else is a
+#: publisher's name and is checked on word boundaries: "FAZ" must be found in
+#: "die FAZ schreibt" and never inside a longer word, which a bare substring
+#: test cannot tell apart.
+_LOCATOR_MARKS = (".", "/")
+
+#: Endings that take no genitive -s in German. Compared against the case-folded
+#: term, which is also what turns "ß" into "ss", so a name ending in it is
+#: caught here too.
+_GENITIVE_ENDINGS = ("s", "x", "z")
+
+#: How many ask-failures a provider gets inside one measurement before the rest
+#: of the set stops being put to it. Two, and both halves of that are
+#: deliberate: an exhausted subscription fails identically for every question,
+#: so it must not be asked twenty-four times — and a single transient error (one
+#: 503, one timeout on a long answer) must not cost that provider a whole week,
+#: because the next measurement is seven days away.
+_PROVIDER_STRIKES = 2
+
 
 class SetFull(ValueError):
     """The accepted set is at :data:`MAX_QUESTIONS` and cannot take another.
@@ -211,6 +232,35 @@ def _parse(raw: str, model: type[_Parsed], what: str) -> _Parsed:
 # --- The question set -----------------------------------------------------------
 
 
+def _with_genitive(terms: Iterable[str]) -> list[str]:
+    """``terms``, each also in the genitive a German sentence writes it in.
+
+    German puts a company into a sentence in the genitive as readily as in the
+    nominative — "Was kostet Enpals Solaranlage?" — and the word-boundary
+    lookarounds in :func:`~newspulse.matching.terms_matcher` end the match at the
+    "s", so the form does not match the name at all. Both places that shows up
+    are the two this feature exists for: the guard would pass a question that
+    names the mandate into a band that must not name it, and the reading would
+    store ``named=False`` for an answer that named it — the wrong number, in the
+    direction a client acts on.
+
+    An apostrophised genitive ("Enpal's") already matches, because an apostrophe
+    is not a word character. A name that already ends in a sibilant takes no
+    genitive -s in German ("Siemens' Angebot"), and one ending in punctuation or
+    a symbol ("Enpal B.V.", "1Komma5°") is not written in the genitive at all, so
+    neither is widened.
+    """
+    widened: list[str] = []
+    for term in terms:
+        widened.append(term)
+        tail = term.strip()
+        if not tail or not tail[-1].isalnum():
+            continue
+        if not tail.casefold().endswith(_GENITIVE_ENDINGS):
+            widened.append(f"{tail}s")
+    return widened
+
+
 def _terms_for(company: Client) -> list[str]:
     """A company's name and stored aliases, each also without its legal form.
 
@@ -219,14 +269,14 @@ def _terms_for(company: Client) -> list[str]:
     theme is not a name, and a mandate whose keyword is "Solaranlagen" would
     otherwise be read as named in every answer about solar panels.
     """
-    return [
+    return _with_genitive(
         variant
         for raw in [
             getattr(company, "name", "") or "",
             *(getattr(company, "aliases", None) or []),
         ]
         for variant in company_names.variants((raw or "").strip())
-    ]
+    )
 
 
 def _first_at(folded: str, terms: Sequence[str]) -> int | None:
@@ -307,11 +357,21 @@ def _proposals(
             continue
         seen.add(key)
         kept.append(Proposal(text=text, band=band))
+    if len(kept) > MAX_QUESTIONS:
+        _log.info(
+            "the panel for %r proposed %d usable questions; offering the first %d",
+            client.name,
+            len(kept),
+            MAX_QUESTIONS,
+        )
     return kept[:MAX_QUESTIONS]
 
 
 def propose(
-    session: Session, client: Client, *, invoke=invoke_with_fallback
+    session: Session,
+    client: Client,
+    *,
+    invoke: Callable[..., str] = invoke_with_fallback,
 ) -> list[Proposal]:
     """Propose a question set for ``client``. Never stores anything.
 
@@ -358,15 +418,29 @@ def accepted(session: Session, client: Client) -> list[VisibilityQuestion]:
     spend ceiling, and a row that arrived by hand or from an older cap must not be
     able to spend past it.
     """
-    rows = session.scalars(
-        select(VisibilityQuestion)
-        .where(
-            VisibilityQuestion.client_id == client.id,
-            VisibilityQuestion.accepted.is_(True),
+    rows = list(
+        session.scalars(
+            select(VisibilityQuestion)
+            .where(
+                VisibilityQuestion.client_id == client.id,
+                VisibilityQuestion.accepted.is_(True),
+            )
+            .order_by(VisibilityQuestion.id)
+        ).all()
+    )
+    if len(rows) > MAX_QUESTIONS:
+        # Said out loud rather than inferred from a short list: the case this
+        # cap guards against is a set that arrived past it, and the operator
+        # looking for the six questions nobody is measuring has no other way to
+        # find out that they are the ones being dropped.
+        _log.info(
+            "%r carries %d accepted visibility questions; the first %d are "
+            "measured and the rest are not asked",
+            client.name,
+            len(rows),
+            MAX_QUESTIONS,
         )
-        .order_by(VisibilityQuestion.id)
-    ).all()
-    return list(rows)[:MAX_QUESTIONS]
+    return rows[:MAX_QUESTIONS]
 
 
 def _stored(
@@ -386,7 +460,7 @@ def accept(
     question: str,
     band: VisibilityBand | str,
     *,
-    now=None,
+    now: dt.datetime | None = None,
 ) -> VisibilityQuestion:
     """Put one proposed question into the set. The only thing that stores one.
 
@@ -450,13 +524,44 @@ def _ordered(placed: list[tuple[int, str]]) -> tuple[str, ...]:
     return tuple(ordered)
 
 
+def _rank_of(companies: tuple[str, ...], name: str) -> int | None:
+    """``name``'s 1-based rank in ``companies``, compared as :func:`_ordered` did.
+
+    Case-insensitively, and that is the whole reason this is not ``list.index``.
+    :func:`_ordered` dedupes on the case-folded name and keeps whichever spelling
+    appeared first, so a mandate stored as "Enpal" beside a competitor row
+    someone entered as "ENPAL" is in the list under the other spelling — and
+    ``.index`` would raise ``ValueError`` mid-measurement, past the reach of the
+    ``AnalyzerError`` handler in :func:`measure`, taking every row already
+    collected in that run with it.
+    """
+    key = name.casefold()
+    for index, entry in enumerate(companies):
+        if entry.casefold() == key:
+            return index + 1
+    return None
+
+
 def _appears(folded_answer: str, source: str) -> bool:
-    """Whether the answer really states this source, scheme and www aside."""
+    """Whether the answer really states this source, scheme and www aside.
+
+    A locator — anything carrying a dot or a slash — is matched as a substring,
+    because "pv-magazine.de" is written into a sentence exactly as it is. A
+    publisher's name is matched on word boundaries instead: a short one ("FAZ",
+    "taz") occurs inside ordinary words often enough that a substring test would
+    record a citation the answer never made, which is the one thing the source
+    list may not do.
+    """
     probe = source.casefold().strip()
     for prefix in _URL_PREFIXES:
         probe = probe.removeprefix(prefix)
     probe = probe.rstrip("/")
-    return bool(probe) and probe in folded_answer
+    if not probe:
+        return False
+    if any(mark in probe for mark in _LOCATOR_MARKS):
+        return probe in folded_answer
+    matcher = terms_matcher([probe])
+    return matcher is not None and matcher.search(folded_answer) is not None
 
 
 def _sources(folded_answer: str, stated: Iterable[str]) -> tuple[str, ...]:
@@ -481,6 +586,12 @@ def _sources(folded_answer: str, stated: Iterable[str]) -> tuple[str, ...]:
             continue
         seen.add(key)
         kept.append(source)
+    if len(kept) > _LISTED_MAX:
+        _log.debug(
+            "an answer stated %d sources; keeping the first %d",
+            len(kept),
+            _LISTED_MAX,
+        )
     return tuple(kept[:_LISTED_MAX])
 
 
@@ -511,7 +622,14 @@ def read_answer(
         placed.append((found, rival.name))
         rivals.append(rival.name)
 
-    for raw in list(listed)[:_LISTED_MAX]:
+    named_by_model = list(listed)
+    if len(named_by_model) > _LISTED_MAX:
+        _log.debug(
+            "an answer listed %d companies; reading the first %d",
+            len(named_by_model),
+            _LISTED_MAX,
+        )
+    for raw in named_by_model[:_LISTED_MAX]:
         name = " ".join((raw or "").split())
         if not name:
             continue
@@ -529,7 +647,7 @@ def read_answer(
     stored_rivals = set(rivals)
     return Reading(
         named=named,
-        position=companies.index(client.name) + 1 if named else None,
+        position=_rank_of(companies, client.name) if named else None,
         companies=companies,
         # In the order they were named, not in the order they are stored: the
         # panel beside the answer reads down the answer.
@@ -539,7 +657,12 @@ def read_answer(
 
 
 def _read(
-    client: Client, question: str, answer: str, *, template: Template, invoke
+    client: Client,
+    question: str,
+    answer: str,
+    *,
+    template: Template,
+    invoke: Callable[..., str],
 ) -> Reading:
     """Put one answer through the reading prompt and back into figures.
 
@@ -583,8 +706,18 @@ def askers() -> dict[str, Callable[[str], str]]:
     return reachable
 
 
-def _reference(now) -> dt.datetime:
-    return now() if callable(now) else (now or dt.datetime.now(dt.UTC))
+def _reference(now: dt.datetime | None) -> dt.datetime:
+    """The moment a window is measured from: ``now``, or the clock.
+
+    A naive value is read as UTC rather than rejected, the same reading
+    :class:`~newspulse.models.UTCDateTime` gives one on the way into the
+    database. Without it a naive ``now`` would raise ``TypeError`` on the
+    subtraction against ``ran_at``, which always comes back aware.
+    """
+    reference = now or dt.datetime.now(dt.UTC)
+    if reference.tzinfo is None:
+        return reference.replace(tzinfo=dt.UTC)
+    return reference
 
 
 def latest_run(session: Session, client: Client) -> VisibilityRun | None:
@@ -597,14 +730,36 @@ def latest_run(session: Session, client: Client) -> VisibilityRun | None:
     )
 
 
-def _is_due(standing: VisibilityRun, *, now=None) -> bool:
+def _standing(session: Session, client: Client) -> VisibilityRun | None:
+    """The most recent run that actually measured something.
+
+    Not the most recent run. A run whose providers all errored carries no answer
+    row, and letting it hold the window would mean one broken morning costs the
+    whole week: the next request would hand back that empty run instead of
+    retrying, and :func:`due` would say no for seven days over a momentary 503.
+    A run that measured nothing is not a measurement, so the window is counted
+    from the last run that produced an answer.
+
+    :func:`latest_run` deliberately still returns the newest run whatever it
+    holds — a barren run is exactly what tells the page that both providers were
+    down, and it stays stored and readable.
+    """
+    return session.scalar(
+        select(VisibilityRun)
+        .where(VisibilityRun.client_id == client.id, VisibilityRun.answers.any())
+        .order_by(VisibilityRun.ran_at.desc(), VisibilityRun.id.desc())
+        .limit(1)
+    )
+
+
+def _is_due(standing: VisibilityRun, *, now: dt.datetime | None = None) -> bool:
     every = config.VISIBILITY_EVERY_DAYS
     if every <= 0:
         return True
     return _reference(now) - standing.ran_at >= dt.timedelta(days=every)
 
 
-def due(session: Session, client: Client, *, now=None) -> bool:
+def due(session: Session, client: Client, *, now: dt.datetime | None = None) -> bool:
     """Whether this mandate may be measured again yet.
 
     False for a mandate with no accepted question, because there is nothing to
@@ -613,7 +768,7 @@ def due(session: Session, client: Client, *, now=None) -> bool:
     """
     if not config.VISIBILITY_ENABLED or not accepted(session, client):
         return False
-    standing = latest_run(session, client)
+    standing = _standing(session, client)
     return standing is None or _is_due(standing, now=now)
 
 
@@ -639,8 +794,8 @@ def measure(
     client: Client,
     *,
     ask: dict[str, Callable[[str], str]] | None = None,
-    invoke=invoke_with_fallback,
-    now=None,
+    invoke: Callable[..., str] = invoke_with_fallback,
+    now: dt.datetime | None = None,
 ) -> VisibilityRun | None:
     """Put the accepted set to every configured provider and store what came back.
 
@@ -650,19 +805,26 @@ def measure(
     do at all — the feature is off, or the mandate has no accepted question, and
     in neither case is a model asked.
 
-    A provider that errors is recorded on the run and asked nothing further this
-    time. Retiring it after the first failure is deliberate: the failure this
-    bounds is an exhausted subscription, which would otherwise fail once per
-    question for twenty-four questions. The questions it did reach keep their
-    rows, and the ones it did not have none — which, with ``providers_failed``, is
-    how the page tells "nicht gemessen" from "nicht genannt".
+    A provider that errors is recorded on the run and, after
+    :data:`_PROVIDER_STRIKES` failures, put nothing further this time. The
+    questions it did reach keep their rows, and the ones it did not have none —
+    which, with ``providers_failed``, is how the page tells "nicht gemessen" from
+    "nicht genannt". A run in which nobody answered at all is stored, so the page
+    can say both providers were down, but it does not hold the window: see
+    :func:`_standing`.
+
+    Synchronous and unbatched, and sized for the nightly sweep rather than for a
+    request: a full set is up to :data:`MAX_QUESTIONS` questions times two
+    providers times two model calls, each bounded only by ``ANALYZER_TIMEOUT``.
+    Whoever wires it to a button has to put it behind the same background path
+    the sweep uses, not inside the response.
     """
     if not config.VISIBILITY_ENABLED:
         return None
     questions = accepted(session, client)
     if not questions:
         return None
-    standing = latest_run(session, client)
+    standing = _standing(session, client)
     if standing is not None and not _is_due(standing, now=now):
         return standing
     asking = askers() if ask is None else dict(ask)
@@ -679,38 +841,59 @@ def measure(
     )
     session.add(run)
     failed: set[str] = set()
-    retired: set[str] = set()
+    strikes: dict[str, int] = {}
     for question in questions:
         for provider, put in asking.items():
-            if provider in retired:
+            if strikes.get(provider, 0) >= _PROVIDER_STRIKES:
                 continue
             try:
                 answer = put(question.text)
             except AnalyzerError as exc:
+                strikes[provider] = strikes.get(provider, 0) + 1
                 _log.warning(
                     "%s could not answer for %r (%s); recorded as a failed provider, "
-                    "not as an answer that did not name the mandate",
+                    "not as an answer that did not name the mandate (strike %d of %d)",
                     provider,
                     client.name,
                     exc,
+                    strikes[provider],
+                    _PROVIDER_STRIKES,
                 )
                 failed.add(provider)
-                retired.add(provider)
                 continue
             try:
                 reading = _read(
                     client, question.text, answer, template=reader, invoke=invoke
                 )
             except AnalyzerError as exc:
-                # The provider answered; reading it back failed. Same consequence
-                # for the page — this cell was not measured — but the provider is
-                # not retired: the reader is a different call and may well work
-                # on the next question.
-                _log.warning("could not read the %s answer for %r: %s", provider, client.name, exc)
-                failed.add(provider)
+                # The provider answered; reading it back failed. This cell gets no
+                # row — but the provider is *not* recorded as failed, because it
+                # did answer. ``providers_failed`` means "this one could not
+                # answer", and one unreadable answer out of twenty-four must not
+                # flag the twenty-three it answered correctly as an outage. It is
+                # not retired either: the reader is a separate call and may well
+                # work on the next question.
+                _log.warning(
+                    "could not read the %s answer for %r to question %s "
+                    "(%d characters, discarded unstored): %s",
+                    provider,
+                    client.name,
+                    question.id,
+                    len(answer),
+                    exc,
+                )
                 continue
             run.answers.append(_row(question, provider, answer, reading))
     run.providers_failed = sorted(failed)
+    if not run.answers:
+        _log.warning(
+            "the visibility measurement for %r produced no answer at all "
+            "(asked %s, failed %s); it is stored as an attempt and the next "
+            "request will measure again rather than return it",
+            client.name,
+            ", ".join(run.providers_asked) or "nobody",
+            ", ".join(run.providers_failed) or "nobody",
+        )
     session.commit()
     return run
 
