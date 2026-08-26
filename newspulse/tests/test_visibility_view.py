@@ -599,7 +599,39 @@ def test_the_measurement_is_skipped_when_the_feature_is_off(session, mandate, mo
     assert job._measure_visibility(session, [mandate], now=_NOW) == 0
 
 
-# --- What the review found ---------------------------------------------------------
+# --- What the review and the QA pass found ------------------------------------------
+
+
+def test_two_measurements_that_share_no_question_are_not_reported_as_unchanged(
+    web, session, mandate
+):
+    """A provider reached one slice of the set last week and another this week, so
+    nothing at all is comparable. Reported as "nichts hat sich verändert", a week
+    that was never measured against reads to the consultant as a stable one — the
+    same outage-as-a-finding this page guards against, in the reassuring direction.
+    """
+    first = _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    second = _question(session, mandate, _KATEGORIE)
+    _run(session, mandate, at=_NOW - _WEEK, cells=[(first, _CLAUDE, 1, ["Enpal"])], asked=[_CLAUDE])
+    _run(session, mandate, at=_NOW, cells=[(second, _CLAUDE, None, ["Zolar"])], asked=[_CLAUDE])
+
+    body = _text(web.get(f"/client/{mandate.id}/ki").text)
+
+    assert "0 von 0 Fragen verändert" not in body
+    assert "alle 0 vergleichbaren Fragen" not in body
+    assert "Keine Frage wurde in beiden Messungen gemessen" in body
+
+
+def test_half_a_percentage_point_is_rounded_away_from_zero_and_not_to_the_even_side():
+    """Jinja's ``round`` is Python's, and Python's sends a half to its even
+    neighbour: a move of exactly +0.5 points came out as zero and lost its line
+    entirely, beside a movement panel that had just listed what produced it."""
+    assert visibility_view._points(0.5) == 1
+    assert visibility_view._points(-0.5) == -1
+    assert visibility_view._points(2.5) == 3
+    assert visibility_view._points(None) is None
+
+
 
 
 def _unfinished(session, client: Client, *, at: dt.datetime, cells) -> VisibilityRun:
