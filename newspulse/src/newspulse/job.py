@@ -61,6 +61,7 @@ from . import (
     profile_refresh,
     report,
     themes,
+    visibility,
 )
 from .analyzer import Analyzer, get_analyzer
 from .clients import list_clients
@@ -145,6 +146,14 @@ _REPORTS_PER_SWEEP = 3
 # month. Nobody has to press anything meanwhile: the drafts wait, and the surface
 # can always draft a period on demand.
 _REPORT_DRAFT_DAYS = 7
+
+# How many mandates one sweep is willing to measure for KI-Sichtbarkeit, for the
+# same reason ``_REPORTS_PER_SWEEP`` exists and rather more sharply: one
+# measurement is the whole accepted set times every configured provider times two
+# model calls each, all of it inside the run guard. Three a night clears a
+# portfolio inside the weekly window without a morning being held for an hour,
+# and a mandate deferred today is simply still due tomorrow.
+_VISIBILITY_PER_SWEEP = 3
 
 # Rotating-log knobs. The whole point of the file is week-three survivability, so
 # it must never grow without bound or silently truncate: rotate at 5 MB and keep 5
@@ -1116,6 +1125,72 @@ def _refresh_impulses(
     return written
 
 
+def _measure_visibility(
+    session: Session, clients: Sequence[Client], *, now: dt.datetime
+) -> int:
+    """Measure the mandates whose weekly window has come round. Never fails the sweep.
+
+    The measurement has no rhythm of its own — nothing in this tool does except
+    the morning sweep — so it rides here, and :func:`newspulse.visibility.due`
+    decides per mandate whether the window is open. A mandate with no accepted
+    question is not due and costs no call: the question set is proposed and
+    accepted by a person, and until somebody has, there is nothing to measure.
+
+    Failures are logged and nothing is appended to the run's errors, exactly as
+    :func:`_generate_angles` behaves and for the same reason: a missed measurement
+    is a missing figure on one tab, not a broken morning, and marking the sweep
+    ``partial`` for it would both misreport the coverage pipeline and re-open the
+    coverage watermark over something that has nothing to do with coverage. The
+    failure that *is* recorded is recorded where it belongs — a provider that
+    errored lands in ``providers_failed`` on the visibility run row, which is what
+    lets the page say "nicht gemessen" instead of "nicht genannt".
+    """
+    if not config.VISIBILITY_ENABLED:
+        return 0
+    measured = 0
+    deferred = 0
+    for client in clients:
+        # A yardstick is tracked to compare its share of the conversation; nobody
+        # reports its AI visibility, and DEC-3 gives it no page to read one on.
+        if client.is_competitor:
+            continue
+        try:
+            if not visibility.due(session, client, now=now):
+                continue
+            if measured >= _VISIBILITY_PER_SWEEP:
+                deferred += 1
+                continue
+            run = visibility.measure(session, client, now=now)
+        except Exception as exc:  # noqa: BLE001 — a measurement is not worth a failed sweep
+            # First, before the log line: a caught exception is not a clean
+            # session, and ``client.name`` on an expired attribute is a query that
+            # would raise PendingRollbackError straight out of this handler — past
+            # a runs row already written as ok.
+            session.rollback()
+            _log.warning(
+                "the visibility measurement for %r failed: %s; skipping", client.name, exc
+            )
+            continue
+        if run is None:
+            continue
+        measured += 1
+        _log.info(
+            "visibility measured for %r: %d answer(s)%s",
+            client.name,
+            len(run.answers),
+            f", no answer from {', '.join(run.providers_failed)}"
+            if run.providers_failed
+            else "",
+        )
+    if deferred:
+        _log.info(
+            "%d further visibility measurement(s) deferred to a later sweep (cap %d per run)",
+            deferred,
+            _VISIBILITY_PER_SWEEP,
+        )
+    return measured
+
+
 def _draft_reports(
     session: Session,
     clients: Sequence[Client],
@@ -1573,6 +1648,9 @@ class _PostRun:
     signals: int = 0
     angles: int = 0
     profiles: int = 0
+    #: Mandates measured for KI-Sichtbarkeit this sweep. Zero on six mornings out
+    #: of seven by design: the window is weekly, not daily.
+    visibility: int = 0
 
 
 def _settle_themes(session: Session, clients: Sequence[Client], fetch: FetchFeed) -> int:
@@ -1663,6 +1741,10 @@ def _post_run(
     # say.
     outcome.angles += _refresh_impulses(session, clients, errors, now=now_fn())
     outcome.profiles = _refresh_profiles(session, now_fn())
+    # The weekly measurement, on the same footing as the profile refresh above it:
+    # bounded per sweep, inside its own fault boundary, and reporting nothing into
+    # the run's errors.
+    outcome.visibility = _measure_visibility(session, clients, now=now_fn())
     # Last, and outside everything above: the monthly report reads a period that
     # has already ended, so it needs nothing this sweep fetched, and putting it
     # here means a failure in it cannot cost the sweep any of the work that came
