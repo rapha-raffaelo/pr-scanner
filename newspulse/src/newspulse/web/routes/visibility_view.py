@@ -739,10 +739,18 @@ def _attempt(session: Session, client: Client) -> Attempt:
 
 
 def _next_due(standing: Standing | None) -> dt.datetime | None:
-    """When the window opens again, or ``None`` if there is no window to wait out."""
+    """When the window opens again, or ``None`` where the page cannot say.
+
+    Read off the standing, which is the newest run that stored an answer. The
+    window itself is counted from the newest run that *spent* the set, and that
+    can be a later one whose answers all came back unreadable — so a date that has
+    already passed is not a date, it is that case, and stating it would be worse
+    than saying nothing.
+    """
     if standing is None or config.VISIBILITY_EVERY_DAYS <= 0:
         return None
-    return standing.ran_at + dt.timedelta(days=config.VISIBILITY_EVERY_DAYS)
+    opens = standing.ran_at + dt.timedelta(days=config.VISIBILITY_EVERY_DAYS)
+    return opens if opens > dt.datetime.now(dt.UTC) else None
 
 
 def _context(
