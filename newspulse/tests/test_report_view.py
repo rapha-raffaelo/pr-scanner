@@ -868,9 +868,12 @@ def test_every_new_german_string_has_an_english_entry(http, seeded):
     does not, which reads as broken in a way a fully German page does not."""
     http.cookies.set(i18n.COOKIE_NAME, "en")
     review = _review(http, seeded)
-    for english in ("Reports", "Released", "Dropped", "Draft report"):
+    # "Bericht erzeugen" moved under the empty state, where the sentence
+    # explaining why the page is blank is — this fixture has a report, so what
+    # the bar offers here is the redraw.
+    for english in ("Reports", "Released", "Dropped", "Regenerate"):
         assert english in review, english
-    for german in ("Freigeben", "Verworfen,", "Bericht erzeugen"):
+    for german in ("Freigeben", "Verworfen,", "Neu erzeugen"):
         assert german not in review, german
 
     document = _document(http, seeded)

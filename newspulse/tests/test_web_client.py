@@ -580,11 +580,12 @@ def test_the_deep_dive_is_where_the_competitors_and_the_workspace_live(factory, 
     body = client.get(f"/client/{a_id}").text
     assert "Beta AG" in body                      # share of voice
     assert f"/client/{a_id}/advice" in body
-    # The workbook is no longer a trailing link in the strip. It is a download
-    # and not a place, and beside ten tabs it read as an eleventh that had
-    # slipped; it now sits on a page under a line that says what is in it.
-    assert f"/client/{a_id}/export.xlsx" not in body
-    assert f"/client/{a_id}/export.xlsx" in client.get(f"/client/{a_id}/ki").text
+    # The workbook is no longer a trailing link in the strip — a download is not
+    # a place, and beside ten tabs it read as an eleventh that had slipped. It
+    # sits on this page, which is the one holding the coverage it exports.
+    tabs = body.split('class="subtabs"', 1)[1].split("</nav>", 1)[0]
+    assert f"/client/{a_id}/export.xlsx" not in tabs
+    assert f"/client/{a_id}/export.xlsx" in body
     # The Coverage Map moved into the Wettbewerb tab, where the question it
     # answers is actually asked; the workspace strip carries that instead.
     assert f"/client/{a_id}/wettbewerb" in body

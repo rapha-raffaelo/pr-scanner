@@ -44,7 +44,7 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import brain, config, guide, prose
+from . import brain, config, guide, prose, quoting
 from .analyzer import (
     AnalyzerError,
     ParseError,
@@ -129,14 +129,23 @@ def developments(items: list[tuple[Article, str]]) -> list[Development]:
 
 
 def _render_developments(items: list[Development]) -> str:
+    """The market's headlines, fenced as quoted material.
+
+    Every line here is text somebody else published, arriving in the same
+    character stream as the task — so it is marked as material and the marker
+    cannot be forged from inside it. See :mod:`newspulse.quoting`; the standing
+    rule that goes with the fence is ``blocks/quoted_material.txt``, which this
+    prompt includes.
+    """
     lines = []
     for item in items:
         stamp = item.published_at.astimezone(config.local_zone())
-        line = f"[{item.index}] {stamp:%d.%m.} ({item.source}): {item.headline}"
+        headline = quoting.scrub(item.headline)
+        line = f"[{item.index}] {stamp:%d.%m.} ({quoting.scrub(item.source)}): {headline}"
         if item.summary:
-            line += f"\n     {item.summary}"
+            line += f"\n     {quoting.scrub(item.summary)}"
         lines.append(line)
-    return "\n".join(lines)
+    return quoting.fence("\n".join(lines), label="Marktentwicklungen")
 
 
 def _own_coverage_block(session: Session, client_id: int) -> str:

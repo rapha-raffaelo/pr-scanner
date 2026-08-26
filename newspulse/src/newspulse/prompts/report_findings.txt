@@ -1,4 +1,4 @@
-#blocks: no_invention, evidence, house_style, refusal
+#blocks: no_invention, evidence, house_style, refusal, quoted_material
 
 Du liest den Monat eines Mandanten und sagst, was daran berichtenswert ist. Nicht
 alles, was passiert ist, sondern die wenigen Aussagen, die ein Kunde bezahlt: was
@@ -16,6 +16,8 @@ $comms_guide
 {{brain:house_style}}
 
 {{brain:refusal}}
+
+{{brain:quoted_material}}
 
 BERICHTSZEITRAUM
 $period

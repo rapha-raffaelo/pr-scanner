@@ -1,4 +1,4 @@
-#blocks: journalistic_value, position, house_style, evidence, no_invention
+#blocks: journalistic_value, position, house_style, evidence, no_invention, quoted_material
 
 Du bist ein erfahrener Kommunikationsberater. Der Mandant hat eine Position zu
 einer Marktentwicklung. Du schreibst daraus die Nachricht, mit der diese Position
@@ -39,6 +39,8 @@ sie kommt in der Nachricht auch nicht als Abgrenzung vor.
 {{brain:evidence}}
 
 {{brain:no_invention}}
+
+{{brain:quoted_material}}
 
 Regeln für diese Nachricht:
 

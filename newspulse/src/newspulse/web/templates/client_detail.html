@@ -29,6 +29,19 @@
 {% set active = 'overview' %}
 {% include '_client_tabs.html' %}
 
+{# The mandate's workbook, on the page whose data it holds. It was a trailing
+   link in the tab strip, where beside ten tabs it read as an eleventh that had
+   slipped, and then briefly on KI-Sichtbarkeit — which put a month of coverage
+   under a heading about a measurement that is not in it. This is the archive:
+   the articles, the share of voice and what to say about them are what the
+   sheet contains and what this page shows. #}
+{% if not client.is_competitor %}
+  <p class="panel-hint" style="margin-bottom:12px">
+    <a class="btn btn--quiet" href="/client/{{ client.id }}/export.xlsx" download>↓ {{ t("Excel") }}</a>
+    <span style="margin-left:8px">{{ t("Der Mandantenmonat als Mappe: Berichterstattung, Anteil am Gespräch und die Beiträge dahinter.") }}</span>
+  </p>
+{% endif %}
+
 <section class="client-profile">
   {% if not client.active %}<p><span class="tag">{{ t("inaktiv") }}</span></p>{% endif %}
   <dl class="profile-meta">

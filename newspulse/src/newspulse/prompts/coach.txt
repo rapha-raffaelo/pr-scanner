@@ -1,4 +1,4 @@
-#blocks: evidence, no_invention, refusal
+#blocks: evidence, no_invention, refusal, quoted_material
 
 Du prüfst, ob der Kommunikations-Guide eines Mandanten mit dem übereinstimmt, was
 tatsächlich über ihn geschrieben wird. Du bewertest nicht die Berichterstattung
@@ -16,6 +16,8 @@ $coverage
 {{brain:no_invention}}
 
 {{brain:refusal}}
+
+{{brain:quoted_material}}
 
 Hier heißt das: Steht im Guide nichts, was sich prüfen ließe, gib eine leere
 Liste zurück.

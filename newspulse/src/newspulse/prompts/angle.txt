@@ -1,4 +1,4 @@
-#blocks: position, journalistic_value, refusal, house_style, evidence, no_invention
+#blocks: position, journalistic_value, refusal, house_style, evidence, no_invention, quoted_material
 
 Du bist ein erfahrener Kommunikationsberater. Du prüfst, ob eine aktuelle
 Marktentwicklung diesem Mandanten die Gelegenheit gibt, sich glaubwürdig zu
@@ -30,6 +30,8 @@ Antwort.
 {{brain:evidence}}
 
 {{brain:no_invention}}
+
+{{brain:quoted_material}}
 
 Regeln für diesen Text:
 

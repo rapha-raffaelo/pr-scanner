@@ -21,6 +21,12 @@
   .rep__lead { font-size: var(--t-body); color: var(--muted); max-width: 66ch; margin-bottom: 18px; }
   .rep__bar { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;
               padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+  /* The empty state and its action, one block. */
+  .rep__none { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap; }
+  .rep__none .rep__empty { margin: 0; max-width: 56ch; }
+  /* Demoted: the rail carries the periods now, so this only reaches a month the
+     rail does not show. */
+  .rep__other .rep__fig { font-size: var(--t-caption); color: var(--muted); }
   .rep__bar form { display: flex; align-items: flex-end; gap: 8px; }
   .rep__pick { font: inherit; font-size: var(--t-footnote); padding: 6px 9px;
                border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink); }
@@ -79,28 +85,31 @@
 {% if notice %}<div class="notice notice--ok">{{ notice }}</div>{% endif %}
 
 <div class="rep__bar">
-  {#- Two forms, no script. Choosing a period is a GET, so the page a consultant
-      lands on is a URL they can send to a colleague; generating is a POST for the
-      period already on screen, so the button never drafts a month other than the
-      one being looked at. -#}
-  <form method="get" action="/client/{{ client.id }}/berichte">
+  {#- The period picker used to sit here with an "Anzeigen" button beside it, and
+      the two read as a pair of equals whose difference nobody could see: while
+      no report existed the first one visibly did nothing. The rail above now
+      carries every period this mandate has, so the dropdown is only for reaching
+      a month the rail does not show, and it submits itself — the same pattern the
+      Today filter uses, with the button as the no-script fallback. -#}
+  <form method="get" action="/client/{{ client.id }}/berichte" class="rep__other">
     <label class="rep__fig">
-      <span>{{ t("Zeitraum") }}</span><br>
-      <select class="rep__pick" name="zeitraum">
+      <span>{{ t("Anderer Zeitraum") }}</span><br>
+      <select class="rep__pick" name="zeitraum"
+              onchange="this.form.requestSubmit()">
         {% for option in periods %}
           <option value="{{ option }}"{% if option == period_key %} selected{% endif %}>{{ option }}</option>
         {% endfor %}
       </select>
     </label>
-    <button type="submit" class="btn btn--quiet">{{ t("Anzeigen") }}</button>
+    <noscript><button type="submit" class="btn btn--quiet">{{ t("Anzeigen") }}</button></noscript>
   </form>
-  {#- Hidden once released. The route refuses it anyway — before it costs a model
-      call — but a button whose only possible outcome, in the state it is shown
-      in, is a refusal is a surface asking to be pressed and then arguing. -#}
-  {% if not released %}
+  {#- The generate button only where it is the answer: beside a report that
+      exists but is not released. With no report at all it belongs under the
+      sentence that says so, which is where the reader is looking. -#}
+  {% if report and not released %}
   <form method="post" action="/client/{{ client.id }}/berichte/erzeugen">
     <input type="hidden" name="zeitraum" value="{{ period_key }}">
-    <button type="submit" class="btn btn--ghost">{{ t("Bericht erzeugen") }}</button>
+    <button type="submit" class="btn btn--ghost">{{ t("Neu erzeugen") }}</button>
   </form>
   {% endif %}
   {% if report %}
@@ -116,7 +125,17 @@
 </div>
 
 {% if not report %}
-  <p class="rep__empty">{{ t(no_report) }}</p>
+  {#- The empty state and its one action, together. The button was in the bar at
+      the top, three controls along from the sentence explaining why the page is
+      blank, so the reader read "es lässt sich hier auch sofort erzeugen" and had
+      to go looking for the "hier". -#}
+  <div class="rep__none">
+    <p class="rep__empty">{{ t(no_report) }}</p>
+    <form method="post" action="/client/{{ client.id }}/berichte/erzeugen">
+      <input type="hidden" name="zeitraum" value="{{ period_key }}">
+      <button type="submit" class="btn">{{ t("Bericht erzeugen") }}</button>
+    </form>
+  </div>
 {% else %}
 
   {% if document %}
