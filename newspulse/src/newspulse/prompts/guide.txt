@@ -1,4 +1,4 @@
-#blocks: no_invention
+#blocks: no_invention, quoted_material
 
 Du destillierst aus den Unterlagen eines Unternehmens einen kurzen
 Kommunikations-Guide. Dieser Guide wird jedem später erzeugten Text vorangestellt,
@@ -16,6 +16,8 @@ UNTERLAGEN
 $documents
 
 {{brain:no_invention}}
+
+{{brain:quoted_material}}
 
 Hier heißt das: Die Unterlagen oben sind die einzige Quelle für diesen Guide.
 

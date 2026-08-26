@@ -40,7 +40,7 @@ from string import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import brain, config, gemini
+from . import brain, config, gemini, quoting
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import Client, GuideSource
 from .schemas import GuideVerdict
@@ -317,7 +317,12 @@ def distill(
             break
         chunk = source.text[:budget]
         budget -= len(chunk)
-        blocks.append(f"--- {source.filename} ---\n{chunk}")
+        # Fenced per source, named after its file: an uploaded PDF and the
+        # coverage snapshot are both text somebody outside this prompt wrote,
+        # and a sentence in either that reads as an instruction is a finding
+        # about the source, never a job. blocks/quoted_material.txt states the
+        # rule this fence points at.
+        blocks.append(quoting.fence(chunk, label=source.filename))
 
     prompt = _prompt_template().substitute(
         client_name=client.name,

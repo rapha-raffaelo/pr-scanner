@@ -62,7 +62,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
-from . import assets, brain, config, contacts, gemini, guide, prose
+from . import assets, brain, config, contacts, gemini, guide, prose, quoting
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import (
     OUTCOME_BY_MAILBOX,
@@ -163,7 +163,9 @@ def _recipient_work(target: PitchTarget | None) -> str:
     real rather than flattering."""
     if target is None or not target.evidence:
         return ""
-    headlines = "\n".join(f"- {headline}" for headline in target.evidence)
+    headlines = quoting.fence(
+        "\n".join(f"- {headline}" for headline in target.evidence)
+    )
     return (
         "WAS DIESE:R EMPFÄNGER:IN ZULETZT ZUM THEMENFELD GESCHRIEBEN HAT\n"
         "Nur diese Schlagzeilen sind belegt. Beziehe dich auf sie, nicht auf "
@@ -197,7 +199,9 @@ def _own_coverage_block(session: Session, client_id: int) -> str:
             "Keine in den letzten Monaten. Die Nachricht darf also nicht so tun, "
             "als sei der Mandant bekannt — sie muss allein über die Sache tragen.\n"
         )
-    headlines = "\n".join(f"- ({a.source}): {a.title}" for (a,) in rows)
+    headlines = quoting.fence(
+        "\n".join(f"- ({a.source}): {a.title}" for (a,) in rows)
+    )
     return (
         f"BERICHTERSTATTUNG ÜBER DEN MANDANTEN, LETZTE {_OWN_COVERAGE_DAYS} TAGE\n"
         "Beleg dafür, dass er ein Thema ist. Höchstens eine Erwähnung, nie eine "

@@ -1422,3 +1422,22 @@ def test_ticking_nothing_still_means_the_missing_ones(factory, web, worker):
     (_, _, kinds), = worker.wait()
     assert AssetKind.STATEMENT.value not in kinds
     assert AssetKind.TALKING_POINTS.value in kinds
+
+
+def test_the_tab_script_resolves_its_strip_by_role_not_by_parent():
+    """A tripwire, because the suite runs no JavaScript.
+
+    Every format tab sits inside a .fmtrow wrapper now — the tick box lives
+    beside it — so ``tab.parentElement`` is the row, and the row holds one tab.
+    The script resolved the strip that way once: a click could not switch the
+    previous tab off, two panes showed at once, arrow keys found a one-element
+    list under markup announcing role="tablist", and the poller — finding no
+    strip id on the row — snapped the reader to the first tab on every swap.
+    """
+    source = _ADVICE.read_text(encoding="utf-8")
+    script = source[source.index("var select = function") :]
+
+    assert 'closest(\'[role="tablist"]\')' in script
+    assert "tab.parentElement" not in script, (
+        "the strip must be resolved via closest(), not the row wrapper"
+    )

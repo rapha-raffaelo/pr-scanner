@@ -54,7 +54,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import advisor, config, guide, outreach, prose, reporting
+from . import advisor, config, guide, outreach, prose, quoting, reporting
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import (
     Analysis,
@@ -371,11 +371,14 @@ def _headlines(session: Session, client_id: int, period: Period) -> str:
         .order_by(Analysis.importance_score.desc(), Article.published_at.desc())
         .limit(_MAX_HEADLINES)
     ).all()
-    return "\n".join(
-        f"- {article.published_at.astimezone(config.local_zone()):%d.%m.} "
-        f"({article.source}, {analysis.tonality.value}"
-        f"{', ALARM' if analysis.is_alert else ''}): {article.title}"
-        for article, analysis in rows
+    return quoting.fence(
+        "\n".join(
+            f"- {article.published_at.astimezone(config.local_zone()):%d.%m.} "
+            f"({article.source}, {analysis.tonality.value}"
+            f"{', ALARM' if analysis.is_alert else ''}): {article.title}"
+            for article, analysis in rows
+        ),
+        label="Schlagzeilen des Monats",
     )
 
 

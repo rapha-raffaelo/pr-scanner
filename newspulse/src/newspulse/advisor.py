@@ -50,7 +50,7 @@ from string import Template
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import brain, config, guide
+from . import brain, config, guide, quoting
 from .analyzer import (
     AnalyzerError,
     BackendError,
@@ -172,11 +172,17 @@ def coverage_count(session: Session, client_id: int, *, days: int = DEFAULT_DAYS
 
 
 def _render_coverage(items: list[CoverageRef]) -> str:
-    return "\n".join(
-        f"[{item.index}] {item.published_at.astimezone(config.local_zone()):%d.%m.} "
-        f"({item.source}, {item.category}, Wichtigkeit {item.importance}"
-        f"{', ALARM' if item.is_alert else ''}): {item.headline}"
-        for item in items
+    """The coverage, fenced as quoted material: every headline here is text
+    somebody else published, arriving in the same character stream as the task.
+    Serves the advisory and the coach, which is why the fence lives here once."""
+    return quoting.fence(
+        "\n".join(
+            f"[{item.index}] {item.published_at.astimezone(config.local_zone()):%d.%m.} "
+            f"({item.source}, {item.category}, Wichtigkeit {item.importance}"
+            f"{', ALARM' if item.is_alert else ''}): {item.headline}"
+            for item in items
+        ),
+        label="Berichterstattung",
     )
 
 

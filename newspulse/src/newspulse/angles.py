@@ -168,7 +168,9 @@ def _own_coverage_block(session: Session, client_id: int) -> str:
     ).all()
     if not rows:
         return ""
-    headlines = "\n".join(f"- ({a.source}): {a.title}" for (a,) in rows)
+    headlines = quoting.fence(
+        "\n".join(f"- ({a.source}): {a.title}" for (a,) in rows)
+    )
     return (
         f"BERICHTERSTATTUNG ÜBER DEN MANDANTEN, LETZTE {_OWN_COVERAGE_DAYS} TAGE\n"
         "Nur als Hintergrund: sag nichts, was er hier schon gesagt hat.\n"

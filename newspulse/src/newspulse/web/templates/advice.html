@@ -1336,7 +1336,13 @@ window.npEditing = function (angleId) {
   var showing = {};
 
   var select = function (tab, focus) {
-    var strip = tab.parentElement;
+    // closest, not parentElement: every tab sits inside a .fmtrow now (the tick
+    // box lives beside it), so the parent is the row and the row holds one tab.
+    // parentElement here meant a click could not switch the previous tab off,
+    // two panes showed at once, and the poller — finding no strip id — snapped
+    // the reader back to the first tab on every swap.
+    var strip = tab.closest('[role="tablist"]');
+    if (!strip) return;
     if (strip.id) showing[strip.id] = tab.dataset.pane;
     strip.querySelectorAll(".fmttab").forEach(function (other) {
       var pane = document.getElementById(other.dataset.pane);
@@ -1358,9 +1364,9 @@ window.npEditing = function (angleId) {
   document.addEventListener("keydown", function (event) {
     var tab = event.target.closest && event.target.closest(".fmttab");
     if (!tab || !(event.key in STEPS)) return;
-    var tabs = Array.prototype.slice.call(
-      tab.parentElement.querySelectorAll(".fmttab")
-    );
+    var list = tab.closest('[role="tablist"]');
+    if (!list) return;
+    var tabs = Array.prototype.slice.call(list.querySelectorAll(".fmttab"));
     var at = tabs.indexOf(tab);
     var next =
       event.key === "Home" ? 0

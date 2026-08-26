@@ -35,7 +35,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import ValidationError
 
-from . import brain, config
+from . import brain, config, quoting
 from .quota import is_quota_error
 from .models import Article, Category, Client
 from .schemas import Analysis, ArticleVerdict, BatchVerdict
@@ -459,7 +459,7 @@ def _build_articles_block(chunk: Sequence[Article]) -> str:
             f"Quelle: {getattr(article, 'source', '')}\n"
             f"Feed-Zusammenfassung: {summary}"
         )
-    return "\n\n".join(entries)
+    return quoting.fence("\n\n".join(entries), label="Kandidaten-Meldungen")
 
 
 def strip_code_fence(text: str) -> str:
