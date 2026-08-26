@@ -1,0 +1,22 @@
+{# One row for everything this mandate has to hand over: the occasions the radar
+   found, and the months that have ended.
+
+   It is the tab's navigation. Impulses used to stack four full cards down one
+   page — idea, seven formats and a send ledger each — so reading the third meant
+   scrolling past two, and reports were a different tab entirely. The rail marks
+   the entry on screen and puts every other one click away, which is what
+   "buttons to scroll through the list" asked for and what merging the two tabs
+   needs to be usable at all. #}
+{% if entries %}
+  <nav class="rail" aria-label="{{ t('Texte') }}">
+    {% for e in entries %}
+      <a class="rail__e{% if e.active %} is-on{% endif %}" href="{{ e.href }}"
+         {%- if e.active %} aria-current="page"{% endif %}>
+        <span class="rail__k">{{ t("Anlass") if e.kind == "anlass" else t("Zeitraum") }}</span>
+        <span class="rail__w">{{ e.when }}</span>
+        <span class="rail__l">{{ e.label }}</span>
+        {% if e.note %}<span class="rail__n">{{ t(e.note) }}</span>{% endif %}
+      </a>
+    {% endfor %}
+  </nav>
+{% endif %}

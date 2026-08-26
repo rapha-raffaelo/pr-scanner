@@ -57,6 +57,7 @@ from ... import reporting
 from ...analyzer import AnalyzerError, ParseError, invoke_with_fallback
 from ...models import Client, Report, ReportFinding
 from ...reporting import Period
+from .. import texte
 from ..app import get_db, templates, translator
 from .today import _fetch_last_run, _local_tz
 
@@ -372,6 +373,10 @@ def _render(
             "views": reports.resolve(session, row, kept_only=False) if row else [],
             "released": reports.is_released(row) if row is not None else False,
             "kind_labels": _KIND_LABELS,
+            # The same rail the occasions draw, so the two halves of the Texte
+            # tab are one surface: whichever page the reader is on, every other
+            # entry is one click away.
+            "entries": texte.rail(session, client, active=f"zeitraum-{period_key}"),
             "periods": _period_options(dt.datetime.now(dt.UTC), period_key),
             "period_key": period_key,
             "no_report": _NO_REPORT,

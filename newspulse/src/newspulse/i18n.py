@@ -931,6 +931,11 @@ _EN: dict[str, str] = {
     # one list instead of a proposal list above a duplicate empty form.
     "Vorschlag, noch nicht gespeichert": "Proposed, not saved yet",
     "Export": "Export",
+    # The Texte tab and its rail: one place for everything drafted for a
+    # mandate, whether it hangs off an occasion or off a month.
+    "Texte": "Drafts",
+    "Anlass": "Occasion",
+    "noch nicht erzeugt": "not drafted yet",
     "Der Mandantenmonat als Excel-Mappe: Berichterstattung, Anteil am Gespräch und die Beiträge dahinter. Die Messung oben steht nicht darin.":
         "The mandate's month as an Excel workbook: coverage, share of voice and "
         "the articles behind it. The measurement above is not in it.",

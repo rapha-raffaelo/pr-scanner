@@ -5,8 +5,9 @@
 
 {% block content %}
 {% set t = translator(request) %}
-{% set active = 'advice' %}
+{% set active = 'texte' %}
 {% include '_client_tabs.html' %}
+{% include 'partials/texte_rail.html' %}
 
 <style>
   /* Page-local only. Everything with a shared name — .sect, .impulse, .notice —
@@ -267,7 +268,10 @@
     {% for angle in angles %}
       <article class="impulse" id="impulse-{{ angle.id }}">
         <div class="impulse__head imp__rub">
-          <span class="imp__ix">{{ t("Impuls") }} {{ loop.index }}/{{ angles | length }}</span>
+          {# No counter any more. It said which of four this was, back when four
+             were stacked down one page; the rail above now says that, and a
+             card that is the only one on screen reporting "1/1" is noise. #}
+          <span class="imp__ix">{{ t("Anlass") }}</span>
           <span class="imp__when">{{ angle.generated_at | de_short_date }}</span>
           <button type="button" class="impulse__copy" data-copy-from="impulse-text-{{ angle.id }}">{{ t("Kopieren") }}</button>
         </div>

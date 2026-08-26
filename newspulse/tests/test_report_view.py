@@ -312,10 +312,27 @@ def test_the_period_picker_shows_the_month_the_page_is_showing(http, seeded, fac
     assert '<option value="2019-03" selected>' in body
 
 
-def test_the_berichte_tab_is_on_the_client_workspace(http, seeded):
-    body = http.get(f"/client/{seeded['client_id']}/guide").text
-    assert f'/client/{seeded["client_id"]}/berichte' in body
-    assert "Berichte" in body
+def test_the_report_is_reachable_from_the_texte_tab_not_a_tab_of_its_own(http, seeded):
+    """Berichte and Impulse became one tab.
+
+    They were two, and read as two products doing the same thing at different
+    rhythms — RauteOS drafts, the consultant keeps or discards, what is left is
+    handed over. The strip now carries "Texte", and the rail on that page is
+    where an occasion or a month is chosen. So the report is one click further
+    away from the guide page and no click further from the work.
+    """
+    client_id = seeded["client_id"]
+
+    # On the href, not on the word: "Berichte" is a substring of
+    # "Berichterstattung", which the same page prints for its own reasons.
+    strip = http.get(f"/client/{client_id}/guide").text
+    tabs = strip.split('class="subtabs"', 1)[1].split("</nav>", 1)[0]
+    assert f'/client/{client_id}/berichte' not in tabs, "no tab of its own any more"
+    assert ">Texte<" in tabs
+    assert f'/client/{client_id}/advice' in tabs
+
+    rail = http.get(f"/client/{client_id}/advice").text
+    assert f'/client/{client_id}/berichte' in rail, "the rail carries the period"
 
 
 # --- Generating -------------------------------------------------------------------

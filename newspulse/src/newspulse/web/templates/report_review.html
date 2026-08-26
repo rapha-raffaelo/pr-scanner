@@ -5,8 +5,9 @@
 
 {% block content %}
 {% set t = translator(request) %}
-{% set active = 'reports' %}
+{% set active = 'texte' %}
 {% include '_client_tabs.html' %}
+{% include 'partials/texte_rail.html' %}
 
 {#- The review surface. One screen, one question per card: does the agency stand
     behind this sentence? Everything on it exists to make that answerable in the

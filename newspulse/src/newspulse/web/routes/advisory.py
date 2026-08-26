@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from ... import angles, contacts, gmail_link, job, outreach, pitch
 from ...db import get_session
 from ..runlock import guard as _run_guard
-from .. import spawn, themework
+from .. import spawn, texte, themework
 from ...models import Angle, Article, Client, Contact, Outreach, TopicHit
 from ...schemas import GuideVerdict
 from ..app import get_db, templates
@@ -175,9 +175,20 @@ def _thread_links(
     }
 
 
-def _advice_context(session: Session, client: Client) -> dict:
-    """Everything advice.html renders for one mandate, in one place."""
-    drafts = angles.for_client(session, client.id)
+def _advice_context(session: Session, client: Client, *, eintrag: str = "") -> dict:
+    """Everything advice.html renders for one mandate, in one place.
+
+    ``eintrag`` names the occasion on screen, in the rail's spelling
+    (``anlass-12``). One at a time rather than the stack of five this page used
+    to be: a single card carries an idea, seven formats and a send ledger, so
+    reading the third meant scrolling past two of those. Unnamed, the newest is
+    shown — which is what the reader came for on the morning it appeared.
+    """
+    everything = angles.for_client(session, client.id, limit=None)
+    chosen = next(
+        (a for a in everything if f"anlass-{a.id}" == eintrag), None
+    ) or (everything[0] if everything else None)
+    drafts = [chosen] if chosen is not None else []
     targets = {a.id: pitch.targets_for(session, client, a) for a in drafts}
     messages = outreach.by_angle(session, [a.id for a in drafts])
     mailbox = gmail_link.connected()
@@ -197,6 +208,13 @@ def _advice_context(session: Session, client: Client) -> dict:
         # read rather than on a settings screen the reader has never opened.
         "theme_work": themework.state.get(client.id),
         "angles": drafts,
+        # The rail: everything this mandate has to hand over, occasions and
+        # periods in one row, with the one on screen marked. Built here rather
+        # than in the template because the report half of it is a different
+        # module's business and the Berichte page draws the same row.
+        "entries": texte.rail(
+            session, client, active=f"anlass-{chosen.id}" if chosen else ""
+        ),
         # The stories each draft rests on, keyed by angle id. The page's own
         # lead promises that "jede Aussage nennt die Meldungen, auf die sie
         # sich stützt" — and this card, the detailed view of a draft the Today
@@ -280,6 +298,7 @@ def _advice_context(session: Session, client: Client) -> dict:
 def advice_view(
     request: Request,
     client_id: int,
+    eintrag: str = "",
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """This client's impulses, the messages written off them, and why not."""
@@ -287,7 +306,7 @@ def advice_view(
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     return templates.TemplateResponse(
-        request, "advice.html", _advice_context(session, client)
+        request, "advice.html", _advice_context(session, client, eintrag=eintrag)
     )
 
 

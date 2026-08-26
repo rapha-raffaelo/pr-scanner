@@ -1727,6 +1727,33 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .cfn { font-size: var(--t-footnote); color: var(--faint); font-weight: 400; }
 .cflogo, .cflogo--mono { width: 18px; height: 18px; font-size: var(--t-caption2); }
 
+/* --- The Texte rail ------------------------------------------------------- */
+/* One entry per thing to hand over. A horizontal strip rather than a sidebar:
+   the entry below it needs the full width — seven format tabs and a letter do
+   not fit beside a list — and a mandate has a handful of these, not fifty. */
+.rail {
+  display: flex; gap: var(--s2); overflow-x: auto; padding: 0 0 var(--s2);
+  margin: 0 0 var(--s5); border-bottom: 1px solid var(--line);
+}
+.rail__e {
+  flex: 0 0 auto; max-width: 260px; display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); color: var(--ink-2); text-decoration: none;
+}
+.rail__e:hover { border-color: var(--line-strong); color: var(--ink); text-decoration: none; }
+.rail__e.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--ink); }
+.rail__k {
+  font-size: var(--t-caption2); text-transform: uppercase; letter-spacing: 0.07em;
+  font-weight: 700; color: var(--faint);
+}
+.rail__e.is-on .rail__k { color: var(--accent); }
+.rail__w { font-size: var(--t-caption); color: var(--muted); font-variant-numeric: tabular-nums; }
+.rail__l {
+  font-size: var(--t-footnote); font-weight: 600; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.rail__n { font-size: var(--t-caption); color: var(--muted); }
+
 /* --- The workspace strip -------------------------------------------------- */
 /* A row of quiet links under the title. The mandate's own name is not repeated
    here: the toolbar says it and the sidebar keeps saying it. */
