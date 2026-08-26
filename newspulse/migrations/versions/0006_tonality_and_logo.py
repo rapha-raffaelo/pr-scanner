@@ -48,5 +48,14 @@ def upgrade() -> None:
 def downgrade() -> None:
     with op.batch_alter_table("clients") as batch:
         batch.drop_column("logo_url")
+    # The check constraint goes with the column it checks. ``sa.Enum`` with
+    # ``create_constraint`` emits ``CONSTRAINT tonality CHECK (tonality IN …)``,
+    # and SQLite has no ALTER for either — batch mode rebuilds the table from the
+    # reflected definition, which carried that CHECK into a table that no longer
+    # has the column: "no such column: tonality", from the downgrade of the
+    # migration that added it. Every step from 0035 down to 0007 reverses cleanly
+    # and this one did not, so a full teardown stopped one migration short of the
+    # schema it was aiming at.
     with op.batch_alter_table("analyses") as batch:
+        batch.drop_constraint("tonality", type_="check")
         batch.drop_column("tonality")

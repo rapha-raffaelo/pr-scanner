@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from ... import coach, guide, onboarding
 from ...analyzer import AnalyzerError
 from ...models import Client
+from ..mandates import mandate_or_404
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
 
@@ -71,10 +72,7 @@ def _render(
 
 
 def _client_or_404(session: Session, client_id: int) -> Client:
-    client = session.get(Client, client_id)
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return client
+    return mandate_or_404(session, client_id)
 
 
 @router.get("/client/{client_id}/guide", response_class=HTMLResponse)

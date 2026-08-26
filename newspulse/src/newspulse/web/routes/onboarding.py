@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from ... import onboarding
 from ...models import Client, OnboardingAnswer
+from ..mandates import mandate_or_404
 from ..app import get_db, templates
 from .today import _fetch_last_run, _local_tz
 
@@ -35,10 +36,7 @@ _SEE_OTHER = 303
 
 
 def _client_or_404(session: Session, client_id: int) -> Client:
-    client = session.get(Client, client_id)
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return client
+    return mandate_or_404(session, client_id)
 
 
 def _question_or_404(key: str) -> onboarding.Question:

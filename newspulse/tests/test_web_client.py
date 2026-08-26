@@ -778,3 +778,57 @@ def test_a_portfolio_with_coverage_today_says_nothing_extra(factory, client):
     body = _content(client.get("/").text)
 
     assert "Zuletzt Berichterstattung am" not in body
+
+
+def test_a_benchmark_gets_no_workspace_and_no_strip_pointing_at_one(factory, client):
+    """A yardstick is measured against, not reported to.
+
+    The sweep has always known that — it skips ``is_competitor`` companies for
+    the radar, the impulses, the profile refresh, the report and the themes — but
+    the pages that render those things did not, so a competitor was offered the
+    whole workspace and every generate button on it. Pressing one spent a model
+    call writing a document for a company that will never receive one.
+
+    What it keeps is the reason it is on file: its coverage, and the charts that
+    compare it. Those read rather than generate.
+    """
+    with factory() as s:
+        mandate = _seed_client(s, name="Alpha AG")
+        rival = _seed_client(s, name="Beta AG")
+        rival.is_competitor = True
+        s.commit()
+        mandate_id, rival_id = mandate.id, rival.id
+
+    for tab in ("advice", "berichte", "profil", "guide", "kickoff", "ki"):
+        assert client.get(f"/client/{rival_id}/{tab}").status_code == 404, tab
+        assert client.get(f"/client/{mandate_id}/{tab}").status_code == 200, tab
+
+    # The archive stays, and so does the comparison it exists for.
+    page = client.get(f"/client/{rival_id}")
+    assert page.status_code == 200
+    assert client.get(f"/client/{rival_id}/wettbewerb").status_code == 200
+    # And it carries no strip: every tab on it would now be a dead link.
+    assert 'class="subtabs"' not in page.text
+    assert "Vergleichsunternehmen" in page.text
+
+
+def test_the_generate_buttons_refuse_a_benchmark_too(factory, client):
+    """The render filter is not the write boundary.
+
+    A tab left open while a company was marked as a competitor elsewhere posts a
+    button the page would no longer draw, and every one of these spends a model
+    call.
+    """
+    with factory() as s:
+        rival = _seed_client(s, name="Beta AG")
+        rival.is_competitor = True
+        s.commit()
+        rival_id = rival.id
+
+    for path in (
+        f"/client/{rival_id}/profil/fill",
+        f"/client/{rival_id}/impulse",
+        f"/client/{rival_id}/guide/vorschlag",
+        f"/client/{rival_id}/berichte/erzeugen",
+    ):
+        assert client.post(path).status_code == 404, path

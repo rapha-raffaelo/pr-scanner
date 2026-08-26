@@ -33,6 +33,7 @@ from ..runlock import guard as _run_guard
 from .. import spawn, texte, themework
 from ...models import Angle, Article, Client, Contact, Outreach, TopicHit
 from ...schemas import GuideVerdict
+from ..mandates import mandate_or_404
 from ..app import get_db, templates
 from . import assets_view
 from .today import _fetch_last_run, _local_tz
@@ -302,9 +303,7 @@ def advice_view(
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """This client's impulses, the messages written off them, and why not."""
-    client = session.get(Client, client_id)
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
+    client = mandate_or_404(session, client_id)
     return templates.TemplateResponse(
         request, "advice.html", _advice_context(session, client, eintrag=eintrag)
     )
@@ -387,8 +386,7 @@ def suggest_themes_here(
     a fix goes unused: the same report came back three times while the remedy sat
     one page away.
     """
-    if session.get(Client, client_id) is None:
-        raise HTTPException(status_code=404, detail="Client not found")
+    mandate_or_404(session, client_id)
     themework.start(session, client_id)
     return RedirectResponse(f"/client/{client_id}/advice", status_code=_SEE_OTHER)
 
@@ -401,8 +399,7 @@ def request_impulse(client_id: int, session: Session = Depends(get_db)) -> Respo
     mandate with nothing to show on a quiet day even though its field may have
     plenty worth saying. This asks the question directly, over a wider window.
     """
-    if session.get(Client, client_id) is None:
-        raise HTTPException(status_code=404, detail="Client not found")
+    mandate_or_404(session, client_id)
     if _drafting.acquire(blocking=False):
         spawn.start_or_release(
             _run_impulse,

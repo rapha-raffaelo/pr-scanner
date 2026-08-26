@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redaktionsplan: Monat für Monat · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --neutral:#a1a1aa;
+  --study:#5856d6; --reg:#b25000; --event:#0071e3; --archiv:#248a3d;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--neutral)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tabs{display:flex;gap:var(--s4);padding:var(--s4) var(--s7) 0;border-bottom:1px solid var(--line);
+  background:rgba(247,247,250,.92);overflow-x:auto}
+.tabs a{font-size:var(--t-subhead);color:var(--muted);padding:0 0 10px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a.is-on{color:var(--ink);font-weight:600;border-bottom-color:var(--tint)}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.btn--sm{padding:4px 10px;font-size:var(--t-footnote)}
+
+.head{display:flex;align-items:flex-start;gap:var(--s4);margin-bottom:var(--s5);flex-wrap:wrap}
+.head__t{font-size:var(--t-title1);font-weight:700;letter-spacing:-.025em}
+.head__d{font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s1);max-width:64ch}
+.head__r{margin-left:auto;display:flex;gap:var(--s2);align-items:center}
+
+.key{display:flex;gap:var(--s4);flex-wrap:wrap;font-size:var(--t-caption);color:var(--muted);margin-bottom:var(--s5)}
+.key span{display:flex;align-items:center;gap:5px}
+.key b{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+.month{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:var(--s4);overflow:hidden}
+.month--empty{border-style:dashed;background:transparent}
+.month__h{display:flex;align-items:baseline;gap:var(--s3);padding:var(--s4) var(--s4) var(--s3);flex-wrap:wrap}
+.month__n{font-size:var(--t-title3);font-weight:700;letter-spacing:-.015em}
+.month__s{font-size:var(--t-caption);color:var(--muted)}
+.month__r{margin-left:auto;font-size:var(--t-caption);color:var(--muted)}
+
+.hook{display:flex;gap:var(--s3);padding:var(--s3) var(--s4);border-top:1px solid var(--line);align-items:flex-start}
+.hook__d{width:52px;flex:none;text-align:center;padding-top:2px}
+.hook__dd{font-size:var(--t-title3);font-weight:700;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.hook__dm{font-size:var(--t-caption2);color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+.hook__d.soft .hook__dd{color:var(--faint);font-size:var(--t-subhead);font-weight:600}
+.hook__b{min-width:0;flex:1}
+.hook__h{display:flex;align-items:baseline;gap:var(--s2);flex-wrap:wrap}
+.hook__t{font-size:var(--t-subhead);font-weight:600}
+.hook__w{font-size:var(--t-footnote);color:var(--muted);margin-top:3px;line-height:1.5}
+.hook__e{font-size:var(--t-footnote);margin-top:6px;display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap}
+.hook__a{margin-left:auto;display:flex;gap:6px;align-items:center;flex:none;padding-top:2px}
+.tag{font-size:var(--t-caption);padding:1px 8px;border-radius:20px;background:var(--fill);color:var(--muted)}
+.tag.study{background:rgba(88,86,214,.10);color:var(--study)}
+.tag.reg{background:rgba(178,80,0,.10);color:var(--reg)}
+.tag.event{background:rgba(0,113,227,.10);color:var(--event)}
+.tag.archiv{background:rgba(36,138,61,.10);color:var(--archiv)}
+.tag.done{background:rgba(36,138,61,.10);color:var(--good);font-weight:600}
+.src{font-size:var(--t-footnote);color:var(--faint)}
+.empty{padding:var(--s4);font-size:var(--t-footnote);color:var(--muted)}
+.empty b{color:var(--warn);font-weight:600}
+.foot{font-size:var(--t-caption);color:var(--faint);margin-top:var(--s5);max-width:78ch}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandate</div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#fff"></span>Enpal</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Volocopter</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Trade Republic</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Personio</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <nav class="tabs">
+      <a href="#">Heute</a><a href="#">Impulse</a><a href="#" class="is-on">Plan</a>
+      <a href="#">Wettbewerb</a><a href="#">Berichte</a><a href="#">Archiv</a>
+      <a href="#">Profil</a><a href="#">Guide</a><a href="#">Marktumfeld</a><a href="#">KI-Sichtbarkeit</a>
+    </nav>
+    <div class="content">
+
+      <div class="head">
+        <div>
+          <h1 class="head__t">Redaktionsplan</h1>
+          <p class="head__d">Sechs Monate voraus, gebaut aus datierten Marktsignalen, geprüften Themen
+            und dem, was das Archiv im selben Monat des Vorjahres getragen hat. Jeder Haken hängt an einer
+            gespeicherten Zeile. Kein Datum wird geraten.</p>
+        </div>
+        <div class="head__r">
+          <button class="btn btn--ghost">Neu berechnen</button>
+          <button class="btn">Als PDF</button>
+        </div>
+      </div>
+
+      <div class="key">
+        <span><b style="background:#5856d6"></b>Studie</span>
+        <span><b style="background:#b25000"></b>Regulierung</span>
+        <span><b style="background:#0071e3"></b>Veranstaltung</span>
+        <span><b style="background:#248a3d"></b>Archivmuster</span>
+      </div>
+
+      <section class="month">
+        <div class="month__h"><span class="month__n">September</span><span class="month__s">laufender Monat</span>
+          <span class="month__r">3 Haken, 1 erledigt</span></div>
+
+        <div class="hook">
+          <div class="hook__d"><div class="hook__dd">12</div><div class="hook__dm">Sep</div></div>
+          <div class="hook__b">
+            <div class="hook__h"><span class="hook__t">Frist Call for Speakers, Intersolar Europe</span>
+              <span class="tag event">Veranstaltung</span></div>
+            <p class="hook__w">Der Vortragsslot ist die günstigste Reichweite im Jahr und die Frist ist hart.
+              Vorschlag: Gastbeitrag als Bewerbungstext, dann als Fachbeitrag zweitverwerten.</p>
+            <div class="hook__e"><a href="#">Beleg: Intersolar, Ausschreibung vom 04.08.</a>
+              <span class="src">Marktsignal 1184</span></div>
+          </div>
+          <div class="hook__a"><button class="btn btn--sm">Text schreiben</button></div>
+        </div>
+
+        <div class="hook">
+          <div class="hook__d"><div class="hook__dd">24</div><div class="hook__dm">Sep</div></div>
+          <div class="hook__b">
+            <div class="hook__h"><span class="hook__t">Ende der Konsultation zur EEG-Novelle</span>
+              <span class="tag reg">Regulierung</span></div>
+            <p class="hook__w">Der Tag, an dem Fachjournalisten Stimmen aus der Branche suchen.
+              Vorschlag: Statement plus eine Handvoll persönlicher Anschreiben.</p>
+            <div class="hook__e"><a href="#">Beleg: BMWK, Konsultationsaufruf</a>
+              <span class="src">Marktsignal 1092</span></div>
+          </div>
+          <div class="hook__a"><button class="btn btn--sm">Text schreiben</button></div>
+        </div>
+
+        <div class="hook">
+          <div class="hook__d soft"><div class="hook__dd">Ende</div><div class="hook__dm">Sep</div></div>
+          <div class="hook__b">
+            <div class="hook__h"><span class="hook__t">Heizsaison beginnt: Wärmepumpe im Bestandsbau</span>
+              <span class="tag archiv">Archivmuster</span><span class="tag done">Erledigt</span></div>
+            <p class="hook__w">Im September letzten Jahres liefen 14 Beiträge zu diesem Thema, sieben davon
+              in der zweiten Monatshälfte. Enpal war in zweien davon.</p>
+            <div class="hook__e"><a href="#">Beleg: 14 Beiträge, Sep 2025</a>
+              <a href="#">Gastbeitrag am 03.09. freigegeben</a></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="month">
+        <div class="month__h"><span class="month__n">Oktober</span>
+          <span class="month__r">2 Haken</span></div>
+
+        <div class="hook">
+          <div class="hook__d"><div class="hook__dd">08</div><div class="hook__dm">Okt</div></div>
+          <div class="hook__b">
+            <div class="hook__h"><span class="hook__t">Fraunhofer ISE veröffentlicht Halbjahresauswertung</span>
+              <span class="tag study">Studie</span></div>
+            <p class="hook__w">Die Zahl, die ein halbes Jahr lang zitiert wird. Wer sie am Tag der
+              Veröffentlichung einordnet, steht in den Folgeartikeln.</p>
+            <div class="hook__e"><a href="#">Beleg: Fraunhofer ISE, Vorankündigung</a>
+              <span class="src">Marktsignal 1203</span></div>
+          </div>
+          <div class="hook__a"><button class="btn btn--sm">Text schreiben</button></div>
+        </div>
+
+        <div class="hook">
+          <div class="hook__d soft"><div class="hook__dd">Mitte</div><div class="hook__dm">Okt</div></div>
+          <div class="hook__b">
+            <div class="hook__h"><span class="hook__t">Netzentgelte: der jährliche Aufschlag wird bekannt</span>
+              <span class="tag archiv">Archivmuster</span></div>
+            <p class="hook__w">Kein festes Datum, aber im Archiv drei Jahre in Folge in der Monatsmitte.
+              22 Beiträge im Oktober 2025, keiner davon mit Enpal.</p>
+            <div class="hook__e"><a href="#">Beleg: 22 Beiträge, Okt 2025</a>
+              <span class="src">Thema „Netzentgelte“, 31 belegte Treffer</span></div>
+          </div>
+          <div class="hook__a"><button class="btn btn--sm">Text schreiben</button></div>
+        </div>
+      </section>
+
+      <section class="month month--empty">
+        <div class="month__h"><span class="month__n">November</span>
+          <span class="month__r">kein Haken</span></div>
+        <div class="empty"><b>Leer.</b> Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter
+          Resonanz in diesem Monat. Ein leerer Monat wird nicht gefüllt, er wird gezeigt:
+          entweder ist hier wirklich nichts, oder dem Mandat fehlt ein Thema.
+          <a href="#">Themen prüfen</a></div>
+      </section>
+
+      <section class="month">
+        <div class="month__h"><span class="month__n">Dezember</span>
+          <span class="month__r">1 Haken</span></div>
+        <div class="hook">
+          <div class="hook__d soft"><div class="hook__dd">Anfang</div><div class="hook__dm">Dez</div></div>
+          <div class="hook__b">
+            <div class="hook__h"><span class="hook__t">Jahresrückblicke der Fachpresse</span>
+              <span class="tag archiv">Archivmuster</span></div>
+            <p class="hook__w">Redaktionen fragen ab Ende November nach Einschätzungen zum Jahr.
+              Wer bis dahin nichts geschickt hat, kommt nicht vor.</p>
+            <div class="hook__e"><a href="#">Beleg: 9 Beiträge, Dez 2025</a></div>
+          </div>
+          <div class="hook__a"><button class="btn btn--sm">Text schreiben</button></div>
+        </div>
+      </section>
+
+      <section class="month">
+        <div class="month__h"><span class="month__n">Januar</span>
+          <span class="month__r">2 Haken</span></div>
+        <div class="hook">
+          <div class="hook__d"><div class="hook__dd">01</div><div class="hook__dm">Jan</div></div>
+          <div class="hook__b">
+            <div class="hook__h"><span class="hook__t">EEG-Novelle tritt in Kraft</span>
+              <span class="tag reg">Regulierung</span></div>
+            <p class="hook__w">Der härteste Termin im Halbjahr. Vorschlag: Pressemitteilung zum Stichtag,
+              Talking Points für den Sprecher, Q&amp;A für Rückfragen.</p>
+            <div class="hook__e"><a href="#">Beleg: Bundesanzeiger</a><span class="src">Marktsignal 1092</span></div>
+          </div>
+          <div class="hook__a"><button class="btn btn--sm">Text schreiben</button></div>
+        </div>
+        <div class="hook">
+          <div class="hook__d"><div class="hook__dd">21</div><div class="hook__dm">Jan</div></div>
+          <div class="hook__b">
+            <div class="hook__h"><span class="hook__t">Handelsblatt Energie-Gipfel</span>
+              <span class="tag event">Veranstaltung</span></div>
+            <p class="hook__w">Die Redaktionen, die dort sind, schreiben in der Woche davor.
+              Vorschlag: Interview-Briefing und eine Kontaktrunde zehn Tage vorher.</p>
+            <div class="hook__e"><a href="#">Beleg: Programm veröffentlicht</a><span class="src">Marktsignal 1240</span></div>
+          </div>
+          <div class="hook__a"><button class="btn btn--sm">Text schreiben</button></div>
+        </div>
+      </section>
+
+      <p class="foot">Der Monat ist die Einheit, in der eine Agentur ohnehin arbeitet: der Report ist monatlich,
+        das Retainer-Gespräch ist monatlich. Der Plan ist deshalb ein Stapel Monate, und ein leerer Monat
+        ist eine Aussage, keine Lücke im Layout.</p>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

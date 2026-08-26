@@ -16,6 +16,7 @@ from ... import profile_refresh
 from ...db import get_session
 from ...models import Client, ClientFact, OnboardingAnswer, ProfileProposal
 from .. import spawn
+from ..mandates import mandate_or_404
 from ..app import get_db, templates
 from ..runlock import guard as _run_guard
 from .today import _fetch_last_run, _local_tz
@@ -143,9 +144,7 @@ def _pending(
 def profile_view(
     request: Request, client_id: int, session: Session = Depends(get_db)
 ) -> HTMLResponse:
-    client = session.get(Client, client_id)
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
+    client = mandate_or_404(session, client_id)
     # Both tables read once and handed on. The proposals need the facts to know
     # what they would displace and the answers to know what to offer; the
     # completeness line needs the same answers again.
@@ -236,9 +235,7 @@ async def save_profile(
     every one of them in a signature would mean a new field is two edits, one of
     which is easy to forget — as the three this story added would have been.
     """
-    client = session.get(Client, client_id)
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
+    client = mandate_or_404(session, client_id)
     form = await request.form()
     facts = profiles.stored(session, client_id)
     # The research and kick-off offers, which the page now renders *into* the
@@ -299,8 +296,7 @@ async def save_profile(
 @router.post("/client/{client_id}/profil/fill")
 def fill_profile(client_id: int, session: Session = Depends(get_db)) -> Response:
     """Ask the web what it knows. Proposes; writes nothing."""
-    if session.get(Client, client_id) is None:
-        raise HTTPException(status_code=404, detail="Client not found")
+    mandate_or_404(session, client_id)
     if _researching.acquire(blocking=False):
         spawn.start_or_release(
             _run_research,
@@ -378,9 +374,7 @@ async def accept_proposals(
     not a conflict with the rule above — it displaces a researched value, never
     one a person typed.
     """
-    client = session.get(Client, client_id)
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
+    client = mandate_or_404(session, client_id)
     form = await request.form()
 
     def _edited(proposal, name: str) -> str:
@@ -454,8 +448,7 @@ def forget_superseded(
     The way out: a superseded value is kept so the reader can see that the web
     said something else, not so it stays on the page forever.
     """
-    if session.get(Client, client_id) is None:
-        raise HTTPException(status_code=404, detail="Client not found")
+    mandate_or_404(session, client_id)
     profiles.forget_superseded(session, client_id, key)
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
 
@@ -477,8 +470,7 @@ def discard_proposals(
     The rows are stamped rather than deleted, so the next refresh knows not to
     offer the same value again.
     """
-    if session.get(Client, client_id) is None:
-        raise HTTPException(status_code=404, detail="Client not found")
+    mandate_or_404(session, client_id)
     refused = profile_refresh.discard(
         session, client_id, pid, now=dt.datetime.now(dt.UTC)
     )

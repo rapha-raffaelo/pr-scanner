@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KI-Sichtbarkeit: Stand und Bewegung · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --neutral:#a1a1aa;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px; --t-large:32px; --t-huge:52px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--neutral)}
+.side__count{margin-left:auto;font-size:var(--t-caption2);font-weight:700;color:var(--faint)}
+.side__foot{margin-top:auto;border-top:1px solid var(--line-strong);padding-top:var(--s3)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s4) var(--s7) 0;border-bottom:1px solid var(--line);background:rgba(247,247,250,.92)}
+.tbar__title{font-size:var(--t-title2);font-weight:700;letter-spacing:-.02em}
+.tbar__sub{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+.tabs{display:flex;gap:var(--s4);padding:var(--s4) var(--s7) 0;border-bottom:1px solid var(--line);
+  background:rgba(247,247,250,.92);overflow-x:auto}
+.tabs a{font-size:var(--t-subhead);color:var(--muted);padding:0 0 10px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a:hover{text-decoration:none;color:var(--ink-2)}
+.tabs a.is-on{color:var(--ink);font-weight:600;border-bottom-color:var(--tint)}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.head{display:flex;align-items:flex-start;gap:var(--s4);margin-bottom:var(--s5)}
+.head__t{font-size:var(--t-title1);font-weight:700;letter-spacing:-.025em}
+.head__d{font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s1);max-width:62ch}
+.head__r{margin-left:auto;display:flex;gap:var(--s2);align-items:center}
+
+.split{display:grid;grid-template-columns:1fr 1fr;gap:var(--s4);align-items:start}
+@media (max-width:980px){.split{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:var(--s4);overflow:hidden}
+.panel__h{display:flex;align-items:baseline;gap:var(--s2);padding:var(--s4) var(--s4) var(--s3);flex-wrap:wrap}
+.panel__t{font-size:var(--t-subhead);font-weight:600}
+.panel__s{font-size:var(--t-caption);color:var(--muted)}
+.panel__r{margin-left:auto;font-size:var(--t-caption);color:var(--muted)}
+.panel__b{padding:0 var(--s4) var(--s4)}
+
+.score{display:flex;align-items:flex-end;gap:var(--s3);padding:var(--s2) var(--s4) var(--s4)}
+.score__n{font-size:var(--t-huge);font-weight:700;letter-spacing:-.04em;line-height:.95;font-variant-numeric:tabular-nums}
+.score__d{padding-bottom:6px}
+.score__l{font-size:var(--t-subhead);color:var(--ink-2)}
+.score__c{font-size:var(--t-footnote);font-weight:600;color:var(--good);margin-top:2px}
+.trendbox{padding:0 var(--s4) var(--s4)}
+.axis text{font-size:10px;fill:rgba(60,60,67,.58);font-variant-numeric:tabular-nums}
+.grid line{stroke:var(--line);stroke-width:1}
+svg{display:block;max-width:100%}
+
+.bar{display:flex;align-items:center;gap:var(--s3);padding:7px var(--s4);border-top:1px solid var(--line)}
+.bar__n{font-size:var(--t-subhead);width:132px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar__n.is-us{font-weight:700;color:var(--tint)}
+.bar__t{flex:1;height:7px;border-radius:4px;background:var(--fill);overflow:hidden;min-width:50px}
+.bar__t i{display:block;height:100%;background:var(--neutral);border-radius:4px}
+.bar__t i.is-us{background:var(--tint)}
+.bar__v{font-size:var(--t-footnote);color:var(--muted);width:64px;text-align:right;font-variant-numeric:tabular-nums}
+
+.mv{display:flex;gap:var(--s3);padding:var(--s3) var(--s4);border-top:1px solid var(--line);align-items:flex-start}
+.mv__i{width:22px;flex:none;text-align:center;font-size:var(--t-subhead);font-weight:700;line-height:1.5}
+.mv__i.up{color:var(--good)} .mv__i.down{color:var(--alert)} .mv__i.flat{color:var(--faint)}
+.mv__b{min-width:0}
+.mv__q{font-size:var(--t-subhead);color:var(--ink-2)}
+.mv__m{font-size:var(--t-caption);color:var(--muted);margin-top:2px}
+
+.act{display:flex;gap:var(--s3);padding:var(--s4);border-top:1px solid var(--line);align-items:flex-start}
+.act__n{width:20px;flex:none;font-size:var(--t-caption);font-weight:700;color:var(--faint);line-height:1.6}
+.act__b{min-width:0;flex:1}
+.act__t{font-size:var(--t-subhead);font-weight:600}
+.act__d{font-size:var(--t-footnote);color:var(--muted);margin-top:3px;line-height:1.5}
+.act__l{font-size:var(--t-footnote);margin-top:6px;display:inline-block}
+.note{font-size:var(--t-footnote);color:var(--muted);padding:var(--s3) var(--s4);
+  background:var(--fill-2);border-top:1px solid var(--line)}
+.src{display:flex;align-items:baseline;gap:var(--s3);padding:7px var(--s4);border-top:1px solid var(--line);font-size:var(--t-subhead)}
+.src__c{margin-left:auto;font-size:var(--t-footnote);color:var(--muted);font-variant-numeric:tabular-nums}
+.src__b{font-size:var(--t-caption);padding:1px 7px;border-radius:20px;background:var(--fill);color:var(--muted)}
+.src__b.own{background:rgba(0,113,227,.10);color:var(--tint)}
+.foot{font-size:var(--t-caption);color:var(--faint);margin-top:var(--s4);max-width:76ch}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandate</div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#fff"></span>Enpal</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>TeamViewer<span class="side__count">2</span></a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Celonis</a>
+    </nav>
+    <div class="side__foot"><a href="#" class="side__row">Einstellungen</a></div>
+  </aside>
+
+  <div class="main">
+    <div class="tbar">
+      <div>
+        <div class="tbar__title">Enpal</div>
+        <div class="tbar__sub">Solarenergie · Berlin · Mandant seit März 2025</div>
+      </div>
+    </div>
+    <nav class="tabs">
+      <a href="#">Heute</a>
+      <a href="#">Impulse</a>
+      <a href="#">Wettbewerb</a>
+      <a href="#">Berichte</a>
+      <a href="#">Archiv</a>
+      <a href="#">Kickoff</a>
+      <a href="#">Profil</a>
+      <a href="#">Guide</a>
+      <a href="#">Marktumfeld</a>
+      <a href="#" class="is-on">KI-Sichtbarkeit</a>
+    </nav>
+
+    <div class="content">
+      <div class="head">
+        <div>
+          <div class="head__t">KI-Sichtbarkeit</div>
+          <div class="head__d">Wo das Mandat steht, wenn ein Assistent nach diesem Markt gefragt wird,
+            und was sich seit der letzten Messung bewegt hat. Achtzehn Fragen, zwei Modelle, wöchentlich.</div>
+        </div>
+        <div class="head__r">
+          <button class="btn--ghost btn">Alle Fragen</button>
+          <button class="btn">Jetzt messen</button>
+        </div>
+      </div>
+
+      <div class="split">
+        <div>
+          <div class="panel">
+            <div class="panel__h">
+              <span class="panel__t">Stand</span>
+              <span class="panel__s">Messung vom 24. August</span>
+            </div>
+            <div class="score">
+              <div class="score__n">39<span style="font-size:var(--t-title2);font-weight:600"> %</span></div>
+              <div class="score__d">
+                <div class="score__l">der Fragen nennen Enpal</div>
+                <div class="score__c">+11 Prozentpunkte seit Juli</div>
+              </div>
+            </div>
+            <div class="trendbox">
+              <svg viewBox="0 0 480 110" role="img" aria-label="Anteil genannter Fragen über vier Messungen">
+                <g class="grid">
+                  <line x1="34" y1="14" x2="470" y2="14"></line>
+                  <line x1="34" y1="47" x2="470" y2="47"></line>
+                  <line x1="34" y1="80" x2="470" y2="80"></line>
+                </g>
+                <g class="axis">
+                  <text x="0" y="18">60 %</text>
+                  <text x="0" y="51">30 %</text>
+                  <text x="6" y="84">0 %</text>
+                  <text x="64" y="102">3. Aug</text>
+                  <text x="176" y="102">10. Aug</text>
+                  <text x="288" y="102">17. Aug</text>
+                  <text x="400" y="102">24. Aug</text>
+                </g>
+                <polyline points="80,66 192,58 304,52 416,37" fill="none" stroke="#0071e3" stroke-width="2.5"
+                  stroke-linejoin="round" stroke-linecap="round"></polyline>
+                <polyline points="80,42 192,40 304,38 416,36" fill="none" stroke="#a1a1aa" stroke-width="2"
+                  stroke-dasharray="4 4" stroke-linejoin="round"></polyline>
+                <circle cx="416" cy="37" r="4" fill="#0071e3"></circle>
+                <text x="300" y="30" font-size="10" fill="rgba(60,60,67,.58)">1Komma5°</text>
+              </svg>
+            </div>
+            <div class="note">Die gestrichelte Linie ist der stärkste Wettbewerber im selben Fragensatz.
+              Der Abstand ist kleiner geworden, geschlossen ist er nicht.</div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__h">
+              <span class="panel__t">Wer den Markt besetzt</span>
+              <span class="panel__s">Nennungen über 18 Fragen, beide Modelle</span>
+            </div>
+            <div class="bar"><span class="bar__n">1Komma5°</span><span class="bar__t"><i style="width:61%"></i></span><span class="bar__v">11 von 18</span></div>
+            <div class="bar"><span class="bar__n is-us">Enpal</span><span class="bar__t"><i class="is-us" style="width:39%"></i></span><span class="bar__v">7 von 18</span></div>
+            <div class="bar"><span class="bar__n">Zolar</span><span class="bar__t"><i style="width:33%"></i></span><span class="bar__v">6 von 18</span></div>
+            <div class="bar"><span class="bar__n">EON Solar</span><span class="bar__t"><i style="width:28%"></i></span><span class="bar__v">5 von 18</span></div>
+            <div class="bar"><span class="bar__n">Wegatech</span><span class="bar__t"><i style="width:11%"></i></span><span class="bar__v">2 von 18</span></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__h">
+              <span class="panel__t">Woher die Antworten kommen</span>
+              <span class="panel__s">zitierte Quellen</span>
+            </div>
+            <div class="src"><span>Verbraucherzentrale</span><span class="src__b">Ratgeber</span><span class="src__c">6&times;</span></div>
+            <div class="src"><span>Finanztip</span><span class="src__b">Ratgeber</span><span class="src__c">5&times;</span></div>
+            <div class="src"><span>pv-magazine</span><span class="src__b">Fachpresse</span><span class="src__c">4&times;</span></div>
+            <div class="src"><span>enpal.de</span><span class="src__b own">eigene Seite</span><span class="src__c">3&times;</span></div>
+            <div class="note">Vier von fünf sind Ratgeberportale, keine Presse.</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="panel">
+            <div class="panel__h">
+              <span class="panel__t">Bewegung</span>
+              <span class="panel__s">gegenüber dem 17. August</span>
+              <span class="panel__r">4 von 18 Fragen verändert</span>
+            </div>
+            <div class="mv">
+              <span class="mv__i up">&uarr;</span>
+              <div class="mv__b">
+                <div class="mv__q">Welche Anbieter für Solaranlagen mit Speicher gibt es in Deutschland?</div>
+                <div class="mv__m">Position 3 auf 2 bei Claude. Zolar rückt nach hinten.</div>
+              </div>
+            </div>
+            <div class="mv">
+              <span class="mv__i up">&uarr;</span>
+              <div class="mv__b">
+                <div class="mv__q">Lohnt sich eine Photovoltaikanlage 2026 noch?</div>
+                <div class="mv__m">Erstmals genannt, bei Gemini auf Position 5. Zitiert wird pv-magazine.</div>
+              </div>
+            </div>
+            <div class="mv">
+              <span class="mv__i down">&darr;</span>
+              <div class="mv__b">
+                <div class="mv__q">Wer ist Marktführer bei Solaranlagen für Eigenheime?</div>
+                <div class="mv__m">Bei Gemini nicht mehr genannt, bei Claude weiterhin auf 1.</div>
+              </div>
+            </div>
+            <div class="mv">
+              <span class="mv__i flat">&bull;</span>
+              <div class="mv__b">
+                <div class="mv__q">Ist Enpal seriös?</div>
+                <div class="mv__m">Weiter genannt, der Tenor bleibt gemischt: Haustürvertrieb und Mietlaufzeit.</div>
+              </div>
+            </div>
+            <div class="note">Vierzehn Fragen sind unverändert. Eine einzelne Antwort schwankt, erst eine
+              Bewegung über zwei Messungen ist eine Bewegung.</div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__h">
+              <span class="panel__t">Was daraus folgt</span>
+              <span class="panel__s">Vorschläge, nichts wird ausgelöst</span>
+            </div>
+            <div class="act">
+              <span class="act__n">1</span>
+              <div class="act__b">
+                <div class="act__t">Sieben Fragen zur Kaufentscheidung nennen niemanden</div>
+                <div class="act__d">Verschattung, Speichergröße, Vertragslaufzeit. Auf diesen Feldern
+                  antworten alle Modelle mit der Verbraucherzentrale. Da steht kein Wettbewerber im Weg.</div>
+                <a class="act__l" href="#">Als Impuls anlegen &rarr;</a>
+              </div>
+            </div>
+            <div class="act">
+              <span class="act__n">2</span>
+              <div class="act__b">
+                <div class="act__t">Der Tenor bei &bdquo;seriös&ldquo; hängt an zwei Themen</div>
+                <div class="act__d">Haustürvertrieb und Mietlaufzeit tauchen in beiden Modellen auf und
+                  decken sich mit der Berichterstattung im Archiv seit Mai.</div>
+                <a class="act__l" href="#">Zur Berichterstattung &rarr;</a>
+              </div>
+            </div>
+            <div class="act">
+              <span class="act__n">3</span>
+              <div class="act__b">
+                <div class="act__t">pv-magazine wird zitiert, Enpal kommt dort selten vor</div>
+                <div class="act__d">Die Fachpresse, aus der die Modelle zitieren, ist im Verteiler
+                  vorhanden. Die Coverage Map zeigt sie als Lücke.</div>
+                <a class="act__l" href="#">Zur Coverage Map &rarr;</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="foot">Gemessen wird, was zwei Assistenten auf denselben Fragensatz antworten, nicht was
+        &bdquo;die KI&ldquo; denkt. RauteOS misst und berichtet, es optimiert nichts und verschickt nichts.</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

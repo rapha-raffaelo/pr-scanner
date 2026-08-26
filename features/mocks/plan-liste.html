@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redaktionsplan: Die nächste Sache zuerst · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --neutral:#a1a1aa;
+  --study:#5856d6; --reg:#b25000; --event:#0071e3; --archiv:#248a3d;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:920px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--neutral)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tabs{display:flex;gap:var(--s4);padding:var(--s4) var(--s7) 0;border-bottom:1px solid var(--line);
+  background:rgba(247,247,250,.92);overflow-x:auto}
+.tabs a{font-size:var(--t-subhead);color:var(--muted);padding:0 0 10px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a.is-on{color:var(--ink);font-weight:600;border-bottom-color:var(--tint)}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.btn--sm{padding:5px 11px;font-size:var(--t-footnote)}
+
+.head{display:flex;align-items:flex-start;gap:var(--s4);margin-bottom:var(--s5);flex-wrap:wrap}
+.head__t{font-size:var(--t-title1);font-weight:700;letter-spacing:-.025em}
+.head__d{font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s1);max-width:64ch}
+.head__r{margin-left:auto;display:flex;gap:var(--s2);align-items:center}
+
+.sect{font-size:var(--t-caption);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);margin:var(--s6) 0 var(--s3)}
+.sect:first-of-type{margin-top:0}
+
+.item{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  display:flex;gap:var(--s4);padding:var(--s4);margin-bottom:var(--s3);align-items:flex-start}
+.item--soon{border-left:3px solid var(--warn)}
+.item--done{opacity:.6}
+.item__d{width:64px;flex:none;text-align:center}
+.item__dd{font-size:var(--t-title2);font-weight:700;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.025em}
+.item__dm{font-size:var(--t-caption2);color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+.item__in{font-size:var(--t-caption);color:var(--warn);font-weight:600;margin-top:4px}
+.item__d.soft .item__dd{font-size:var(--t-subhead);font-weight:600;color:var(--faint);line-height:1.3}
+.item__b{min-width:0;flex:1}
+.item__h{display:flex;align-items:baseline;gap:var(--s2);flex-wrap:wrap}
+.item__t{font-size:var(--t-subhead);font-weight:600}
+.item__w{font-size:var(--t-footnote);color:var(--ink-2);margin-top:var(--s2);line-height:1.55}
+.item__e{font-size:var(--t-footnote);margin-top:var(--s2);display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap}
+.item__a{flex:none;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.tag{font-size:var(--t-caption);padding:1px 8px;border-radius:20px;background:var(--fill);color:var(--muted)}
+.tag.study{background:rgba(88,86,214,.10);color:var(--study)}
+.tag.reg{background:rgba(178,80,0,.10);color:var(--reg)}
+.tag.event{background:rgba(0,113,227,.10);color:var(--event)}
+.tag.archiv{background:rgba(36,138,61,.10);color:var(--archiv)}
+.tag.done{background:rgba(36,138,61,.10);color:var(--good);font-weight:600}
+.src{font-size:var(--t-footnote);color:var(--faint)}
+.link{font-size:var(--t-footnote);color:var(--muted);cursor:pointer}
+.link:hover{color:var(--tint)}
+.note{background:var(--fill-2);border:1px dashed var(--line-strong);border-radius:var(--radius);
+  padding:var(--s3) var(--s4);font-size:var(--t-footnote);color:var(--muted);margin-bottom:var(--s3)}
+.note b{color:var(--warn);font-weight:600}
+.foot{font-size:var(--t-caption);color:var(--faint);margin-top:var(--s5);max-width:78ch}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandate</div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#fff"></span>Enpal</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Volocopter</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Trade Republic</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Personio</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <nav class="tabs">
+      <a href="#">Heute</a><a href="#">Impulse</a><a href="#" class="is-on">Plan</a>
+      <a href="#">Wettbewerb</a><a href="#">Berichte</a><a href="#">Archiv</a>
+      <a href="#">Profil</a><a href="#">Guide</a><a href="#">Marktumfeld</a><a href="#">KI-Sichtbarkeit</a>
+    </nav>
+    <div class="content">
+
+      <div class="head">
+        <div>
+          <h1 class="head__t">Was als Nächstes ansteht</h1>
+          <p class="head__d">Neun Haken für die kommenden sechs Monate, der nächste zuerst.
+            Jeder hängt an einer gespeicherten Zeile: einem datierten Marktsignal, einem geprüften Thema
+            oder einem Monat, den das Archiv im Vorjahr getragen hat. Kein Datum wird geraten.</p>
+        </div>
+        <div class="head__r">
+          <button class="btn btn--ghost">Neu berechnen</button>
+          <button class="btn">Als PDF</button>
+        </div>
+      </div>
+
+      <div class="sect">Diese zwei Wochen</div>
+
+      <article class="item item--soon">
+        <div class="item__d"><div class="item__dd">12</div><div class="item__dm">Sep</div><div class="item__in">in 3 Tagen</div></div>
+        <div class="item__b">
+          <div class="item__h"><span class="item__t">Frist Call for Speakers, Intersolar Europe</span>
+            <span class="tag event">Veranstaltung</span></div>
+          <p class="item__w">Der Vortragsslot ist die günstigste Reichweite im Jahr, und die Frist ist hart.
+            Vorschlag: Gastbeitrag als Bewerbungstext schreiben und danach als Fachbeitrag zweitverwerten.</p>
+          <div class="item__e"><a href="#">Beleg: Intersolar, Ausschreibung vom 04.08.</a>
+            <span class="src">Marktsignal 1184</span></div>
+        </div>
+        <div class="item__a"><button class="btn btn--sm">Text schreiben</button><span class="link">Verwerfen</span></div>
+      </article>
+
+      <article class="item item--soon">
+        <div class="item__d"><div class="item__dd">24</div><div class="item__dm">Sep</div><div class="item__in">in 15 Tagen</div></div>
+        <div class="item__b">
+          <div class="item__h"><span class="item__t">Ende der Konsultation zur EEG-Novelle</span>
+            <span class="tag reg">Regulierung</span></div>
+          <p class="item__w">Der Tag, an dem Fachjournalisten Stimmen aus der Branche suchen.
+            Vorschlag: Statement plus vier persönliche Anschreiben an die Autoren, die im Frühjahr
+            zur Konsultation geschrieben haben.</p>
+          <div class="item__e"><a href="#">Beleg: BMWK, Konsultationsaufruf</a>
+            <span class="src">Marktsignal 1092</span><a href="#">4 Journalisten aus dem Archiv</a></div>
+        </div>
+        <div class="item__a"><button class="btn btn--sm">Text schreiben</button><span class="link">Verwerfen</span></div>
+      </article>
+
+      <div class="sect">Später im Halbjahr</div>
+
+      <article class="item">
+        <div class="item__d"><div class="item__dd">08</div><div class="item__dm">Okt</div></div>
+        <div class="item__b">
+          <div class="item__h"><span class="item__t">Fraunhofer ISE veröffentlicht Halbjahresauswertung</span>
+            <span class="tag study">Studie</span></div>
+          <p class="item__w">Die Zahl, die ein halbes Jahr lang zitiert wird. Wer sie am Tag der
+            Veröffentlichung einordnet, steht in den Folgeartikeln.</p>
+          <div class="item__e"><a href="#">Beleg: Fraunhofer ISE, Vorankündigung</a><span class="src">Marktsignal 1203</span></div>
+        </div>
+        <div class="item__a"><button class="btn btn--sm">Text schreiben</button><span class="link">Verwerfen</span></div>
+      </article>
+
+      <article class="item">
+        <div class="item__d soft"><div class="item__dd">Mitte<br>Okt</div></div>
+        <div class="item__b">
+          <div class="item__h"><span class="item__t">Netzentgelte: der jährliche Aufschlag wird bekannt</span>
+            <span class="tag archiv">Archivmuster</span></div>
+          <p class="item__w">Kein festes Datum, aber drei Jahre in Folge in der Monatsmitte.
+            22 Beiträge im Oktober 2025, keiner davon mit Enpal darin.</p>
+          <div class="item__e"><a href="#">Beleg: 22 Beiträge, Okt 2025</a>
+            <span class="src">Thema „Netzentgelte“, 31 belegte Treffer</span></div>
+        </div>
+        <div class="item__a"><button class="btn btn--sm">Text schreiben</button><span class="link">Verwerfen</span></div>
+      </article>
+
+      <div class="note"><b>November ist leer.</b> Kein datiertes Signal, kein Archivmuster, kein Thema mit
+        belegter Resonanz. Ein leerer Monat wird nicht gefüllt, er wird gezeigt. <a href="#">Themen prüfen</a></div>
+
+      <article class="item">
+        <div class="item__d soft"><div class="item__dd">Anfang<br>Dez</div></div>
+        <div class="item__b">
+          <div class="item__h"><span class="item__t">Jahresrückblicke der Fachpresse</span>
+            <span class="tag archiv">Archivmuster</span></div>
+          <p class="item__w">Redaktionen fragen ab Ende November nach Einschätzungen zum Jahr.
+            Wer bis dahin nichts geschickt hat, kommt nicht vor.</p>
+          <div class="item__e"><a href="#">Beleg: 9 Beiträge, Dez 2025</a></div>
+        </div>
+        <div class="item__a"><button class="btn btn--sm">Text schreiben</button><span class="link">Verwerfen</span></div>
+      </article>
+
+      <article class="item">
+        <div class="item__d"><div class="item__dd">01</div><div class="item__dm">Jan</div></div>
+        <div class="item__b">
+          <div class="item__h"><span class="item__t">EEG-Novelle tritt in Kraft</span>
+            <span class="tag reg">Regulierung</span></div>
+          <p class="item__w">Der härteste Termin im Halbjahr. Vorschlag: Pressemitteilung zum Stichtag,
+            Talking Points für den Sprecher, Q&amp;A für Rückfragen.</p>
+          <div class="item__e"><a href="#">Beleg: Bundesanzeiger, Verkündung vom 12.08.</a><span class="src">Marktsignal 1092</span></div>
+        </div>
+        <div class="item__a"><button class="btn btn--sm">Text schreiben</button><span class="link">Verwerfen</span></div>
+      </article>
+
+      <div class="sect">Erledigt</div>
+
+      <article class="item item--done">
+        <div class="item__d soft"><div class="item__dd">Ende<br>Sep</div></div>
+        <div class="item__b">
+          <div class="item__h"><span class="item__t">Heizsaison beginnt: Wärmepumpe im Bestandsbau</span>
+            <span class="tag archiv">Archivmuster</span><span class="tag done">Erledigt</span></div>
+          <p class="item__w">14 Beiträge im September 2025, Enpal in zweien davon.</p>
+          <div class="item__e"><a href="#">Gastbeitrag am 03.09. freigegeben</a></div>
+        </div>
+      </article>
+
+      <p class="foot">Kein Kalenderbild, sondern eine Liste, die von oben abgearbeitet wird.
+        Was in den nächsten zwei Wochen fällig ist, steht oben und trägt die Zahl der verbleibenden Tage;
+        alles andere folgt in Datumsreihenfolge. Ein leerer Monat erscheint als Satz statt als Lücke.</p>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

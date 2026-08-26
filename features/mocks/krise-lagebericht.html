@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krisenmodus: Der Lagebericht · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --neutral:#a1a1aa;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px; --t-large:32px; --t-huge:46px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1120px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--alert);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--neutral)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tabs{display:flex;gap:var(--s4);padding:var(--s4) var(--s7) 0;border-bottom:1px solid var(--line);
+  background:rgba(247,247,250,.92);overflow-x:auto}
+.tabs a{font-size:var(--t-subhead);color:var(--muted);padding:0 0 10px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a.is-on{color:var(--ink);font-weight:600;border-bottom-color:var(--alert)}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.btn--stop{background:var(--fill);color:var(--alert)}
+
+.head{display:flex;align-items:flex-start;gap:var(--s4);margin-bottom:var(--s5);flex-wrap:wrap}
+.head__k{font-size:var(--t-caption);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--alert)}
+.head__t{font-size:var(--t-title1);font-weight:700;letter-spacing:-.025em;margin-top:var(--s1);max-width:34ch}
+.head__d{font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s2);max-width:62ch}
+.head__r{margin-left:auto;display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap}
+
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s4);align-items:start;margin-bottom:var(--s4)}
+.grid2{display:grid;grid-template-columns:1.15fr 1fr;gap:var(--s4);align-items:start}
+@media (max-width:1000px){.grid3{grid-template-columns:1fr}.grid2{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:var(--s4);overflow:hidden}
+.panel--hot{border-left:3px solid var(--alert)}
+.panel__h{display:flex;align-items:baseline;gap:var(--s2);padding:var(--s4) var(--s4) var(--s3);flex-wrap:wrap}
+.panel__t{font-size:var(--t-subhead);font-weight:600}
+.panel__s{font-size:var(--t-caption);color:var(--muted)}
+.panel__r{margin-left:auto;font-size:var(--t-caption);color:var(--muted)}
+
+.gauge{padding:var(--s2) var(--s4) var(--s4);display:flex;align-items:flex-end;gap:var(--s3)}
+.gauge__n{font-size:var(--t-huge);font-weight:700;letter-spacing:-.04em;line-height:.95;color:var(--alert);font-variant-numeric:tabular-nums}
+.gauge__d{padding-bottom:6px}
+.gauge__l{font-size:var(--t-subhead);color:var(--ink-2)}
+.gauge__c{font-size:var(--t-footnote);font-weight:600;color:var(--alert);margin-top:2px}
+.steps{display:flex;gap:3px;padding:0 var(--s4) var(--s4)}
+.steps i{flex:1;height:6px;border-radius:3px;background:var(--fill)}
+.steps i.on{background:var(--alert)}
+.spark{padding:0 var(--s4) var(--s4)}
+svg{display:block;max-width:100%}
+.axis text{font-size:10px;fill:rgba(60,60,67,.58);font-variant-numeric:tabular-nums}
+.grid line{stroke:var(--line);stroke-width:1}
+
+.split{display:flex;height:9px;border-radius:5px;overflow:hidden;margin:var(--s2) var(--s4) var(--s3)}
+.split i{display:block;height:100%}
+.legend{display:flex;gap:var(--s4);padding:0 var(--s4) var(--s4);font-size:var(--t-caption);color:var(--muted);flex-wrap:wrap}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend b{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+.row{display:flex;align-items:baseline;gap:var(--s3);padding:8px var(--s4);border-top:1px solid var(--line);font-size:var(--t-subhead)}
+.row__m{margin-left:auto;font-size:var(--t-footnote);color:var(--muted);font-variant-numeric:tabular-nums}
+.row__role{width:132px;flex:none;color:var(--muted);font-size:var(--t-footnote)}
+.miss{color:var(--warn);font-size:var(--t-footnote)}
+.pill{font-size:var(--t-caption);padding:1px 8px;border-radius:20px;background:var(--fill);color:var(--muted)}
+.pill.neg{background:rgba(215,0,21,.10);color:var(--alert)}
+.pill.ok{background:rgba(36,138,61,.10);color:var(--good)}
+.pill.wait{background:rgba(178,80,0,.10);color:var(--warn)}
+
+.txt{padding:var(--s3) var(--s4);border-top:1px solid var(--line)}
+.txt__h{display:flex;align-items:baseline;gap:var(--s2);flex-wrap:wrap}
+.txt__t{font-size:var(--t-subhead);font-weight:600}
+.txt__q{font-size:var(--t-footnote);color:var(--ink-2);margin-top:var(--s2);line-height:1.55;
+  border-left:2px solid var(--line-strong);padding-left:var(--s3)}
+.txt__f{font-size:var(--t-footnote);margin-top:var(--s2);display:flex;gap:var(--s3);flex-wrap:wrap}
+.note{font-size:var(--t-footnote);color:var(--muted);padding:var(--s3) var(--s4);
+  background:var(--fill-2);border-top:1px solid var(--line)}
+.foot{font-size:var(--t-caption);color:var(--faint);margin-top:var(--s4);max-width:76ch}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandate</div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#fff"></span>Enpal</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Volocopter</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Trade Republic</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Personio</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <nav class="tabs">
+      <a href="#">Heute</a><a href="#">Impulse</a><a href="#" class="is-on">Krise</a>
+      <a href="#">Wettbewerb</a><a href="#">Berichte</a><a href="#">Archiv</a>
+      <a href="#">Profil</a><a href="#">Guide</a><a href="#">Marktumfeld</a><a href="#">KI-Sichtbarkeit</a>
+    </nav>
+    <div class="content">
+
+      <div class="head">
+        <div>
+          <div class="head__k">Krise offen seit 4 Std 20 Min</div>
+          <h1 class="head__t">Verbraucherzentrale rügt Vertragsklauseln bei Solaranbietern</h1>
+          <p class="head__d">Erklärt von Lucas Berger, heute 06:41, nach einem Vorschlag um 06:12.
+            Solange sie offen ist, läuft der Sweep stündlich statt einmal am Morgen.</p>
+        </div>
+        <div class="head__r">
+          <button class="btn">Holding Statement</button>
+          <button class="btn btn--ghost">Zeitleiste</button>
+          <button class="btn btn--stop">Krise schließen</button>
+        </div>
+      </div>
+
+      <div class="grid3">
+        <section class="panel panel--hot">
+          <div class="panel__h"><span class="panel__t">Lage</span><span class="panel__s">aus 11 Beiträgen</span></div>
+          <div class="gauge">
+            <div class="gauge__n">4</div>
+            <div class="gauge__d"><div class="gauge__l">von 5</div><div class="gauge__c">seit 60 Min gestiegen</div></div>
+          </div>
+          <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+          <div class="note">Nationale Reichweite, namentliche Nennung, keine Gegenposition im Umlauf.
+            Stufe 5 wäre erreicht, wenn eine Behörde ein Verfahren bestätigt.</div>
+        </section>
+
+        <section class="panel">
+          <div class="panel__h"><span class="panel__t">Verbreitung</span><span class="panel__s">stündlich</span>
+            <span class="panel__r">9 Medien</span></div>
+          <div class="spark">
+            <svg viewBox="0 0 300 96" role="img" aria-label="Beiträge je Stunde seit Ausbruch">
+              <g class="grid">
+                <line x1="26" y1="10" x2="296" y2="10"/><line x1="26" y1="40" x2="296" y2="40"/>
+                <line x1="26" y1="70" x2="296" y2="70"/>
+              </g>
+              <g class="axis">
+                <text x="0" y="14">4</text><text x="0" y="44">2</text><text x="0" y="74">0</text>
+                <text x="30" y="90">06</text><text x="86" y="90">07</text><text x="142" y="90">08</text>
+                <text x="198" y="90">09</text><text x="254" y="90">10</text>
+              </g>
+              <rect x="30" y="55" width="22" height="15" fill="#d70015" opacity=".8" rx="2"/>
+              <rect x="86" y="40" width="22" height="30" fill="#d70015" opacity=".8" rx="2"/>
+              <rect x="114" y="55" width="22" height="15" fill="#d70015" opacity=".8" rx="2"/>
+              <rect x="170" y="55" width="22" height="15" fill="#d70015" opacity=".8" rx="2"/>
+              <rect x="226" y="25" width="22" height="45" fill="#d70015" rx="2"/>
+              <rect x="254" y="40" width="22" height="30" fill="#d70015" rx="2"/>
+            </svg>
+          </div>
+          <div class="note">Die zweite Welle um 10 Uhr sind Aufgriffe, keine eigenen Recherchen.
+            Alle elf Beiträge hängen an einer Story.</div>
+        </section>
+
+        <section class="panel">
+          <div class="panel__h"><span class="panel__t">Tonalität</span><span class="panel__s">11 Beiträge</span></div>
+          <div class="split">
+            <i style="width:73%;background:#d70015"></i>
+            <i style="width:18%;background:#a1a1aa"></i>
+            <i style="width:9%;background:#248a3d"></i>
+          </div>
+          <div class="legend">
+            <span><b style="background:#d70015"></b>negativ 8</span>
+            <span><b style="background:#a1a1aa"></b>neutral 2</span>
+            <span><b style="background:#248a3d"></b>positiv 1</span>
+          </div>
+          <div class="row"><span class="row__role">Reichweitenstärkstes</span><span>Handelsblatt</span><span class="row__m">11:02</span></div>
+          <div class="row"><span class="row__role">Ursprung</span><span>WDR</span><span class="row__m">06:41</span></div>
+        </section>
+      </div>
+
+      <div class="grid2">
+        <section class="panel">
+          <div class="panel__h"><span class="panel__t">Was wir sagen</span>
+            <span class="panel__r">1 freigegeben, 1 Entwurf</span></div>
+
+          <div class="txt">
+            <div class="txt__h"><span class="txt__t">Holding Statement, Fassung 3</span>
+              <span class="pill ok">Guide geprüft</span><span class="pill ok">Freigegeben 08:12</span></div>
+            <p class="txt__q">Uns liegt die Abmahnung der Verbraucherzentrale NRW seit heute Morgen vor.
+              Wir prüfen die beanstandeten Klauseln derzeit im Detail. Bis diese Prüfung abgeschlossen ist,
+              äußern wir uns nicht zu Einzelpunkten. Für Rückfragen ist Jonas Feld erreichbar.</p>
+            <div class="txt__f"><a href="#">Bearbeiten</a><a href="#">An 2 Journalisten gegangen</a><a href="#">Fassungen</a></div>
+          </div>
+
+          <div class="txt">
+            <div class="txt__h"><span class="txt__t">Q&amp;A-Haltung, 9 Fragen</span>
+              <span class="pill wait">Prüfung läuft</span></div>
+            <p class="txt__q">Sechs Fragen beantwortet, drei ausdrücklich offen: die Zahl betroffener Verträge,
+              der Zeitpunkt einer Entscheidung und die Frage nach früheren Beschwerden. Keine davon wird geraten.</p>
+            <div class="txt__f"><a href="#">Öffnen</a><a href="#">Als Briefing exportieren</a></div>
+          </div>
+
+          <div class="note">Nichts geht raus, bevor die Guide-Prüfung geantwortet hat. Der Gegenprüfer darf nachlaufen,
+            die Guide-Prüfung nicht.</div>
+        </section>
+
+        <section class="panel">
+          <div class="panel__h"><span class="panel__t">Wer erreichbar ist</span></div>
+          <div class="row"><span class="row__role">Krisenkontakt</span><span>Dr. Anne Wiegand, COO</span><span class="row__m">+49 170 4412290</span></div>
+          <div class="row"><span class="row__role">Sprecher</span><span>Jonas Feld</span><span class="row__m">+49 30 555 21 40</span></div>
+          <div class="row"><span class="row__role">Recht</span><span class="miss">Nicht im Profil. Im Kickoff nachtragen.</span></div>
+
+          <div class="panel__h" style="border-top:1px solid var(--line);margin-top:var(--s2)">
+            <span class="panel__t">Offene Anfragen</span><span class="panel__r">2</span></div>
+          <div class="row"><span>Maren Kessler, Handelsblatt</span><span class="pill wait">Frist 14:00</span><span class="row__m">10:35</span></div>
+          <div class="row"><span>Tobias Reh, WDR</span><span class="pill">ohne Frist</span><span class="row__m">09:04</span></div>
+        </section>
+      </div>
+
+      <p class="foot">Der Lagebericht beantwortet eine Frage: wie steht es gerade. Die Zeitleiste liegt einen Klick
+        entfernt und wird beim Schließen der Krise zum Nachbericht.</p>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

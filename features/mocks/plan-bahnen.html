@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redaktionsplan: Themen als Bahnen · RauteOS</title>
+<style>
+:root{
+  --side-bg:#ebebf0; --ground:#f7f7fa; --card:#fff;
+  --fill:rgba(120,120,128,.12); --fill-2:rgba(120,120,128,.07);
+  --ink:#1d1d1f; --ink-2:rgba(29,29,31,.82); --muted:rgba(60,60,67,.58); --faint:rgba(60,60,67,.32);
+  --line:rgba(60,60,67,.12); --line-strong:rgba(60,60,67,.22);
+  --tint:#0071e3; --alert:#d70015; --good:#248a3d; --warn:#b25000; --neutral:#a1a1aa;
+  --study:#5856d6; --reg:#b25000; --event:#0071e3; --archiv:#248a3d;
+  --t-caption2:10px; --t-caption:11px; --t-footnote:12px; --t-subhead:13px; --t-body:14px;
+  --t-title3:16px; --t-title2:20px; --t-title1:26px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px;
+  --radius:10px; --radius-s:6px; --side-w:232px; --col:1180px;
+  color-scheme: light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,sans-serif;
+  background:var(--ground);color:var(--ink);font-size:var(--t-body);line-height:1.45;letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--tint);text-decoration:none} a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--line);padding:var(--s5) var(--s3) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side__brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-title3);font-weight:700;
+  letter-spacing:-.02em;color:var(--ink);padding:0 var(--s2) 0 var(--s1)}
+.side__mark{color:var(--tint);font-weight:800}
+.side__nav{display:flex;flex-direction:column;gap:2px}
+.side__sect{font-size:var(--t-caption2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--faint);padding:var(--s3) var(--s2) var(--s1);display:flex}
+.side__row{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s2);border-radius:var(--radius-s);
+  color:var(--ink-2);font-size:var(--t-subhead)}
+.side__row:hover{background:rgba(255,255,255,.6);text-decoration:none}
+.side__row.is-on{background:var(--tint);color:#fff;font-weight:600}
+.side__dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--neutral)}
+.main{display:flex;flex-direction:column;min-width:0}
+.tabs{display:flex;gap:var(--s4);padding:var(--s4) var(--s7) 0;border-bottom:1px solid var(--line);
+  background:rgba(247,247,250,.92);overflow-x:auto}
+.tabs a{font-size:var(--t-subhead);color:var(--muted);padding:0 0 10px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a.is-on{color:var(--ink);font-weight:600;border-bottom-color:var(--tint)}
+.content{padding:var(--s6) var(--s7);max-width:calc(var(--col) + var(--s7)*2);width:100%}
+.btn{font:inherit;font-size:var(--t-subhead);font-weight:600;padding:8px 16px;border:0;
+  border-radius:var(--radius-s);background:var(--tint);color:#fff;cursor:pointer;white-space:nowrap}
+.btn--ghost{background:var(--fill);color:var(--tint)}
+.btn--sm{padding:4px 10px;font-size:var(--t-footnote)}
+
+.head{display:flex;align-items:flex-start;gap:var(--s4);margin-bottom:var(--s5);flex-wrap:wrap}
+.head__t{font-size:var(--t-title1);font-weight:700;letter-spacing:-.025em}
+.head__d{font-size:var(--t-footnote);color:var(--muted);margin-top:var(--s1);max-width:64ch}
+.head__r{margin-left:auto;display:flex;gap:var(--s2);align-items:center}
+
+.board{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow-x:auto}
+.gridr{display:grid;grid-template-columns:180px repeat(6,minmax(112px,1fr));min-width:860px}
+.gh{padding:var(--s3) var(--s2);border-bottom:1px solid var(--line-strong);font-size:var(--t-caption);
+  font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);text-align:center}
+.gh--l{text-align:left;padding-left:var(--s4)}
+.gh.now{color:var(--tint)}
+.lane{font-size:var(--t-subhead);font-weight:600;padding:var(--s3) var(--s2) var(--s3) var(--s4);
+  border-bottom:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;gap:2px}
+.lane small{font-weight:400;font-size:var(--t-caption);color:var(--muted)}
+.cell{border-bottom:1px solid var(--line);border-left:1px solid var(--line);padding:var(--s2) 6px;min-height:76px}
+.cell.now{background:rgba(0,113,227,.035)}
+.chip{display:block;background:var(--fill-2);border:1px solid var(--line);border-left:3px solid var(--neutral);
+  border-radius:var(--radius-s);padding:6px 8px;margin-bottom:5px;cursor:pointer}
+.chip:hover{background:#fff;text-decoration:none}
+.chip.study{border-left-color:var(--study)}
+.chip.reg{border-left-color:var(--reg)}
+.chip.event{border-left-color:var(--event)}
+.chip.archiv{border-left-color:var(--archiv)}
+.chip.done{opacity:.55}
+.chip__d{font-size:var(--t-caption2);font-weight:700;color:var(--faint);letter-spacing:.04em;text-transform:uppercase}
+.chip__t{font-size:var(--t-footnote);color:var(--ink);line-height:1.35;margin-top:2px;font-weight:500}
+.cell--none{font-size:var(--t-caption);color:var(--faint);text-align:center;padding-top:var(--s5)}
+
+.key{display:flex;gap:var(--s4);flex-wrap:wrap;font-size:var(--t-caption);color:var(--muted);margin:var(--s4) 0 var(--s5)}
+.key span{display:flex;align-items:center;gap:5px}
+.key b{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+.detail{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--reg);
+  border-radius:var(--radius);padding:var(--s4) var(--s5);margin-top:var(--s5)}
+.detail__k{font-size:var(--t-caption);font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--reg)}
+.detail__t{font-size:var(--t-title3);font-weight:700;margin-top:var(--s1)}
+.detail__w{font-size:var(--t-footnote);color:var(--ink-2);margin-top:var(--s2);max-width:70ch;line-height:1.55}
+.detail__e{font-size:var(--t-footnote);margin-top:var(--s3);display:flex;gap:var(--s4);align-items:center;flex-wrap:wrap}
+.src{font-size:var(--t-footnote);color:var(--faint)}
+.detail__r{margin-top:var(--s4);display:flex;gap:var(--s2);flex-wrap:wrap}
+.warn{background:var(--fill-2);border:1px dashed var(--line-strong);border-radius:var(--radius);
+  padding:var(--s3) var(--s4);margin-top:var(--s4);font-size:var(--t-footnote);color:var(--muted)}
+.warn b{color:var(--warn);font-weight:600}
+.foot{font-size:var(--t-caption);color:var(--faint);margin-top:var(--s5);max-width:78ch}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="side__brand" href="#"><span class="side__mark">#</span>RauteOS</a>
+    <nav class="side__nav">
+      <a href="#" class="side__row">Heute</a>
+      <a href="#" class="side__row">Portfolio</a>
+      <a href="#" class="side__row">Archiv</a>
+      <a href="#" class="side__row">Kontakte</a>
+      <div class="side__sect">Mandate</div>
+      <a href="#" class="side__row is-on"><span class="side__dot" style="background:#fff"></span>Enpal</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Volocopter</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Trade Republic</a>
+      <a href="#" class="side__row"><span class="side__dot"></span>Personio</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <nav class="tabs">
+      <a href="#">Heute</a><a href="#">Impulse</a><a href="#" class="is-on">Plan</a>
+      <a href="#">Wettbewerb</a><a href="#">Berichte</a><a href="#">Archiv</a>
+      <a href="#">Profil</a><a href="#">Guide</a><a href="#">Marktumfeld</a><a href="#">KI-Sichtbarkeit</a>
+    </nav>
+    <div class="content">
+
+      <div class="head">
+        <div>
+          <h1 class="head__t">Redaktionsplan</h1>
+          <p class="head__d">Sechs Monate, eine Bahn je Thema. So sieht man sofort, welches Thema trägt,
+            wo sich zwei Termine in dieselbe Woche drängen und welcher Monat leer ist.
+            Jeder Haken hängt an einer gespeicherten Zeile.</p>
+        </div>
+        <div class="head__r">
+          <button class="btn btn--ghost">Neu berechnen</button>
+          <button class="btn">Als PDF</button>
+        </div>
+      </div>
+
+      <div class="board">
+        <div class="gridr">
+          <div class="gh gh--l">Thema</div>
+          <div class="gh now">Sep</div><div class="gh">Okt</div><div class="gh">Nov</div>
+          <div class="gh">Dez</div><div class="gh">Jan</div><div class="gh">Feb</div>
+
+          <div class="lane">Solarförderung<small>31 belegte Treffer</small></div>
+          <div class="cell now">
+            <a class="chip reg" href="#"><span class="chip__d">24. Sep</span>
+              <span class="chip__t">Ende der EEG-Konsultation</span></a>
+          </div>
+          <div class="cell"></div>
+          <div class="cell cell--none">–</div>
+          <div class="cell"></div>
+          <div class="cell">
+            <a class="chip reg" href="#"><span class="chip__d">01. Jan</span>
+              <span class="chip__t">EEG-Novelle tritt in Kraft</span></a>
+          </div>
+          <div class="cell cell--none">–</div>
+
+          <div class="lane">Netzentgelte<small>31 belegte Treffer</small></div>
+          <div class="cell now cell--none">–</div>
+          <div class="cell">
+            <a class="chip archiv" href="#"><span class="chip__d">Mitte Okt</span>
+              <span class="chip__t">Jährlicher Aufschlag wird bekannt</span></a>
+          </div>
+          <div class="cell cell--none">–</div>
+          <div class="cell cell--none">–</div>
+          <div class="cell cell--none">–</div>
+          <div class="cell cell--none">–</div>
+
+          <div class="lane">Wärmepumpe im Bestand<small>18 belegte Treffer</small></div>
+          <div class="cell now">
+            <a class="chip archiv done" href="#"><span class="chip__d">Ende Sep &middot; erledigt</span>
+              <span class="chip__t">Heizsaison beginnt</span></a>
+          </div>
+          <div class="cell">
+            <a class="chip study" href="#"><span class="chip__d">08. Okt</span>
+              <span class="chip__t">Fraunhofer ISE, Halbjahresauswertung</span></a>
+          </div>
+          <div class="cell cell--none">–</div>
+          <div class="cell cell--none">–</div>
+          <div class="cell cell--none">–</div>
+          <div class="cell">
+            <a class="chip study" href="#"><span class="chip__d">Feb</span>
+              <span class="chip__t">BDEW-Zahlen zum Winter</span></a>
+          </div>
+
+          <div class="lane">Branche und Bühne<small>Veranstaltungen</small></div>
+          <div class="cell now">
+            <a class="chip event" href="#"><span class="chip__d">12. Sep</span>
+              <span class="chip__t">Call for Speakers, Intersolar</span></a>
+          </div>
+          <div class="cell cell--none">–</div>
+          <div class="cell cell--none">–</div>
+          <div class="cell">
+            <a class="chip archiv" href="#"><span class="chip__d">Anfang Dez</span>
+              <span class="chip__t">Jahresrückblicke der Fachpresse</span></a>
+          </div>
+          <div class="cell">
+            <a class="chip event" href="#"><span class="chip__d">21. Jan</span>
+              <span class="chip__t">Handelsblatt Energie-Gipfel</span></a>
+          </div>
+          <div class="cell cell--none">–</div>
+        </div>
+      </div>
+
+      <div class="key">
+        <span><b style="background:#5856d6"></b>Studie</span>
+        <span><b style="background:#b25000"></b>Regulierung</span>
+        <span><b style="background:#0071e3"></b>Veranstaltung</span>
+        <span><b style="background:#248a3d"></b>Archivmuster</span>
+        <span>Blass = erledigt</span>
+      </div>
+
+      <div class="warn"><b>November ist in jeder Bahn leer.</b> Kein datiertes Signal, kein Archivmuster.
+        Entweder ist dort wirklich nichts, oder dem Mandat fehlt ein Thema, das im Herbst trägt.
+        <a href="#">Themen prüfen</a></div>
+
+      <section class="detail">
+        <div class="detail__k">Regulierung &middot; angeklickt</div>
+        <h2 class="detail__t">01. Januar: EEG-Novelle tritt in Kraft</h2>
+        <p class="detail__w">Der härteste Termin im Halbjahr, und der einzige, an dem die Fachpresse
+          garantiert schreibt. Vorschlag: Pressemitteilung zum Stichtag, Talking Points für den Sprecher,
+          Q&amp;A für Rückfragen. Zehn Tage vorher eine Kontaktrunde bei den vier Journalisten,
+          die im letzten Januar zum EEG geschrieben haben.</p>
+        <div class="detail__e"><a href="#">Beleg: Bundesanzeiger, Verkündung vom 12.08.</a>
+          <span class="src">Marktsignal 1092</span>
+          <a href="#">4 Journalisten aus dem Archiv</a></div>
+        <div class="detail__r">
+          <button class="btn">Text schreiben</button>
+          <button class="btn btn--ghost">In einen anderen Monat</button>
+          <button class="btn btn--ghost">Verwerfen</button>
+        </div>
+      </section>
+
+      <p class="foot">Die Bahnen zeigen die Form eines halben Jahres auf einen Blick: welches Thema trägt,
+        wo sich Termine stapeln, wo nichts ist. Ein Klick öffnet den Haken darunter, mit seinem Beleg
+        und dem Knopf, der daraus einen Text macht.</p>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

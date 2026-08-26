@@ -58,6 +58,7 @@ from ...analyzer import AnalyzerError, ParseError, invoke_with_fallback
 from ...models import Client, Report, ReportFinding
 from ...reporting import Period
 from .. import texte
+from ..mandates import mandate_or_404
 from ..app import get_db, templates, translator
 from .today import _fetch_last_run, _local_tz
 
@@ -279,10 +280,7 @@ def _voice_chart(document: reports.Document) -> Chart | None:
 
 
 def _client_or_404(session: Session, client_id: int) -> Client:
-    client = session.get(Client, client_id)
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return client
+    return mandate_or_404(session, client_id)
 
 
 def _report_or_404(session: Session, client: Client, report_id: int) -> Report:

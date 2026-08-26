@@ -1,0 +1,45 @@
+# Run the suite on every push to main, and on every pull request.
+#
+# This does not gate the deploy and does not pretend to: Railway builds from
+# main on push, so by the time this job goes red the release is already out.
+# What it buys is the two minutes between "that was wrong" and knowing it —
+# which is the difference between a rollback and a morning of Lucas looking at
+# a broken page. The previous workflow here shipped over SSH to a host that no
+# longer exists and had failed on every run for weeks; a check that is always
+# red teaches people to stop reading checks, which is worse than none.
+#
+# If a real gate is wanted later, it is a Railway setting rather than a step
+# here: turn off deploy-on-push and have this job trigger the deploy on green.
+name: Suite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # One run per ref. A push that lands while the previous one is still running
+  # makes the older answer worthless, and two runs racing on the same ref only
+  # cost minutes.
+  group: suite-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: newspulse
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - name: Test suite
+        run: uv run pytest -q
+      - name: Registry hygiene
+        # Cheap, and catches a duplicated or malformed feed entry before it
+        # reaches the host. Reachability is deliberately not checked: the suite
+        # must not depend on sixty external sites being up, which is how a
+        # green suite becomes a coin toss.
+        run: uv run pytest -q tests/test_feeds.py tests/test_market.py

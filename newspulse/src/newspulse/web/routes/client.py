@@ -101,6 +101,12 @@ class ClientProfile:
     alert_topics: list[str]
     active: bool
     logo_url: str | None
+    #: Whether this is a yardstick rather than a mandate. Carried because the
+    #: workspace strip asks: a benchmark has no workspace and every tab on that
+    #: strip now answers one with a 404. Left off, the attribute was simply
+    #: undefined in the template, which Jinja renders as falsy — so the guard
+    #: read as "not a competitor" for every company on this page.
+    is_competitor: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +165,7 @@ def _profile(client: Client) -> ClientProfile:
         alert_topics=list(client.alert_topics),
         active=client.active,
         logo_url=client.logo_url,
+        is_competitor=client.is_competitor,
     )
 
 

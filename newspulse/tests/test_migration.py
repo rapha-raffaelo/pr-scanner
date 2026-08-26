@@ -299,3 +299,77 @@ def test_the_same_market_url_may_belong_to_two_mandates(tmp_path, monkeypatch):
             ).scalar() == 2
     finally:
         engine.dispose()
+
+
+def test_the_chain_comes_all_the_way_back_down_and_up_again(tmp_path, monkeypatch):
+    """A rollback has to be available before it is needed, not discovered then.
+
+    ``downgrade base`` stopped two migrations short of the schema it was aiming
+    at, and the reason is the same in both: ``sa.Enum(create_constraint=True)``
+    emits a CHECK named after the *Enum*, SQLite has no ALTER for a column or a
+    constraint, and batch mode therefore rebuilds the table from its reflected
+    definition — carrying a CHECK on ``tonality`` and on ``triage_state`` into
+    tables that no longer had those columns. "no such column: tonality", raised
+    by the downgrade of the migration that added it.
+
+    Down and up rather than just down: a teardown that succeeds by dropping
+    something the rebuild then cannot recreate is not a working chain, and only
+    the return trip says so.
+    """
+    db_path = tmp_path / "roundtrip.db"
+    monkeypatch.setattr(config, "DATABASE_PATH", db_path)
+    cfg = _alembic_config()
+
+    command.upgrade(cfg, "head")
+    command.downgrade(cfg, "base")
+
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    try:
+        left = set(inspect(engine).get_table_names()) - {"alembic_version"}
+        assert not left, f"the teardown left tables behind: {sorted(left)}"
+    finally:
+        engine.dispose()
+
+    command.upgrade(cfg, "head")
+
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    try:
+        rebuilt = set(inspect(engine).get_table_names())
+        assert "clients" in rebuilt and "analyses" in rebuilt
+        with engine.connect() as conn:
+            head = conn.execute(text("select version_num from alembic_version")).scalar()
+        assert head, "the chain came back up without stamping a revision"
+    finally:
+        engine.dispose()
+
+
+def test_no_enum_column_is_dropped_without_its_check(tmp_path):
+    """The guard for the class rather than for the two that were found.
+
+    A CHECK is named after the Enum, which is not always spelled like the column
+    it sits on — ``triage_state`` carries one called ``triagestate`` — so this
+    reads the name out of the migration rather than assuming it.
+    """
+    import re
+
+    offenders = []
+    for path in sorted((_PROJECT_ROOT / "migrations" / "versions").glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        up = source.split("def upgrade", 1)[-1].split("def downgrade", 1)[0]
+        down = source.split("def downgrade", 1)[-1]
+        for match in re.finditer(
+            r'sa\.Column\(\s*"([a-z_]+)"\s*,\s*sa\.Enum\((.*?)\)\s*,', up, re.S
+        ):
+            column, args = match.group(1), match.group(2)
+            if "create_constraint=True" not in args:
+                continue
+            named = re.search(r'name="([a-z_]+)"', args)
+            constraint = named.group(1) if named else column
+            if f'drop_column("{column}")' in down and (
+                f'drop_constraint("{constraint}"' not in down
+            ):
+                offenders.append(f"{path.name}: {column} (CHECK {constraint})")
+
+    assert not offenders, "these downgrades drop a column and keep its CHECK: " + (
+        "; ".join(offenders)
+    )

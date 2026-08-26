@@ -948,6 +948,9 @@ _EN: dict[str, str] = {
     # mandate, whether it hangs off an occasion or off a month.
     "Texte": "Drafts",
     "Anlass": "Occasion",
+    "Vergleichsunternehmen. Hier steht seine Berichterstattung — Impulse, Berichte und Profil führt RauteOS nur für Mandanten.":
+        "A benchmark company. What is here is its coverage — openings, reports "
+        "and profiles are kept for mandates only.",
     "noch nicht erzeugt": "not drafted yet",
     "Der Mandantenmonat als Excel-Mappe: Berichterstattung, Anteil am Gespräch und die Beiträge dahinter. Die Messung oben steht nicht darin.":
         "The mandate's month as an Excel workbook: coverage, share of voice and "

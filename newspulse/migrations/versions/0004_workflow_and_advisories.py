@@ -85,7 +85,15 @@ def downgrade() -> None:
     op.drop_table("advisories")
     with op.batch_alter_table("clients") as batch:
         batch.drop_column("is_competitor")
+    # As in 0006: the CHECK that ``sa.Enum(create_constraint=True)`` emits is
+    # named after the column and has to be dropped with it. SQLite has no ALTER
+    # for either, so batch mode rebuilds the table from the reflected definition
+    # — and carried a CHECK on ``triage_state`` into a table that no longer had
+    # the column.
     with op.batch_alter_table("analyses") as batch:
+        # triagestate, not triage_state: the CHECK is named after the
+        # Enum, which is not always spelled like the column it sits on.
+        batch.drop_constraint("triagestate", type_="check")
         batch.drop_column("triage_state")
     with op.batch_alter_table("articles") as batch:
         batch.drop_column("author")

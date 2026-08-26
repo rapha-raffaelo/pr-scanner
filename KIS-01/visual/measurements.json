@@ -1,0 +1,102 @@
+{
+  "story_id": "KIS-01",
+  "mock": {
+    "decision_id": "DEC-3",
+    "repo_alias": null,
+    "rel_path": "features/mocks/visibility-standing.html"
+  },
+  "build_url": null,
+  "measured": {
+    "mock": {
+      "rendered": true,
+      "root_selector": "main",
+      "used_fallback_root": true,
+      "font_families": [
+        "-apple-system, \"system-ui\", \"SF Pro Text\", \"Helvetica Neue\", \"Segoe UI\", Roboto, sans-serif"
+      ],
+      "font_sizes": [
+        "10px",
+        "11px",
+        "12px",
+        "13px",
+        "14px",
+        "16px",
+        "20px",
+        "26px",
+        "52px"
+      ],
+      "font_weights": [
+        "400",
+        "600",
+        "700",
+        "800"
+      ],
+      "palette": [
+        "rgb(29, 29, 31)",
+        "rgba(60, 60, 67, 0.58)",
+        "rgba(29, 29, 31, 0.82)",
+        "rgb(0, 113, 227)",
+        "rgb(255, 255, 255)",
+        "rgba(120, 120, 128, 0.12)",
+        "rgba(60, 60, 67, 0.32)",
+        "rgb(161, 161, 170)",
+        "rgb(36, 138, 61)",
+        "rgba(120, 120, 128, 0.07)",
+        "rgba(247, 247, 250, 0.92)",
+        "rgb(215, 0, 21)",
+        "rgb(235, 235, 240)",
+        "rgb(247, 247, 250)",
+        "rgba(0, 113, 227, 0.1)"
+      ],
+      "palette_counts": {
+        "rgb(29, 29, 31)": 101,
+        "rgb(247, 247, 250)": 1,
+        "rgb(235, 235, 240)": 1,
+        "rgb(0, 113, 227)": 10,
+        "rgba(29, 29, 31, 0.82)": 14,
+        "rgba(60, 60, 67, 0.32)": 7,
+        "rgb(255, 255, 255)": 9,
+        "rgb(161, 161, 170)": 6,
+        "rgba(247, 247, 250, 0.92)": 2,
+        "rgba(60, 60, 67, 0.58)": 39,
+        "rgba(120, 120, 128, 0.12)": 9,
+        "rgb(36, 138, 61)": 3,
+        "rgba(120, 120, 128, 0.07)": 3,
+        "rgba(0, 113, 227, 0.1)": 1,
+        "rgb(215, 0, 21)": 1
+      },
+      "radii": [
+        "4px",
+        "6px",
+        "10px",
+        "20px",
+        "50%"
+      ],
+      "container_width": 1184.0,
+      "structural_text": [
+        "Heute Portfolio Archiv Kontakte MANDATE Enpal TeamViewer 2 Celonis",
+        "Heute Impulse Wettbewerb Berichte Archiv Kickoff Profil Guide Marktumfeld KI-Sichtbarkeit",
+        "Alle Fragen",
+        "Jetzt messen"
+      ],
+      "screenshot": "/Users/raphaelmankopf/Documents/09 Projects/pr-scanner/KIS-01/visual/mock.png",
+      "paint_warnings": []
+    },
+    "build": {
+      "rendered": false
+    }
+  },
+  "findings": [
+    {
+      "file": "",
+      "line": 0,
+      "col": 0,
+      "rule_id": "mock_unverified",
+      "description": "**The build was not compared against your mock.** Remy has no way to start this app, so it could not open the built page. Set `[preview].cmd` in this repo's config.toml to the command that runs it \u2014 for example `cmd = \"npm run dev\"`. Remy passes the port to it as $PORT.",
+      "suggested_fix": "",
+      "severity": "minor",
+      "reviewer": "mock_conformance",
+      "source": "mock_conformance"
+    }
+  ]
+}
