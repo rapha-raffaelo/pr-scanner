@@ -331,7 +331,7 @@ def create_app() -> FastAPI:
         advisory, archive, assets_view, assistant, client, contacts, guide_routes,
         language, login, onboarding as onboarding_routes,
         profile as profile_routes, report as report_routes, rivals_view,
-        runstatus, settings, today, triage,
+        runstatus, settings, today, triage, visibility_view,
     )
 
     # First, so the sign-in pages exist before anything that needs a session.
@@ -356,6 +356,9 @@ def create_app() -> FastAPI:
     app.include_router(rivals_view.router)
     app.include_router(report_routes.router)
     app.include_router(onboarding_routes.router)
+    # The other channel: what an assistant answers when somebody asks about this
+    # mandate's market, measured weekly by the sweep (DEC-3).
+    app.include_router(visibility_view.router)
     return app
 
 
