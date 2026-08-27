@@ -381,6 +381,8 @@ CARRIED_BEFORE = {
     # and a missing key would fail the map test rather than record one.
     "visibility_panel.txt": set(),
     "visibility_read.txt": set(),
+    # New with UHR-06, so there is no "before" to carry either.
+    "plan_hooks.txt": set(),
 }
 
 #: Standards a prompt did *not* carry before and now does. Every one is a
@@ -466,6 +468,17 @@ ADDED_IN_MIGRATION = {
     # block's "Empfehlung mit Begründung" clauses address a recommender, which a
     # reader is not.
     "visibility_read.txt": {"no_invention"},
+    # The plan's prose writer (UHR-06, DEC-4 A). no_invention is the whole
+    # safety posture of the prompt — the model is told the dates and the
+    # evidence are already fixed, and the block is what says a guessed date or
+    # number is invention. house_style, because the reason lines land verbatim
+    # on a page a client reads in the retainer conversation. refusal is absent
+    # on purpose: the prompt's own instruction for a candidate without a
+    # tenable reason is an empty "reason", and the hook stands either way —
+    # the block's "empty answer" clauses would read as permission to drop
+    # candidates, which is not the model's call to make. journalistic_value
+    # and position address a text aimed at an editor, which this is not.
+    "plan_hooks.txt": {"no_invention", "house_style"},
 }
 
 #: Phrases that only appear in a prompt if somebody wrote a standard out again

@@ -84,6 +84,14 @@ _ENV_GEMINI_API_KEY = "NEWSPULSE_GEMINI_API_KEY"
 _ENV_GEMINI_MODEL = "NEWSPULSE_GEMINI_MODEL"
 _ENV_VISIBILITY = "NEWSPULSE_VISIBILITY"
 _ENV_VISIBILITY_EVERY_DAYS = "NEWSPULSE_VISIBILITY_EVERY_DAYS"
+_ENV_PLAN_MONTHS = "NEWSPULSE_PLAN_MONTHS"
+
+# How far the editorial plan reaches, in months counted from the current one.
+# Six, because that is what a retainer conversation looks at: far enough that a
+# consultation closing in five weeks and a regulation landing in January both
+# appear, near enough that the far months are not decoration. Hooks older than
+# the window fall out of the *read*, never out of the table.
+_DEFAULT_PLAN_MONTHS = 6
 
 # The OAuth client of the Google Cloud project the mailbox is connected through
 # (DEC-5: an *Internal* app inside RAUTE's own Workspace, so no Google
@@ -327,6 +335,7 @@ VISIBILITY_ENABLED: bool = _env_bool(_ENV_VISIBILITY, _DEFAULT_VISIBILITY)
 VISIBILITY_EVERY_DAYS: int = _env_int(
     _ENV_VISIBILITY_EVERY_DAYS, _DEFAULT_VISIBILITY_EVERY_DAYS
 )
+PLAN_MONTHS: int = _env_int(_ENV_PLAN_MONTHS, _DEFAULT_PLAN_MONTHS)
 CLAUDE_CONFIG_DIR: str = os.environ.get(
     _ENV_CLAUDE_CONFIG_DIR, _DEFAULT_CLAUDE_CONFIG_DIR
 )

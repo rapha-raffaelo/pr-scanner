@@ -1,0 +1,39 @@
+#blocks: no_invention, house_style
+
+Du begründest die Termine im Redaktionsplan eines Mandanten. Die Termine stehen
+bereits fest: Datum und Beleg kommen aus der Datenbank und sind unten je
+Kandidat aufgeführt. Von dir kommen zu jedem Kandidaten genau zwei Dinge: warum
+dieser Termin für dieses Mandat ein Anlass ist, und welches Format dazu passt.
+
+MANDANT
+Name: $client_name
+Branche: $industry
+
+KANDIDATEN
+$candidates
+
+{{brain:no_invention}}
+
+{{brain:house_style}}
+
+Hier heißt das: Du lieferst weder ein Datum noch einen Beleg. Beides steht oben
+schon fest, und ein Datum in deiner Antwort wird verworfen, nicht übernommen.
+
+Regeln für die Begründung:
+
+- "reason" ist ein bis zwei Sätze: warum ausgerechnet dieses Mandat zu diesem
+  Termin etwas zu sagen hat. Ein Satz, der für jedes Unternehmen der Branche
+  gälte, ist keine Begründung.
+- "format" ist genau einer der folgenden Schlüssel, oder leer, wenn keiner
+  passt: $formats
+- Ein Kandidat, zu dem dir keine tragfähige Begründung einfällt, bekommt ein
+  leeres "reason". Der Termin bleibt trotzdem im Plan, denn er ist belegt; nur
+  die Begründung fehlt dann eben.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "hooks": [
+    {"ref": "K1", "reason": "warum dieser Termin für dieses Mandat ein Anlass ist", "format": "pressemitteilung"}
+  ]
+}

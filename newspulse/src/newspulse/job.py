@@ -58,6 +58,7 @@ from . import (
     mailsync,
     market_sources,
     notify,
+    plan,
     profile_refresh,
     report,
     themes,
@@ -154,6 +155,14 @@ _REPORT_DRAFT_DAYS = 7
 # portfolio inside the weekly window, and a mandate deferred today is simply still
 # due tomorrow.
 _VISIBILITY_PER_SWEEP = 3
+
+# How many editorial plans one sweep is willing to recompute, for the reason
+# every other cap here exists: a recompute with candidates is one model call
+# inside the run guard, and on the first morning after a deploy every mandate is
+# due at once. Three a night clears a portfolio inside the weekly window
+# (plan.PLAN_REFRESH_AFTER), and a mandate deferred today is simply still due
+# tomorrow.
+_PLANS_PER_SWEEP = 3
 
 # How long the whole visibility stage may hold the sweep before it stops starting
 # new measurements. The count above is not a time budget and cannot be one: a set
@@ -1224,6 +1233,55 @@ def _measure_visibility(
     return measured
 
 
+def _recompute_plans(
+    session: Session, clients: Sequence[Client], *, now: dt.datetime
+) -> int:
+    """Recompute the editorial plans whose weekly window has come round.
+
+    The plan has no rhythm of its own, so it rides the sweep the way the
+    visibility measurement does, and with the same three properties: per-mandate
+    ``plan.due`` decides whether anything happens at all, a per-sweep cap bounds
+    the model calls, and every mandate sits inside its own fault boundary — a
+    missing plan is a stale tab, not a broken morning, so nothing here reaches
+    the run's errors.
+
+    A mandate with no evidenced candidate costs no model call inside
+    :func:`newspulse.plan.recompute`, and — the part a cap cannot give — a
+    recompute never touches a hook a person has decided on, so running this
+    every week throws no work away.
+    """
+    recomputed = 0
+    deferred = 0
+    for client in clients:
+        # A yardstick is tracked to compare its share of the conversation;
+        # nobody plans its months, and DEC-5 gives it no page to read one on.
+        if client.is_competitor:
+            continue
+        name = client.name
+        try:
+            if not plan.due(session, client, now=now):
+                continue
+            if recomputed >= _PLANS_PER_SWEEP:
+                deferred += 1
+                continue
+            plan.recompute(session, client, now=now)
+        except Exception:  # noqa: BLE001 — a plan is not worth a failed sweep
+            # First, before the log line: a caught exception is not a clean
+            # session, and a query on an expired attribute would raise
+            # PendingRollbackError straight out of this handler.
+            session.rollback()
+            _log.exception("the plan recompute for %r failed; skipping", name)
+            continue
+        recomputed += 1
+    if deferred:
+        _log.info(
+            "%d further plan recompute(s) deferred to a later sweep (cap %d per run)",
+            deferred,
+            _PLANS_PER_SWEEP,
+        )
+    return recomputed
+
+
 def _draft_reports(
     session: Session,
     clients: Sequence[Client],
@@ -1684,6 +1742,9 @@ class _PostRun:
     #: Mandates measured for KI-Sichtbarkeit this sweep. Zero on six mornings out
     #: of seven by design: the window is weekly, not daily.
     visibility: int = 0
+    #: Editorial plans recomputed this sweep. Weekly per mandate, like the
+    #: measurement above, and zero most mornings for the same reason.
+    plans: int = 0
 
 
 def _settle_themes(session: Session, clients: Sequence[Client], fetch: FetchFeed) -> int:
@@ -1822,6 +1883,11 @@ def _post_run(
     # bounded per sweep, inside its own fault boundary, and reporting nothing into
     # the run's errors.
     outcome.visibility = _measure_visibility(session, clients, now=now_fn())
+    # The editorial plan, after the market sweep above has stored this morning's
+    # signals so a consultation that arrived today is in tonight's plan rather
+    # than next week's. Weekly per mandate, capped per sweep, and never touching
+    # a hook a person has decided on — see _recompute_plans.
+    outcome.plans = _recompute_plans(session, clients, now=now_fn())
     # Last, and outside everything above: the monthly report reads a period that
     # has already ended, so it needs nothing this sweep fetched, and putting it
     # here means a failure in it cannot cost the sweep any of the work that came
@@ -1930,7 +1996,7 @@ def _run_real(
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
         "%d market signal(s), %d profile(s), %d visibility measurement(s), "
-        "%d repl(y/ies), %d error(s)",
+        "%d plan(s), %d repl(y/ies), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
@@ -1942,6 +2008,7 @@ def _run_real(
         # measurement that fires on one morning in seven.
         post.profiles,
         post.visibility,
+        post.plans,
         post.replies,
         len(errors),
     )

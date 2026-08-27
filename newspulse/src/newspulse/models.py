@@ -980,6 +980,146 @@ class MarketSignal(Base):
     title_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class HookSource(StrEnum):
+    """The three evidenced sources a plan hook may come from — and the only three.
+
+    DEC-4 option A, as a closed set: a dated market signal, a theme the trade
+    press measurably writes about, or a previous-year month the archive shows
+    carried coverage. There is deliberately no fourth member for "the model knows
+    a recurring date" — a plan with one invented date is a plan nobody checks a
+    second time, so a hook class that cannot resolve to a stored row does not
+    exist here.
+    """
+
+    MARKTSIGNAL = "marktsignal"
+    THEMA = "thema"
+    VORJAHR = "vorjahr"
+
+
+class HookState(StrEnum):
+    """Where one hook stands with the person who reads the plan.
+
+    ``VORGESCHLAGEN`` is the only state a machine may set, and the only state a
+    recompute may replace. The other two are a human decision, and a decision
+    survives every recompute — a "verworfen" that came back the next morning
+    would train the reader to stop deciding at all. A hook moved to another
+    month keeps whatever state it has; the move is recorded on
+    :attr:`PlanHook.moved_at`, and either mark counts as touched.
+    """
+
+    VORGESCHLAGEN = "vorgeschlagen"
+    ANGENOMMEN = "angenommen"
+    VERWORFEN = "verworfen"
+
+
+class PlanHook(Base):
+    """One dated entry in a mandate's editorial plan, resolving to a stored row.
+
+    ``month`` is a ``"YYYY-MM"`` string and ``day`` is nullable, and that split is
+    the date rule of the whole feature: a source that carries a full date (a
+    market signal's effective date or deadline) yields a day, a source that only
+    carries a month (the previous year's archive, a theme's current resonance)
+    yields none — and no code path anywhere guesses the missing day. Lexicographic
+    order on the month string is chronological order, which is what every read of
+    the plan sorts by.
+
+    ``source_kind``/``source_id`` are the evidence: the id of the row in the table
+    the kind names (``market_signals``, ``topic_hits``, ``analyses``). Not a real
+    foreign key, because it points into one of three tables depending on the kind
+    — :func:`newspulse.plan._resolves` is the guard instead, and a hook whose
+    evidence does not resolve is never stored. The UNIQUE below is what makes a
+    recompute unable to file a second hook off a row a person already decided on.
+
+    ``reason`` and ``format`` are the only two fields a model writes, and neither
+    of them is load-bearing: the hook exists because of its evidence, and a
+    recompute whose model call failed stores the hook with empty prose rather
+    than dropping a documented date.
+    """
+
+    __tablename__ = "plan_hooks"
+    __table_args__ = (
+        # One hook per evidence row per mandate, enforced rather than assumed: the
+        # recompute skips sources that already carry a hook, and this is what
+        # keeps a race (or a bug in the skip) from stacking a fresh proposal next
+        # to the "verworfen" a person already recorded against the same row.
+        UniqueConstraint(
+            "client_id", "source_kind", "source_id", name="uq_plan_hooks_source"
+        ),
+        # Every read of the plan asks for one mandate's months in the window.
+        Index("ix_plan_hooks_client_month", "client_id", "month"),
+        # 1-based like a calendar; NULL is the honest "the source only names a
+        # month". The upper bound is the widest month rather than per-month
+        # arithmetic — the day is copied from a stored datetime, which cannot
+        # produce February 30th, so this catches raw-INSERT garbage only.
+        CheckConstraint(
+            "day IS NULL OR (day >= 1 AND day <= 31)", name="ck_plan_hooks_day"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_kind: Mapped[HookSource] = mapped_column(
+        SAEnum(
+            HookSource,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="hook_source",
+        ),
+        nullable=False,
+    )
+    source_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[str] = mapped_column(String(7), nullable=False)
+    day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: What the hook is about, copied from the evidence row (a signal's title, a
+    #: theme's term, the strongest headline of the carried month). Derived by
+    #: code, never by a model.
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: Why this date is an occasion for this mandate — the model's prose, and the
+    #: one thing here a model is allowed to write. Empty when the call failed.
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: The suggested format, one of the keys :data:`newspulse.assets.REGISTRY`
+    #: knows, or empty. A key the registry does not know is dropped at store time
+    #: rather than kept: the plan page pre-selects this in the format picker, and
+    #: an invented key would break exactly that click.
+    format: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="", server_default=""
+    )
+    state: Mapped[HookState] = mapped_column(
+        SAEnum(
+            HookState,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="hook_state",
+        ),
+        nullable=False,
+        default=HookState.VORGESCHLAGEN,
+        server_default=HookState.VORGESCHLAGEN.value,
+    )
+    #: When a person moved it to another month. A move is a touch: a moved hook
+    #: survives every recompute even while its state is still "vorgeschlagen".
+    moved_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: When a person accepted or discarded it. Empty exactly while the state is
+    #: the machine's.
+    decided_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    @property
+    def touched(self) -> bool:
+        """Whether a person has done anything to this hook.
+
+        The recompute's whole contract in one place: only an untouched hook may
+        be replaced. Accepting, discarding and moving are the three touches, and
+        the first two live in ``state`` while the third lives in ``moved_at`` —
+        a hook moved to October is still a proposal, but it is a person's
+        proposal now.
+        """
+        return self.state is not HookState.VORGESCHLAGEN or self.moved_at is not None
+
+
 class Angle(Base):
     """One drafted positioning message for a client, off a market development.
 
@@ -2151,6 +2291,9 @@ __all__ = [
     "SILENT_AFTER_DAYS",
     "TopicHit",
     "MarketSignal",
+    "PlanHook",
+    "HookSource",
+    "HookState",
     "SignalKind",
     "SignalOrigin",
     "GuideSource",
