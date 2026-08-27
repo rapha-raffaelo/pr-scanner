@@ -1106,6 +1106,14 @@ class PlanHook(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
     )
+    #: The standards the reason was written under, on the same terms as
+    #: :attr:`Angle.brain_version`: captured when the prompt is composed, and
+    #: NULL only for a row from before there was anything to stamp. The reason
+    #: lands verbatim on a page a client reads, which is exactly the kind of
+    #: text the stamp exists for.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
 
     @property
     def touched(self) -> bool:

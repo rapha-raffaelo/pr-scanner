@@ -49,6 +49,7 @@ from newspulse import (
     config,
     i18n,
     outreach,
+    plan,
     prose,
 )
 from newspulse.models import (
@@ -62,7 +63,10 @@ from newspulse.models import (
     BrainOverride,
     Category,
     Client,
+    MarketSignal,
     Outreach,
+    PlanHook,
+    SignalKind,
 )
 from newspulse.pitch import PitchTarget
 from newspulse.schemas import AngleDraft, PersonalMessage
@@ -1636,6 +1640,35 @@ def _store_an_asset(session) -> Asset:
     return assets.store(session, fmt, client, angle, draft)
 
 
+def _store_a_hook(session) -> PlanHook:
+    """Drive ``plan`` the way the sweep does: one recompute off a stored signal.
+
+    A market signal with a future date is the cheapest evidenced candidate to
+    seed, so the harness is about the stamp rather than about a year of archive.
+    """
+    client = _a_mandate(session)
+    session.add(
+        MarketSignal(
+            client_id=client.id,
+            kind=SignalKind.REGULIERUNG,
+            title="Verordnung tritt in Kraft",
+            url="https://example.org/verordnung",
+            effective_at=dt.datetime.now(dt.UTC) + dt.timedelta(days=30),
+        )
+    )
+    session.commit()
+    hooks = plan.recompute(
+        session,
+        client,
+        invoke=lambda *a, **k: json.dumps(
+            {"hooks": [{"ref": "K1", "reason": "Der Termin betrifft das Mandat.",
+                        "format": "statement"}]}
+        ),
+    )
+    assert hooks
+    return hooks[0]
+
+
 #: Every generator in the tool, each paired with a call that drives its real
 #: generate-then-store path. The point of the list is that it is exhaustive, and
 #: the test below it is what keeps it that way: a stamp on the two generators
@@ -1648,6 +1681,10 @@ GENERATORS = [
     # a press release goes out under the client's name, so it is the last
     # artefact that should be unable to say which standards produced it.
     ("assets", _store_an_asset),
+    # The plan's hooks: dates and evidence come from the database, but the
+    # reason a client reads in the retainer conversation is model prose, and
+    # model prose a consultant forwards is exactly what the stamp is about.
+    ("plan", _store_a_hook),
 ]
 
 

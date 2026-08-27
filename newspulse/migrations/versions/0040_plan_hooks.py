@@ -72,6 +72,10 @@ def upgrade() -> None:
         sa.Column("moved_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("decided_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        # The standards the reason was written under — same terms as
+        # angles.brain_version. NULL is spoken for ("stored before there was
+        # anything to stamp"), so no server default.
+        sa.Column("brain_version", sa.Integer(), nullable=True),
         sa.UniqueConstraint(
             "client_id", "source_kind", "source_id", name="uq_plan_hooks_source"
         ),

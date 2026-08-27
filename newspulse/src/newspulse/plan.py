@@ -514,6 +514,10 @@ def recompute(
     if not fresh:
         return []
 
+    # Captured before the model call, the way angles does it: a consultant
+    # editing a standard while the sweep runs must not retroactively change what
+    # a stored reason claims to have been written under.
+    written_under = brain.version(session)
     prose_by_ref = _ask_for_prose(client, fresh, invoke)
     hooks: list[PlanHook] = []
     for index, candidate in enumerate(fresh, 1):
@@ -528,6 +532,7 @@ def recompute(
                 title=candidate.title,
                 reason=reason,
                 format=fmt,
+                brain_version=brain.stamp(written_under, what="a plan hook"),
             )
         )
     session.add_all(hooks)
