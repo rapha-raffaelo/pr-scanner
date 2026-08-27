@@ -830,28 +830,68 @@ def test_a_mailbox_without_the_send_permission_shows_the_way_to_fix_it(
     assert f"/client/{row.client_id}/outreach/{row.id}/release" in body
 
 
-def test_a_letter_with_no_address_shows_the_action_disabled_with_the_reason(
+def test_a_letter_with_no_address_asks_for_it_on_the_card(
     mailbox, gmail, web, session
 ):
+    """A contact in the book with no address gets a field, not a disabled button.
+
+    This test used to assert the opposite — the action disabled, the reason
+    beside it, a link to the contact form on another page. Production said what
+    that cost: an empty contact book, three letters written, none released, none
+    sent. Every one of them landed in this branch.
+    """
     row = _letter(session, email="")
 
     body = _card(web, row)
 
-    assert "Freigeben und senden" in body
-    assert "disabled" in body
-    assert "Im Kontaktbuch, aber ohne E-Mail-Adresse." in body
-    # And it never offers the send it cannot perform.
+    assert f"/client/{row.client_id}/outreach/{row.id}/adresse" in body
+    assert f'id="addr-{row.id}"' in body
+    assert f"E-Mail von {_JOURNALIST}" in body
+    # The send itself is still not on offer — there is no address yet.
     assert f"/client/{row.client_id}/outreach/{row.id}/gmail-draft" not in body
 
 
-def test_an_unknown_recipient_is_told_that_nothing_is_derived(
+def test_an_unknown_recipient_is_asked_for_rather_than_derived(
     mailbox, gmail, web, session
 ):
+    """Nothing is derived: the card still refuses to guess an address from the
+    name and the masthead. It asks for it instead of pointing elsewhere."""
     row = _letter(session, in_book=False)
 
     body = _card(web, row)
 
-    assert "RauteOS leitet keine Adresse aus Name oder Medium ab." in body
+    assert f"/client/{row.client_id}/outreach/{row.id}/adresse" in body
+    assert 'placeholder="name@medium.de"' in body
+    # An empty field, never a guess at vorname.nachname@medium.de.
+    assert _ADDRESS not in body
+
+
+def test_a_letter_with_no_byline_keeps_the_reason_because_there_is_nobody_to_ask_for(
+    mailbox, gmail, web, session
+):
+    """The one case the field cannot serve. Without a name there is no contact to
+    give an address to, so the disabled button and its reason stay."""
+    row = _letter(session, journalist="", in_book=False)
+
+    body = _card(web, row)
+
+    assert f"/client/{row.client_id}/outreach/{row.id}/adresse" not in body
+    assert "disabled" in body
+    assert "Kein Name zu diesem Anschreiben" in body
+
+
+def test_the_readonly_mailbox_is_not_asked_for_an_address(
+    readonly_mailbox, gmail, web, session
+):
+    """The missing permission is not a fact about this recipient, and no address
+    would cure it. Asking for one here would send the reader to fix the wrong
+    thing."""
+    row = _letter(session, in_book=False)
+
+    body = _card(web, row)
+
+    assert f"/client/{row.client_id}/outreach/{row.id}/adresse" not in body
+    assert "Dieses Postfach ist nur zum Lesen verbunden." in body
 
 
 def test_with_no_mailbox_connected_the_action_is_not_offered_and_kopieren_stays(

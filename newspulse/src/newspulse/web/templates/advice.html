@@ -193,6 +193,24 @@
              background: rgba(215, 0, 21, .05); border-radius: var(--radius); }
   .confirm p { font-size: var(--t-footnote); color: #8a0010; margin-bottom: 10px; max-width: 64ch; }
   .confirm__row { display: flex; gap: 10px; align-items: center; }
+  /* The missing address, asked for on the card. Full width of the state row
+     rather than squeezed beside the badge: it is a question, and a question set
+     in the gap left over by two badges reads as a footnote. */
+  .state__acts { flex-wrap: wrap; }
+  .addr { flex: 1 1 100%; margin-top: 8px; padding: 12px;
+          border: 1px solid var(--line); border-radius: var(--radius);
+          background: var(--fill); }
+  .addr__lab { display: block; font-size: var(--t-caption); font-weight: 600;
+               color: var(--ink-2); margin-bottom: 6px; }
+  .addr__row { display: flex; gap: 8px; align-items: center; }
+  .addr__in { flex: 1 1 auto; min-width: 0; padding: 7px 10px;
+              border: 1px solid var(--line); border-radius: var(--radius);
+              background: var(--bg); color: var(--ink); font: inherit;
+              font-size: var(--t-footnote); }
+  .addr__in:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .addr__note { margin-top: 6px; font-size: var(--t-caption); color: var(--muted); }
+  .addr__bad { margin-top: 6px; font-size: var(--t-caption); color: var(--alert);
+               font-weight: 600; }
   /* Why the send is not on offer, beside the disabled button rather than instead
      of it: the reader has to see that the action exists and what is missing. */
   .state__why { font-size: var(--t-caption); color: var(--muted); }
@@ -699,11 +717,17 @@
                 <span>{{ t("An") }}</span>
                 <select name="target" aria-label="{{ t('Empfänger:in') }}">
                   {% for target in targets %}
+                    {# Whether this person is reachable, said before the letter
+                       is written rather than after. The address is the one thing
+                       that decides whether the finished text can leave the
+                       house, and it used to surface only on the card at the end
+                       — pick a name, wait for a letter, then find out. #}
                     <option value="{{ loop.index0 }}"
                             data-journalist="{{ target.journalist or '' }}"
                             data-outlet="{{ target.outlet }}">
                       {%- if loop.first %}{{ t("Vorschlag") }}: {% endif -%}
                       {% if target.journalist %}{{ target.journalist }} · {% endif %}{{ target.outlet }}
+                      {%- if target.journalist %} — {% if target.contact_email %}{{ t("Adresse liegt vor") }}{% else %}{{ t("noch keine Adresse") }}{% endif %}{% endif -%}
                     </option>
                   {% endfor %}
                   <option value="">{{ t("ohne feste:n Empfänger:in") }}</option>
@@ -1015,23 +1039,51 @@
               {% elif not msg.released_at %}
                 <span class="state__acts">
                   {% if mailbox %}
-                    {# Disabled, and never silently: an address is the one thing
-                       this tool will not derive, so the card says which of the
-                       reasons it is and where each one gets fixed. The mailbox's
-                       own missing permission comes first — it is not a fact about
-                       this recipient, and no contact entry would cure it. #}
-                    <button type="button" class="btn btn--send" disabled>{{ t("Freigeben und senden") }}</button>
-                    <span class="state__why">
-                      {% if not may_send %}
-                        {{ t(gmail_scope_reason) }}
-                        <a href="/settings#gmail">{{ t("Postfach neu verbinden") }} →</a>
-                      {% else %}
-                        {{ t(rec.reason) if rec else "" }}
-                        {% if msg.journalist %}
-                          <a href="{% if rec and rec.contact_id %}/contacts?id={{ rec.contact_id }}{% else %}/contacts?name={{ msg.journalist | urlencode }}&outlet={{ msg.outlet | urlencode }}{% endif %}">{{ t("Kontakt hinterlegen") }} →</a>
+                    {# The address, asked for where it is missing.
+
+                       This branch used to be a dead end with a link out of it:
+                       a disabled button, the reason beside it, and "Kontakt
+                       hinterlegen →" pointing at the contact form on another
+                       page. The book was empty, so every letter landed here,
+                       and none of the three ever written was released. Asking
+                       for the one missing field on the card is the whole fix —
+                       the name and the masthead are already known, and the
+                       button beside the field is the send itself. #}
+                    {% if may_send and msg.journalist %}
+                      <form class="addr" method="post"
+                            action="/client/{{ client.id }}/outreach/{{ msg.id }}/adresse">
+                        <label class="addr__lab" for="addr-{{ msg.id }}">
+                          {{ t("E-Mail von %(who)s") | format(who=msg.journalist) }}
+                        </label>
+                        <div class="addr__row">
+                          <input class="addr__in" id="addr-{{ msg.id }}" type="email"
+                                 name="email" required
+                                 autocomplete="off" spellcheck="false"
+                                 placeholder="{{ t('name@medium.de') }}">
+                          <button type="submit" class="btn">{{ t("Merken") }}</button>
+                        </div>
+                        {% if address_errors.get(msg.id) %}
+                          <p class="addr__bad">{{ address_errors[msg.id] }}</p>
+                        {% else %}
+                          <p class="addr__note">
+                            {{ t("Wird im Kontaktbuch hinterlegt. Danach lässt sich diese Nachricht von hier aus senden.") }}
+                          </p>
                         {% endif %}
-                      {% endif %}
-                    </span>
+                      </form>
+                    {% else %}
+                      <button type="button" class="btn btn--send" disabled>{{ t("Freigeben und senden") }}</button>
+                      <span class="state__why">
+                        {% if not may_send %}
+                          {{ t(gmail_scope_reason) }}
+                          <a href="/settings#gmail">{{ t("Postfach neu verbinden") }} →</a>
+                        {% else %}
+                          {# No byline on the letter: there is no person to give
+                             an address to, so the contact form is genuinely the
+                             only way and the link stays. #}
+                          {{ t(rec.reason) if rec else "" }}
+                        {% endif %}
+                      </span>
+                    {% endif %}
                   {% endif %}
                   {% if msg.review_ok %}
                     <form method="post" action="/client/{{ client.id }}/outreach/{{ msg.id }}/release">

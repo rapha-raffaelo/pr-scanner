@@ -134,6 +134,54 @@ def _link_released_letters(session: Session, contact: Contact) -> int:
     return linked
 
 
+def _looks_like_address(value: str) -> bool:
+    """Whether this could be a mailbox: one ``@`` with something either side, a
+    dot in the domain, and no whitespace.
+
+    Not a validator. RFC 5322 permits addresses no consultant will ever type and
+    forbids none of the mistakes that actually happen here, so this rejects the
+    empty field, the pasted name and the half-copied string — and lets everything
+    else through to the mail server, which is the only thing that can really say.
+    """
+    if not value or any(ch.isspace() for ch in value):
+        return False
+    local, _, domain = value.partition("@")
+    if not local or "." not in domain:
+        return False
+    return not domain.startswith(".") and not domain.endswith(".")
+
+
+def _entry_for(
+    session: Session, name: str, outlet: str, contact_id: int | None
+) -> Contact:
+    """The book's entry for this byline, created and added if there is none.
+
+    Shared by :func:`save` and :func:`remember_address` so the two ways into the
+    book cannot drift on the question of who counts as the same person — a
+    disagreement there is how one journalist becomes two half-filled rows.
+
+    Not committed here: the caller decides what it writes before flushing, and a
+    row added and then abandoned is the caller's rollback to make.
+    """
+    contact = session.get(Contact, contact_id) if contact_id else None
+    if contact is None:
+        contact = find(session, name, outlet)
+        # Only reuse a name-only match when it carries no outlet of its own;
+        # otherwise this is the same person at a different masthead, which is a
+        # separate contact by design.
+        if (
+            contact is not None
+            and contact.outlet
+            and outlet
+            and contact.outlet.lower() != outlet.lower()
+        ):
+            contact = None
+    if contact is None:
+        contact = Contact(name=name, outlet=outlet)
+        session.add(contact)
+    return contact
+
+
 def save(
     session: Session,
     *,
@@ -156,17 +204,7 @@ def save(
         raise ValueError("Ein Kontakt braucht einen Namen.")
     house = (outlet or "").strip()
 
-    contact = session.get(Contact, contact_id) if contact_id else None
-    if contact is None:
-        contact = find(session, cleaned, house)
-        # Only reuse a name-only match when it carries no outlet of its own;
-        # otherwise this is the same person at a different masthead, which is a
-        # separate contact by design.
-        if contact is not None and contact.outlet and house and contact.outlet.lower() != house.lower():
-            contact = None
-    if contact is None:
-        contact = Contact(name=cleaned, outlet=house)
-        session.add(contact)
+    contact = _entry_for(session, cleaned, house, contact_id)
 
     contact.name = cleaned
     contact.outlet = house or contact.outlet
@@ -178,6 +216,47 @@ def save(
     # A one-time repair per entry: letters that went out before this contact
     # existed still belong in their file. Run on an update too, because a
     # corrected outlet can bring a letter into range that was out of it.
+    _link_released_letters(session, contact)
+    return contact
+
+
+def remember_address(
+    session: Session,
+    *,
+    name: str,
+    outlet: str = "",
+    email: str,
+    contact_id: int | None = None,
+) -> Contact:
+    """Give one recipient an address, touching nothing else on their entry.
+
+    The letter card asks for exactly one field, so it must not go through
+    :func:`save`: that writes every column, and saving a name and an address
+    there would blank the phone, the beat and the notes of a contact who already
+    had them.
+
+    Creates the entry when the pitch list named somebody the book has never seen,
+    which in practice is every letter — the book starts empty, and the address is
+    the one thing standing between a written letter and a sent one. Before this
+    existed the card could only link away to the contact form, so recording an
+    address meant leaving the letter, filling in a full record and finding the
+    way back.
+
+    Raises ``ValueError`` on an empty name or an address that is not one. The
+    check is deliberately shallow: it catches the typo and the pasted sentence,
+    and refuses to be the arbiter of what a valid mailbox looks like.
+    """
+    person = (name or "").strip()
+    if not person:
+        raise ValueError("Ohne Namen lässt sich keine Adresse hinterlegen.")
+    address = (email or "").strip()
+    if not _looks_like_address(address):
+        raise ValueError("Das ist keine E-Mail-Adresse.")
+    contact = _entry_for(session, person, (outlet or "").strip(), contact_id)
+    contact.email = address
+    session.commit()
+    # The same repair :func:`save` runs, and for the same reason: a letter
+    # released before this address existed still belongs in the person's file.
     _link_released_letters(session, contact)
     return contact
 

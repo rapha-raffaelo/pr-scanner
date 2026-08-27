@@ -257,6 +257,10 @@ def _advice_context(session: Session, client: Client, *, eintrag: str = "") -> d
         "recipients": _recipients(session, messages),
         "gmail_threads": _thread_links(messages, mailbox),
         "gmail_error": _last_gmail_error.get(client.id, ""),
+        # Keyed by letter, not by mandate: the field that produced the error is
+        # on one card among several, and a page-level line would point at the
+        # wrong one.
+        "address_errors": dict(_last_address_error),
         # Whether a radar is possible at all, which is a question about the
         # client's themes — not about whether it has found anything yet. Read
         # off the hit count, a mandate with twenty-five themes and a radar that
@@ -593,6 +597,54 @@ def _letter(session: Session, client_id: int, outreach_id: int) -> Outreach:
     if row is None or row.client_id != client_id:
         raise HTTPException(status_code=404, detail="Outreach not found")
     return row
+
+
+# Why an address could not be recorded, per letter. Same shape and lifetime as
+# the Gmail error above: it describes one click, and going stale on restart is
+# right for a line that answers "what just happened".
+_last_address_error: dict[int, str] = {}
+
+
+@router.post("/client/{client_id}/outreach/{outreach_id}/adresse")
+def remember_address_route(
+    request: Request,
+    client_id: int,
+    outreach_id: int,
+    email: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Record the recipient's address without leaving the letter.
+
+    The measured state of the book on the day this was written: no contacts at
+    all, three letters written, none released, none sent. Every letter resolved
+    to ``NOT_IN_BOOK``, so every send button was disabled and the only way on was
+    a link to the contact form on another page — write the letter, leave it, fill
+    in a full record, find the way back. Nobody did, and the flow never once
+    completed.
+
+    One field, on the card, in place. The name and the masthead come off the
+    letter rather than the form: they are what the pitch list already decided and
+    what the text was written against, so re-typing them here could only
+    introduce a second spelling of the same person.
+    """
+    _refuse_foreign_origin(request)
+    row = _letter(session, client_id, outreach_id)
+    _last_address_error.pop(row.id, None)
+    try:
+        contact = contacts.remember_address(
+            session,
+            name=row.journalist or "",
+            outlet=row.outlet or "",
+            email=email,
+            contact_id=row.contact_id,
+        )
+    except ValueError as exc:
+        _last_address_error[row.id] = str(exc)
+    else:
+        _log.info("outreach %d resolved to contact %d by address", row.id, contact.id)
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
+    )
 
 
 @router.post("/client/{client_id}/outreach/{outreach_id}/release")

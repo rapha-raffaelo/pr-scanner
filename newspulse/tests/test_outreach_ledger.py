@@ -23,7 +23,7 @@ from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import brain, outreach
+from newspulse import brain, contacts, outreach
 from newspulse.models import (
     SILENT_AFTER_DAYS,
     Angle,
@@ -858,3 +858,131 @@ def test_recording_a_release_over_an_objection_costs_a_second_click(session, web
     card = body.split(f"outreach/{row.id}/release", 1)[0][-1400:]
     assert "Ja, eintragen" in body, "the confirmation exists"
     assert "<details" in card, "and the button is behind it"
+
+
+# --- The address, asked for on the card ------------------------------------------
+#
+# Measured in production the day these were written: no contacts at all, three
+# letters written, none released, none sent. Every letter resolved to
+# NOT_IN_BOOK, so every send button rendered disabled and the only way on was a
+# link to the contact form on another page. The flow had never once completed.
+
+
+def test_the_address_can_be_recorded_from_the_letter(web, factory):
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = _write(session, client, angle)
+        client_id, row_id = client.id, row.id
+
+    answer = web.post(
+        f"/client/{client_id}/outreach/{row_id}/adresse",
+        data={"email": "j.nelson@boersen-zeitung.de"},
+        follow_redirects=False,
+    )
+
+    assert answer.status_code == 303
+    with factory() as session:
+        stored = contacts.find(session, "Jason Nelson", "Börsen-Zeitung")
+        assert stored is not None
+        assert stored.email == "j.nelson@boersen-zeitung.de"
+
+
+def test_the_recorded_address_makes_the_letter_sendable(web, factory):
+    """The whole point: the send is offered on the next render, not after a
+    detour through the contact form."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = _write(session, client, angle)
+        client_id, row_id = client.id, row.id
+
+    from newspulse.web.routes import advisory
+
+    with factory() as session:
+        before = advisory._recipient(session, session.get(Outreach, row_id))
+    assert not before.is_reachable
+
+    web.post(
+        f"/client/{client_id}/outreach/{row_id}/adresse",
+        data={"email": "j.nelson@boersen-zeitung.de"},
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        after = advisory._recipient(session, session.get(Outreach, row_id))
+    assert after.is_reachable
+    assert after.email == "j.nelson@boersen-zeitung.de"
+
+
+def test_a_pasted_name_is_refused_and_said_so(web, factory):
+    """Shallow on purpose, and never silent: a field that swallows "Jason Nelson"
+    produces a contact that looks reachable and is not."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = _write(session, client, angle)
+        client_id, row_id = client.id, row.id
+
+    web.post(
+        f"/client/{client_id}/outreach/{row_id}/adresse",
+        data={"email": "Jason Nelson"},
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        assert contacts.find(session, "Jason Nelson", "Börsen-Zeitung") is None
+    assert advisory_error(row_id)
+
+
+def advisory_error(row_id: int) -> str:
+    from newspulse.web.routes import advisory
+
+    return advisory._last_address_error.get(row_id, "")
+
+
+def test_recording_an_address_keeps_the_rest_of_the_entry(web, factory):
+    """One field, not a whole record. Through ``save`` this would blank the
+    phone, the beat and the notes of a contact who already had them."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = _write(session, client, angle)
+        contacts.save(
+            session,
+            name="Jason Nelson",
+            outlet="Börsen-Zeitung",
+            phone="+49 30 123456",
+            beat="Kapitalmarkt",
+            notes="Ruft lieber an.",
+        )
+        client_id, row_id = client.id, row.id
+
+    web.post(
+        f"/client/{client_id}/outreach/{row_id}/adresse",
+        data={"email": "j.nelson@boersen-zeitung.de"},
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        stored = contacts.find(session, "Jason Nelson", "Börsen-Zeitung")
+        assert stored.email == "j.nelson@boersen-zeitung.de"
+        assert stored.phone == "+49 30 123456"
+        assert stored.beat == "Kapitalmarkt"
+        assert stored.notes == "Ruft lieber an."
+
+
+def test_the_address_field_cannot_reach_another_mandates_letter(web, factory):
+    with factory() as session:
+        client, angle = _mandate(session)
+        row = _write(session, client, angle)
+        other = Client(name="Beta GmbH", industry="Logistik")
+        session.add(other)
+        session.commit()
+        other_id, row_id = other.id, row.id
+
+    answer = web.post(
+        f"/client/{other_id}/outreach/{row_id}/adresse",
+        data={"email": "j.nelson@boersen-zeitung.de"},
+        follow_redirects=False,
+    )
+
+    assert answer.status_code == 404
+    with factory() as session:
+        assert contacts.find(session, "Jason Nelson", "Börsen-Zeitung") is None

@@ -607,6 +607,19 @@ _EN: dict[str, str] = {
     #: permission — every mailbox connected before DEC-4's send path.
     "nur lesen": "read only",
     "Freigeben und senden": "Release and send",
+    #: The address, asked for on the letter card rather than behind a link to the
+    #: contact form. Measured before this shipped: an empty contact book, three
+    #: letters written, none released, none sent — every one of them stopped
+    #: exactly here.
+    "E-Mail von %(who)s": "Email address for %(who)s",
+    "Merken": "Save",
+    "name@medium.de": "name@outlet.com",
+    "Wird im Kontaktbuch hinterlegt. Danach lässt sich diese Nachricht von hier aus senden.":
+        "Stored in the contact book. This message can then be sent from here.",
+    #: Whether a recipient is reachable, said in the picker before the letter is
+    #: written rather than on the card after it.
+    "Adresse liegt vor": "address on file",
+    "noch keine Adresse": "no address yet",
     "Ja, senden": "Yes, send",
     # ("Abbrechen", the confirmation's second control, is already translated
     # further down with the form that first needed it.)
