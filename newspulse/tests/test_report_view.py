@@ -883,3 +883,93 @@ def test_every_new_german_string_has_an_english_entry(http, seeded):
         assert german not in document, german
     # The findings themselves stay in the language they were written in.
     assert "Arrakis war im Juli sichtbar." in document
+
+
+# --- The findings as a tick list ------------------------------------------------
+
+
+def test_one_pass_settles_every_finding(http, seeded, factory):
+    """"Behalten, ändern oder verwerfen — was übrig bleibt, wird das Dokument."
+
+    The page said that in its lead and then asked it once per finding, with a
+    page load between each. A tick list is the same sentence, answered once: the
+    ticked one is kept and the one already out is taken back up, in a single pass.
+    """
+    http.post(
+        f"/client/{seeded['client_id']}/berichte/{seeded['report_id']}/befunde",
+        data={"behalten": [seeded["dropped_id"]]},
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        by_id = {f.id: f for f in session.get(Report, seeded["report_id"]).findings}
+    assert by_id[seeded["dropped_id"]].kept is True, "ticked, so back in"
+    assert by_id[seeded["dropped_id"]].drop_reason == "", "and why it was out is gone"
+    assert by_id[seeded["kept_id"]].kept is False, "unticked, so out"
+
+
+def test_an_empty_selection_is_a_decision_and_not_an_oversight(http, seeded, factory):
+    """What makes a tick list read as the document: absence decides.
+
+    A form that only ever adds could never drop the last finding, and the reader
+    who cleared every box would be told nothing happened.
+    """
+    http.post(
+        f"/client/{seeded['client_id']}/berichte/{seeded['report_id']}/befunde",
+        data={},
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        findings = session.get(Report, seeded["report_id"]).findings
+    assert [f.kept for f in findings] == [False, False]
+
+
+def test_the_reason_is_read_only_for_what_is_actually_dropped(http, seeded, factory):
+    """A reason under a kept finding is a note about a decision that was reversed,
+    and printing it would contradict the page."""
+    http.post(
+        f"/client/{seeded['client_id']}/berichte/{seeded['report_id']}/befunde",
+        data={
+            "behalten": [seeded["kept_id"]],
+            f"grund-{seeded['kept_id']}": "Sollte nie gelesen werden",
+            f"grund-{seeded['dropped_id']}": "Trägt keine Aussage",
+        },
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        by_id = {f.id: f for f in session.get(Report, seeded["report_id"]).findings}
+    assert by_id[seeded["kept_id"]].drop_reason == ""
+    assert by_id[seeded["dropped_id"]].drop_reason == "Trägt keine Aussage"
+
+
+def test_a_released_report_draws_no_boxes(http, seeded, factory):
+    """The frozen document is what it is; a tick there would promise an edit that
+    the release deliberately made impossible."""
+    from newspulse import report as reports
+
+    with factory() as session:
+        row = session.get(Report, seeded["report_id"])
+        reports.release(session, row, by="Lucas")
+
+    body = _review(http, seeded)
+
+    assert 'name="behalten"' not in body
+    assert "Auswahl speichern" not in body
+
+
+def test_a_draft_draws_one_box_per_finding_and_one_button(http, seeded):
+    """The positive half of the released test above, so neither can pass alone.
+
+    The boxes reach the form at the foot by ``form=`` rather than wrapping the
+    list, which keeps the findings a list of articles rather than a list of
+    forms — and is what lets the reason field for a row travel with them.
+    """
+    body = _review(http, seeded)
+
+    assert body.count('name="behalten"') == 2, "one per finding, kept and dropped"
+    assert body.count("Auswahl speichern") == 1
+    assert f'form="findings-{seeded["report_id"]}"' in body
+    # The per-finding buttons are gone: that decision is the tick now.
+    assert "Wieder aufnehmen" not in body

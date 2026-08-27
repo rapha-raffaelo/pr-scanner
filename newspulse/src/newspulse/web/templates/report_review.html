@@ -27,6 +27,11 @@
   /* Demoted: the rail carries the periods now, so this only reaches a month the
      rail does not show. */
   .rep__other .rep__fig { font-size: var(--t-caption); color: var(--muted); }
+  /* The decision, at the head of the finding it belongs to. */
+  .fnd__tick { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .fnd__tick input { margin: 0; accent-color: var(--accent); }
+  .fnd__settle { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s4); }
+  .fnd__settle .panel-hint { margin: 0; max-width: 62ch; }
   .rep__bar form { display: flex; align-items: flex-end; gap: 8px; }
   .rep__pick { font: inherit; font-size: var(--t-footnote); padding: 6px 9px;
                border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink); }
@@ -164,7 +169,21 @@
   {% for view in views %}
     {% set f = view.finding %}
     <article class="fnd{% if not f.kept %} fnd--out{% endif %}">
+      {#- The tick is the decision, and the lead above already says so: "was übrig
+          bleibt, wird das Dokument." A button per finding asked that same
+          question eight separate times with a page load between each. The box
+          reaches the one form at the foot by ``form=``, so the list stays a
+          list. -#}
       <div class="fnd__k">
+        {% if not released %}
+          <label class="fnd__tick">
+            <input type="checkbox" name="behalten" value="{{ f.id }}"
+                   form="findings-{{ report.id }}"
+                   {% if f.kept %}checked{% endif %}>
+            {{ t("Behalten") }}
+          </label>
+          <span class="dot">·</span>
+        {% endif %}
         {{ t(kind_labels.get(f.kind.value, f.kind.value)) }}
         {% if not f.kept %} · {{ t("Verworfen") }}{% endif %}
         {% if f.edited_at %} · {{ t("bearbeitet") }} {{ f.edited_at | de_date }}{% endif %}
@@ -202,20 +221,15 @@
       {% endif %}
 
       {% if not released %}
+        {#- The reason belongs to the row and only means anything on a finding
+            that ends up dropped, so it travels with the one form and is read
+            there. Kept, it would be a note about a decision that was reversed. -#}
         <div class="fnd__acts">
-          {% if f.kept %}
-            <form method="post" class="fnd__drop"
-                  action="/client/{{ client.id }}/berichte/{{ report.id }}/befund/{{ f.id }}/verwerfen">
-              <input type="text" name="grund" class="rep__pick"
-                     placeholder="{{ t('Warum nicht? (optional)') }}">
-              <button type="submit" class="btn btn--quiet">{{ t("Verwerfen") }}</button>
-            </form>
-          {% else %}
-            <form method="post"
-                  action="/client/{{ client.id }}/berichte/{{ report.id }}/befund/{{ f.id }}/behalten">
-              <button type="submit" class="btn btn--quiet">{{ t("Wieder aufnehmen") }}</button>
-            </form>
-          {% endif %}
+          <input type="text" name="grund-{{ f.id }}" class="rep__pick"
+                 form="findings-{{ report.id }}"
+                 value="{{ f.drop_reason or '' }}"
+                 aria-label="{{ t('Warum nicht? (optional)') }}"
+                 placeholder="{{ t('Warum nicht? (optional)') }}">
         </div>
 
         <details class="fnd__edit">
@@ -232,6 +246,16 @@
       {% endif %}
     </article>
   {% endfor %}
+
+  {% if views and not released %}
+    <form id="findings-{{ report.id }}" class="fnd__settle" method="post"
+          action="/client/{{ client.id }}/berichte/{{ report.id }}/befunde">
+      <button type="submit" class="btn">{{ t("Auswahl speichern") }}</button>
+      <span class="panel-hint">
+        {{ t("Was angehakt bleibt, steht im Dokument. Der Rest wird verworfen — mit dem Grund, wenn Sie einen hinterlassen.") }}
+      </span>
+    </form>
+  {% endif %}
 
   {% if not released %}
     <form method="post" class="rep__rel"

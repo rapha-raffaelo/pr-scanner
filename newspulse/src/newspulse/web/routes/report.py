@@ -494,6 +494,51 @@ def edit_finding(
     )
 
 
+@router.post("/client/{client_id}/berichte/{report_id}/befunde")
+async def settle_findings(
+    request: Request,
+    client_id: int,
+    report_id: int,
+    behalten: list[int] = Form(default_factory=list),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Keep the ticked findings and drop the rest, in one pass.
+
+    The page's own lead says what this is: "Behalten, ändern oder verwerfen — was
+    übrig bleibt, wird das Dokument." A tick list *is* that sentence; a button per
+    finding beside it was the same decision asked eight separate times, each with
+    a page load in between.
+
+    Absence is the decision, not an oversight — that is what makes the list read
+    as the document. So every finding on this report is settled by whether its id
+    came back, and a report whose boxes were all cleared is a document with no
+    findings, which is a thing a person may legitimately want.
+
+    Reasons travel per row (``grund-<id>``) and are read only for the findings
+    that end up dropped: a reason under a kept finding is a note about a decision
+    that was reversed, and printing it would contradict the page.
+    """
+    client = _client_or_404(session, client_id)
+    row = _editable(_report_or_404(session, client, report_id))
+    form = await request.form()
+    keep = set(behalten)
+    for finding in row.findings:
+        if finding.id in keep:
+            finding.kept = True
+            finding.drop_reason = ""
+            continue
+        finding.kept = False
+        finding.drop_reason = prose.plain(
+            str(form.get(f"grund-{finding.id}", ""))
+        ).strip()
+    session.commit()
+    return RedirectResponse(
+        f"/client/{client_id}/berichte"
+        f"?zeitraum={_period_key(Period(row.period_start, row.period_end))}",
+        status_code=_SEE_OTHER,
+    )
+
+
 @router.post("/client/{client_id}/berichte/{report_id}/befund/{finding_id}/verwerfen")
 def drop_finding(
     client_id: int,

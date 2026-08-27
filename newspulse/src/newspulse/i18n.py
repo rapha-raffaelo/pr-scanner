@@ -1846,6 +1846,12 @@ _EN: dict[str, str] = {
         "Only \"Take the selected ones\" files a question. At most %(n)s "
         "questions stand in the set.",
     "Ausgewählte übernehmen": "Take the selected ones",
+    # The findings as a tick list: what stays ticked is what the document says.
+    "Behalten": "Keep",
+    "Auswahl speichern": "Save the selection",
+    "Was angehakt bleibt, steht im Dokument. Der Rest wird verworfen — mit dem Grund, wenn Sie einen hinterlassen.":
+        "Whatever stays ticked is in the document. The rest is dropped, with the "
+        "reason if you leave one.",
     "Der Vorschlag hat nichts ergeben. Meist fehlt dem Profil noch der Text zum Geschäftsfeld, aus dem eine Kaufentscheidungsfrage gebaut wird.":
         "The proposal produced nothing. Usually the profile is still missing the text "
         "about the business field a purchase question is built from.",
