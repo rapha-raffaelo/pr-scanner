@@ -1,0 +1,132 @@
+{#- Der Pressespiegel. A self-contained page like the report document: no
+    stylesheet link, no script, no font — every rule is in the <style> below.
+    This file is downloaded and forwarded, and a document that phoned home when
+    a client opened it would tell a third party who is reading and when. The one
+    outbound reference a page may carry is the mandate's own stored logo, which
+    is the client's own asset on the client's own document.
+
+    It does not extend base.html on purpose: app chrome is not part of a
+    document that leaves the house.
+
+    The screen and the download render this same file. Everything they differ by
+    is the <nav> outside <article class="doc">, so the export cannot carry a
+    line the screen did not — and the download carries no links back into the
+    application, because a recipient has no account to follow them into. -#}
+{%- set t = translator(request) -%}
+<!DOCTYPE html>
+<html lang="{{ request_language(request) }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ t("Pressespiegel") }} · {{ doc.client_name }} · {{ doc.period.start | de_date }}</title>
+<style>
+  {#- The mandate's own colour from the shared branding module, so the document
+      wears the same identity as the mandate's card in the app. -#}
+  :root { --ink: #16181d; --muted: #6b7280; --line: #e2e5ea; --brand: {{ brand }}; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 15px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); background: #f4f5f7; padding: 28px 18px 64px; }
+  .doc { max-width: 780px; margin: 0 auto; background: #fff; border: 1px solid var(--line);
+         border-radius: 10px; padding: 40px 46px 46px; }
+  .docnav { max-width: 780px; margin: 0 auto 14px; display: flex; gap: 16px; align-items: center;
+            font-size: 13px; }
+  .docnav a { color: var(--brand); }
+  .docnav form { display: flex; gap: 6px; }
+  .head { display: flex; gap: 16px; align-items: center; border-bottom: 3px solid var(--brand);
+          padding-bottom: 18px; }
+  .brandmark { width: 52px; height: 52px; border-radius: 10px; object-fit: contain; flex: none; }
+  .brandmark--mono { background: var(--brand); color: #fff; display: flex; align-items: center;
+                     justify-content: center; font-size: 20px; font-weight: 700; letter-spacing: 0.02em; }
+  h1 { font-size: 25px; letter-spacing: -0.01em; }
+  .period { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .story { margin-top: 30px; }
+  .story__h { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
+  .story__meta { font-size: 12.5px; color: var(--muted); margin-top: 3px;
+                 border-left: 3px solid var(--brand); padding-left: 10px; }
+  .pieces { list-style: none; margin-top: 10px; }
+  .piece { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .piece__head { font-size: 14px; }
+  .piece__src { font-weight: 600; }
+  .piece__date { color: var(--muted); }
+  .piece a { color: var(--brand); }
+  .piece__sum { font-size: 13px; color: #3a3f4a; margin-top: 4px; }
+  .tone { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 9px;
+          padding: 1px 8px; margin-left: 6px; vertical-align: 1px; }
+  .tone--positiv { background: #e5f3ea; color: #22603c; }
+  .tone--neutral { background: #eceef1; color: #4b5563; }
+  .tone--negativ { background: #f9e8e6; color: #8c2b26; }
+  .tone--unbekannt { background: #f1f2f4; color: #6b7280; }
+  .note { margin-top: 30px; font-size: 14px; color: var(--muted); font-style: italic; }
+  .foot { margin-top: 34px; padding-top: 12px; border-top: 1px solid var(--line);
+          font-size: 11.5px; color: var(--muted); }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .doc { border: 0; padding: 0; max-width: none; }
+    .docnav { display: none; }
+  }
+</style>
+</head>
+<body>
+{%- if not download %}
+<nav class="docnav">
+  <a href="/client/{{ client.id }}/berichte?zeitraum={{ period_key }}">← {{ t("Zurück zu den Berichten") }}</a>
+  <form method="get" action="/client/{{ client.id }}/pressespiegel">
+    <select name="zeitraum">
+      {%- for option in periods %}
+      <option value="{{ option }}"{% if option == period_key %} selected{% endif %}>{{ option }}</option>
+      {%- endfor %}
+    </select>
+    <button type="submit">{{ t("Anzeigen") }}</button>
+  </form>
+  <a href="/client/{{ client.id }}/pressespiegel.html?zeitraum={{ period_key }}" download>↓ {{ t("Exportieren") }}</a>
+</nav>
+{%- endif %}
+<article class="doc">
+  <header class="head">
+    {%- set logo = client.logo_url | logo_src %}
+    {%- if logo %}
+    <img class="brandmark" src="{{ logo }}" alt="">
+    {%- else %}
+    <span class="brandmark brandmark--mono">{{ client.name | monogram }}</span>
+    {%- endif %}
+    <div>
+      <h1>{{ t("Pressespiegel") }}: {{ doc.client_name }}</h1>
+      <p class="period">{{ t("Zeitraum") }}: {{ doc.period.start | de_date }} {{ t("bis") }} {{ doc.period_last | de_date }}</p>
+    </div>
+  </header>
+
+  {%- if doc.stories %}
+  {%- for story in doc.stories %}
+  <section class="story">
+    <h2 class="story__h">{{ story.headline }}</h2>
+    {#- The line the grouping exists for: one event, the number on it, and where
+        it carried furthest. Singular spelled out rather than "1 Aufgriffe". -#}
+    <p class="story__meta">
+      {%- if story.pickup_count == 1 %}{{ story.pickup_count }} {{ t("Aufgriff") }}{% else %}{{ story.pickup_count }} {{ t("Aufgriffe") }}{% endif %} · {{ t("reichweitenstärkstes Medium") }}: {{ story.top_outlet }}
+    </p>
+    <ul class="pieces">
+      {%- for piece in story.items %}
+      <li class="piece">
+        <p class="piece__head">
+          <span class="piece__src">{{ piece.source }}</span>
+          <span class="piece__date">· {{ piece.published_at | de_date }} ·</span>
+          {% if piece.url %}<a href="{{ piece.url | safe_url }}">{{ piece.headline }}</a>{% else %}{{ piece.headline }}{% endif %}
+          <span class="tone tone--{{ piece.tonality.value }}">{{ t(piece.tonality.value) }}</span>
+        </p>
+        {%- if piece.summary %}<p class="piece__sum">{{ piece.summary }}</p>{% endif %}
+      </li>
+      {%- endfor %}
+    </ul>
+  </section>
+  {%- endfor %}
+  {%- else %}
+  {#- An empty period is an answer about the period, not a broken document. -#}
+  <p class="note">{{ t("Im Zeitraum liegt keine Berichterstattung über den Mandanten vor. Der Pressespiegel bleibt deshalb leer — das ist eine Aussage über den Zeitraum, kein Fehler im Dokument.") }}</p>
+  {%- endif %}
+
+  <footer class="foot">
+    {{ t("Der Pressespiegel führt Überschrift, Medium, Datum, gespeicherte Zusammenfassung und Tonalität. Volltexte werden nicht gespeichert und deshalb nicht wiedergegeben.") }}
+  </footer>
+</article>
+</body>
+</html>

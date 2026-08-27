@@ -1334,6 +1334,18 @@ _EN: dict[str, str] = {
         "No finding stands in the report for this period.",
     "Zurück zur Prüfung": "Back to the review",
     "Exportieren": "Export",
+    # --- Der Pressespiegel ----------------------------------------------------
+    "Pressespiegel": "Press clippings",
+    "Zurück zu den Berichten": "Back to the reports",
+    "Aufgriff": "pickup",
+    "Aufgriffe": "pickups",
+    "reichweitenstärkstes Medium": "widest-reaching outlet",
+    "Im Zeitraum liegt keine Berichterstattung über den Mandanten vor. Der Pressespiegel bleibt deshalb leer — das ist eine Aussage über den Zeitraum, kein Fehler im Dokument.":
+        "The period holds no coverage of the client. The clippings therefore stay "
+        "empty — a statement about the period, not a fault in the document.",
+    "Der Pressespiegel führt Überschrift, Medium, Datum, gespeicherte Zusammenfassung und Tonalität. Volltexte werden nicht gespeichert und deshalb nicht wiedergegeben.":
+        "The clippings list headline, outlet, date, the stored summary and the "
+        "tone. Full article text is never stored and therefore never reproduced.",
     "Tabelle anzeigen": "Show table",
     "Segment": "Segment",
     "Jede Zahl in diesem Bericht stammt aus der archivierten Berichterstattung und dem Ansprache-Ledger. Reichweiten, Kontaktchancen und Werbewerte werden nicht geschätzt und deshalb nicht ausgewiesen.":

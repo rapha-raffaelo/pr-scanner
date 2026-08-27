@@ -51,7 +51,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ... import prose
+from ... import branding, clippings, prose
 from ... import report as reports
 from ... import reporting
 from ...analyzer import AnalyzerError, ParseError, invoke_with_fallback
@@ -624,13 +624,17 @@ def _document_context(
     }
 
 
-def _filename(client: Client, document: reports.Document) -> str:
-    """A downloaded report's filename: mandate and period, both readable."""
+def _filename(prefix: str, client: Client, period_start: dt.datetime) -> str:
+    """A downloaded document's filename: what it is, whose it is, which period.
+
+    One builder for the report and the Pressespiegel, so the two artefacts of the
+    same mandate and month sort beside each other in a client's download folder.
+    """
     safe = (
         re.sub(r"[^A-Za-z0-9_-]+", "_", client.name).strip("_") or _FILENAME_FALLBACK
     )
-    stamp = f"{document.period_start.astimezone(_local_tz()):%Y-%m}"
-    return f"bericht_{safe}_{stamp}.html"
+    stamp = f"{period_start.astimezone(_local_tz()):%Y-%m}"
+    return f"{prefix}_{safe}_{stamp}.html"
 
 
 @router.get(
@@ -671,7 +675,71 @@ def export(
         _document_context(client, row, rendered, download=True),
         headers={
             "Content-Disposition": (
-                f'attachment; filename="{_filename(client, rendered)}"'
+                f'attachment; filename="'
+                f'{_filename("bericht", client, rendered.period_start)}"'
+            )
+        },
+    )
+
+
+# --- Der Pressespiegel ------------------------------------------------------------
+
+
+def _clippings_context(
+    client: Client, document: clippings.PressClippings, period_key: str, *, download: bool
+) -> dict:
+    """Everything the Pressespiegel renders from, identical for screen and export."""
+    return {
+        "client": client,
+        "doc": document,
+        # The mandate's own colour, from the same branding module as its card in
+        # the app — the document wears the identity the tool already gave it.
+        "brand": branding.colour(client.name),
+        "period_key": period_key,
+        "periods": _period_options(dt.datetime.now(dt.UTC), period_key),
+        # As on the report: the on-screen page carries links back into the app,
+        # the downloaded file carries none, and neither changes a line of content.
+        "download": download,
+    }
+
+
+@router.get("/client/{client_id}/pressespiegel", response_class=HTMLResponse)
+def press_clippings(
+    request: Request,
+    client_id: int,
+    zeitraum: str | None = None,
+    session: Session = Depends(get_db),
+) -> HTMLResponse:
+    """The period's coverage grouped by story, as the document a client receives."""
+    client = _client_or_404(session, client_id)
+    period = _period_from(zeitraum, dt.datetime.now(dt.UTC))
+    document = clippings.build(session, client, period)
+    return templates.TemplateResponse(
+        request,
+        "press_clippings.html",
+        _clippings_context(client, document, _period_key(period), download=False),
+    )
+
+
+@router.get("/client/{client_id}/pressespiegel.html")
+def press_clippings_export(
+    request: Request,
+    client_id: int,
+    zeitraum: str | None = None,
+    session: Session = Depends(get_db),
+) -> Response:
+    """The same Pressespiegel as a file. The same template, so it cannot say more."""
+    client = _client_or_404(session, client_id)
+    period = _period_from(zeitraum, dt.datetime.now(dt.UTC))
+    document = clippings.build(session, client, period)
+    return templates.TemplateResponse(
+        request,
+        "press_clippings.html",
+        _clippings_context(client, document, _period_key(period), download=True),
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="'
+                f'{_filename("pressespiegel", client, period.start)}"'
             )
         },
     )
