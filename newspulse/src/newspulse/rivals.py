@@ -165,24 +165,72 @@ def from_named(client: Client, lines: list[str]) -> list[RivalSuggestion]:
     return out
 
 
-def suggest(client: Client, *, invoke=invoke_with_fallback) -> list:
+#: Profile fields that describe the market this company is in, in the order a
+#: reader would want them. The rest of the profile — the press contact, the crisis
+#: number, the spokespeople — says nothing about who it competes with.
+_MARKET_FIELDS = (
+    "geschaeftsfeld",
+    "produkte",
+    "positionierung",
+    "zielgruppe",
+    "wettbewerber",
+    "themen",
+)
+
+
+def _known(session, client: Client) -> str:
+    """Everything the tool already holds that says what market this company is in.
+
+    The prompt used to get the website *or* the keywords — never both, and never
+    the profile. Measured on a live mandate: thirteen filled profile fields, of
+    which the model saw none, so its whole picture was "Arrakis.finance,
+    Blockchain, DE" and a URL it cannot open. It answered with a name that
+    competes with nothing. The profile's own ``wettbewerber`` line, filled by the
+    research weeks earlier, read "Wintermute, Flowdesk, Keyrock" — the answer was
+    on file and simply never reached the question.
+
+    Website *and* keywords now, because they say different things: one is where
+    the company describes itself, the other is what this agency watches for it.
+    """
+    lines: list[str] = []
+    if client.website:
+        lines.append(f"Website: {client.website}")
+    if client.keywords:
+        lines.append(f"Beobachtete Themen: {', '.join(client.keywords[:8])}")
+    if session is None:
+        return "\n".join(lines)
+
+    from . import profile as profiles  # local: profile does not import this
+
+    facts = profiles.stored(session, client.id)
+    known = [
+        f"{profiles.FIELDS_BY_KEY[key].label}: {facts[key].value.strip()}"
+        for key in _MARKET_FIELDS
+        if facts.get(key) and facts[key].value.strip()
+    ]
+    if known:
+        lines.append("")
+        lines.append("WAS ÜBER DAS UNTERNEHMEN AUF FILE STEHT")
+        lines.extend(f"- {line}" for line in known)
+    return "\n".join(lines)
+
+
+def suggest(client: Client, *, session=None, invoke=invoke_with_fallback) -> list:
     """Propose competitors for ``client``. Never stores anything.
 
     Returns an empty list when the model does not know the company — the normal
     case for a young mandate, and the prompt asks for exactly that rather than a
     plausible-looking guess.
-    """
-    extra = ""
-    if client.website:
-        extra = f"Website: {client.website}"
-    elif client.keywords:
-        extra = f"Themen: {', '.join(client.keywords[:6])}"
 
+    ``session`` is optional so a caller without one still works, but it is what
+    makes the answer worth having: without it the model sees a name, an industry
+    word and a country, and a name is not a market.
+    """
     prompt = _prompt_template().substitute(
         client_name=client.name,
         industry=client.industry or "—",
         country=client.country or "DE",
-        extra=extra,
+        extra=_known(session, client),
     )
     result = _parse(invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
 

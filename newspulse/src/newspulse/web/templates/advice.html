@@ -123,10 +123,14 @@
   .fmtwrite .panel-hint { margin: 0; }
   .makemsg__why { font-size: var(--t-caption); color: var(--muted); margin: var(--s1) 0 var(--s2); max-width: 72ch; }
   .makemsg__why b { color: var(--ink-2); font-weight: 600; }
+  /* justify-content spelled out rather than left to the initial value: the names
+     came out centred in the column and text-align does not move flex items, so
+     whatever was doing it, this is the declaration that decides. */
   .fmttab { font: inherit; font-size: var(--t-subhead); font-weight: 500; background: none; border: 0;
-            text-align: left; width: 100%;
+            text-align: left; width: 100%; min-width: 0;
             cursor: pointer; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent;
-            white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; }
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            display: flex; align-items: center; justify-content: flex-start; gap: 7px; }
   .fmttab:hover { color: var(--ink); }
   .fmttab.is-on { color: var(--ink); font-weight: 600; border-bottom-color: transparent; }
   .fmttab__n { color: var(--muted); font-weight: 400; }
@@ -384,11 +388,6 @@
                    as a part, the checks and the buttons beside them are not. #}
                 <button type="button" class="linkbtn" data-copy-group="pack-{{ angle.id }}">{{ t("Alles kopieren") }}</button>
               {% endif %}
-              {% if pack.missing %}
-                <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/assets">
-                  <button type="submit" class="btn"{% if busy %} disabled{% endif %}>{{ t("Fehlende schreiben") }}</button>
-                </form>
-              {% endif %}
             </span>
           </div>
 
@@ -435,13 +434,15 @@
             {# The mock's empty package: an occasion that has a thesis and no text
                is an invitation, and a full strip of seven empty tabs is not one.
                The strip is still below it, so a single format can be picked. #}
+            {#- One sentence, no button. There were three that wrote — this one,
+                "Fehlende schreiben" in the head, and "Ausgewählte schreiben" under
+                the list — and all three did the same thing by different names.
+                The list below is where the choosing happens, so the button lives
+                there and this says only what there is to choose from. The count
+                comes off the registry: it read "Sieben" while six rows stood
+                underneath, because the letter moved out to Versand. -#}
             <div class="pack__empty">
-              <p>{{ t("Zu diesem Anlass gibt es eine These und noch keinen Text. Sieben Formate stehen bereit.") }}</p>
-              {% if pack.missing %}
-                <form method="post" action="/client/{{ client.id }}/impulse/{{ angle.id }}/assets">
-                  <button type="submit" class="btn btn--big"{% if busy %} disabled{% endif %}>{{ t("Paket schreiben") }}</button>
-                </form>
-              {% endif %}
+              <p>{{ t("Zu diesem Anlass gibt es eine These und noch keinen Text. %(n)s Formate stehen bereit.") | format(n=pack.slots | length) }}</p>
             </div>
           {% endif %}
 

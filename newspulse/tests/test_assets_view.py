@@ -617,8 +617,11 @@ def test_the_strip_shows_every_format_and_the_state_it_is_in(factory, web):
 def test_an_impulse_with_nothing_written_gets_the_mocks_invitation(factory, web):
     """DEC-1's empty package: a thesis and no text is an invitation, not a void.
 
-    Seven empty tabs answer a question nobody asked yet. The strip stays below it
-    so a single format can still be picked.
+    The invitation is a sentence now and no longer carries a button of its own.
+    Three of them wrote — this one, "Fehlende schreiben" in the head and
+    "Ausgewählte schreiben" under the list — all doing the same thing by
+    different names. The list below is where the choosing happens, so that is
+    where the one button lives.
     """
     with factory() as session:
         client, angle = _mandate(session)
@@ -627,9 +630,24 @@ def test_an_impulse_with_nothing_written_gets_the_mocks_invitation(factory, web)
     body = " ".join(web.get(f"/client/{client_id}/advice").text.split())
 
     assert "Zu diesem Anlass gibt es eine These und noch keinen Text." in body
-    assert "Paket schreiben" in body
     assert "noch nichts geschrieben" in body
-    assert f'data-pane="pane-{angle_id}-qa"' in body, "the strip is still there"
+    assert f'data-pane="pane-{angle_id}-qa"' in body, "the list is still there"
+    # Exactly one control writes, and it is the one beside the tick boxes.
+    assert body.count("Ausgewählte schreiben") == 1
+    assert "Paket schreiben" not in body
+    assert "Fehlende schreiben" not in body
+
+
+def test_the_invitation_counts_the_formats_the_list_actually_shows(factory, web):
+    """It said "Sieben" while six rows stood underneath: the letter moved out to
+    Versand and the sentence kept the old number."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        client_id = client.id
+
+    body = " ".join(web.get(f"/client/{client_id}/advice").text.split())
+
+    assert f"{len(assets.FORMATS)} Formate stehen bereit" in body
 
 
 def test_a_package_with_a_text_gets_the_head_and_not_the_invitation(factory, web):

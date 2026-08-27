@@ -496,8 +496,8 @@ _EN: dict[str, str] = {
         "releasing it now means releasing it unread.",
     "Ungeprüft: wer jetzt freigibt, gibt ungelesen frei.":
         "Unchecked: releasing it now means releasing it unread.",
-    "Zu diesem Anlass gibt es eine These und noch keinen Text. Sieben Formate stehen bereit.":
-        "This occasion has a thesis and no text yet. Seven formats are ready.",
+    "Zu diesem Anlass gibt es eine These und noch keinen Text. %(n)s Formate stehen bereit.":
+        "This occasion has a thesis and no text yet. %(n)s formats stand ready.",
     # The refusals the routes and the acts hold. Written in Python rather than in
     # markup and rendered as ``asset_notes`` / ``slot.note`` / ``slot.hint``, which
     # is why they were the ones missing: nothing that reads the template for German

@@ -45,7 +45,7 @@ class Proposal:
                 if client is None:
                     self.state.pop(client_id, None)
                     return
-                result = self._produce(client)
+                result = self._produce(session, client)
                 self.state[client_id] = {
                     "state": "fertig",
                     "client": client.name,
@@ -84,15 +84,23 @@ class Proposal:
         return self.state.get(client_id, {}).get("state") == "läuft"
 
 
-def _themes_for(client: Client) -> dict[str, object]:
+def _themes_for(session, client: Client) -> dict[str, object]:
     return {"probes": themes.probe(client, themes.suggest(client))}
 
 
-def _rivals_for(client: Client) -> dict[str, object]:
-    return {"rivals": rivals.suggest(client)}
+def _rivals_for(session, client: Client) -> dict[str, object]:
+    """The session is what makes this answer worth having.
+
+    Without it the model gets a name, an industry word and a country; with it,
+    the profile the research already filled — including the mandate's own
+    ``wettbewerber`` line, which on the mandate that prompted this read
+    "Wintermute, Flowdesk, Keyrock" while the proposal returned a company that
+    competes with nothing.
+    """
+    return {"rivals": rivals.suggest(client, session=session)}
 
 
-def _industry_for(client: Client) -> dict[str, object]:
+def _industry_for(session, client: Client) -> dict[str, object]:
     """Propose and measure industry terms; the caller decides what to store."""
     return {"candidates": industry.measure(client, industry.propose(client))}
 

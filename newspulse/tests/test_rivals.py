@@ -370,3 +370,73 @@ def test_without_an_industry_nothing_is_offered_but_the_field_stays_open(factory
     assert 'name="name"' in body  # the manual field
     # Escaped in the rendered page, so match what the browser actually receives.
     assert "H&amp;M" not in body
+
+
+# --- What the question is allowed to know ---------------------------------------
+
+
+def test_the_prompt_carries_what_the_profile_already_answered(factory):
+    """The finding this was written for, and it is not subtle.
+
+    A live mandate had thirteen filled profile fields — among them
+    "Wettbewerber: Wintermute, Flowdesk, Keyrock", put there by the research
+    weeks earlier. The suggestion prompt saw none of it: it got the name, the
+    word "Blockchain", the country and a URL it cannot open, and answered with a
+    company that competes with nothing. The answer was on file and never reached
+    the question.
+    """
+    from newspulse import profile as profiles
+
+    seen: list[str] = []
+    with factory() as session:
+        subject = _client(session, name="Arrakis.finance", industry="Blockchain")
+        subject.website = "https://arrakis.finance"
+        profiles.save(
+            session, subject, "geschaeftsfeld",
+            "Automatisiertes Liquiditätsmanagement auf Uniswap V3.",
+        )
+        profiles.save(session, subject, "wettbewerber", "Wintermute, Flowdesk, Keyrock.")
+        profiles.save(session, subject, "pressekontakt", "presse@arrakis.finance")
+        session.commit()
+
+        rivals.suggest(
+            subject,
+            session=session,
+            invoke=lambda prompt, **k: seen.append(prompt) or '{"rivals": []}',
+        )
+
+    prompt = seen[0]
+    assert "Wintermute, Flowdesk, Keyrock." in prompt
+    assert "Automatisiertes Liquiditätsmanagement auf Uniswap V3." in prompt
+    # The press contact says nothing about a market and does not travel.
+    assert "presse@arrakis.finance" not in prompt
+
+
+def test_the_website_and_the_watched_topics_both_travel(factory):
+    """It was website *or* keywords, so whichever came second was dropped. They
+    say different things: one is how the company describes itself, the other is
+    what this agency watches for it."""
+    seen: list[str] = []
+    with factory() as session:
+        subject = _client(session, name="Arrakis.finance")
+        subject.website = "https://arrakis.finance"
+        subject.keywords = ["Onchain-Liquidität", "Market Making"]
+        session.commit()
+
+        rivals.suggest(
+            subject,
+            session=session,
+            invoke=lambda prompt, **k: seen.append(prompt) or '{"rivals": []}',
+        )
+
+    assert "https://arrakis.finance" in seen[0]
+    assert "Onchain-Liquidität" in seen[0]
+
+
+def test_it_still_works_without_a_session(factory):
+    """The parameter is optional so a caller that has none is not broken by this;
+    it simply asks a thinner question."""
+    with factory() as session:
+        subject = _client(session, name="Zalando")
+
+        assert rivals.suggest(subject, invoke=lambda *a, **k: '{"rivals": []}') == []
