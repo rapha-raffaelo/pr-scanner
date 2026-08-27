@@ -1441,3 +1441,43 @@ def test_the_tab_script_resolves_its_strip_by_role_not_by_parent():
     assert "tab.parentElement" not in script, (
         "the strip must be resolved via closest(), not the row wrapper"
     )
+
+
+def test_the_format_list_is_a_column_with_a_state_beside_each_name(factory, web):
+    """"Der Slider ist noch nicht so übersichtlich."
+
+    Six formats and a letter lived in one horizontally scrolling row. Adding a
+    tick box to each made it worse: the box crowded the name, the state had
+    nowhere to go but a coloured dot, and whatever ran off the right edge was
+    simply not on screen. Down a column every format is visible at once and its
+    state has a column of its own — so a format that cannot be written yet says
+    what it is waiting for instead of only looking pale.
+    """
+    with factory() as session:
+        client, angle = _mandate(session)
+        _produce(session, client, angle)
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+    strip = body.split('class="fmtlist"', 1)[1].split("</div>\n          <form", 1)[0]
+
+    assert strip.count('<div class="fmtrow') == len(assets.FORMATS)
+    assert strip.count('class="fmtrow__state"') == len(assets.FORMATS)
+    # The column, not the strip: a horizontal scroller is what this replaced.
+    styles = body.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert ".fmtlist { display: flex; flex-direction: column;" in styles
+    assert "overflow-x: auto" not in styles
+
+
+def test_a_blocked_format_names_what_it_waits_for_in_its_row(factory, web):
+    """The pane said it already, one click away. The row is where the reader is
+    deciding what to tick, so it is where the answer belongs."""
+    with factory() as session:
+        client, angle = _mandate(session)
+        # A mandate with no profile at all: every requirement is missing.
+        client_id = client.id
+
+    body = web.get(f"/client/{client_id}/advice").text
+    strip = body.split('class="fmtlist"', 1)[1].split("</div>\n          <form", 1)[0]
+
+    assert "wartet auf" in strip

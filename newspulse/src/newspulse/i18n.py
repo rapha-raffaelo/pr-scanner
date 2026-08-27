@@ -451,6 +451,9 @@ _EN: dict[str, str] = {
     # The tick boxes beside the format list: which of the six the reader
     # actually wants written, answered once instead of six times.
     "Ausgewählte schreiben": "Write the selected ones",
+    # The state column on each format row: what it is, or what it is waiting for.
+    "wartet auf": "waiting on",
+    "Einwand": "Objection",
     "Content": "Content",
     "Vorschlag": "Suggested",
     # The third way to a guide: what the tool already holds.

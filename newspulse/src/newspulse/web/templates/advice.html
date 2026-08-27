@@ -98,23 +98,37 @@
   .pack__empty { text-align: center; padding: var(--s5) 0; }
   .pack__empty p { font-size: var(--t-subhead); color: var(--muted); margin-bottom: var(--s3); max-width: 54ch;
                    margin-left: auto; margin-right: auto; }
-  /* The format list. Was a tab strip; the tick box beside each tab turns the
-     same row into the answer to "which of these do I want written", which the
-     strip could only answer as all-or-one. */
-  .fmtlist { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: var(--s3); overflow-x: auto; }
-  .fmtrow { display: flex; align-items: center; gap: 2px; padding-left: 6px; }
-  .fmtrow--noselect { padding-left: 12px; }
+  /* The format list. It was a tab strip, then a tab strip with tick boxes wedged
+     into it — six formats plus a letter in one scrolling row, so the box crowded
+     the name, the state had nowhere to go but a coloured dot, and whatever ran
+     off the right edge was simply not there. Six rows down a column instead:
+     every format visible at once, its state in its own column, and a blocked one
+     able to say what it is waiting for. */
+  .fmtlist { display: flex; flex-direction: column; border: 1px solid var(--line);
+             border-radius: var(--radius); margin-bottom: var(--s3); overflow: hidden; }
+  .fmtrow { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+            gap: var(--s2); padding: 2px var(--s3); border-top: 1px solid var(--line); }
+  .fmtrow:first-child { border-top: 0; }
+  .fmtrow:hover { background: var(--fill-2); }
+  /* The row being read, marked on the row rather than under the name: a bottom
+     border was the tab idiom and reads as an underline once the tabs are rows. */
+  .fmtrow.is-on { background: var(--fill); }
   .fmtrow__tick { margin: 0; accent-color: var(--accent); }
   .fmtrow__tick:disabled { opacity: 0.35; }
+  .fmtrow__state { font-size: var(--t-caption); color: var(--muted); text-align: right;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30ch; }
+  .fmtrow--blocked .fmtrow__state { color: var(--faint); }
+  .fmtrow__flag { color: var(--alert); font-weight: 600; }
   .fmtwrite { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
   .fmtwrite .panel-hint { margin: 0; }
   .makemsg__why { font-size: var(--t-caption); color: var(--muted); margin: var(--s1) 0 var(--s2); max-width: 72ch; }
   .makemsg__why b { color: var(--ink-2); font-weight: 600; }
   .fmttab { font: inherit; font-size: var(--t-subhead); font-weight: 500; background: none; border: 0;
+            text-align: left; width: 100%;
             cursor: pointer; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent;
             white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; }
   .fmttab:hover { color: var(--ink); }
-  .fmttab.is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+  .fmttab.is-on { color: var(--ink); font-weight: 600; border-bottom-color: transparent; }
   .fmttab__n { color: var(--muted); font-weight: 400; }
   /* Four states, drawn apart: nothing written, a draft, a checked text, a
      released one — plus the one modifier that overrides the rest, an objection
@@ -441,7 +455,7 @@
              and not the four others had to press six times or take all six. #}
           <div class="fmtlist" id="fmttabs-{{ angle.id }}" role="tablist" aria-label="{{ t('Formate') }}">
             {% for slot in pack.slots %}
-              <div class="fmtrow">
+              <div class="fmtrow{% if loop.first %} is-on{% endif %}{% if not slot.readiness.ok %} fmtrow--blocked{% endif %}">
                 {# Released texts are final; the box is drawn and disabled rather
                    than left out, so the row still lines up with the five others. #}
                 <input class="fmtrow__tick" type="checkbox" name="kind"
@@ -458,6 +472,18 @@
                   <span class="fmt-dot fmt-dot--{{ slot.state }}{% if slot.objected %} fmt-dot--einwand{% endif %}"
                         aria-hidden="true"></span>{{ t(slot.fmt.name) }}
                 </button>
+                {# The state in its own column, not squeezed behind the name. In
+                   a scrolling strip there was no room for it and a dot carried
+                   the whole answer; down a column there is, and a blocked format
+                   can say what it is waiting for instead of only looking pale. #}
+                <span class="fmtrow__state">
+                  {%- if not slot.readiness.ok -%}
+                    {{ t("wartet auf") }}: {{ slot.readiness.missing | map(attribute="label") | join(", ") }}
+                  {%- else -%}
+                    {{ t(slot.state_label) }}
+                    {%- if slot.objected %} <span class="fmtrow__flag">{{ t("Einwand") }}</span>{% endif -%}
+                  {%- endif -%}
+                </span>
               </div>
             {% endfor %}
           </div>
@@ -1350,6 +1376,10 @@ window.npEditing = function (angleId) {
       other.classList.toggle("is-on", on);
       other.setAttribute("aria-selected", on ? "true" : "false");
       other.tabIndex = on ? 0 : -1;
+      // The row carries the highlight now that the tabs are rows: an underline
+      // under one name in a column reads as a link, not as a selection.
+      var row = other.closest(".fmtrow");
+      if (row) row.classList.toggle("is-on", on);
       if (pane) pane.classList.toggle("is-on", on);
     });
     if (focus) tab.focus();
