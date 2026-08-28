@@ -44,6 +44,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
+from collections.abc import Callable
 
 from sqlalchemy import select
 
@@ -154,7 +155,9 @@ def _loop(stop: threading.Event) -> None:
             _log.exception("scheduled sweep failed; will try again tomorrow")
 
 
-def _crisis_tick(now: dt.datetime) -> None:
+def _crisis_tick(
+    now: dt.datetime, *, clock: Callable[[], dt.datetime] | None = None
+) -> None:
     """Read the sources of every mandate whose crisis reading is due.
 
     Due-ness is asked twice and the second time inside the guard, exactly as
@@ -162,10 +165,23 @@ def _crisis_tick(now: dt.datetime) -> None:
     started may have finished, and that sweep can have moved the very rows this
     reads.
 
+    ``now`` is the tick, and it decides *what is due*. It is deliberately not the
+    timestamp the readings are stamped with: each one takes its own start off
+    ``clock`` (the wall clock, unless a test hands one in), because a slow first
+    reading would otherwise stamp every crisis behind it with a
+    ``last_swept_at`` that was already minutes old — and those crises would fall
+    due again that much sooner, for ever.
+
     Non-blocking on the guard. A crisis reading that finds a sweep in progress
     simply does not happen this minute — queueing behind a full portfolio sweep
     would mean fetching the same feeds twice in a row, and the next tick is sixty
     seconds away.
+
+    It takes the guard because it fetches, and two fetchers racing on the same
+    URLs is what that lock exists to prevent — but it also raises
+    :data:`newspulse.web.runlock.crisis_reading` while it holds it, so the
+    dashboard header does not announce a single-mandate reading as a portfolio
+    sweep.
 
     A reading that raises takes the rest of this tick with it, and that costs at
     most a minute: ``run_crisis`` stamps the row before it reads, so the crisis
@@ -186,10 +202,11 @@ def _crisis_tick(now: dt.datetime) -> None:
     if not runlock.guard.acquire(blocking=False):
         _log.info("a sweep is running; the crisis reading waits for the next tick")
         return
+    runlock.crisis_reading.set()
     try:
         with get_session() as session:
             for declared in crisis.due(session, now=now):
-                sweep = job.run_crisis(session, declared, now=lambda: now)
+                sweep = job.run_crisis(session, declared, now=clock)
                 _log.log(
                     logging.WARNING if sweep.errors else logging.INFO,
                     "crisis %d: %d new article(s), %d analysis(es), level %d%s",
@@ -197,22 +214,31 @@ def _crisis_tick(now: dt.datetime) -> None:
                     sweep.articles,
                     sweep.analyses,
                     sweep.level,
-                    _degraded(sweep.errors),
+                    _degraded(sweep),
                 )
     finally:
+        # Cleared before the lock, so no render can ever see the guard held with
+        # the flag already down and call a crisis reading a sweep.
+        runlock.crisis_reading.clear()
         runlock.guard.release()
 
 
-def _degraded(errors: list[str]) -> str:
-    """The tail of the log line when a reading isolated something, else empty.
+def _degraded(sweep: job.CrisisSweep) -> str:
+    """The tail of the log line when a reading was degraded, else empty.
 
-    Only the first error, and the count beside it: an operator grepping the log
+    Two things count as degraded and only one of them raises. An isolated error
+    is reported with its first line and a count — an operator grepping the log
     needs to see *that* a reading was degraded and roughly why, and the rest of a
-    forty-feed failure would push the line itself off the screen.
+    forty-feed failure would push the line itself off the screen. A feed that
+    self-isolated to an empty list raises nothing at all, so without the feed
+    tally a dead source and a quiet hour write the identical line.
     """
-    if not errors:
-        return ""
-    return f" — degraded: {len(errors)} error(s), first: {errors[0]}"
+    parts: list[str] = []
+    if sweep.feeds_failed:
+        parts.append(f"{sweep.feeds_failed}/{sweep.feeds} feed(s) returned nothing")
+    if sweep.errors:
+        parts.append(f"{len(sweep.errors)} error(s), first: {sweep.errors[0]}")
+    return f" — degraded: {'; '.join(parts)}" if parts else ""
 
 
 def _crisis_loop(stop: threading.Event) -> None:
