@@ -634,6 +634,16 @@ def due(session: Session, *, now: dt.datetime | None = None) -> list[Crisis]:
     state is ``last_swept_at``, and it is stamped before the reading starts.
 
     A deactivated mandate is never due — see :func:`_open_on_active_mandates`.
+
+    Its limit, stated rather than hidden: between this returning a row and
+    :func:`mark_swept` committing, a second *process* could pick up the same
+    crisis. The web process's run guard is in-process only by its own docstring,
+    so nothing here stops that. Single-process on the deployed host today, and
+    the cost if that changes is one duplicated reading rather than a wrong level
+    — the reading is idempotent, and the level is recomputed from stored rows
+    either way. A real fix is a row-level claim (``UPDATE … WHERE
+    last_swept_at = :seen``), and it belongs with the second replica that needs
+    it, not before.
     """
     reference = now or dt.datetime.now(dt.UTC)
     every = dt.timedelta(minutes=config.crisis_sweep_minutes())

@@ -947,6 +947,100 @@ def test_a_crash_mid_reading_leaves_no_hanging_crisis_and_no_second_run(
         assert crisis.due(after_restart, now=_NOW + dt.timedelta(minutes=61)) != []
 
 
+def _closing_fetch(factory, client_id: int, item: FeedItem):
+    """A ``fetch`` that stands the crisis down while the feeds are still out.
+
+    The whole point of the fixture: the reading is minutes long — feed fetches,
+    then a model call per batch — and "stand down" lands somewhere inside it. A
+    second session, because the claim is about the table and not about the object
+    the reading is holding.
+    """
+
+    def _fetch(url, since, **_kwargs):
+        with factory() as other:
+            standing = crisis.open_crisis(other, other.get(Client, client_id))
+            if standing is not None:
+                crisis.close(other, standing, reason="Fehlalarm", now=_NOW)
+        return [item]
+
+    return _fetch
+
+
+def test_a_crisis_closed_during_its_reading_is_not_regraded(
+    factory, session, mandate, monkeypatch
+):
+    """The level of a closed crisis is what it was in the moment it ended.
+
+    Checking ``closed_at`` once before the fetch guards a window of microseconds
+    while the exposure is the whole reading, so the check has to be made again
+    afterwards — and read from the table, because the object was loaded before
+    any of it.
+    """
+    trigger = _cover(session, mandate, source="FAZ")
+    declared = crisis.declare(session, mandate, trigger, by="lucas", now=_NOW)
+    before = (declared.level, declared.outlet_count, declared.article_count)
+
+    job.run_crisis(
+        session,
+        declared,
+        analyzer=_FakeAnalyzer(),
+        fetch=_closing_fetch(
+            factory,
+            mandate.id,
+            _news_item(_wording("Nordkurier"), "Nordkurier", "https://nk.example.de/9"),
+        ),
+        now=lambda: _NOW,
+    )
+
+    with factory() as check:
+        row = check.get(Crisis, declared.id)
+        assert (row.level, row.outlet_count, row.article_count) == before
+
+
+def test_a_crisis_closed_during_its_reading_costs_no_analyzer_batch(
+    factory, session, mandate
+):
+    """Standing a crisis down stops the spending, not just the writing.
+
+    The coverage the fetch already brought back is kept — it happened, and the
+    morning sweep will analyse it — but the model calls belong to a crisis that
+    no longer exists.
+    """
+    trigger = _cover(session, mandate, source="FAZ")
+    declared = crisis.declare(session, mandate, trigger, by="lucas", now=_NOW)
+    analyzer = _FakeAnalyzer()
+
+    job.run_crisis(
+        session,
+        declared,
+        analyzer=analyzer,
+        fetch=_closing_fetch(
+            factory,
+            mandate.id,
+            _news_item(_wording("Merkur"), "Merkur", "https://mk.example.de/9"),
+        ),
+        now=lambda: _NOW,
+    )
+
+    assert analyzer.calls == []
+
+
+def test_a_crisis_stood_down_is_not_offered_again(session, mandate):
+    """DEC-1's rationale, kept: a false alarm costs one click.
+
+    Suppressing the offer only while a crisis is *open* re-asks the same question
+    on every page load for the next twenty-four hours, because the article that
+    triggered it is still inside the proposal window.
+    """
+    trigger = _cover(
+        session, mandate, source="FAZ", category=Category.KRISE, importance=9
+    )
+    standing = crisis.declare(session, mandate, trigger, by="lucas", now=_NOW)
+    crisis.close(session, standing, reason="Fehlalarm", now=_NOW)
+
+    assert crisis.propose(session, mandate, now=_NOW) is None
+
+
 # --- The scheduler's second clock -----------------------------------------------
 
 
@@ -1050,6 +1144,31 @@ def test_a_crisis_already_read_this_hour_is_not_read_again(
     assert read == [declared.id]
 
 
+def test_a_crisis_reading_is_not_announced_as_a_sweep(
+    scheduled, session, mandate, monkeypatch
+):
+    """It still takes the guard — two fetchers on the same URLs is what that lock
+    is for — but the header may not call a one-mandate reading a portfolio sweep.
+
+    The old behaviour rendered "Aktualisierung läuft…" across the dashboard for
+    the length of every crisis reading, over counts that were not being updated.
+    """
+    trigger = _cover(session, mandate, source="FAZ")
+    crisis.declare(session, mandate, trigger, by="lucas", now=_NOW)
+    during: list[tuple[bool, bool]] = []
+
+    def _watching(_session, row, **_kwargs) -> job.CrisisSweep:
+        during.append((scheduled.runlock.guard.locked(), scheduled.runlock.is_running()))
+        return job.CrisisSweep(articles=0, analyses=0, level=row.level, errors=[])
+
+    monkeypatch.setattr(scheduled.job, "run_crisis", _watching)
+
+    scheduled._crisis_tick(_NOW)
+
+    assert during == [(True, False)], "the lock is held, the header is not lit"
+    assert not scheduled.runlock.crisis_reading.is_set()
+
+
 def test_the_crisis_loop_survives_a_failing_reading(scheduled, monkeypatch):
     """A crisis is the worst moment for the tool to go quiet, so the same rule as
     the daily loop and for the same reason: log it and be back in a minute."""
@@ -1077,3 +1196,61 @@ def test_the_crisis_loop_survives_a_failing_reading(scheduled, monkeypatch):
 
     assert len(attempts) >= 2, "it tried again after the failure"
     assert still_running, "the thread was alive until we asked it to stop"
+
+
+# --- DEC-1: the tool proposes, a person declares ---------------------------------
+
+
+@pytest.fixture
+def dashboard(factory):
+    """The web app, pointed at this test's database.
+
+    The one place in this file that renders a page. DEC-1 is a decision about the
+    *interface* — "über der Schwelle erscheint ein Vorschlag auf Heute … bis
+    jemand ‚Krise erklären' drückt" — and a module nothing calls satisfies none
+    of it, however correct its arithmetic.
+    """
+    from fastapi.testclient import TestClient
+
+    from newspulse.web.app import create_app, get_db
+
+    app = create_app()
+
+    def _override():
+        open_session = factory()
+        try:
+            yield open_session
+        finally:
+            open_session.close()
+
+    app.dependency_overrides[get_db] = _override
+    return TestClient(app)
+
+
+def test_the_offer_on_heute_only_becomes_a_crisis_when_somebody_presses_it(
+    dashboard, factory, session, mandate
+):
+    """The whole of DEC-1 in one pass: offered, unwritten, then declared."""
+    trigger = _cover(
+        session, mandate, source="FAZ", category=Category.KRISE, importance=9
+    )
+
+    assert "Krise erklären" in dashboard.get("/today").text
+    with factory() as check:
+        assert _count(check, Crisis) == 0, "an offer writes nothing at all"
+
+    dashboard.post(
+        "/crisis/declare",
+        data={
+            "client_id": mandate.id,
+            "article_id": trigger.id,
+            "redirect_to": "/today",
+        },
+    )
+
+    with factory() as check:
+        standing = crisis.open_crisis(check, check.get(Client, mandate.id))
+        assert standing is not None, "the button declared it"
+    page = dashboard.get("/today").text
+    assert "Krise schließen" in page, "and the way back out is on the page"
+    assert "Krise erklären" not in page, "there is nothing left to offer"
