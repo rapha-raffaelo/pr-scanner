@@ -91,7 +91,13 @@
       {# An empty month is written out, not skipped: DEC-5's whole argument. #}
       <div class="month__empty">
         <b>{{ t("Leer.") }}</b>
-        {{ t("Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat. Ein leerer Monat wird nicht gefüllt, er wird gezeigt: entweder ist hier wirklich nichts, oder dem Mandat fehlt ein Thema.") }}
+        {% if month.explain %}
+          {{ t("Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat. Ein leerer Monat wird nicht gefüllt, er wird gezeigt: entweder ist hier wirklich nichts, oder dem Mandat fehlt ein Thema.") }}
+        {% else %}
+          {#- The argument is made once, on the first empty month. Repeating it
+              five times down one page is how a sentence stops being read. -#}
+          {{ t("Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat.") }}
+        {% endif %}
         <a href="/settings?edit={{ client.id }}">{{ t("Themen prüfen") }}</a>
       </div>
     {% endif %}

@@ -21,7 +21,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ t("Redaktionsplan") }} · {{ client.name }}{% if months %} · {{ months[0].key }} {{ t("bis") }} {{ months[-1].key }}{% endif %}</title>
+{#- The <title> names the same span as the header inside the document. A tab
+    reading "2026-08" beside a page headed "August 2026 bis Januar 2027" makes
+    the file look like it covers a single month. -#}
+<title>{{ t("Redaktionsplan") }} · {{ client.name }}{% if months %} · {{ t(months[0].name) }} {{ months[0].year }} {{ t("bis") }} {{ t(months[-1].name) }} {{ months[-1].year }}{% endif %}</title>
 <style>
   {#- The mandate's own colour from the shared branding module, so the plan
       wears the same identity as the report and the Pressespiegel. -#}

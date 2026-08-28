@@ -33,7 +33,7 @@ import datetime as dt
 import logging
 import re
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -354,6 +354,13 @@ class MonthView:
     hooks: tuple[HookView, ...]
     #: Whether this is the month the reader is standing in.
     current: bool
+    #: Whether this empty month carries the full argument for being empty.
+    #:
+    #: Only the first one does. The sentence is an argument ("either there
+    #: genuinely is nothing here, or the mandate is missing a theme"), and an
+    #: argument printed five times down one page stops being read at the second.
+    #: Every empty month still says it is empty and still carries the link.
+    explain: bool = False
 
     @property
     def live(self) -> tuple[HookView, ...]:
@@ -415,7 +422,7 @@ def months_for(
     texts = _texts_by_hook(session, client)
     occasions = _angles_by_hook(session, client)
     current = plan.month_key(reference)
-    return [
+    months = [
         MonthView(
             key=month,
             name=month_name(month),
@@ -432,6 +439,13 @@ def months_for(
             ),
         )
         for month, hooks in plan.read(session, client, now=reference)
+    ]
+    first_empty = next((m for m in months if m.empty), None)
+    if first_empty is None:
+        return months
+    return [
+        replace(month, explain=True) if month is first_empty else month
+        for month in months
     ]
 
 

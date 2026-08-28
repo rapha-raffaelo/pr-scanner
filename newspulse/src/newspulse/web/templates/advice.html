@@ -484,7 +484,7 @@
                        value="{{ slot.key }}" form="write-{{ angle.id }}"
                        id="tick-{{ angle.id }}-{{ slot.key }}"
                        aria-label="{{ t(slot.fmt.name) }}"
-                       {% if slot.key == asset_preselect and slot.writable %}checked{% endif %}
+                       {% if slot.key == asset_preselect and not (slot.state == 'freigegeben' or busy) %}checked{% endif %}
                        {% if slot.state == 'freigegeben' or busy %}disabled{% endif %}>
                 <button type="button" class="fmttab{% if loop.first %} is-on{% endif %}"
                         role="tab" id="tab-{{ angle.id }}-{{ slot.key }}"
