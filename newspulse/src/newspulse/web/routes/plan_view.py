@@ -302,6 +302,11 @@ class HookView:
         The date rule is the whole feature (DEC-4), and rendering an undated
         archive pattern as "01." would put a date on the page that no stored row
         makes.
+
+        Both templates render this through ``t()``: the undated branch returns a
+        German month abbreviation, and an English reader was getting "Okt" above
+        a translated "no day". A numeric day is not a key and passes through
+        :func:`newspulse.i18n.translate` unchanged.
         """
         if self.hook.day is not None:
             return f"{self.hook.day:02d}"

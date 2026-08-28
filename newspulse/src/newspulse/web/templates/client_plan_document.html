@@ -123,7 +123,7 @@
     {%- for view in month.live %}
     <div class="phook">
       <div class="phook__d{% if not view.dated %} phook__d--soft{% endif %}">
-        <div class="phook__dd">{{ view.day_label }}</div>
+        <div class="phook__dd">{{ t(view.day_label) }}</div>
         <div class="phook__dm">{{ t(view.month_label) }}</div>
       </div>
       <div class="phook__b">

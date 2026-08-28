@@ -106,7 +106,7 @@
       {% set hook = view.hook %}
       <div class="hook" id="haken-{{ hook.id }}">
         <div class="hook__d{% if not view.dated %} hook__d--soft{% endif %}">
-          <div class="hook__dd">{{ view.day_label }}</div>
+          <div class="hook__dd">{{ t(view.day_label) }}</div>
           <div class="hook__dm">{{ t(view.month_label) }}</div>
         </div>
         <div class="hook__b">
@@ -164,7 +164,7 @@
          a click cannot be argued about at the jour fixe. #}
       <div class="hook hook--out" id="haken-{{ view.hook.id }}">
         <div class="hook__d{% if not view.dated %} hook__d--soft{% endif %}">
-          <div class="hook__dd">{{ view.day_label }}</div>
+          <div class="hook__dd">{{ t(view.day_label) }}</div>
           <div class="hook__dm">{{ t(view.month_label) }}</div>
         </div>
         <div class="hook__b">

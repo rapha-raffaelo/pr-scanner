@@ -893,6 +893,10 @@ def test_every_string_the_plan_page_shows_is_translated(web, session, mandate):
             *(klasse.label for klasse in plan_view.KLASSEN),
             *plan_view.STATE_LABELS.values(),
             *(plan_view.month_name(month) for month in _WINDOW),
+            # The date block's own two halves. The short form is what an undated
+            # hook prints in the big line, so it is a visible string like any
+            # other rather than a number that happens to be spelled with letters.
+            *plan_view._MONTHS_SHORT,
         )
         if text not in known
     ]
@@ -907,6 +911,27 @@ def test_the_page_switches_language_with_the_cookie(web, session, mandate):
 
     assert "Editorial plan" in words
     assert "Recompute" in words
+
+
+def test_an_undated_hooks_date_block_is_translated_too(web, session, mandate):
+    """The big half of an undated block is a month name, not a number.
+
+    Rendered raw it put the German abbreviation ("Okt") above the translated
+    "no day" — the mixed page the language test exists to prevent, in the one
+    place the string comes from a Python property rather than the template.
+    """
+    signal = _signal(session, mandate, effective_at=_NOW + dt.timedelta(days=30))
+    _hook(
+        session, mandate, source_kind=HookSource.MARKTSIGNAL, source_id=signal.id,
+        month="2026-10", day=None,
+    )
+    web.cookies.set(i18n.COOKIE_NAME, "en")
+
+    words = _text(_at(web, mandate).text)
+
+    assert "Oct" in words
+    assert "no day" in words
+    assert "Okt" not in words
 
 
 # --- Stand-in for the one model call ------------------------------------------------
