@@ -256,25 +256,15 @@ def _onboard(client_id: int, name: str) -> None:
 def _settle_industry(session: Session, client: Client) -> None:
     """Give a new mandate a searchable industry if it arrived without one.
 
-    Measured, not guessed: the term is a filter, and one the press does not write
-    filters everything away. Failures are logged and swallowed — a mandate must
-    still be onboarded if the classifier is unavailable.
+    The step itself is :func:`newspulse.industry.settle`, shared with the sweep:
+    living only here it ran exactly once, down one path, and everything created
+    any other way kept an empty field forever. Failures are logged and swallowed
+    — a mandate must still be onboarded if the classifier is unavailable.
     """
-    if (client.industry or "").strip():
-        return
     try:
-        best = industry.classify(client)
+        industry.settle(session, client)
     except Exception as exc:  # noqa: BLE001 — onboarding must not depend on it
         _log.warning("industry classification for %r failed: %s", client.name, exc)
-        return
-    if best is None:
-        _log.info("no usable industry term found for %r", client.name)
-        return
-    update_client(session, client.id, industry=best.term)
-    _log.info(
-        "classified %r as %r (%d item(s) of press use the word)",
-        client.name, best.term, best.hits,
-    )
 
 
 def _first_drafts(session: Session, client: Client) -> None:

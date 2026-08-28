@@ -196,15 +196,16 @@ def test_the_probe_uses_the_clients_own_news_edition():
 # --- Onboarding -----------------------------------------------------------------
 
 
-def test_a_new_mandate_without_an_industry_gets_one(session, monkeypatch):
+def test_a_new_mandate_without_an_industry_gets_one(session, monkeypatch, no_industry_settling):
     """Everything downstream depends on the field: the radar scopes with it and
     the archive linking refuses to run without it. A mandate onboarded with it
     blank goes straight into the state that produces no impulses."""
+    monkeypatch.setattr(industry, "settle", no_industry_settling)
     client = _client(industry=None)
     session.add(client)
     session.commit()
     monkeypatch.setattr(
-        industry, "classify", lambda c: industry.Candidate(term="Kosmetik", hits=62)
+        industry, "classify", lambda c, **_: industry.Candidate(term="Kosmetik", hits=62)
     )
 
     settings_routes._settle_industry(session, client)
@@ -212,14 +213,15 @@ def test_a_new_mandate_without_an_industry_gets_one(session, monkeypatch):
     assert session.get(Client, client.id).industry == "Kosmetik"
 
 
-def test_an_industry_somebody_typed_is_left_alone(session, monkeypatch):
+def test_an_industry_somebody_typed_is_left_alone(session, monkeypatch, no_industry_settling):
     """Overwriting what an operator wrote to make a search work is a trade they
     never agreed to."""
+    monkeypatch.setattr(industry, "settle", no_industry_settling)
     client = _client(industry="Beauty Tech")
     session.add(client)
     session.commit()
     monkeypatch.setattr(
-        industry, "classify", lambda c: pytest.fail("must not reclassify")
+        industry, "classify", lambda c, **_: pytest.fail("must not reclassify")
     )
 
     settings_routes._settle_industry(session, client)
@@ -274,3 +276,88 @@ def test_adopting_the_same_term_twice_does_not_repeat_it(session):
         )
 
     assert session.get(Client, client.id).industry == "Kosmetik"
+
+
+# --- The whole portfolio, every morning ------------------------------------------
+#
+# The step lived in the onboarding route, so it ran once down one path. Anything
+# created any other way kept an empty field forever — and the analyzer decides
+# relevance from name, industry, aliases and alert topics, so a company with an
+# empty industry is judged on its name alone.
+
+
+def test_settle_leaves_a_term_that_is_already_there(session, monkeypatch, no_industry_settling):
+    monkeypatch.setattr(industry, "settle", no_industry_settling)
+    client = _client(industry="Beauty Tech")
+    session.add(client)
+    session.commit()
+    monkeypatch.setattr(
+        industry, "classify", lambda c, **_: pytest.fail("must not reclassify")
+    )
+
+    assert industry.settle(session, client) is False
+
+
+def test_settle_writes_nothing_when_no_term_is_usable(session, monkeypatch, no_industry_settling):
+    """A term the press never writes filters everything away, and is worse than
+    the empty field it replaced."""
+    monkeypatch.setattr(industry, "settle", no_industry_settling)
+    client = _client(industry=None)
+    session.add(client)
+    session.commit()
+    monkeypatch.setattr(industry, "classify", lambda c, **_: None)
+
+    assert industry.settle(session, client) is False
+    assert session.get(Client, client.id).industry is None
+
+
+def test_the_sweep_settles_a_competitor_that_arrived_as_a_bare_name(
+    session, monkeypatch, no_industry_settling
+):
+    """The G-20 case, and the reason competitors are included here while
+    ``_settle_themes`` skips them: a yardstick needs no radar and no pitch, but it
+    does need to be the right company."""
+    from newspulse import job
+
+    monkeypatch.setattr(industry, "settle", no_industry_settling)
+    rival = _client(name="G-20", industry=None, keywords=[])
+    rival.is_competitor = True
+    session.add(rival)
+    session.commit()
+    monkeypatch.setattr(
+        industry,
+        "classify",
+        lambda c, **_: industry.Candidate(term="Krypto-Market-Making", hits=48),
+    )
+
+    settled = job._settle_industries(session, [rival], lambda *a, **k: [])
+
+    assert settled == 1
+    assert session.get(Client, rival.id).industry == "Krypto-Market-Making"
+
+
+def test_a_failed_classification_does_not_stop_the_sweep(
+    session, monkeypatch, no_industry_settling
+):
+    """One dead classifier must not cost the portfolio its sweep, and the session
+    has to be usable for every stage after it."""
+    from newspulse import job
+
+    monkeypatch.setattr(industry, "settle", no_industry_settling)
+    first = _client(name="Kaputt", industry=None)
+    second = _client(name="Heil", industry=None)
+    session.add_all([first, second])
+    session.commit()
+
+    def _classify(c, **_):
+        if c.name == "Kaputt":
+            raise RuntimeError("der Klassifizierer ist weg")
+        return industry.Candidate(term="Logistik", hits=31)
+
+    monkeypatch.setattr(industry, "classify", _classify)
+
+    settled = job._settle_industries(session, [first, second], lambda *a, **k: [])
+
+    assert settled == 1
+    assert session.get(Client, second.id).industry == "Logistik"
+    assert session.get(Client, first.id).industry is None

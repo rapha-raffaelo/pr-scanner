@@ -597,6 +597,66 @@ def _mark_checked(
 # --- One mandate ----------------------------------------------------------------
 
 
+def adopt(session: Session, client: Client, *, proposed_by: str) -> list[ProfileProposal]:
+    """Write in the proposals nobody has to be asked about. Returns what was written.
+
+    "bitte im profil immer alles automatisch mit KI recherchieren und dann
+    einpflegen."
+
+    The research already ran every morning; what it produced sat in a pile
+    waiting for a click that mostly never came, so the profile the drafting
+    prompts read stayed as empty as the day the mandate was created. This closes
+    that half.
+
+    :func:`may_replace` decides, and it is the whole safety of this function: a
+    field the consultant typed or the client answered in the kick-off is never
+    written over. Those proposals stay on the pile as visible contradictions —
+    the machine may argue with a person here, and the person decides. Everything
+    else is a field that is empty or that a previous read filled, and asking a
+    consultant to confirm the machine's correction of the machine is asking him
+    to be a clerk.
+
+    ``filled_by`` is the model, never :data:`newspulse.profile.BY_HAND`. Two
+    things follow from that and both are the point: the page says where the value
+    came from rather than implying somebody vouched for it, and the next read may
+    correct it, which a hand-filled value would forbid. Writing these as BY_HAND
+    would freeze the first automatic answer forever.
+
+    Only sourced values ever reach the pile (:func:`_sourced`), so nothing
+    adopted here is a value the model produced without citing where it read it.
+    """
+    facts = profile.stored(session, client.id)
+    taken = [
+        row
+        for row in outstanding(session, client.id)
+        if may_replace(facts, row.key) and contradicts(facts, row)
+    ]
+    for row in taken:
+        profile.save(
+            session,
+            client,
+            row.key,
+            row.value,
+            source_url=row.source_url or "",
+            source_title=row.source_title or "",
+            filled_by=proposed_by,
+            # Keeps what the field said beside it where the authors differ — a
+            # value this month's model replaced that last month's had written.
+            # Without it the change is silent, and the profile feeds every
+            # generated text.
+            supersede=True,
+        )
+    clear(session, client.id, [row.id for row in taken])
+    if taken:
+        _log.info(
+            "adopted %d proposal(s) for %r without asking: %s",
+            len(taken),
+            client.name,
+            ", ".join(row.key for row in taken),
+        )
+    return taken
+
+
 def refresh(
     session: Session,
     client: Client,
@@ -693,11 +753,37 @@ def run(
     looked at is worse than the one broken profile.
     """
     cap = config.PROFILE_REFRESH_PER_RUN if limit is None else limit
-    candidates = due(session, list_clients(session), now=now)[:cap]
+    watched = list_clients(session)
+    candidates = due(session, watched, now=now)[:cap]
     refreshed = 0
+    adopted = 0
+    # Every client, not only the ones due for a read, and deliberately before the
+    # reads rather than after each one.
+    #
+    # Adopting costs no model call and no search — it moves rows that are already
+    # on file into the fields they were read for. Gating it on the due check
+    # would mean a backlog filed before this existed waits out the sixty-day
+    # window before it lands, which is the state the request is about. Measured
+    # in production the day this shipped: 76 outstanding proposals, every one of
+    # them adoptable, and six of seven mandates with 0 of 18 profile fields
+    # filled. The research had been running every night for weeks; none of it had
+    # ever reached the profile the drafting prompts read.
+    for client in watched:
+        try:
+            adopted += len(adopt(session, client, proposed_by=config.review_model()))
+        except Exception:  # noqa: BLE001 — one bad row must not cost the pass
+            session.rollback()
+            _log.exception("adopting proposals for %r failed; the pass continues", client.name)
     for client in candidates:
         try:
             refresh(session, client, now=now, generate=generate)
+            # Not inside ``refresh``: that function's contract is that it writes
+            # nothing into ``client_facts``, and the button on the profile page
+            # is built on it — a click reads and proposes, and the consultant
+            # decides. This is the unattended pass, which is the one the request
+            # is about: "bitte im profil immer alles automatisch mit KI
+            # recherchieren und dann einpflegen."
+            adopted += len(adopt(session, client, proposed_by=config.review_model()))
         except Exception as exc:  # noqa: BLE001 — per-client fault-isolation boundary
             session.rollback()
             # ``exception`` rather than ``error``: this boundary is wide enough to
@@ -713,7 +799,10 @@ def run(
             continue
         refreshed += 1
     _log.info(
-        "profile refresh: %d of %d due mandate(s) refreshed", refreshed, len(candidates)
+        "profile refresh: %d of %d due mandate(s) refreshed, %d field(s) adopted",
+        refreshed,
+        len(candidates),
+        adopted,
     )
     return refreshed
 
@@ -721,6 +810,7 @@ def run(
 __all__ = [
     "DUE_AFTER",
     "Generate",
+    "adopt",
     "clear",
     "contradicts",
     "discard",

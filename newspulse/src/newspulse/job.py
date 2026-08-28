@@ -1716,6 +1716,46 @@ def _settle_themes(session: Session, clients: Sequence[Client], fetch: FetchFeed
     return settled
 
 
+def _settle_industries(session: Session, clients: Sequence[Client], fetch: FetchFeed) -> int:
+    """Give every company that still has no industry one, up to the per-sweep cap.
+
+    The same class of bug :func:`_settle_themes` fixes, and found the same way:
+    the step existed only in the onboarding route, so it ran once down one path.
+    Anything created any other way — imported from a spreadsheet, created before
+    the step existed, or accepted from a competitor proposal — kept an empty
+    field forever.
+
+    Competitors included, and that is the whole point of adding this. The
+    analyzer decides relevance from name, industry, aliases and alert topics, so
+    a company with an empty industry is judged on its name alone. "G-20", a
+    crypto market maker at g20.group, was created from a proposal as a bare name
+    and then handed an article about the 2017 Hamburg G20 summit riots as
+    coverage of itself, marked relevant with a score of 7. A yardstick needs no
+    radar and no pitch — it does need to be the right company.
+
+    Self-limiting: :func:`newspulse.industry.settle` returns immediately once a
+    term is in place, so this may run over the whole portfolio every morning.
+    Capped all the same, because a *failure* is not self-limiting: a term the
+    press never writes is never usable, and without the cap a portfolio of such
+    companies would spend the whole budget re-measuring them every sweep.
+    """
+    settled = 0
+    for client in clients:
+        if settled >= _SETTLE_PER_SWEEP:
+            break
+        try:
+            if industry.settle(session, client, fetch=fetch):
+                settled += 1
+        except Exception:  # noqa: BLE001 — an industry term is not worth a failed sweep
+            _log.exception("industry settling for %r failed", client.name)
+            # Same reason as _settle_themes: ``settle`` writes, and a caught
+            # exception over an unflushed write leaves the transaction in
+            # PendingRollbackError, taking every later stage down with it after
+            # the run was already recorded ok.
+            session.rollback()
+    return settled
+
+
 def _post_run(
     session: Session,
     run: Run,
@@ -1760,6 +1800,10 @@ def _post_run(
     _record_late_failure(session, run, errors, market_errors)
     if run.status is RunStatus.FAILED:
         return outcome
+    # Before the themes, because the radar scopes with the industry: a mandate
+    # that gets both in one sweep gets a radar built on the term rather than one
+    # built without it and left that way until somebody notices.
+    _settle_industries(session, clients, fetch)
     _settle_themes(session, clients, fetch)
     # The archive first: the registry feeds fetched the trade press this morning and
     # nothing linked it to the mandates whose field it is. Doing this before drafting

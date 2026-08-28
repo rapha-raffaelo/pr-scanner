@@ -1675,6 +1675,17 @@ _BUILDS = re.compile(r"(?<![\w.])([A-Z]\w*)\(")
 #: back, so there is nowhere for a version to live and nothing it would explain.
 #: The ``Setting`` rows it builds are its own retry bookkeeping.
 #:
+#: ``industry`` — the same shape as ``themes`` and excluded for the same reason.
+#: ``industry.settle`` proposes terms with a model and then *measures* them
+#: against what the press actually writes, keeping the narrowest one that
+#: survives, and puts it in ``Client.industry``. A single word on a mutable
+#: settings field is configuration for the radar and for the relevance check, not
+#: prose anyone sends: there is no row per generation, no text to read back, and
+#: so nowhere for a version to live and nothing it would explain. It became
+#: visible to this rule only when the step moved out of the onboarding route so
+#: the sweep could reach it too — the composing and the writing had always been
+#: in the same module, one function apart.
+#:
 #: ``visibility`` — it composes ``visibility_read.txt`` and writes rows, and what
 #: it writes is not this house's text at all: ``VisibilityAnswer.answer`` is what
 #: Claude or Gemini said when asked a buyer's question, kept verbatim precisely so
@@ -1687,7 +1698,7 @@ _BUILDS = re.compile(r"(?<![\w.])([A-Z]\w*)\(")
 #:
 #: If any of them becomes something the tool stores on the model's word as a text,
 #: its entry here is what has to come out.
-_NOT_ARTEFACT_GENERATORS = {"guide", "themes", "visibility"}
+_NOT_ARTEFACT_GENERATORS = {"guide", "industry", "themes", "visibility"}
 
 
 def _generating_modules() -> set[str]:

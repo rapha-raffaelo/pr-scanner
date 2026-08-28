@@ -271,3 +271,29 @@ def no_theme_settling(monkeypatch):
 
     monkeypatch.setattr(themes, "settle", _stub)
     return original
+
+
+@pytest.fixture(autouse=True)
+def no_industry_settling(monkeypatch):
+    """Stop the sweep from classifying industries in a test run.
+
+    The same reason ``no_theme_settling`` exists, found the same way: ``job.run``
+    now gives a company without an industry one, and that is a model call plus a
+    live search per candidate. Most fixtures here create clients with no industry
+    at all, so without this the suite shells out to `claude` and to Google News
+    from every test that drives a sweep — measured, again the hard way: the run
+    went from 130 seconds to 680.
+
+    Yields the real function for the tests that are about it.
+    """
+    from newspulse import industry
+
+    original = industry.settle
+
+    def _stub(session, client, *, invoke=None, fetch=None, now=None) -> bool:
+        """The real signature, so a change to it breaks the suite rather than
+        production: ``lambda *a, **k`` would have accepted anything."""
+        return False
+
+    monkeypatch.setattr(industry, "settle", _stub)
+    return original

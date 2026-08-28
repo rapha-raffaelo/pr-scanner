@@ -210,6 +210,45 @@ def field_is_usable(client: Client, *, fetch=fetch_feed, now=None) -> bool | Non
     return False if any(c.measured for c in candidates) else None
 
 
+def settle(session, client: Client, *, invoke=invoke_with_fallback, fetch=fetch_feed, now=None) -> bool:
+    """Give a company a searchable industry if it has none. Returns whether one
+    was written.
+
+    Self-limiting by design: it returns immediately once a term is in place, so
+    the caller may run it over the whole portfolio every morning without cost.
+
+    It used to live in the onboarding route, which meant it ran exactly once and
+    only down that one path. Everything created any other way kept an empty field
+    forever — a company imported from a spreadsheet, one created before the step
+    existed, and every competitor accepted from a proposal. That last one is not
+    a cosmetic gap: the analyzer's client profile is name, industry, aliases and
+    alert topics, so a company with no industry is decided on its name alone.
+    "G-20", a crypto market maker, was handed an article about the 2017 Hamburg
+    G20 summit riots and marked it relevant.
+
+    Never over a term that is already there, whoever put it there. Measured, not
+    guessed — see the module docstring: a term the press does not write filters
+    everything away, and is worse than the empty field it replaced.
+    """
+    if (client.industry or "").strip():
+        return False
+    best = classify(client, invoke=invoke, fetch=fetch, now=now)
+    if best is None:
+        _log.info("no usable industry term for %r; leaving the field empty", client.name)
+        return False
+    # Imported here, not at module import: clients imports models which imports
+    # nothing from here, but the reverse edge would close a cycle through the
+    # feed and analyzer imports at the top of this module.
+    from .clients import update_client
+
+    update_client(session, client.id, industry=best.term)
+    _log.info(
+        "classified %r as %r (%d item(s) of press use the word)",
+        client.name, best.term, best.hits,
+    )
+    return True
+
+
 __all__ = [
     "AnalyzerError",
     "Candidate",
@@ -219,4 +258,5 @@ __all__ = [
     "field_is_usable",
     "measure",
     "propose",
+    "settle",
 ]

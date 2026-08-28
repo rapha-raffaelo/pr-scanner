@@ -3,12 +3,19 @@
 Two things are load-bearing here and each is a way the feature could quietly ruin
 the tool rather than merely fail.
 
-**The refresh never writes.** ``ClientFact.filled_by`` exists because a fact the
-consultant knows from a kick-off call and a fact a model read on an about page
-must never be confused. A background pass that overwrote the first with the second
-would destroy the more valuable of the two, and nobody would be watching when it
-did — so the test that matters most here is the one asserting the stored facts are
-byte-identical before and after.
+**A person's fact is never overwritten.** ``ClientFact.filled_by`` exists because
+a fact the consultant knows from a kick-off call and a fact a model read on an
+about page must never be confused. A background pass that overwrote the first
+with the second would destroy the more valuable of the two, and nobody would be
+watching when it did — so the test that matters most here is the one asserting
+the stored facts are byte-identical before and after.
+
+The line between the two is ``may_replace``, not the caller. ``refresh`` still
+writes nothing into ``client_facts``: it reads and proposes, and the button on
+the profile page is built on exactly that. ``run`` — the unattended daily pass —
+then adopts what nobody has to be asked about, which is every field that is empty
+or that a previous read filled. A field a person answered keeps its proposal on
+the pile as a visible contradiction, and the person decides.
 
 **The due check is a pure function of stored state and an injected clock.** A bug
 there means either nothing refreshes or everything does, and both are invisible
@@ -483,7 +490,10 @@ def test_a_run_refreshes_at_most_the_configured_cap(session):
     refreshed = profile_refresh.run(session, now=_NOW, generate=_answer(sitz="Paris"))
 
     assert refreshed == cap
-    assert session.scalar(select(func.count()).select_from(ProfileProposal)) == cap
+    # Read off the facts, not the proposal pile: the unattended pass adopts what
+    # nobody has to be asked about, so a filled field is what a refreshed mandate
+    # now looks like. The pile is where the contradictions stay.
+    assert session.scalar(select(func.count()).select_from(ClientFact)) == cap
 
 
 def test_a_run_takes_the_oldest_due_first(session):
@@ -496,8 +506,8 @@ def test_a_run_takes_the_oldest_due_first(session):
     profile_refresh.run(session, now=_NOW, limit=2, generate=_answer(sitz="Paris"))
 
     touched = {
-        session.get(Client, p.client_id).name
-        for p in session.scalars(select(ProfileProposal)).all()
+        session.get(Client, f.client_id).name
+        for f in session.scalars(select(ClientFact)).all()
     }
     assert touched == {"Nie", "Alt"}
 
@@ -564,7 +574,10 @@ def test_the_daily_sweep_reaches_the_refresh(session, monkeypatch, no_sweep_prof
     """The gap that lets a feature be "built" and still never happen.
 
     A mandate whose profile was never checked must come out of an ordinary sweep
-    with proposals on file and a check date on the client.
+    with the field filled and a check date on the client. Filled, not merely
+    proposed: the unattended pass adopts what nobody has to be asked about, and a
+    sweep that only piled up proposals is what left the profile as empty as the
+    day the mandate was created.
 
     Puts back the real helper the suite-wide fixture stubs out — otherwise this
     test would pass against a sweep that had been silently disconnected, which is
@@ -600,7 +613,12 @@ def test_the_daily_sweep_reaches_the_refresh(session, monkeypatch, no_sweep_prof
     )
 
     assert report.status.value != "failed"
-    assert [p.value for p in profile_refresh.outstanding(session, client.id)] == ["Paris"]
+    stored = profiles.stored(session, client.id)
+    assert stored["sitz"].value == "Paris"
+    # Under the model's name, never "mensch": the page must not imply somebody
+    # vouched for it, and a hand-filled value would forbid the next correction.
+    assert stored["sitz"].filled_by != profiles.BY_HAND
+    assert profile_refresh.outstanding(session, client.id) == []
     assert session.get(Client, client.id).profile_checked_at == _NOW
 
 
@@ -1214,3 +1232,109 @@ def test_every_field_label_a_review_row_prints_is_translated():
     rather than in the markup, so the sweep walked straight past twelve German
     field names on the English page."""
     assert [f.label for f in profiles.FIELDS if f.label not in i18n._EN] == []
+
+
+# --- Adopting without being asked -----------------------------------------------
+#
+# "bitte im profil immer alles automatisch mit KI recherchieren und dann
+# einpflegen."
+#
+# The research already ran every morning. What it produced sat in a pile waiting
+# for a click that mostly never came, so the profile every drafting prompt reads
+# stayed as empty as the day the mandate was created. ``may_replace`` is the
+# whole safety of closing that half, and the second test here is the one that
+# matters most in this file.
+
+
+def test_the_unattended_pass_fills_an_empty_field_without_being_asked(session):
+    client = _client(session, checked=None)
+
+    profile_refresh.run(session, now=_NOW, generate=_answer(sitz="Paris"))
+
+    stored = profiles.stored(session, client.id)
+    assert stored["sitz"].value == "Paris"
+    assert profile_refresh.outstanding(session, client.id) == []
+
+
+def test_the_unattended_pass_never_writes_over_what_a_person_answered(session):
+    """The invariant this whole file is built around, now that a pass writes.
+
+    A fact the consultant typed is never overwritten. It may be contradicted,
+    visibly, and he decides — so the proposal stays on the pile rather than
+    being adopted or dropped.
+    """
+    client = _client(session, checked=None)
+    profiles.save(session, client, "sitz", "Berlin", filled_by=profiles.BY_HAND)
+
+    profile_refresh.run(session, now=_NOW, generate=_answer(sitz="Paris"))
+
+    stored = profiles.stored(session, client.id)
+    assert stored["sitz"].value == "Berlin"
+    assert stored["sitz"].filled_by == profiles.BY_HAND
+    # Not silently dropped either: the disagreement is the consultant's to settle.
+    assert [p.value for p in profile_refresh.outstanding(session, client.id)] == ["Paris"]
+
+
+def test_an_adopted_value_carries_the_source_it_was_read_from(session):
+    """Adopted without a click is not adopted without provenance: the page has to
+    be able to say where a value the consultant never saw came from."""
+    client = _client(session, checked=None)
+
+    profile_refresh.run(session, now=_NOW, generate=_answer(sitz="Paris"))
+
+    fact = profiles.stored(session, client.id)["sitz"]
+    assert fact.source_url == "https://qonto.com/ueber-uns"
+    assert fact.source_title == "Qonto"
+
+
+def test_an_adopted_value_is_written_under_the_model_not_the_person(session):
+    """Two things follow, and both are the point: the page does not imply
+    somebody vouched for it, and the next read may still correct it. Writing
+    these as BY_HAND would freeze the first automatic answer forever."""
+    client = _client(session, checked=None)
+
+    profile_refresh.run(session, now=_NOW, generate=_answer(sitz="Paris"))
+    fact = profiles.stored(session, client.id)["sitz"]
+    assert fact.filled_by != profiles.BY_HAND
+
+    # And the correction lands, rather than piling up behind the first answer.
+    session.get(Client, client.id).profile_checked_at = _NOW - dt.timedelta(days=200)
+    session.commit()
+    profile_refresh.run(
+        session, now=_NOW, generate=_answer(sitz="Paris, Frankreich")
+    )
+    assert profiles.stored(session, client.id)["sitz"].value == "Paris, Frankreich"
+
+
+def test_the_button_still_only_proposes(session):
+    """``refresh`` keeps its contract. The profile page's "mit KI ausfüllen" is
+    built on it: a click reads and proposes, and the consultant decides."""
+    client = _client(session, checked=None)
+
+    profile_refresh.refresh(session, client, now=_NOW, generate=_answer(sitz="Paris"))
+
+    assert profiles.stored(session, client.id) == {}
+    assert [p.value for p in profile_refresh.outstanding(session, client.id)] == ["Paris"]
+
+
+def test_a_backlog_is_adopted_even_when_nothing_is_due_for_a_read(session):
+    """Adopting costs no model call, so it must not wait out the due window.
+
+    Measured in production the day this shipped: 76 outstanding proposals, every
+    one of them adoptable, six of seven mandates with 0 of 18 fields filled, and
+    every one of them read that same morning — so a pass that only adopted what
+    it had just read would have left the whole backlog sitting for sixty days.
+    """
+    client = _client(session, checked=_YESTERDAY)
+    profile_refresh.refresh(
+        session, client, now=_YESTERDAY, generate=_answer(sitz="Paris")
+    )
+    assert profile_refresh.outstanding(session, client.id)
+
+    def _never(prompt):
+        pytest.fail("nothing was due; the model must not be asked")
+
+    assert profile_refresh.run(session, now=_NOW, generate=_never) == 0
+
+    assert profiles.stored(session, client.id)["sitz"].value == "Paris"
+    assert profile_refresh.outstanding(session, client.id) == []
