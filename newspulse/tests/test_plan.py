@@ -295,8 +295,8 @@ def test_a_signal_beyond_the_six_month_window_is_no_hook(session, mandate, unask
 def test_the_earlier_of_a_deadline_and_an_effective_date_dates_the_hook(
     session, mandate
 ):
-    """"You may still speak" comes before "it now applies to you", so it is the
-    date the plan has to surface."""
+    """A deadline comes before an effective date: "you may still speak" is the
+    instruction that expires, so it is the one the plan has to surface first."""
     _signal(
         session,
         mandate,
