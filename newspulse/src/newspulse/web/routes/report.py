@@ -723,7 +723,7 @@ def press_clippings(
     )
 
 
-@router.get("/client/{client_id}/pressespiegel.html")
+@router.get("/client/{client_id}/pressespiegel.html", response_class=HTMLResponse)
 def press_clippings_export(
     request: Request,
     client_id: int,

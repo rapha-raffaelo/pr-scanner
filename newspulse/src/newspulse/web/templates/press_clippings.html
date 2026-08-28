@@ -11,14 +11,18 @@
     The screen and the download render this same file. Everything they differ by
     is the <nav> outside <article class="doc">, so the export cannot carry a
     line the screen did not — and the download carries no links back into the
-    application, because a recipient has no account to follow them into. -#}
+    application, because a recipient has no account to follow them into.
+
+    The <title> names the same span as the header inside the document. A browser
+    tab reading only "01.07.2026" beside a page headed "bis 31.07.2026" makes the
+    file look like it covers a single day. -#}
 {%- set t = translator(request) -%}
 <!DOCTYPE html>
 <html lang="{{ request_language(request) }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ t("Pressespiegel") }} · {{ doc.client_name }} · {{ doc.period.start | de_date }}</title>
+<title>{{ t("Pressespiegel") }} · {{ doc.client_name }} · {{ doc.period.start | de_date }} {{ t("bis") }} {{ doc.period_last | de_date }}</title>
 <style>
   {#- The mandate's own colour from the shared branding module, so the document
       wears the same identity as the mandate's card in the app. -#}

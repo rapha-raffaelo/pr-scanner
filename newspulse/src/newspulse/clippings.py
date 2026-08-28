@@ -22,6 +22,7 @@ nobody could check.
 from __future__ import annotations
 
 import datetime as dt
+import urllib.parse
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -44,6 +45,19 @@ _MAX_SNIPPET_CHARS = 400
 #: Marks a snippet that was cut, so a sentence ending mid-thought reads as a
 #: quotation that stops rather than as a document that broke.
 _ELLIPSIS = " …"
+
+#: How far back from the ceiling a word boundary may sit and still count as
+#: "within reach". Fifteen percent of the ceiling: German compounds run long, but
+#: a boundary further back than that is not a boundary — a snippet with one space
+#: in its first 400 characters would otherwise be published as its first word,
+#: throwing away the outlet's summary instead of trimming it.
+_BOUNDARY_REACH_CHARS = _MAX_SNIPPET_CHARS * 15 // 100
+
+#: The schemes a clipping's link may carry. A stored URL without one resolves
+#: against whatever opened the document — ``file://`` for the downloaded copy,
+#: our own host for the screen — and both are links to nowhere. The document
+#: prints such a headline unlinked rather than dead.
+_LINKABLE_SCHEMES = frozenset({"http", "https"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +84,10 @@ class ClippingStory:
 
     ``pickup_count`` counts distinct outlets, not rows — two feeds delivering the
     same outlet twice is not two pickups, which is the rule
-    :class:`newspulse.stories.Story` already applies.
+    :class:`newspulse.stories.Story` already applies. Distinct by normalized
+    name, so "Handelsblatt" and "handelsblatt.de" are one Aufgriff: this is the
+    single figure the whole grouping exists to state, and a client has no way to
+    check it against anything.
     """
 
     headline: str
@@ -118,8 +135,10 @@ def _summary(analysis: Analysis, article: Article) -> str:
     A summary is text this tool wrote about an article; a snippet is the outlet's
     own copy, and a feed that syndicates a whole body into its ``<description>``
     would otherwise reproduce that article verbatim in a client's Pressespiegel.
-    Cut on a word boundary where there is one within reach, so the quotation
-    stops rather than breaking off inside a word.
+    Cut on a word boundary where there is one within reach
+    (:data:`_BOUNDARY_REACH_CHARS`), so the quotation stops rather than breaking
+    off inside a word — and cut hard where there is not, because a run without a
+    space in it is not a sentence whose last word can be saved.
     """
     written = prose.plain(analysis.summary or "").strip()
     if written:
@@ -128,8 +147,23 @@ def _summary(analysis: Analysis, article: Article) -> str:
     if len(snippet) <= _MAX_SNIPPET_CHARS:
         return snippet
     cut = snippet[:_MAX_SNIPPET_CHARS].rstrip()
-    spaced = cut.rsplit(" ", 1)[0] if " " in cut else cut
-    return spaced.rstrip(",;:") + _ELLIPSIS
+    boundary = cut.rfind(" ")
+    if boundary > 0 and boundary >= len(cut) - _BOUNDARY_REACH_CHARS:
+        cut = cut[:boundary]
+    return cut.rstrip(",;:") + _ELLIPSIS
+
+
+def _link(url: str | None) -> str:
+    """The clipping's link, or nothing when it would not resolve for a reader.
+
+    This document is downloaded and forwarded, so a scheme-less stored URL is not
+    a relative link, it is a broken one: opened from a filesystem it resolves
+    against ``file://``. Blanked here rather than in the template, because the
+    screen and the export render the same document and must not differ by a link.
+    """
+    value = (url or "").strip()
+    scheme = urllib.parse.urlparse(value).scheme.lower()
+    return value if scheme in _LINKABLE_SCHEMES else ""
 
 
 def _top_outlet(items: Sequence[Clipping]) -> str:
@@ -137,15 +171,18 @@ def _top_outlet(items: Sequence[Clipping]) -> str:
 
     Distinct outlets in order of first appearance — distinct as
     :func:`newspulse.outlets.distinct_outlets` counts them, so a masthead spelled
-    two ways is one candidate under its first spelling rather than two competing
-    ones — then the best (lowest) tier wins; among equals the one that ran the
-    story first. Deterministic on purpose: the same month must always name the
-    same outlet.
+    two ways is one candidate rather than two competing ones — then the best
+    (lowest) tier wins; among equals the one that ran the story first.
+    Deterministic on purpose: the same month must always name the same outlet.
+
+    Named as :func:`newspulse.outlets.display_name` writes it: this line is read
+    by a client, and "SZ" is a masthead where "sz.de" is a feed's spelling of one.
     """
     seen = outlets.distinct_outlets(item.source for item in items)
-    return min(
+    winner = min(
         enumerate(seen), key=lambda pair: (outlets.tier_for(pair[1]), pair[0])
     )[1]
+    return outlets.display_name(winner)
 
 
 def _rows(session: Session, client_id: int, period: Period) -> list[Clipping]:
@@ -173,7 +210,7 @@ def _rows(session: Session, client_id: int, period: Period) -> list[Clipping]:
             published_at=article.published_at,
             summary=_summary(analysis, article),
             tonality=analysis.tonality,
-            url=article.url or "",
+            url=_link(article.url),
             importance=analysis.importance_score,
         )
         for analysis, article in found
@@ -185,13 +222,22 @@ def build(session: Session, client: Client, period: Period) -> PressClippings:
 
     Clustering input is ranked richest copy first — :func:`stories.cluster`
     makes the first member of a group its lead — so each story is headed by its
-    strongest write-up. Within a story the pieces then run chronologically,
-    because a story is read as it unfolded. An empty period returns an empty
-    ``stories`` tuple and nothing else: the template says what that means.
+    strongest write-up. "Richest" is :func:`outlets.effective_importance`, the
+    same tier-weighted rank the day's feed is ordered by, so the lead headline
+    here is the one the rest of the app would also have put first; ranking on the
+    raw score would make the Pressespiegel disagree with the screen it came from.
+    Within a story the pieces then run chronologically, because a story is read
+    as it unfolded. An empty period returns an empty ``stories`` tuple and
+    nothing else: the template says what that means.
     """
     pieces = _rows(session, client.id, period)
     ranked = sorted(
-        pieces, key=lambda piece: (-piece.importance, piece.published_at, piece.headline)
+        pieces,
+        key=lambda piece: (
+            -outlets.effective_importance(piece.importance, piece.source),
+            piece.published_at,
+            piece.headline,
+        ),
     )
     grouped = []
     for story in stories_mod.cluster(ranked):
