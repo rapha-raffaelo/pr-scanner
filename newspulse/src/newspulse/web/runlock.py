@@ -32,8 +32,9 @@ guard = threading.Lock()
 
 
 #: What a button says when it reached for the guard and found the daily sweep
-#: holding it. Here rather than in one of the routes because three of them now
-#: say it, and a second copy of a German sentence is a second key for a
+#: holding it. Here rather than in one of the routes because the impulse's
+#: package and the plan's recompute both say it, and a second copy of a German
+#: sentence is a second key for a
 #: translator to find — which is exactly how the same string once shipped twice
 #: in ``i18n._EN``, the later copy silently overriding the earlier one's English.
 SWEEP_RUNNING = (
