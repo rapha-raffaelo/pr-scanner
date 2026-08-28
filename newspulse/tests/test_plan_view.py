@@ -560,6 +560,74 @@ def test_a_move_outside_the_window_is_refused_with_a_sentence(web, session, mand
     assert plan_view._NOT_A_PLAN_MONTH in _text(_at(web, mandate).text)
 
 
+def test_a_refusal_is_dropped_by_the_next_click_that_works(web, session, mandate):
+    """A sentence about the click before last is furniture.
+
+    The note is module memory, so nothing expires it on its own: without a drop
+    on the success path one bad month selection printed "Der gewählte Monat
+    liegt nicht im Plan" at the top of that mandate's page on every later
+    render — including the one right after the reader picked a month that was.
+    """
+    signal = _signal(session, mandate, effective_at=_NOW + dt.timedelta(days=30))
+    hook = _hook(
+        session, mandate, source_kind=HookSource.MARKTSIGNAL, source_id=signal.id,
+        month=_window()[1],
+    )
+
+    web.post(
+        f"/client/{mandate.id}/plan/{hook.id}/verschieben",
+        data={"monat": "1999-01"},
+        follow_redirects=False,
+    )
+    assert plan_view._NOT_A_PLAN_MONTH in _text(_at(web, mandate).text)
+
+    web.post(
+        f"/client/{mandate.id}/plan/{hook.id}/verschieben",
+        data={"monat": _window()[-1]},
+        follow_redirects=False,
+    )
+
+    session.expire_all()
+    assert session.get(PlanHook, hook.id).month == _window()[-1]
+    assert plan_view._NOT_A_PLAN_MONTH not in _text(_at(web, mandate).text)
+
+
+def test_a_refusal_is_dropped_by_a_discard_and_by_writing_from_a_hook(
+    web, session, mandate
+):
+    """Every action that can succeed answers the note, not only the one that set it."""
+    # Two signals rather than two hooks off one: ``uq_plan_hooks_source`` allows
+    # a mandate exactly one hook per evidence row.
+    first = _hook(
+        session, mandate, source_kind=HookSource.MARKTSIGNAL,
+        source_id=_signal(
+            session, mandate, effective_at=_NOW + dt.timedelta(days=30)
+        ).id,
+        month=_window()[1],
+    )
+    second = _hook(
+        session, mandate, source_kind=HookSource.MARKTSIGNAL,
+        source_id=_signal(
+            session, mandate, title="Netzentgelte 2027 veröffentlicht",
+            effective_at=_NOW + dt.timedelta(days=60),
+        ).id,
+        month=_window()[2],
+    )
+
+    for hook in (first, second):
+        web.post(
+            f"/client/{mandate.id}/plan/{hook.id}/verschieben",
+            data={"monat": "1999-01"},
+            follow_redirects=False,
+        )
+        assert plan_view.note_for(mandate.id) == plan_view._NOT_A_PLAN_MONTH
+        action = "verwerfen" if hook is first else "text"
+        web.post(
+            f"/client/{mandate.id}/plan/{hook.id}/{action}", follow_redirects=False
+        )
+        assert plan_view.note_for(mandate.id) == ""
+
+
 def test_one_mandates_hook_cannot_be_decided_from_another_mandates_url(
     web, session, mandate
 ):

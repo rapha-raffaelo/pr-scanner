@@ -498,7 +498,13 @@ _recomputing = threading.Lock()
 
 #: What the last click had to say, per mandate. In memory and deliberately not a
 #: schema change: it describes one click, not the mandate.
+#:
+#: Written from the recompute worker and read by request threads, so every access
+#: goes through the lock below — the same posture ``assets_view`` takes over its
+#: own notes. Item get and set are atomic under the GIL today; the guard is what
+#: keeps that from being a fact this module quietly depends on.
 _notes: dict[int, str] = {}
+_state = threading.Lock()
 
 #: The engine seam, as a module attribute rather than a default argument — the
 #: same shape ``report._generate`` offers, so a test substitutes it in one place
@@ -506,9 +512,28 @@ _notes: dict[int, str] = {}
 _recompute = plan.recompute
 
 
+def _remember(client_id: int, reason: str) -> None:
+    """Record what the last click on this mandate's plan had to say."""
+    with _state:
+        _notes[client_id] = reason
+
+
+def _forget(client_id: int) -> None:
+    """Drop the note, because the click that follows it has answered it.
+
+    Every action that can succeed calls this, not only the one that could have
+    set the note. A refused move leaves a sentence about a month; a discard, a
+    successful move or a "Text schreiben" on the same page are all the reader
+    acting again, and a sentence about the click before last is furniture.
+    """
+    with _state:
+        _notes.pop(client_id, None)
+
+
 def note_for(client_id: int) -> str:
-    """What the last recompute click had to say, if anything."""
-    return _notes.get(client_id, "")
+    """What the last click on this mandate's plan had to say, if anything."""
+    with _state:
+        return _notes.get(client_id, "")
 
 
 def busy() -> bool:
@@ -526,14 +551,14 @@ def _run_recompute(client_id: int) -> None:
     try:
         taken = _run_guard.acquire(blocking=False)
         if not taken:
-            _notes[client_id] = _SWEEP_RUNNING
+            _remember(client_id, _SWEEP_RUNNING)
             return
         try:
             with get_session() as session:
                 client = session.get(Client, client_id)
                 if client is None:
                     return
-                _notes.pop(client_id, None)
+                _forget(client_id)
                 _recompute(session, client)
         finally:
             _run_guard.release()
@@ -541,7 +566,7 @@ def _run_recompute(client_id: int) -> None:
         # Never silent: a failed recompute leaves the previous plan standing, and
         # a reader who is not told would read the unchanged page as "nothing has
         # changed in the market".
-        _notes[client_id] = _FAILED
+        _remember(client_id, _FAILED)
         _log.exception("recomputing the plan for client %s failed: %s", client_id, exc)
     finally:
         _recomputing.release()
@@ -660,9 +685,9 @@ def recompute_plan(client_id: int, session: Session = Depends(get_db)) -> Respon
     """
     client = mandate_or_404(session, client_id)
     if not _recomputing.acquire(blocking=False):
-        _notes[client.id] = _BUSY
+        _remember(client.id, _BUSY)
         return _back(client_id)
-    _notes.pop(client.id, None)
+    _forget(client.id)
     spawn.start_or_release(
         _run_recompute,
         args=(client.id,),
@@ -680,6 +705,7 @@ def discard_hook(
     client = mandate_or_404(session, client_id)
     hook = _hook_or_404(session, client, hook_id)
     plan.discard(session, hook)
+    _forget(client.id)
     return _back(client_id, hook.month)
 
 
@@ -702,7 +728,12 @@ def move_hook(
     try:
         plan.move(session, hook, monat.strip())
     except ValueError:
-        _notes[client.id] = _NOT_A_PLAN_MONTH
+        _remember(client.id, _NOT_A_PLAN_MONTH)
+    else:
+        # The refusal is answered by the move that works. Without this the
+        # sentence stood on every later render of the page, including the one
+        # right after the reader picked a month that was in the plan.
+        _forget(client.id)
     return _back(client_id, hook.month)
 
 
@@ -731,6 +762,7 @@ def write_from_hook(
     hook = _hook_or_404(session, client, hook_id)
     plan.accept(session, hook)
     angle = occasion_for(session, client, hook)
+    _forget(client.id)
     query = {"eintrag": f"anlass-{angle.id}"}
     if hook.format in assets_mod.REGISTRY:
         query["format"] = hook.format
