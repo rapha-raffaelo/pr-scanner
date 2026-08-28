@@ -59,6 +59,7 @@ from ...models import (
 )
 from ..app import get_db, templates
 from ..mandates import mandate_or_404
+from ..runlock import SWEEP_RUNNING as _sweep_running
 from ..runlock import guard as _run_guard
 from .. import spawn
 from .today import _fetch_last_run, _local_tz
@@ -149,10 +150,12 @@ _BUSY = (
     "warten Sie, bis der laufende steht, sonst wird derselbe Aufruf zweimal "
     "bezahlt."
 )
-_SWEEP_RUNNING = (
-    "Es läuft gerade ein Sammellauf. Der Auftrag wurde nicht angenommen: "
-    "warten Sie, bis er durch ist, und klicken Sie dann noch einmal."
-)
+#: What a refused click says when the daily sweep is the one holding the guard.
+#: The impulse's package says the same sentence in the same situation, so it is
+#: read from beside the guard rather than written out here: two copies of one
+#: German string are two keys in ``i18n._EN``, and the second silently overrides
+#: the first's English.
+_SWEEP_RUNNING = _sweep_running
 #: What a crashed recompute says. Static and without the exception text in it, so
 #: it is one key a translator can hold — the detail belongs in the log, where the
 #: stack trace already is, and a reader cannot act on a Python repr anyway.

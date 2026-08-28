@@ -1962,9 +1962,6 @@ _EN: dict[str, str] = {
     "Der Plan wird gerade neu berechnet. Der Auftrag wurde nicht angenommen: warten Sie, bis der laufende steht, sonst wird derselbe Aufruf zweimal bezahlt.":
         "The plan is being recomputed right now. The request was not accepted: "
         "wait for the running one, or the same call is paid for twice.",
-    "Es läuft gerade ein Sammellauf. Der Auftrag wurde nicht angenommen: warten Sie, bis er durch ist, und klicken Sie dann noch einmal.":
-        "A sweep is running. The request was not accepted: wait for it to finish "
-        "and then click again.",
     "Die Neuberechnung ist mit einem Fehler abgebrochen. Der bisherige Plan steht unverändert. Details stehen im Log.":
         "The recompute stopped with an error. The plan you had stands unchanged. "
         "Details are in the log.",

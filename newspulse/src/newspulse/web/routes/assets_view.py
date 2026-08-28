@@ -37,6 +37,7 @@ from ... import assets, config, pitch, profile
 from ...db import get_session
 from ...models import Angle, Asset, CheckState, Client, ClientFact
 from ..app import get_db
+from ..runlock import SWEEP_RUNNING as _sweep_running
 from ..runlock import guard as _run_guard
 
 router = APIRouter()
@@ -109,10 +110,11 @@ _BUSY = (
 #: takes it that way, so a click during a sweep sat on it for the length of a full
 #: run with every button out and a progress notice naming a format that nothing
 #: was writing. A sentence the reader can act on is the honest version of that.
-_SWEEP_RUNNING = (
-    "Es läuft gerade ein Sammellauf. Der Auftrag wurde nicht angenommen: "
-    "warten Sie, bis er durch ist, und klicken Sie dann noch einmal."
-)
+#:
+#: The sentence itself lives beside the guard, because the editorial plan's
+#: recompute button says the same thing for the same reason and two copies of one
+#: German string are two keys in the translation table.
+_SWEEP_RUNNING = _sweep_running
 
 
 def _remember(angle_id: int, key: str, reason: str) -> None:
