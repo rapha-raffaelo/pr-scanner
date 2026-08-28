@@ -18,6 +18,25 @@ whether today's sweep has already happened, and if not, run it. The runs table i
 the state — a restart, a redeploy or a second replica cannot make it run twice,
 because "has a successful run started since today's scheduled time" is a question
 about stored rows, not about this thread's memory.
+
+The second clock: a declared crisis
+-----------------------------------
+A crisis is the one condition in this tool under which that rhythm changes. While
+one is open, the affected mandate's own sources are re-read every
+``NEWSPULSE_CRISIS_SWEEP_MINUTES`` minutes — and nothing else happens on that
+tick (see ``job.run_crisis``).
+
+It runs on a thread of its own rather than as a branch of the daily one, because
+the two answer to different clocks: the daily sweep is due once, at a wall-clock
+time, and a crisis reading is due repeatedly, at an interval since its own last
+one. Sharing a thread would have meant a crisis reading that could only start on
+a tick the daily sweep had nothing to say about. They share the run guard
+instead, so the two can never fetch at the same moment, and the crisis reading
+gives way — its next tick is a minute out, the daily sweep's is a day.
+
+Its state is read from ``crises.last_swept_at`` for exactly the same reason the
+daily one reads ``runs``: a restart or a crash halfway through a reading must
+leave neither a hung crisis nor a second reading racing the first.
 """
 
 from __future__ import annotations
@@ -28,7 +47,7 @@ import threading
 
 from sqlalchemy import select
 
-from .. import config, digest, job
+from .. import config, crisis, digest, job
 from ..db import get_session
 from ..models import Run, RunStatus
 from . import runlock
@@ -135,6 +154,55 @@ def _loop(stop: threading.Event) -> None:
             _log.exception("scheduled sweep failed; will try again tomorrow")
 
 
+def _crisis_tick(now: dt.datetime) -> None:
+    """Read the sources of every mandate whose crisis reading is due.
+
+    Due-ness is asked twice and the second time inside the guard, exactly as
+    :func:`_run_once` does: the first read happens before a sweep somebody else
+    started may have finished, and that sweep can have moved the very rows this
+    reads.
+
+    Non-blocking on the guard. A crisis reading that finds a sweep in progress
+    simply does not happen this minute — queueing behind a full portfolio sweep
+    would mean fetching the same feeds twice in a row, and the next tick is sixty
+    seconds away.
+    """
+    with get_session() as session:
+        if not crisis.due(session, now=now):
+            return
+    # The web process installs no file handler of its own; without this the
+    # crisis cadence would be the one unattended thing that leaves no trace.
+    # Idempotent, so calling it per reading costs nothing.
+    job.setup_logging()
+    if not runlock.guard.acquire(blocking=False):
+        _log.info("a sweep is running; the crisis reading waits for the next tick")
+        return
+    try:
+        with get_session() as session:
+            for declared in crisis.due(session, now=now):
+                sweep = job.run_crisis(session, declared, now=lambda: now)
+                _log.info(
+                    "crisis %d: %d new article(s), level %d",
+                    declared.id,
+                    sweep.articles,
+                    sweep.level,
+                )
+    finally:
+        runlock.guard.release()
+
+
+def _crisis_loop(stop: threading.Event) -> None:
+    """The crisis cadence's own tick. Same posture as :func:`_loop`: it may fail,
+    and it may never stop."""
+    while not stop.wait(_TICK_SECONDS):
+        try:
+            _crisis_tick(dt.datetime.now(dt.UTC))
+        except Exception:  # noqa: BLE001 — this thread must outlive every failure
+            # A crisis is the worst moment for the tool to go quiet, so the same
+            # rule as the daily loop, harder: log it and be back in a minute.
+            _log.exception("a crisis reading failed; the cadence stands")
+
+
 def start() -> threading.Event | None:
     """Start the daily scheduler. Returns its stop event, or ``None`` if disabled.
 
@@ -151,6 +219,15 @@ def start() -> threading.Event | None:
         target=_loop, args=(stop,), daemon=True, name="newspulse-scheduler"
     ).start()
     _log.info("daily scheduler armed for %02d:%02d %s", hour, minute, config.local_zone())
+    # One stop event for both: the switch that turns the scheduler off turns off
+    # the crisis cadence with it, because both mean "an external cron does this".
+    threading.Thread(
+        target=_crisis_loop, args=(stop,), daemon=True, name="newspulse-crisis"
+    ).start()
+    _log.info(
+        "crisis cadence armed at every %d minute(s) while a crisis is open",
+        config.crisis_sweep_minutes(),
+    )
     return stop
 
 

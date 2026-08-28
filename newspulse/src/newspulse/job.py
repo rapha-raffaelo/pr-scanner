@@ -53,6 +53,7 @@ from sqlalchemy.orm import Session
 from . import (
     angles,
     config,
+    crisis,
     gnews,
     industry,
     mailsync,
@@ -84,6 +85,7 @@ from .models import (
     Analysis,
     Article,
     Client,
+    Crisis,
     Run,
     RunStatus,
     TopicHit,
@@ -2160,7 +2162,103 @@ def draft_impulse(
     return True
 
 
+# --- The tighter cadence: one mandate, its own sources, nothing else -----------
+
+#: How far back one crisis reading looks. A day, matching the window a crisis's
+#: story is read over (``crisis._STORY_WINDOW``): the cadence is hourly, but a
+#: search feed keeps listing what it listed an hour ago and dedup drops all of
+#: it, so a wider window costs a filter and buys the pickups that arrived late.
+_CRISIS_LOOKBACK = dt.timedelta(hours=24)
+
+
+@dataclass(frozen=True, slots=True)
+class CrisisSweep:
+    """What one crisis reading produced. Counters, and the level it left behind."""
+
+    articles: int
+    analyses: int
+    level: int
+    errors: list[str]
+
+
+def run_crisis(
+    session: Session,
+    declared: Crisis,
+    *,
+    analyzer: Analyzer | None = None,
+    fetch: FetchFeed = fetch_feed,
+    now: Callable[[], dt.datetime] | None = None,
+) -> CrisisSweep:
+    """Re-read one mandate's own sources, because it is in a declared crisis.
+
+    This is the *only* thing a crisis changes about how the tool runs, and it is
+    deliberately the narrowest run in the codebase. It reads the crisis mandate's
+    own search feeds and nothing else — not the registry, not the topic radar,
+    not another mandate — and it stores coverage and analyses and nothing else.
+    No positioning draft is written, no profile field is touched, no market class
+    is fetched. A crisis is not a reason to spend a model call on next month's
+    impulse.
+
+    **No ``runs`` row**, for the reason :func:`backfill_client` states and this
+    inherits unchanged: ``_determine_since`` takes the last successful run's
+    start as the next sweep's watermark, so recording an hourly single-mandate
+    reading as a run would tell tomorrow's sweep that the whole portfolio had
+    already been covered.
+
+    Crash-safety is on the row rather than in the caller. ``last_swept_at`` is
+    stamped and committed *before* the fetch, so a reading that dies halfway
+    leaves an open crisis that is simply not due again yet — never a hung crisis,
+    and never a second reading racing the first one back.
+    """
+    now_fn = now or _utcnow
+    started = now_fn()
+    client = declared.client or session.get(Client, declared.client_id)
+    # Before the reading, and committed. See the docstring above.
+    crisis.mark_swept(session, declared, now=started)
+
+    errors: list[str] = []
+    articles: list[Article] = []
+    analyses = 0
+    feeds = gnews.client_feeds([client])
+    if feeds:
+        items, _ok = _fetch_all(feeds, started - _CRISIS_LOOKBACK, fetch, started, errors)
+        # This mandate only. Matching against the whole portfolio would let a
+        # crisis run store and analyse coverage for a mandate that is not in one.
+        candidates = _match(items, [client], errors)
+        known_urls, known_hashes = _load_known(session)
+        kept = deduplicate(
+            _distinct_items(candidates),
+            known_urls=known_urls,
+            known_title_hashes=known_hashes,
+        )
+        if kept:
+            articles = _persist_articles(session, kept, started)
+            analyses = _analyze_and_persist(
+                session, client, articles, analyzer or get_analyzer(), errors
+            )
+
+    # Counted from what is stored now, including whatever the reading just added.
+    # Still arithmetic and still no model — see :func:`newspulse.crisis.severity`.
+    graded = crisis.regrade(session, declared)
+    _log.info(
+        "crisis reading for %r: %d new article(s), %d analysis(es), level %d "
+        "(%d outlet(s), %d/%d negative), %d error(s)",
+        client.name,
+        len(articles),
+        analyses,
+        graded.level,
+        graded.outlets,
+        graded.negative,
+        graded.articles,
+        len(errors),
+    )
+    return CrisisSweep(
+        articles=len(articles), analyses=analyses, level=graded.level, errors=errors
+    )
+
+
 __all__ = [
+    "CrisisSweep",
     "IMPULSE_LOOKBACK",
     "ONBOARDING_ARTICLES",
     "draft_impulse",
@@ -2168,5 +2266,6 @@ __all__ = [
     "backfill_client",
     "lookback_since",
     "run",
+    "run_crisis",
     "setup_logging",
 ]
