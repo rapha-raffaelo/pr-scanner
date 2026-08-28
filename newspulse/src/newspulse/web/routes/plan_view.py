@@ -479,27 +479,23 @@ def months_for(
 # --- The mandate that cannot have a plan at all -----------------------------------
 
 
-@dataclass(frozen=True, slots=True)
-class Gap:
-    """What a mandate is missing before a plan can be built for it at all.
+def has_nothing_to_build_from(session: Session, client: Client) -> bool:
+    """Whether this mandate is missing both inputs a hook could be made of.
 
     Rendered instead of the month stack, not beside it. Six empty months read as
-    "your market has nothing coming"; this reads as "nobody has told the tool
-    what your market is", and only the second one is true.
-    """
-
-    themes: bool
-    signals: bool
-
-
-def gap_for(session: Session, client: Client) -> Gap | None:
-    """The two missing inputs, or ``None`` when the mandate has either of them.
+    "your market has nothing coming"; the gap card reads as "nobody has told the
+    tool what your market is", and only the second one is true.
 
     Both have to be missing. One of the two is enough for a plan: a mandate with
     themes and no signals still gets theme and archive hooks, and a mandate with
     signals and no themes still gets its dated ones. Only a mandate with neither
     has nothing a hook could be made of, and that is a configuration gap rather
     than a quiet market.
+
+    A bool rather than the pair of flags this used to return. Because both have
+    to be missing, both flags could only ever be ``False``, and the template
+    prints both remedies unconditionally — two fields that read as "which one is
+    missing" and answered nothing.
     """
     themes = bool(client.keywords or client.alert_topics)
     signals = bool(
@@ -507,9 +503,7 @@ def gap_for(session: Session, client: Client) -> Gap | None:
             select(MarketSignal.id).where(MarketSignal.client_id == client.id).limit(1)
         )
     )
-    if themes or signals:
-        return None
-    return Gap(themes=themes, signals=signals)
+    return not themes and not signals
 
 
 # --- Recompute, on a worker thread ------------------------------------------------
@@ -667,7 +661,7 @@ def _page_context(session: Session, client: Client, *, now: dt.datetime) -> dict
     return {
         "client": client,
         "months": months_for(session, client, now=now),
-        "gap": gap_for(session, client),
+        "gap": has_nothing_to_build_from(session, client),
         "klassen": KLASSEN,
         # The format names, so a released text is named the way the consultant
         # says it rather than by its stored key ("gastbeitrag").
@@ -848,13 +842,12 @@ __all__ = [
     "KLASSEN",
     "STATE_LABELS",
     "Evidence",
-    "Gap",
     "HookView",
     "Klasse",
     "MonthView",
     "busy",
     "evidence_for",
-    "gap_for",
+    "has_nothing_to_build_from",
     "month_name",
     "months_for",
     "note_for",
