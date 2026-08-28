@@ -213,6 +213,13 @@
                           {% for rival in work.rivals %}
                             <form method="post" action="/client/{{ client.id }}/competitors/accept" class="rivals__one">
                               <input type="hidden" name="name" value="{{ rival.name }}">
+                              {# What the proposal knew, carried into the company
+                                 it creates. Dropped here, the competitor arrived
+                                 as a bare name and the analyzer had nothing to
+                                 tell "G-20" the market maker from "G-20" the
+                                 summit. #}
+                              <input type="hidden" name="website" value="{{ rival.website }}">
+                              <input type="hidden" name="industry" value="{{ rival.industry }}">
                               <input type="hidden" name="redirect_to" value="/settings?edit={{ client.id }}">
                               <button type="submit" class="rival" title="{{ rival.reason }}">
                                 <span class="rival__name">+ {{ rival.name }}</span>

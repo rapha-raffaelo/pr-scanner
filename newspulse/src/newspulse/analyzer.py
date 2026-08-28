@@ -442,6 +442,11 @@ def _build_client_profile(client: Client) -> str:
     return (
         f"Name: {getattr(client, 'name', '')}\n"
         f"Branche: {getattr(client, 'industry', None) or '—'}\n"
+        # The single strongest thing on the record for telling one company from
+        # another that shares its name, and it was the one field the profile did
+        # not carry. A domain is unambiguous where a name is not: "G-20" is a
+        # summit and a market maker, g20.group is only ever the second.
+        f"Website: {getattr(client, 'website', None) or '—'}\n"
         f"Aliasse: {aliases}\n"
         f"Alarm-Themen: {alert_topics}"
     )

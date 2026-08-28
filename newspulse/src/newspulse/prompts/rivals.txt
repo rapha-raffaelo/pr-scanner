@@ -26,11 +26,19 @@ Regeln für diese Liste:
 - Bevorzuge den Markt des Unternehmens (siehe Land), aber nimm internationale
   Anbieter auf, wenn sie dort tatsächlich präsent sind.
 - "reason" ist ein Halbsatz: worin genau konkurrieren die beiden.
+- "website" ist die Domain des Unternehmens, ohne Protokoll, etwa
+  "beispiel.de". Kennst du sie nicht sicher, lass das Feld leer. Eine geratene
+  Domain ist schlechter als keine.
+- "industry" ist das Feld, in dem das Unternehmen tatsächlich tätig ist, in
+  wenigen Worten. Das ist das Feld, an dem später entschieden wird, ob eine
+  Meldung dieses Unternehmen überhaupt betrifft: Ein Name allein ist oft
+  mehrdeutig, und ohne Branche wird jede Meldung, die den Namen enthält, diesem
+  Unternehmen zugerechnet.
 
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
 {
   "rivals": [
-    {"name": "Firmenname wie er in der Presse steht", "reason": "worin sie konkurrieren"}
+    {"name": "Firmenname wie er in der Presse steht", "reason": "worin sie konkurrieren", "website": "beispiel.de", "industry": "das Feld, in dem sie tätig sind"}
   ]
 }

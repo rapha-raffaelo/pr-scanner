@@ -1402,6 +1402,8 @@ def suggest_rivals_route(
 def accept_rival_route(
     client_id: int,
     name: str = Form(...),
+    website: str = Form(""),
+    industry: str = Form(""),
     redirect_to: str = Form(""),
     session: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -1411,6 +1413,23 @@ def accept_rival_route(
     is what makes its mention count comparable — and links it to this client. An
     existing company of the same name is reused rather than duplicated, so a name
     proposed for two mandates ends up as one row watched by both.
+
+    ``website`` and ``industry`` come from the proposal and are stored with it.
+    They used to be dropped here, and the competitor was created as a bare name:
+    the analyzer's client profile is name, industry, aliases and alert topics, so
+    a competitor accepted this way arrived with three empty lines out of four.
+
+    That is not a cosmetic loss. "G-20" — a crypto market maker at g20.group —
+    was created from a proposal that knew exactly what it was, and then handed an
+    article about the 2017 Hamburg G20 summit riots as coverage of itself, marked
+    relevant. The matcher did its job; it is a loose recall filter by design. The
+    model that had to decide was asked whether an article about "G-20" concerned
+    "G-20", with no field on the record that could tell the two apart.
+
+    Empty on the hand-typed path, where the form has no such fields and the
+    person typing knows what they meant. Never written over a company that
+    already exists: an accepted proposal is a weaker source than whatever a
+    person has already recorded.
     """
     # Same posture as the run trigger's redirect: only a same-site path is
     # honoured, so a crafted form cannot bounce the operator off the host.
@@ -1428,9 +1447,25 @@ def accept_rival_route(
         # create_client owns the name/uniqueness rules; the role is a separate
         # field it does not take, so it is set immediately after — before the
         # company can appear anywhere as a mandate.
-        other = create_client(session, name=proposed)
-        update_client(session, other.id, is_competitor=True)
-        _log.info("created %r as a competitor of %r", proposed, client.name)
+        other = create_client(
+            session, name=proposed, industry=(industry or "").strip() or None
+        )
+        # Through the same normaliser the operator's own typed website goes
+        # through, so a proposal that answers "g20.group" and a person who pastes
+        # "https://g20.group/" land on one stored value.
+        update_client(
+            session,
+            other.id,
+            is_competitor=True,
+            website=normalize_website(website),
+        )
+        _log.info(
+            "created %r as a competitor of %r (industry=%r, website=%r)",
+            proposed,
+            client.name,
+            other.industry,
+            other.website,
+        )
     if other.id != client.id and other not in client.competitors:
         client.competitors.append(other)
         session.commit()

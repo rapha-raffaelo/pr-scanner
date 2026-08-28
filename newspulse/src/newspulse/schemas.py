@@ -431,12 +431,26 @@ class CoachReport(BaseModel):
 
 
 class RivalSuggestion(BaseModel):
-    """One proposed competitor. Nothing is created from it without a click."""
+    """One proposed competitor. Nothing is created from it without a click.
+
+    ``website`` and ``industry`` are what the accepted competitor is created
+    with. Without them it was created as a bare name, and a bare name is all the
+    analyzer ever saw of it — which is how "G-20", a crypto market maker at
+    g20.group, was recorded and then handed an article about the 2017 Hamburg
+    G20 summit riots as coverage of itself. Nothing was wrong with the match; the
+    model was asked whether an article about "G-20" concerned "G-20" and had not
+    been told which one.
+
+    Both default to empty and neither is invented: the model is told to leave
+    them out when it does not know, and an empty field is the honest answer.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     name: str
     reason: str = ""
+    website: str = ""
+    industry: str = ""
 
 
 class RivalSuggestions(BaseModel):

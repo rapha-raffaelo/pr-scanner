@@ -440,3 +440,130 @@ def test_it_still_works_without_a_session(factory):
         subject = _client(session, name="Zalando")
 
         assert rivals.suggest(subject, invoke=lambda *a, **k: '{"rivals": []}') == []
+
+
+# --- What the proposal knew, and what the company is created with ----------------
+#
+# "hier findet er zwar G-20 but it confuses this with the global leader meeting
+# instead of the market maker."
+#
+# G-20 is a real competitor of Arrakis.finance at g20.group. It was created from
+# a proposal that said so, as a bare name, and then handed an article about the
+# 2017 Hamburg G20 summit riots as coverage of itself — marked relevant. The
+# matcher is a loose recall filter and did its job. The model that had to decide
+# was asked whether an article about "G-20" concerned "G-20".
+
+
+def test_an_accepted_proposal_is_created_with_what_the_proposal_knew(factory, client):
+    with factory() as session:
+        subject_id = _client(session).id
+
+    client.post(
+        f"/client/{subject_id}/competitors/accept",
+        data={
+            "name": "G-20",
+            "website": "g20.group",
+            "industry": "Krypto-Market-Making",
+        },
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        created = session.scalars(select(Client).where(Client.name == "G-20")).one()
+        # Through the same normaliser a typed website goes through, so a bare
+        # domain and a pasted URL land on one stored value.
+        assert created.website == "https://g20.group"
+        assert created.industry == "Krypto-Market-Making"
+
+
+def test_the_analyzer_is_told_which_company_of_that_name_it_is(factory):
+    """The profile block is what decides relevance, and the website is the field
+    that separates two companies sharing a name."""
+    from newspulse.analyzer import _build_client_profile
+
+    with factory() as session:
+        rival = _client(
+            session, name="G-20", is_competitor=True, industry="Krypto-Market-Making"
+        )
+        rival.website = "https://g20.group"
+        session.commit()
+
+        profile = _build_client_profile(rival)
+
+    assert "Website: https://g20.group" in profile
+    assert "Branche: Krypto-Market-Making" in profile
+
+
+def test_a_hand_typed_competitor_still_works_without_those_fields(factory, client):
+    """The typed form has no such fields and the person typing knows what they
+    meant. An empty website must not become the string "None"."""
+    with factory() as session:
+        subject_id = _client(session).id
+
+    client.post(
+        f"/client/{subject_id}/competitors/accept",
+        data={"name": "About You"},
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        created = session.scalars(select(Client).where(Client.name == "About You")).one()
+        assert created.is_competitor is True
+        assert created.website is None
+        assert created.industry is None
+
+
+def test_accepting_never_writes_over_a_company_that_already_exists(factory, client):
+    """A proposal is a weaker source than whatever a person already recorded."""
+    with factory() as session:
+        subject_id = _client(session).id
+        existing = _client(
+            session, name="G-20", is_competitor=True, industry="Von Hand gepflegt"
+        )
+        existing.website = "https://von-hand.example"
+        session.commit()
+        existing_id = existing.id
+
+    client.post(
+        f"/client/{subject_id}/competitors/accept",
+        data={
+            "name": "G-20",
+            "website": "g20.group",
+            "industry": "Krypto-Market-Making",
+        },
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        kept = session.get(Client, existing_id)
+        assert kept.website == "https://von-hand.example"
+        assert kept.industry == "Von Hand gepflegt"
+
+
+def test_the_proposal_form_carries_the_two_fields_into_the_accept(factory, client):
+    """A schema and a route that accept them are worthless if the form drops
+    them — which is exactly the bug being fixed, one layer up."""
+    from newspulse.schemas import RivalSuggestion
+    from newspulse.web import themework
+
+    with factory() as session:
+        subject_id = _client(session).id
+    themework.rivals_job.state[subject_id] = {
+        "state": "fertig",
+        "client": "Zalando",
+        "rivals": [
+            RivalSuggestion(
+                name="G-20",
+                reason="Market Making",
+                website="g20.group",
+                industry="Krypto-Market-Making",
+            )
+        ],
+    }
+    try:
+        body = client.get(f"/settings?edit={subject_id}").text
+    finally:
+        themework.rivals_job.state.pop(subject_id, None)
+
+    assert 'name="website" value="g20.group"' in body
+    assert 'name="industry" value="Krypto-Market-Making"' in body
