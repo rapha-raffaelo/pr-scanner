@@ -133,7 +133,7 @@
         <div class="phook__dm">{{ t(view.month_label) }}</div>
       </div>
       <div class="phook__b">
-        <p class="phook__t">{{ view.hook.title }}<span class="ptag ptag--{{ view.klasse.key }}">{{ t(view.klasse.label) }}</span></p>
+        <p class="phook__t">{{ view.hook.title }}<span class="ptag{% if view.klasse.key %} ptag--{{ view.klasse.key }}{% endif %}">{{ t(view.klasse.label) }}</span></p>
         {%- if view.hook.reason %}<p class="phook__w">{{ view.hook.reason }}</p>{% endif %}
         <p class="phook__e">
           {%- if view.evidence -%}

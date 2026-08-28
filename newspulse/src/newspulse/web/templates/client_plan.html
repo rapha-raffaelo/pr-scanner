@@ -119,7 +119,7 @@
         <div class="hook__b">
           <div class="hook__t">
             <span class="hook__title">{{ hook.title }}</span>
-            <span class="tag tag--{{ view.klasse.key }}">{{ t(view.klasse.label) }}</span>
+            <span class="tag{% if view.klasse.key %} tag--{{ view.klasse.key }}{% endif %}">{{ t(view.klasse.label) }}</span>
             {% if view.done %}<span class="tag tag--done">{{ t("Erledigt") }}</span>{% endif %}
             {% if view.accepted and not view.done %}
               <span class="tag">{{ t("Angenommen") }}</span>

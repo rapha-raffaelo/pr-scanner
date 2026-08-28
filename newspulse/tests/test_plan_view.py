@@ -410,10 +410,19 @@ def test_a_hook_whose_stored_row_is_gone_says_so_instead_of_linking(
     session.delete(signal)
     session.commit()
 
-    words = _text(_at(web, mandate).text)
+    page = _at(web, mandate).text
+    words = _text(page)
 
     assert "Der Beleg zu diesem Haken ist nicht mehr auffindbar." in words
     assert f"Marktsignal {signal.id}" not in words
+    # The hook keeps its source class name and loses its colour: which of the
+    # three kinds of signal it was is exactly what the deleted row took with it.
+    assert "Marktsignal" in words
+    # And it loses it properly. A dangling modifier is a rule that matches
+    # nothing while looking like a rule that does.
+    assert 'class="tag tag--"' not in page
+    assert 'class="tag tag--"' not in _at(web, mandate, "/plan.html").text
+    assert 'class="ptag ptag--"' not in _at(web, mandate, "/plan.html").text
 
 
 def test_an_undated_hook_renders_a_month_and_never_a_day(web, session, mandate):

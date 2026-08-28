@@ -118,6 +118,11 @@ _SIGNAL_KLASSEN = {
 #: What a hook whose evidence no longer resolves is called. It keeps its source
 #: class name rather than being dropped: the hook was stored against a row that
 #: existed, and hiding it would quietly shorten the plan.
+#:
+#: The market signal's entry has no colour of its own, and that is the honest
+#: answer: the row is gone, so which of the three kinds it was is exactly what
+#: nobody can say any more. Both templates print the modifier only when there is
+#: one — an empty ``key`` used to render ``class="tag tag--"``.
 _FALLBACK_KLASSEN = {
     HookSource.MARKTSIGNAL: Klasse("", "Marktsignal"),
     HookSource.THEMA: THEMA,
