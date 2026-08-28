@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from collections.abc import Iterable
 from functools import lru_cache
 from importlib import resources
 
@@ -61,6 +62,24 @@ def normalize_outlet(name: str) -> str:
     """
     lowered = (name or "").strip().casefold().translate(_UMLAUTS)
     return _NON_ALNUM_RE.sub("", _TLD_RE.sub("", lowered))
+
+
+def distinct_outlets(names: Iterable[str | None]) -> tuple[str, ...]:
+    """Each outlet once, in order of first appearance, spelled as first seen.
+
+    Identity is :func:`normalize_outlet`'s, not the raw string: "Handelsblatt"
+    and "handelsblatt.de" are one masthead, and counting them twice inflates
+    every "aufgegriffen von N Outlets" figure the tool states — the one number a
+    client cannot check against anything. The first spelling is kept as the
+    display name, because it is what the outlet called itself in the copy that
+    ran; only a name that normalizes to nothing at all falls back to its own
+    stripped form, so two unmappable names stay two outlets.
+    """
+    by_key: dict[str, str] = {}
+    for name in names:
+        raw = (name or "").strip()
+        by_key.setdefault(normalize_outlet(raw) or raw.casefold(), raw)
+    return tuple(by_key.values())
 
 
 @lru_cache(maxsize=1)
@@ -111,6 +130,7 @@ def effective_importance(importance: int, source: str | None) -> int:
 __all__ = [
     "DEFAULT_TIER",
     "adjustment_for",
+    "distinct_outlets",
     "effective_importance",
     "normalize_outlet",
     "tier_for",

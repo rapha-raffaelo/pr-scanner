@@ -135,12 +135,17 @@ def _summary(analysis: Analysis, article: Article) -> str:
 def _top_outlet(items: Sequence[Clipping]) -> str:
     """The outlet whose coverage carries furthest, by tier.
 
-    Distinct outlets in order of first appearance, then the best (lowest) tier
-    wins; among equals the one that ran the story first. Deterministic on
-    purpose: the same month must always name the same outlet.
+    Distinct outlets in order of first appearance — distinct as
+    :func:`newspulse.outlets.distinct_outlets` counts them, so a masthead spelled
+    two ways is one candidate under its first spelling rather than two competing
+    ones — then the best (lowest) tier wins; among equals the one that ran the
+    story first. Deterministic on purpose: the same month must always name the
+    same outlet.
     """
-    seen = tuple(dict.fromkeys(item.source for item in items))
-    return min(seen, key=lambda source: (outlets.tier_for(source), seen.index(source)))
+    seen = outlets.distinct_outlets(item.source for item in items)
+    return min(
+        enumerate(seen), key=lambda pair: (outlets.tier_for(pair[1]), pair[0])
+    )[1]
 
 
 def _rows(session: Session, client_id: int, period: Period) -> list[Clipping]:

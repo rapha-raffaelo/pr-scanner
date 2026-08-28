@@ -35,6 +35,8 @@ import re
 from dataclasses import dataclass
 from typing import Protocol, Sequence, TypeVar
 
+from . import outlets
+
 # How alike two headlines must be, as a Jaccard overlap of their significant
 # tokens, before they are treated as the same story. Measured against real dpa
 # wire copy carrying different section labels ("Online-Händler: …", "… -
@@ -85,7 +87,11 @@ class Story:
 
     @property
     def pickup_count(self) -> int:
-        """How many distinct outlets ran this story."""
+        """How many distinct outlets ran this story.
+
+        Distinct by :func:`newspulse.outlets.normalize_outlet`, so one masthead
+        the feeds spell two ways is one pickup.
+        """
         return len(self.outlets)
 
     @property
@@ -147,9 +153,11 @@ def cluster(items: Sequence[T]) -> list[Story]:
         Story(
             lead=group[0],
             members=tuple(group),
-            # Ordered by first appearance and de-duplicated: two feeds can
-            # deliver the same outlet twice, which is not two pickups.
-            outlets=tuple(dict.fromkeys(member.source for member in group)),
+            # Ordered by first appearance and de-duplicated on the *normalized*
+            # name: two feeds can deliver the same outlet twice, and they rarely
+            # spell it the same way twice, so "Handelsblatt" and
+            # "handelsblatt.de" are one pickup and not two.
+            outlets=outlets.distinct_outlets(member.source for member in group),
         )
         for group in groups
     ]
