@@ -141,13 +141,15 @@ def _period_from(value: str | None, now: dt.datetime) -> Period:
     if not match:
         return reports.previous_month(now)
     try:
-        # The shape is not the whole of "readable". ``0000-01`` and ``9999-12``
-        # both match the pattern and both leave the calendar — the second because
-        # the exclusive end of December 9999 is a year that does not exist — and a
-        # ValueError escaping a GET handler is the 500 this fallback exists to
-        # prevent.
+        # The shape is not the whole of "readable". ``0000-01``, ``0001-01`` and
+        # ``9999-12`` all match the pattern and all leave the calendar — the last
+        # because the exclusive end of December 9999 is a year that does not
+        # exist, ``0001-01`` because converting local midnight of the first year
+        # to UTC underflows past it — and an exception escaping a GET handler is
+        # the 500 this fallback exists to prevent. The underflow is an
+        # OverflowError, not a ValueError, so both are caught.
         return Period.month(int(match[1]), int(match[2]))
-    except ValueError:
+    except (ValueError, OverflowError):
         return reports.previous_month(now)
 
 

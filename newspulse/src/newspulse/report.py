@@ -1053,9 +1053,13 @@ class Document:
         """The last day the period contains.
 
         ``period_end`` is exclusive, and a document headed "1.7. bis 1.8." reads as
-        covering a day it does not.
+        covering a day it does not. An instant back rather than a day, for the
+        reason :attr:`newspulse.reporting.Period.last` states: on a spring-forward
+        month the last local day is 23 hours long, and minus 24 hours would name
+        the day before it. Not delegated to ``Period`` because a thawed document
+        must render whatever it was frozen with, and ``Period`` validates.
         """
-        return self.period_end - dt.timedelta(days=1)
+        return self.period_end - dt.timedelta(microseconds=1)
 
 
 def _stated_text(value: MetricValue) -> str:

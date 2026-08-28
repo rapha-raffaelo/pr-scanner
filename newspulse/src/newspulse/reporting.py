@@ -442,6 +442,13 @@ LEAD_MEDIA_TIER = 1
 #: byline"; beyond it the connection is a coincidence with a date on it.
 ATTRIBUTION_WINDOW_DAYS = 30
 
+#: The smallest step back from an exclusive end that still lands inside the
+#: window — ``datetime``'s own resolution. A whole day back would be wrong on a
+#: period whose last local day is short: March 2024 in Europe/Berlin ends at a
+#: 23-hour day, and midnight minus 24 hours lands on the 30th, so a header would
+#: name a day before the pieces printed underneath it.
+_AN_INSTANT = dt.timedelta(microseconds=1)
+
 
 class ForbiddenFigure(ValueError):
     """An attempt to produce a figure this tool is not allowed to state."""
@@ -511,14 +518,19 @@ class Period:
 
     @property
     def last(self) -> dt.datetime:
-        """The last day the period actually contains.
+        """The last *instant* the period contains, whose local date is its last day.
 
         ``end`` is exclusive, so a header built from it reads "01.07. bis 01.08."
         and claims a day the document does not cover. Every artefact that names
         its period in words has to make that correction, so it lives on the type
         that owns the exclusivity rather than in each of them.
+
+        Stepping back an instant rather than a day is what makes that correction
+        hold in every zone: ``end`` is local midnight stored as UTC, and on a
+        spring-forward month the last local day is 23 hours long, so minus 24
+        hours would land on the second-to-last day.
         """
-        return self.end - dt.timedelta(days=1)
+        return self.end - _AN_INSTANT
 
     @property
     def previous(self) -> Period:
