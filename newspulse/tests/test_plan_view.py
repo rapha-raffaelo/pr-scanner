@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -708,6 +709,64 @@ def test_one_mandates_hook_cannot_be_decided_from_another_mandates_url(
     assert refused.status_code == 404
     session.expire_all()
     assert session.get(PlanHook, hook.id).state is HookState.VORGESCHLAGEN
+
+
+def test_a_hook_can_only_ever_carry_one_occasion(web, session, mandate):
+    """What settles a double-clicked "Text schreiben".
+
+    ``occasion_for`` reads for an existing occasion and then inserts, and these
+    routes run in FastAPI's threadpool: two requests off one button both find
+    nothing and both write. Only the schema can decide that, so the schema is
+    what this asserts against — a second row written straight past the route.
+    """
+    signal = _signal(session, mandate, effective_at=_NOW + dt.timedelta(days=30))
+    hook = _hook(
+        session, mandate, source_kind=HookSource.MARKTSIGNAL, source_id=signal.id,
+        month=_window()[1],
+    )
+    web.post(f"/client/{mandate.id}/plan/{hook.id}/text", follow_redirects=False)
+    first = session.scalars(select(Angle).where(Angle.plan_hook_id == hook.id)).one()
+
+    session.add(
+        Angle(
+            client_id=mandate.id,
+            plan_hook_id=hook.id,
+            subject="derselbe Haken, zweite Gelegenheit",
+            message="",
+            context="",
+        )
+    )
+    with pytest.raises(IntegrityError):
+        session.commit()
+    session.rollback()
+
+    # And the route itself is idempotent: a second click lands on the first one.
+    again = web.post(
+        f"/client/{mandate.id}/plan/{hook.id}/text", follow_redirects=False
+    )
+    assert f"anlass-{first.id}" in again.headers["location"]
+    assert session.scalars(
+        select(Angle).where(Angle.plan_hook_id == hook.id)
+    ).one().id == first.id
+
+
+def test_an_impulse_without_a_hook_is_not_caught_by_the_hook_index(session, mandate):
+    """The index is partial. NULL is the normal value, and there are thousands."""
+    for subject in ("Radar-Impuls A", "Radar-Impuls B"):
+        session.add(
+            Angle(
+                client_id=mandate.id,
+                subject=subject,
+                message="",
+                context="",
+            )
+        )
+    session.commit()
+
+    assert (
+        len(session.scalars(select(Angle).where(Angle.plan_hook_id.is_(None))).all())
+        == 2
+    )
 
 
 def test_the_recompute_button_hands_the_work_to_a_worker(

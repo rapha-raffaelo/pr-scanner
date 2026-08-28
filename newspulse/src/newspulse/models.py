@@ -1145,6 +1145,24 @@ class Angle(Base):
     """
 
     __tablename__ = "angles"
+    __table_args__ = (
+        # One occasion per plan hook, enforced rather than assumed.
+        # ``plan_view.occasion_for`` reads for an existing one and then inserts,
+        # and FastAPI runs those routes in a threadpool: a double-clicked "Text
+        # schreiben" is two requests that both see nothing and both write, which
+        # leaves the hook with two occasions carrying the same date and the page
+        # linking at whichever one it happened to read. Partial, because
+        # ``plan_hook_id`` is NULL for nearly every impulse on file — the radar
+        # drafts them and there is no hook — and a plain unique index would
+        # allow exactly one of those in the whole table.
+        Index(
+            "ux_angles_plan_hook",
+            "plan_hook_id",
+            unique=True,
+            sqlite_where=text("plan_hook_id IS NOT NULL"),
+            postgresql_where=text("plan_hook_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     client_id: Mapped[int] = mapped_column(
@@ -1201,11 +1219,13 @@ class Angle(Base):
     #: NULL for every impulse the radar drafted, which is nearly all of them.
     #: ``SET NULL`` rather than ``CASCADE``: a hook a recompute removed must not
     #: take a released press release with it.
+    #: Indexed by ``ux_angles_plan_hook`` in ``__table_args__`` rather than here:
+    #: that index is unique and partial, and a second plain one over the same
+    #: column would be dead weight on every write.
     plan_hook_id: Mapped[int | None] = mapped_column(
         ForeignKey("plan_hooks.id", ondelete="SET NULL"),
         nullable=True,
         default=None,
-        index=True,
     )
 
 

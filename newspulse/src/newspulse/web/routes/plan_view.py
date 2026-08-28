@@ -39,6 +39,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ... import assets as assets_mod
@@ -432,13 +433,23 @@ def _texts_by_hook(session: Session, client: Client) -> dict[int, list[Asset]]:
 
 
 def _angles_by_hook(session: Session, client: Client) -> dict[int, int]:
-    """The occasion each hook was opened as, when one has been opened."""
+    """The occasion each hook was opened as, when one has been opened.
+
+    ``setdefault`` rather than assignment, so a hook that somehow carries two
+    occasions resolves to the same one :func:`_occasion` returns — the lowest
+    id. ``ux_angles_plan_hook`` makes that pair impossible going forward; on a
+    database written before it, the page's "… freigegeben" link and the redirect
+    off "Text schreiben" must still name one row rather than two.
+    """
     rows = session.execute(
         select(Angle.plan_hook_id, Angle.id)
         .where(Angle.client_id == client.id, Angle.plan_hook_id.is_not(None))
         .order_by(Angle.id)
     ).all()
-    return {hook_id: angle_id for hook_id, angle_id in rows}
+    found: dict[int, int] = {}
+    for hook_id, angle_id in rows:
+        found.setdefault(hook_id, angle_id)
+    return found
 
 
 def months_for(
@@ -604,12 +615,15 @@ def occasion_for(session: Session, client: Client, hook: PlanHook) -> Angle:
     about, ``message`` is the reason the model wrote for it, and ``context`` is
     the evidence — which is exactly what a format prompt reads, so a text written
     off a hook argues from the stored row rather than from a headline.
+
+    The read and the write are not one statement, and these routes run in
+    FastAPI's threadpool: two requests off a double-clicked button both find
+    nothing and both insert. ``ux_angles_plan_hook`` is what actually settles
+    that — one of the two writes loses, and the loser re-reads and returns the
+    row the winner made, which is the same answer it would have given had it
+    arrived a moment later.
     """
-    found = session.scalars(
-        select(Angle).where(
-            Angle.client_id == client.id, Angle.plan_hook_id == hook.id
-        )
-    ).first()
+    found = _occasion(session, client, hook)
     if found is not None:
         return found
     evidence = evidence_for(session, client, hook)
@@ -624,8 +638,33 @@ def occasion_for(session: Session, client: Client, hook: PlanHook) -> Angle:
         article_ids=[],
     )
     session.add(angle)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raced = _occasion(session, client, hook)
+        if raced is None:
+            # Not the unique index, then: something else about this row is
+            # wrong, and swallowing it would hand the picker an occasion that
+            # does not exist.
+            raise
+        return raced
     return angle
+
+
+def _occasion(session: Session, client: Client, hook: PlanHook) -> Angle | None:
+    """This hook's occasion, if one has been opened.
+
+    Ordered by id even though the index above allows exactly one row: the plan
+    page reads the same relation through :func:`_angles_by_hook`, and two
+    readers of one relation that sort differently can name different rows on a
+    database written before the index existed.
+    """
+    return session.scalars(
+        select(Angle)
+        .where(Angle.client_id == client.id, Angle.plan_hook_id == hook.id)
+        .order_by(Angle.id)
+    ).first()
 
 
 def _occasion_fallback(hook: PlanHook) -> str:

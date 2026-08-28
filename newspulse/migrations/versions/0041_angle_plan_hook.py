@@ -14,6 +14,12 @@ Nullable and not backfilled — nearly every impulse on file was drafted by the
 radar and has no hook, and NULL is exactly that. ``SET NULL`` rather than
 ``CASCADE``: a recompute that removes an untouched hook must not take a released
 press release down with it.
+
+The index over it is unique and partial. Unique, because the read-then-insert in
+``plan_view.occasion_for`` runs in FastAPI's threadpool and a double-clicked
+"Text schreiben" is two requests that both find nothing and both write. Partial,
+because NULL is the normal value here and a plain unique index would allow one
+radar-drafted impulse in the entire table.
 """
 
 from __future__ import annotations
@@ -40,11 +46,18 @@ def upgrade() -> None:
             ["id"],
             ondelete="SET NULL",
         )
-    op.create_index("ix_angles_plan_hook_id", "angles", ["plan_hook_id"])
+    op.create_index(
+        "ux_angles_plan_hook",
+        "angles",
+        ["plan_hook_id"],
+        unique=True,
+        sqlite_where=sa.text("plan_hook_id IS NOT NULL"),
+        postgresql_where=sa.text("plan_hook_id IS NOT NULL"),
+    )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_angles_plan_hook_id", table_name="angles")
+    op.drop_index("ux_angles_plan_hook", table_name="angles")
     with op.batch_alter_table("angles") as batch:
         batch.drop_constraint("fk_angles_plan_hook_id", type_="foreignkey")
         batch.drop_column("plan_hook_id")

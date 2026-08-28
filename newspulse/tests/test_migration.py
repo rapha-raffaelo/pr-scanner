@@ -343,6 +343,40 @@ def test_the_chain_comes_all_the_way_back_down_and_up_again(tmp_path, monkeypatc
         engine.dispose()
 
 
+def test_the_migrated_schema_allows_one_occasion_per_plan_hook(tmp_path, monkeypatch):
+    """Asserted against the migrated file, not against ``Base.metadata``.
+
+    ``plan_view.occasion_for`` reads for an occasion and then inserts, in
+    FastAPI's threadpool: a double-clicked "Text schreiben" is two requests that
+    both see nothing. The index is the only thing that settles it, and the index
+    a deployment actually gets is the one the migration writes. Partial, because
+    ``plan_hook_id`` is NULL on nearly every impulse on file and a plain unique
+    index would allow exactly one of those in the whole table.
+    """
+    db_path = tmp_path / "one_occasion.db"
+    monkeypatch.setattr(config, "DATABASE_PATH", db_path)
+
+    command.upgrade(_alembic_config(), "head")
+
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    try:
+        indexes = {ix["name"]: ix for ix in inspect(engine).get_indexes("angles")}
+        with engine.connect() as conn:
+            ddl = conn.execute(
+                text(
+                    "SELECT sql FROM sqlite_master "
+                    "WHERE type = 'index' AND name = 'ux_angles_plan_hook'"
+                )
+            ).scalar()
+    finally:
+        engine.dispose()
+
+    assert "ux_angles_plan_hook" in indexes, sorted(indexes)
+    assert indexes["ux_angles_plan_hook"]["column_names"] == ["plan_hook_id"]
+    assert indexes["ux_angles_plan_hook"]["unique"]
+    assert ddl and "plan_hook_id IS NOT NULL" in ddl, ddl
+
+
 def test_no_enum_column_is_dropped_without_its_check(tmp_path):
     """The guard for the class rather than for the two that were found.
 
