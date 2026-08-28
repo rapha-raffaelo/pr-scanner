@@ -166,6 +166,10 @@ def _crisis_tick(now: dt.datetime) -> None:
     simply does not happen this minute — queueing behind a full portfolio sweep
     would mean fetching the same feeds twice in a row, and the next tick is sixty
     seconds away.
+
+    A reading that raises takes the rest of this tick with it, and that costs at
+    most a minute: ``run_crisis`` stamps the row before it reads, so the crisis
+    that failed is no longer due and the next tick reaches the ones behind it.
     """
     with get_session() as session:
         if not crisis.due(session, now=now):
@@ -204,7 +208,11 @@ def _crisis_loop(stop: threading.Event) -> None:
 
 
 def start() -> threading.Event | None:
-    """Start the daily scheduler. Returns its stop event, or ``None`` if disabled.
+    """Start both clocks. Returns the stop event they share, or ``None`` if off.
+
+    The daily sweep and the crisis cadence get a thread each and one stop event,
+    because ``NEWSPULSE_SCHEDULER=0`` means "an external cron does the unattended
+    work" and that has to be true of both of them.
 
     Called from ``web.app.main`` rather than ``create_app`` on purpose: the tests
     build the app hundreds of times, and none of them wants a thread that fetches

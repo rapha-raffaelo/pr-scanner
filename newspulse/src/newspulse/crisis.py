@@ -11,10 +11,12 @@ things and no more:
 * :func:`propose` — the two stored conditions under which the tool *offers* a
   crisis. It writes nothing. DEC-1 locked option A: the tool proposes and a
   person declares, because a false alarm should cost one click rather than a
-  whole morning in emergency mode. So a proposal changes the cadence, writes no
-  text, and adds no notification beyond the alerting that already fires.
+  whole morning in emergency mode. So a proposal leaves the cadence exactly as it
+  was, writes no text, and adds no notification beyond the alerting that already
+  fires.
 * :func:`declare` / :func:`close` — the two writes, and the only two.
-* :func:`severity` — the level, *computed*. See below.
+* :func:`severity`, and :func:`regrade` which stores what it computed — the
+  level. See below.
 * :func:`due` / :func:`mark_swept` — the state the tighter cadence reads, which
   lives on the row and never in the memory of the thread that swept last.
 
@@ -44,6 +46,8 @@ from sqlalchemy.orm import Session
 from . import config, outlets
 from .matching import mentions_client, name_matcher
 from .models import (
+    CRISIS_LEVEL_MAX,
+    CRISIS_LEVEL_MIN,
     Analysis,
     Article,
     Category,
@@ -120,8 +124,8 @@ _NATIONAL_TIER = 1
 #: "the coverage is against us"; half is "it is contested".
 _NEGATIVE_POINTS: tuple[tuple[float, int], ...] = ((0.8, 2), (0.5, 1))
 
-#: What being named costs. One point, not more: a story the mandate is named in
-#: is worse than one it is not, but naming alone is a mention and not a crisis.
+#: What being named is worth. One point, not more: a story the mandate is named
+#: in is worse than one it is not, but naming alone is a mention, not a crisis.
 _NAMED_POINTS = 1
 
 #: Points to level, richest first. Eight points is every input at its maximum —
@@ -130,8 +134,12 @@ _NAMED_POINTS = 1
 #: :data:`LEVEL_MIN`: a declared crisis is never level zero.
 _LEVEL_POINTS: tuple[tuple[int, int], ...] = ((8, 5), (6, 4), (4, 3), (2, 2))
 
-LEVEL_MIN = 1
-LEVEL_MAX = 5
+#: The scale, under this module's own names. The bounds themselves are a schema
+#: fact — the CHECK on ``crises.level`` — and there must be exactly one of them,
+#: or the day they are widened the arithmetic and the database disagree about
+#: what a level is.
+LEVEL_MIN = CRISIS_LEVEL_MIN
+LEVEL_MAX = CRISIS_LEVEL_MAX
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,26 +248,27 @@ def _row_for(session: Session, client: Client, article: Article) -> _Row:
     )
 
 
-def _members(rows: list[_Row], article: Article) -> list[_Row]:
-    """The rows that report the same event as ``article``, or an empty list."""
-    for story in cluster(rows):
-        members: tuple[_Row, ...] = story.members
-        if any(row.article.id == article.id for row in members):
-            return list(members)
-    return []
-
-
-def story_rows(session: Session, client: Client, article: Article) -> list[_Row]:
+def _story_rows(session: Session, client: Client, article: Article) -> list[_Row]:
     """Every stored row that reports the same event as ``article``.
 
-    The window is hung off the trigger's publication, not off the clock: see
-    :data:`_STORY_WINDOW`. The trigger itself is always a member, even when its
-    own analysis was dismissed or never written.
+    The window is hung off the trigger's publication rather than off the clock
+    (see :data:`_STORY_WINDOW`), so re-grading a crisis on its third day still
+    reads the coverage that started it.
+
+    The trigger is always a member of its own story, even when it is older than
+    the window or its analysis was dismissed or never written.
     """
     rows = _rows(session, client, since=article.published_at - _STORY_WINDOW)
     if not any(row.article.id == article.id for row in rows):
         rows = [_row_for(session, client, article), *rows]
-    return _members(rows, article) or [_row_for(session, client, article)]
+    for story in cluster(rows):
+        members: tuple[_Row, ...] = story.members
+        if any(row.article.id == article.id for row in members):
+            return list(members)
+    # Not reachable: ``cluster`` puts every input into exactly one group and the
+    # trigger is guaranteed to be one of the inputs. The honest fallback anyway,
+    # because every caller here needs a non-empty story to count.
+    return [_row_for(session, client, article)]
 
 
 # --- The arithmetic -------------------------------------------------------------
@@ -281,7 +290,7 @@ def severity(session: Session, client: Client, article: Article) -> Severity:
     negative for the mandate, and whether the mandate is named in the
     feed-provided text (title plus snippet — no body is ever fetched).
     """
-    rows = story_rows(session, client, article)
+    rows = _story_rows(session, client, article)
     matcher = name_matcher(client)
     distinct = {outlets.normalize_outlet(row.source) for row in rows if row.source}
     national = any(outlets.tier_for(row.source) == _NATIONAL_TIER for row in rows)
@@ -318,21 +327,48 @@ def _by_category(rows: list[_Row]) -> _Row | None:
     return None
 
 
-def _by_wave(rows: list[_Row]) -> tuple[_Row, int] | None:
-    """The first story at least :data:`PROPOSAL_OUTLETS` outlets carry negatively.
+def _by_wave(rows: list[_Row]) -> _Row | None:
+    """The lead of the first story at least :data:`PROPOSAL_OUTLETS` outlets carry
+    negatively.
 
-    Only the negative members count towards the outlet total, and towards the
-    lead: three outlets on a story two of them praise is not a wave against the
+    Only the negative members count, towards the total and towards the lead:
+    three outlets on a story two of them praise is not a wave against the
     mandate, and pointing the proposal at the one approving write-up would read
     as nonsense.
     """
     for story in cluster(rows):
         members: tuple[_Row, ...] = story.members
         against = [row for row in members if row.tonality is Tonality.NEGATIV]
-        carriers = {outlets.normalize_outlet(row.source) for row in against if row.source}
+        carriers = {
+            outlets.normalize_outlet(row.source) for row in against if row.source
+        }
         if len(carriers) >= PROPOSAL_OUTLETS:
-            return against[0], len(carriers)
+            return against[0]
     return None
+
+
+def _proposal(
+    session: Session, client: Client, row: _Row, trigger: Trigger
+) -> Proposal:
+    """A proposal for ``row``, carrying how far the story it belongs to has run.
+
+    ``outlets`` is the story's plain pickup count in both cases — the number a
+    reader would count on the page. Which of the two conditions produced the
+    offer is what ``trigger`` says; overloading the count to mean "negative
+    carriers" in one case and "all carriers" in the other would put two different
+    numbers under one label.
+    """
+    members = _story_rows(session, client, row.article)
+    carriers = {
+        outlets.normalize_outlet(member.source) for member in members if member.source
+    }
+    return Proposal(
+        client_id=client.id,
+        article_id=row.article.id,
+        trigger=trigger,
+        headline=row.headline,
+        outlets=len(carriers),
+    )
 
 
 def propose(
@@ -355,35 +391,13 @@ def propose(
     if not rows:
         return None
 
-    row = _by_category(rows)
-    if row is not None:
-        return _proposal(session, client, row, Trigger.KATEGORIE)
-    wave = _by_wave(rows)
-    if wave is not None:
-        lead, carriers = wave
-        return Proposal(
-            client_id=client.id,
-            article_id=lead.article.id,
-            trigger=Trigger.WELLE,
-            headline=lead.headline,
-            outlets=carriers,
-        )
+    flagged = _by_category(rows)
+    if flagged is not None:
+        return _proposal(session, client, flagged, Trigger.KATEGORIE)
+    lead = _by_wave(rows)
+    if lead is not None:
+        return _proposal(session, client, lead, Trigger.WELLE)
     return None
-
-
-def _proposal(
-    session: Session, client: Client, row: _Row, trigger: Trigger
-) -> Proposal:
-    """A proposal for ``row``, with the outlet count of the story it belongs to."""
-    members = story_rows(session, client, row.article)
-    carriers = {outlets.normalize_outlet(member.source) for member in members if member.source}
-    return Proposal(
-        client_id=client.id,
-        article_id=row.article.id,
-        trigger=trigger,
-        headline=row.headline,
-        outlets=len(carriers),
-    )
 
 
 # --- Declaring, closing, and the state the cadence reads ------------------------
@@ -544,5 +558,4 @@ __all__ = [
     "propose",
     "regrade",
     "severity",
-    "story_rows",
 ]

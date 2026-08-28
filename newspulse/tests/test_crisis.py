@@ -275,20 +275,27 @@ def test_the_level_never_asks_a_model(session, mandate):
     """The structural half of the same claim.
 
     ``severity`` takes no ``invoke``, no analyzer and no generator, and the module
-    does not import one — so there is no seam through which an estimate could
-    reach the number, however the call site is later written.
+    imports nothing that could reach one — so there is no seam through which an
+    estimate could get into the number, however a call site is later written.
+
+    Read off the import statements rather than the whole file, because the module
+    docstring quite legitimately talks *about* the analyzer.
     """
     import inspect
+    import re
 
     from newspulse import crisis as module
 
     source = inspect.getsource(module)
-    for forbidden in ("analyzer", "gemini", "invoke_claude_cli", "brain"):
-        assert f"from .{forbidden}" not in source
-        assert f" {forbidden}," not in source.split("_log = ")[0]
+    imports = "\n".join(re.findall(r"^\s*(?:from|import)\s+.*$", source, re.M))
+    for forbidden in ("analyzer", "gemini", "brain", "quota", "streaming"):
+        assert forbidden not in imports, f"crisis.py reaches for {forbidden}"
 
-    signature = inspect.signature(module.severity)
-    assert list(signature.parameters) == ["session", "client", "article"]
+    assert list(inspect.signature(module.severity).parameters) == [
+        "session",
+        "client",
+        "article",
+    ]
 
 
 # --- The proposal ---------------------------------------------------------------
@@ -333,6 +340,27 @@ def test_three_outlets_carrying_one_story_negatively_propose(session, mandate):
     assert proposal is not None
     assert proposal.trigger is crisis.Trigger.WELLE
     assert proposal.outlets == crisis.PROPOSAL_OUTLETS
+
+
+def test_the_proposal_counts_the_whole_story_not_only_the_negative_half(
+    session, mandate
+):
+    """``outlets`` is the pickup count a reader would count on the page.
+
+    The wave condition is met by three *negative* carriers, and the number on the
+    offer is how far the story has run — four. Which of the two conditions fired
+    is what ``trigger`` says; two different numbers under one label is how a page
+    ends up disagreeing with itself.
+    """
+    for source in ("Nordkurier", "Badische Zeitung", "PV Magazine"):
+        _cover(session, mandate, source=source, importance=5)
+    _cover(session, mandate, source="Solarserver", tonality=Tonality.POSITIV, importance=5)
+
+    proposal = crisis.propose(session, mandate, now=_NOW)
+
+    assert proposal is not None
+    assert proposal.trigger is crisis.Trigger.WELLE
+    assert proposal.outlets == 4
 
 
 def test_two_outlets_are_not_a_wave(session, mandate):
@@ -725,6 +753,34 @@ def test_a_reading_that_finds_nothing_still_moves_the_clock(session, mandate):
 
     assert declared.last_swept_at == _NOW
     assert crisis.due(session, now=_NOW + dt.timedelta(minutes=5)) == []
+
+
+def test_a_crisis_closed_before_its_reading_is_left_exactly_as_it_was(
+    session, mandate
+):
+    """The race between "Krise schließen" and the tick that was already running.
+
+    A closed crisis is a finished document — its level is what it was in the
+    moment it ended — so a reading that arrives afterwards must not rewrite it,
+    and must not spend a fetch on it either.
+    """
+    trigger = _cover(session, mandate, source="Nordkurier")
+    declared = crisis.declare(session, mandate, trigger, by="lucas", now=_NOW)
+    crisis.close(session, declared, reason="vorbei", now=_NOW)
+    before = (declared.level, declared.outlet_count, declared.last_swept_at)
+    seen: list[str] = []
+
+    sweep = job.run_crisis(
+        session,
+        declared,
+        analyzer=_FakeAnalyzer(),
+        fetch=_fetch_recording({}, seen),
+        now=lambda: _NOW,
+    )
+
+    assert seen == [], "no source was read for a crisis that is over"
+    assert sweep.articles == 0
+    assert (declared.level, declared.outlet_count, declared.last_swept_at) == before
 
 
 def test_a_crash_mid_reading_leaves_no_hanging_crisis_and_no_second_run(

@@ -2212,6 +2212,12 @@ def run_crisis(
     """
     now_fn = now or _utcnow
     started = now_fn()
+    if declared.closed_at is not None:
+        # Somebody stood the crisis down between the scheduler reading its due
+        # list and this call. A closed crisis is a finished document: its level is
+        # what it was at the moment it ended, and a reading would rewrite that.
+        _log.info("crisis %d was closed before its reading; leaving it as it is", declared.id)
+        return CrisisSweep(articles=0, analyses=0, level=declared.level, errors=[])
     client = declared.client or session.get(Client, declared.client_id)
     # Before the reading, and committed. See the docstring above.
     crisis.mark_swept(session, declared, now=started)
