@@ -115,10 +115,16 @@
         {%- else %}{{ month.live | length }} {{ t("Haken") }}{% endif -%}
       </span>
     </h2>
-    {%- if not month.live %}
+    {%- if month.empty %}
     {#- An empty month is written out here too. In a document handed to a client
         it is the sentence that stops the reader assuming a page was cut. -#}
     <p class="pempty">{{ t("Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat.") }}</p>
+    {%- elif month.refused %}
+    {#- The refused hooks themselves stay out of a document a client reads — what
+        the agency looked at and rejected is the agency's business. What it may
+        not do is claim nothing was found: the sentence above is an evidence
+        claim, and in this month it would be false. -#}
+    <p class="pempty">{{ t("Kein Termin in diesem Monat.") }}</p>
     {%- else %}
     {%- for view in month.live %}
     <div class="phook">

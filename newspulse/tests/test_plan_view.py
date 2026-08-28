@@ -222,6 +222,19 @@ def _text(html: str) -> str:
     return " ".join(htmllib.unescape(re.sub(r"<[^>]+>", " ", html)).split())
 
 
+def _month_section(html: str, month: str) -> str:
+    """One month's card out of the page, so a claim is read where it is made.
+
+    The page prints the same sentences for five other months; asserting against
+    the whole document would let a month say the wrong thing and pass because a
+    neighbour said the right one.
+    """
+    start = html.index(f'id="monat-{month}"')
+    start = html.rindex("<section", 0, start)
+    end = html.find("<section", start + 1)
+    return html[start:end] if end != -1 else html[start:]
+
+
 def _at(web, mandate, path: str = "/plan"):
     """The plan page for this mandate, with the clock pinned where it belongs.
 
@@ -496,6 +509,54 @@ def test_discarding_a_hook_records_the_refusal_and_keeps_it_on_the_page(
     session.expire_all()
     assert session.get(PlanHook, hook.id).state is HookState.VERWORFEN
     assert "hook--out" in _at(web, mandate).text
+
+
+_NOTHING_FOUND = (
+    "Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz "
+    "in diesem Monat."
+)
+
+
+def test_a_month_whose_hooks_were_all_refused_does_not_claim_nothing_was_found(
+    web, session, mandate
+):
+    """The empty month's sentence is a claim about the evidence.
+
+    Printed above the greyed rows of the very signals a person just turned down,
+    it is the page denying what it is showing two lines below.
+    """
+    signal = _signal(session, mandate, effective_at=_NOW + dt.timedelta(days=30))
+    hook = _hook(
+        session, mandate, source_kind=HookSource.MARKTSIGNAL, source_id=signal.id,
+        month=_window()[1],
+    )
+
+    web.post(f"/client/{mandate.id}/plan/{hook.id}/verwerfen", follow_redirects=False)
+    section = _month_section(_at(web, mandate).text, _window()[1])
+
+    assert "Alle Haken in diesem Monat wurden verworfen." in _text(section)
+    assert "hook--out" in section
+    assert _NOTHING_FOUND not in _text(section)
+    # And it is not dressed as an empty month either: it has rows in it.
+    assert "month--empty" not in section.split(">", 1)[0]
+
+
+def test_the_document_does_not_call_a_fully_refused_month_evidence_free(
+    web, session, mandate
+):
+    """It carries no refused rows at all, so the claim would be unanswerable."""
+    signal = _signal(session, mandate, effective_at=_NOW + dt.timedelta(days=30))
+    hook = _hook(
+        session, mandate, source_kind=HookSource.MARKTSIGNAL, source_id=signal.id,
+        month=_window()[1],
+    )
+
+    web.post(f"/client/{mandate.id}/plan/{hook.id}/verwerfen", follow_redirects=False)
+    words = _text(_at(web, mandate, "/plan.html").text)
+
+    assert "Kein Termin in diesem Monat." in words
+    # Every other month of the window is genuinely empty and still says so.
+    assert _NOTHING_FOUND in words
 
 
 def test_a_discarded_hook_keeps_its_state_across_a_recompute(web, session, mandate):

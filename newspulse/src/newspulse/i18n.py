@@ -1908,6 +1908,13 @@ _EN: dict[str, str] = {
     "kein Haken": "no hook",
     "verworfen": "discarded",
     "Leer.": "Empty.",
+    # A month where something was found and a person refused all of it. Distinct
+    # from the empty month's sentence on purpose: that one is a claim about the
+    # evidence, and here the evidence exists.
+    "Alle Haken in diesem Monat wurden verworfen.":
+        "Every hook in this month was dropped.",
+    # What the same month says in the document, which carries no refused rows.
+    "Kein Termin in diesem Monat.": "No date in this month.",
     "Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat. Ein leerer Monat wird nicht gefüllt, er wird gezeigt: entweder ist hier wirklich nichts, oder dem Mandat fehlt ein Thema.":
         "No dated signal, no archive pattern, no theme with evidenced resonance "
         "in this month. An empty month is not filled, it is shown: either there "

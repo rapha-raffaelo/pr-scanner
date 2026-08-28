@@ -385,7 +385,26 @@ class MonthView:
 
     @property
     def empty(self) -> bool:
-        return not self.live
+        """Nothing was found for this month at all.
+
+        Counted off ``hooks`` and not off ``live``, because the sentence an
+        empty month carries is an evidence claim — "kein datiertes Signal, kein
+        Archivmuster, kein Thema mit belegter Resonanz". A month whose hooks a
+        person refused is a month where all three were checked and something was
+        found, and printing that sentence above the greyed rows of the very
+        signals it denies is the page contradicting itself in two lines.
+        """
+        return not self.hooks
+
+    @property
+    def refused(self) -> bool:
+        """Something was found for this month and a person turned all of it down.
+
+        Its own state rather than a shade of ``empty``: what the reader needs to
+        know is which of the two happened, and only this one is a decision
+        somebody made.
+        """
+        return bool(self.hooks) and not self.live
 
 
 def month_name(month: str) -> str:

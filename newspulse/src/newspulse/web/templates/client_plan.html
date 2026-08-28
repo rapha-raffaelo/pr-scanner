@@ -100,6 +100,13 @@
         {% endif %}
         <a href="/settings?edit={{ client.id }}">{{ t("Themen prüfen") }}</a>
       </div>
+    {% elif month.refused %}
+      {# Something *was* found here and a person turned all of it down. The empty
+         month's sentence is an evidence claim and would be a false one printed
+         above the greyed rows it denies. #}
+      <div class="month__empty">
+        {{ t("Alle Haken in diesem Monat wurden verworfen.") }}
+      </div>
     {% endif %}
 
     {% for view in month.live %}
