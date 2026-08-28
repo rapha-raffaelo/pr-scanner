@@ -89,7 +89,11 @@ _PROPOSAL_WINDOW = dt.timedelta(hours=24)
 #: anchors the window rather than "now", so re-grading a crisis on its third day
 #: still sees the coverage that started it — a window hung off the clock would
 #: quietly forget the worst of it and lower the level as the crisis aged.
-_STORY_WINDOW = dt.timedelta(hours=24)
+#:
+#: Public because ``job.run_crisis`` reads its feeds over the same span and the
+#: two must not drift: a lookback shorter than this window would leave the level
+#: counting coverage the reading never had a chance to fetch.
+STORY_WINDOW = dt.timedelta(hours=24)
 
 
 class Trigger(StrEnum):
@@ -252,13 +256,13 @@ def _story_rows(session: Session, client: Client, article: Article) -> list[_Row
     """Every stored row that reports the same event as ``article``.
 
     The window is hung off the trigger's publication rather than off the clock
-    (see :data:`_STORY_WINDOW`), so re-grading a crisis on its third day still
+    (see :data:`STORY_WINDOW`), so re-grading a crisis on its third day still
     reads the coverage that started it.
 
     The trigger is always a member of its own story, even when it is older than
     the window or its analysis was dismissed or never written.
     """
-    rows = _rows(session, client, since=article.published_at - _STORY_WINDOW)
+    rows = _rows(session, client, since=article.published_at - STORY_WINDOW)
     if not any(row.article.id == article.id for row in rows):
         rows = [_row_for(session, client, article), *rows]
     for story in cluster(rows):
@@ -423,6 +427,29 @@ def open_crises(session: Session) -> list[Crisis]:
     )
 
 
+def _open_on_active_mandates(session: Session) -> list[Crisis]:
+    """The open crises whose mandate is still active, oldest first.
+
+    ``active`` is this tool's kill switch for a mandate: ``clients.list_clients``
+    filters on it and the daily sweep therefore never touches a deactivated one.
+    The second clock has to honour the same switch, or deactivating a mandate
+    while its crisis is open would leave an hourly fetch and an analyzer batch
+    running against it with nothing left in the interface to stop them.
+
+    Deliberately narrower than :func:`open_crises`, which stays the plain answer
+    to "what is open" so a deactivated mandate's crisis can still be read and
+    closed by a person.
+    """
+    return list(
+        session.scalars(
+            select(Crisis)
+            .join(Client, Client.id == Crisis.client_id)
+            .where(Crisis.closed_at.is_(None), Client.active.is_(True))
+            .order_by(Crisis.declared_at.asc())
+        ).all()
+    )
+
+
 def _grade(crisis: Crisis, computed: Severity) -> None:
     """Write a computed level and its four counts onto the row."""
     crisis.level = computed.level
@@ -483,7 +510,7 @@ def close(
     """
     cleaned = (reason or "").strip()
     if not cleaned:
-        raise ValueError("eine Krise wird nur mit Begruendung geschlossen")
+        raise ValueError("Eine Krise wird nur mit Begründung geschlossen.")
     if crisis.closed_at is not None:
         return crisis
     crisis.closed_at = now or dt.datetime.now(dt.UTC)
@@ -499,12 +526,14 @@ def due(session: Session, *, now: dt.datetime | None = None) -> list[Crisis]:
     Never from a thread's memory. A restart, a redeploy or a crash halfway
     through a crisis run therefore loses nothing and repeats nothing: the only
     state is ``last_swept_at``, and it is stamped before the reading starts.
+
+    A deactivated mandate is never due — see :func:`_open_on_active_mandates`.
     """
     reference = now or dt.datetime.now(dt.UTC)
     every = dt.timedelta(minutes=config.crisis_sweep_minutes())
     return [
         crisis
-        for crisis in open_crises(session)
+        for crisis in _open_on_active_mandates(session)
         if crisis.last_swept_at is None or reference - crisis.last_swept_at >= every
     ]
 
@@ -547,6 +576,7 @@ __all__ = [
     "PROPOSAL_IMPORTANCE",
     "PROPOSAL_OUTLETS",
     "Proposal",
+    "STORY_WINDOW",
     "Severity",
     "Trigger",
     "close",

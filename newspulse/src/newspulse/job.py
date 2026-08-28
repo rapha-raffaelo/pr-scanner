@@ -2164,11 +2164,63 @@ def draft_impulse(
 
 # --- The tighter cadence: one mandate, its own sources, nothing else -----------
 
-#: How far back one crisis reading looks. A day, matching the window a crisis's
-#: story is read over (``crisis._STORY_WINDOW``): the cadence is hourly, but a
-#: search feed keeps listing what it listed an hour ago and dedup drops all of
-#: it, so a wider window costs a filter and buys the pickups that arrived late.
-_CRISIS_LOOKBACK = dt.timedelta(hours=24)
+#: How far back one crisis reading looks. Bound to — not a copy of — the window a
+#: crisis's story is read over, because a lookback shorter than that window would
+#: leave the level counting coverage the reading never fetched. The cadence is
+#: hourly and a search feed keeps listing what it listed an hour ago, so the
+#: width costs one dedup filter and buys the pickups that arrived late.
+_CRISIS_LOOKBACK = crisis.STORY_WINDOW
+
+
+def _read_crisis_sources(
+    session: Session,
+    client: Client,
+    *,
+    started: dt.datetime,
+    analyzer: Analyzer | None,
+    fetch: FetchFeed,
+    errors: list[str],
+) -> tuple[int, int]:
+    """Read this one mandate's own feeds, store what is new, analyse what needs it.
+
+    Returns ``(articles stored, analyses written)``.
+
+    The analysis targets are resolved exactly as the daily sweep resolves them
+    (:func:`_analysis_targets`), and that is the point rather than an economy.
+    Analysing only what this reading *stored* would leave a story that is in the
+    archive without an analysis — the documented shape of a dropped analyzer
+    batch — permanently invisible to the level: every later reading re-fetches
+    it, dedup drops it as known, and the crisis stays under-graded until the next
+    morning's sweep backfills it. During a crisis the level is the whole point of
+    the number, so the reading self-heals on the same terms the sweep does.
+
+    It costs nothing on a quiet reading: :func:`_group_pairs` drops every pair
+    that already carries an analysis, so an hour with no news resolves its
+    candidates, finds them all analysed, and never reaches the model.
+    """
+    feeds = gnews.client_feeds([client])
+    if not feeds:
+        return 0, 0
+    items, _ok = _fetch_all(feeds, started - _CRISIS_LOOKBACK, fetch, started, errors)
+    # This mandate only. Matching against the whole portfolio would let a crisis
+    # run store and analyse coverage for a mandate that is not in one.
+    candidates = _match(items, [client], errors)
+    known_urls, known_hashes = _load_known(session)
+    kept = deduplicate(
+        _distinct_items(candidates),
+        known_urls=known_urls,
+        known_title_hashes=known_hashes,
+    )
+    stored = _persist_articles(session, kept, started) if kept else []
+    targets = _analysis_targets(session, candidates, [client], started)
+    analyses = 0
+    if targets:
+        resolved = analyzer or get_analyzer()
+        for target_client, target_articles in targets:
+            analyses += _analyze_and_persist(
+                session, target_client, target_articles, resolved, errors
+            )
+    return len(stored), analyses
 
 
 @dataclass(frozen=True, slots=True)
@@ -2219,29 +2271,20 @@ def run_crisis(
         _log.info("crisis %d was closed before its reading; leaving it as it is", declared.id)
         return CrisisSweep(articles=0, analyses=0, level=declared.level, errors=[])
     client = declared.client or session.get(Client, declared.client_id)
+    if not client.active:
+        # The other half of the same race, and the same answer: ``active`` is the
+        # kill switch for a mandate, so a crisis on a deactivated one is read no
+        # further. ``crisis.due`` already filters these out; this catches the
+        # mandate deactivated between that read and this call.
+        _log.info("crisis %d belongs to a deactivated mandate; not reading", declared.id)
+        return CrisisSweep(articles=0, analyses=0, level=declared.level, errors=[])
     # Before the reading, and committed. See the docstring above.
     crisis.mark_swept(session, declared, now=started)
 
     errors: list[str] = []
-    articles: list[Article] = []
-    analyses = 0
-    feeds = gnews.client_feeds([client])
-    if feeds:
-        items, _ok = _fetch_all(feeds, started - _CRISIS_LOOKBACK, fetch, started, errors)
-        # This mandate only. Matching against the whole portfolio would let a
-        # crisis run store and analyse coverage for a mandate that is not in one.
-        candidates = _match(items, [client], errors)
-        known_urls, known_hashes = _load_known(session)
-        kept = deduplicate(
-            _distinct_items(candidates),
-            known_urls=known_urls,
-            known_title_hashes=known_hashes,
-        )
-        if kept:
-            articles = _persist_articles(session, kept, started)
-            analyses = _analyze_and_persist(
-                session, client, articles, analyzer or get_analyzer(), errors
-            )
+    articles, analyses = _read_crisis_sources(
+        session, client, started=started, analyzer=analyzer, fetch=fetch, errors=errors
+    )
 
     # Counted from what is stored now, including whatever the reading just added.
     # Still arithmetic and still no model — see :func:`newspulse.crisis.severity`.
@@ -2250,7 +2293,7 @@ def run_crisis(
         "crisis reading for %r: %d new article(s), %d analysis(es), level %d "
         "(%d outlet(s), %d/%d negative), %d error(s)",
         client.name,
-        len(articles),
+        articles,
         analyses,
         graded.level,
         graded.outlets,
@@ -2259,7 +2302,7 @@ def run_crisis(
         len(errors),
     )
     return CrisisSweep(
-        articles=len(articles), analyses=analyses, level=graded.level, errors=errors
+        articles=articles, analyses=analyses, level=graded.level, errors=errors
     )
 
 

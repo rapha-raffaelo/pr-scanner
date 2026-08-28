@@ -22,6 +22,7 @@ every test until the morning they matter:
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 
 import pytest
 from sqlalchemy import create_engine, func, select
@@ -136,7 +137,10 @@ def _cover(
     title = title or _wording(source)
     article = Article(
         title=title,
-        url=f"https://{source.replace(' ', '').lower()}.example.de/{abs(hash((title, source))) % 10**8}",
+        # Digested rather than ``hash()``: str hashing is salted per process, and
+        # a URL is the dedup key across this whole codebase — a fixture whose key
+        # changes run to run is how a real failure turns into a flaky one.
+        url=f"https://{source.replace(' ', '').lower()}.example.de/{_slug(title, source)}",
         source=source,
         published_at=at,
         fetched_at=at,
@@ -160,6 +164,11 @@ def _cover(
     )
     session.commit()
     return article
+
+
+def _slug(title: str, source: str) -> str:
+    """A short, stable path segment for a fixture article."""
+    return hashlib.sha1(f"{title}|{source}".encode()).hexdigest()[:12]
 
 
 def _count(session, model) -> int:
@@ -604,6 +613,53 @@ def test_a_closed_crisis_is_never_due(session, mandate):
     assert crisis.due(session, now=_NOW + dt.timedelta(days=1)) == []
 
 
+def test_a_crisis_on_a_deactivated_mandate_is_never_due(session, mandate):
+    """``active`` is the kill switch for a mandate, and it has to switch off the
+    second clock too.
+
+    Deactivating a mandate is how the tool is told to stop working on it — the
+    daily sweep reads ``list_clients``, which filters on exactly this — so a
+    crisis left open on a deactivated mandate must not keep fetching its feeds
+    every hour with nothing in the interface able to stop it. The crisis itself
+    stays readable and closable: only the cadence is switched off.
+    """
+    trigger = _cover(session, mandate, source="FAZ")
+    declared = crisis.declare(session, mandate, trigger, by="lucas", now=_NOW)
+    assert crisis.due(session, now=_NOW) == [declared]
+
+    mandate.active = False
+    session.commit()
+
+    assert crisis.due(session, now=_NOW) == []
+    assert crisis.open_crisis(session, mandate) is declared, "still readable"
+
+
+def test_a_mandate_deactivated_mid_tick_costs_no_fetch(session, mandate):
+    """The other half of the same race, and the same answer as a closed crisis.
+
+    The scheduler reads the due list, then calls ``run_crisis``; the mandate can
+    be deactivated in between. Nothing is fetched and nothing is re-graded.
+    """
+    trigger = _cover(session, mandate, source="Nordkurier")
+    declared = crisis.declare(session, mandate, trigger, by="lucas", now=_NOW)
+    before = (declared.level, declared.outlet_count, declared.last_swept_at)
+    mandate.active = False
+    session.commit()
+    seen: list[str] = []
+
+    sweep = job.run_crisis(
+        session,
+        declared,
+        analyzer=_FakeAnalyzer(),
+        fetch=_fetch_recording({}, seen),
+        now=lambda: _NOW,
+    )
+
+    assert seen == [], "no source was read for a mandate that is switched off"
+    assert sweep.articles == 0
+    assert (declared.level, declared.outlet_count, declared.last_swept_at) == before
+
+
 def test_the_cadence_state_is_read_from_the_table_not_from_an_object(
     factory, session, mandate
 ):
@@ -736,6 +792,80 @@ def test_a_crisis_reading_regrades_from_what_it_just_stored(session, mandate):
     assert declared.outlet_count == 3
     assert declared.national is True
     assert declared.level > 1
+
+
+def test_a_stored_story_with_no_analysis_is_analysed_by_the_next_reading(
+    session, mandate
+):
+    """A dropped analyzer batch must not under-grade the crisis until morning.
+
+    ``_analyze_and_persist`` swallows a failed batch by design, which leaves the
+    article stored and un-analysed. Every later reading re-fetches it and dedup
+    discards it as known, so analysing only what a reading *stored* would keep it
+    out of ``visible_coverage()`` — and out of the level — until the next 06:10
+    sweep backfilled it. During a crisis the level is the whole point of the
+    number, so the reading self-heals on the daily sweep's own terms.
+    """
+    trigger = _cover(session, mandate, source="FAZ")
+    declared = crisis.declare(session, mandate, trigger, by="lucas", now=_NOW)
+    assert declared.outlet_count == 1
+
+    # Stored an hour ago, its analysis dropped by an analyzer that was down.
+    orphan_title = _wording("Nordkurier")
+    orphan_url = "https://nordkurier.example.de/verbraucherzentrale"
+    session.add(
+        Article(
+            title=orphan_title,
+            url=orphan_url,
+            source="Nordkurier",
+            published_at=_NOW - dt.timedelta(hours=1),
+            fetched_at=_NOW - dt.timedelta(hours=1),
+            summary_text="Kurz zusammengefasst.",
+            title_hash=title_hash(orphan_title, "Nordkurier"),
+        )
+    )
+    session.commit()
+
+    mine = gnews.client_feeds([mandate])[0].url
+    analyzer = _FakeAnalyzer()
+    sweep = job.run_crisis(
+        session,
+        declared,
+        analyzer=analyzer,
+        fetch=_fetch_recording(
+            {mine: [_news_item(orphan_title, "Nordkurier", orphan_url)]}, []
+        ),
+        now=lambda: _NOW,
+    )
+
+    assert sweep.articles == 0, "dedup knew the URL; nothing new was stored"
+    assert sweep.analyses == 1, "and the story it had no analysis for was analysed"
+    assert [name for name, _ in analyzer.calls] == ["Solaris AG"]
+    assert declared.outlet_count == 2, "so the level counts it from now on"
+
+
+def test_a_quiet_reading_never_reaches_the_analyzer(session, mandate):
+    """The other side of the self-healing pass: it costs nothing when nothing is
+    missing. Every pair already carries an analysis, so ``_group_pairs`` drops
+    them all and no batch is sent."""
+    trigger = _cover(session, mandate, source="FAZ")
+    declared = crisis.declare(session, mandate, trigger, by="lucas", now=_NOW)
+    mine = gnews.client_feeds([mandate])[0].url
+    analyzer = _FakeAnalyzer()
+
+    sweep = job.run_crisis(
+        session,
+        declared,
+        analyzer=analyzer,
+        fetch=_fetch_recording(
+            {mine: [_news_item(trigger.title, "FAZ", trigger.url)]}, []
+        ),
+        now=lambda: _NOW,
+    )
+
+    assert sweep.articles == 0
+    assert sweep.analyses == 0
+    assert analyzer.calls == []
 
 
 def test_a_reading_that_finds_nothing_still_moves_the_clock(session, mandate):
