@@ -225,11 +225,22 @@ def _theme_evidence(session: Session, client: Client, hook: PlanHook) -> Evidenc
     return Evidence(
         klasse=THEMA,
         ref=f"Themen-Treffer {hit.id}",
-        label=f"{article.title} ({article.source})",
-        # The radar's own section, which is the first thing on the market page.
-        href=f"/client/{client.id}/market",
+        # Dated, unlike the signal's label, because the radar section the link
+        # lands on shows a rolling window (``client._MARKET_DAYS``, 90 days) and
+        # a hook that has been accepted or moved outlives it. When the row has
+        # aged out of that page the citation still names the day it was
+        # published, which is what makes it findable at all.
+        label=f"{article.title} ({article.source}, {_de_day(article.published_at)})",
+        # The radar's own section, anchored: the market page carries four, and
+        # the row this hook cites is in the first of them.
+        href=f"/client/{client.id}/market#radar",
         source_url=article.url or "",
     )
+
+
+def _de_day(when: dt.datetime) -> str:
+    """A stored timestamp as a German date, in the display zone."""
+    return f"{when.astimezone(_local_tz()):%d.%m.%Y}"
 
 
 def _archive_evidence(session: Session, client: Client, hook: PlanHook) -> Evidence | None:

@@ -372,8 +372,30 @@ def test_a_theme_hook_names_its_radar_row_and_links_to_the_market_page(
     page = _at(web, mandate)
 
     assert f"Themen-Treffer {hit.id}" in _text(page.text)
-    assert f'href="/client/{mandate.id}/market"' in page.text
+    # Anchored at the radar section rather than at the top of the page: the
+    # market page carries four sections and the cited row is in the first.
+    assert f'href="/client/{mandate.id}/market#radar"' in page.text
     assert "Thema" in _text(page.text)
+
+
+def test_a_theme_hooks_evidence_names_the_day_it_was_published(
+    web, session, mandate
+):
+    """The radar section it links to shows a rolling 90 days.
+
+    A hook that has been accepted or moved outlives that window, so the citation
+    has to stand on its own once the row is no longer on the page it points at.
+    """
+    hit = _radar_hit(session, mandate, title="Netzentgelte steigen erneut")
+    _hook(
+        session, mandate, source_kind=HookSource.THEMA, source_id=hit.id,
+        month=_window()[0], day=None, title="Netzentgelte",
+    )
+
+    words = _text(_at(web, mandate).text)
+
+    published = session.get(Article, hit.article_id).published_at
+    assert f"{published.astimezone(_BERLIN):%d.%m.%Y}" in words
 
 
 def test_a_hook_whose_stored_row_is_gone_says_so_instead_of_linking(

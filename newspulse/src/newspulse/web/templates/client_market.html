@@ -145,8 +145,10 @@
 <div class="market__cols">
   <main>
     {# 1 — The theme radar, unchanged: coverage of the subject that never names
-       the mandate, newest first. #}
-    <section class="sig">
+       the mandate, newest first. Anchored like its three siblings below, because
+       the editorial plan cites rows from here and a "Beleg" link that lands at
+       the top of the page leaves the reader to search for what it cited. #}
+    <section class="sig" id="radar">
       <div class="sig__head"><div class="colhead">{{ t("Meldungen") }} <span class="n">{{ items | length }}</span></div></div>
       {% for item in items %}
         <article class="feed-item">
