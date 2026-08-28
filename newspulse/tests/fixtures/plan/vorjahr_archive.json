@@ -1,0 +1,74 @@
+{
+  "note": [
+    "A year of one mandate's archive, counted by hand, for the previous-year rule.",
+    "",
+    "The plan asks one question of this file: which of the six window months had a",
+    "previous-year counterpart that carried coverage? 'Carried' means at least",
+    "plan.VORJAHR_CARRIED_MIN pieces of *visible* coverage, so the noise rows here",
+    "are the point of the fixture rather than decoration: a dismissed article and an",
+    "irrelevant one are not coverage anywhere else in this tool and may not carry a",
+    "plan month either. 2025-12 is the row that proves it — five stored analyses,",
+    "three of them dismissed, two visible, and therefore a month that did not carry.",
+    "",
+    "The two rows around midnight on the first of October are the second point. In",
+    "Berlin they fall on either side of the month boundary; in UTC they both fall in",
+    "September. The counts below are the Berlin ones, because the plan is a human",
+    "calendar — and they are chosen so that a UTC-bounded implementation would flip",
+    "2026-09 from empty to carried and be caught.",
+    "",
+    "'importance' decides which analysis a carried month cites as its evidence:",
+    "highest importance, then lowest id. The dismissed rows carry the *highest*",
+    "importance of their month on purpose, so an implementation that counts",
+    "correctly but cites carelessly still fails.",
+    "",
+    "Everything here is hand-counted. Nothing in the test recomputes these numbers",
+    "from the rows — that would be the fixture checking itself."
+  ],
+  "reference": "2026-08-24T09:00:00+00:00",
+  "zone": "Europe/Berlin",
+  "hand_counted_visible_per_month": {
+    "2025-08": 3,
+    "2025-09": 2,
+    "2025-10": 4,
+    "2025-11": 0,
+    "2025-12": 2,
+    "2026-01": 3,
+    "2026-07": 3
+  },
+  "carried_plan_months": ["2026-08", "2026-10", "2027-01"],
+  "empty_plan_months": ["2026-09", "2026-11", "2026-12"],
+  "evidence_headline_per_plan_month": {
+    "2026-08": "Speicherförderung läuft an",
+    "2026-10": "Heizungsgesetz tritt in Kraft",
+    "2027-01": "Neue EU-Vorgaben für Wärmepumpen"
+  },
+  "articles": [
+    {"published_at": "2025-08-05T09:00:00+02:00", "title": "Solarpflicht im Sommer", "source": "PV Magazine", "relevance": 3, "importance": 5, "dismissed": false},
+    {"published_at": "2025-08-14T11:00:00+02:00", "title": "Speicherförderung läuft an", "source": "Handelsblatt", "relevance": 4, "importance": 9, "dismissed": false},
+    {"published_at": "2025-08-21T08:30:00+02:00", "title": "Handwerk klagt über Lieferzeiten", "source": "Wirtschaftswoche", "relevance": 2, "importance": 4, "dismissed": false},
+    {"published_at": "2025-08-23T07:00:00+02:00", "title": "Namensverwechslung mit einem Reiseanbieter", "source": "Regionalblatt", "relevance": 3, "importance": 10, "dismissed": true},
+    {"published_at": "2025-08-27T16:00:00+02:00", "title": "Streifnotiz ohne Bezug", "source": "Boulevard", "relevance": 0, "importance": 10, "dismissed": false},
+
+    {"published_at": "2025-09-11T10:00:00+02:00", "title": "Netzentgelte steigen", "source": "FAZ", "relevance": 3, "importance": 6, "dismissed": false},
+    {"published_at": "2025-09-30T23:30:00+02:00", "title": "Messebericht aus München", "source": "Solarserver", "relevance": 2, "importance": 3, "dismissed": false},
+
+    {"published_at": "2025-10-01T00:30:00+02:00", "title": "Heizungsgesetz tritt in Kraft", "source": "Süddeutsche Zeitung", "relevance": 4, "importance": 8, "dismissed": false},
+    {"published_at": "2025-10-08T09:15:00+02:00", "title": "Wärmepumpen im Test", "source": "Stiftung Warentest", "relevance": 3, "importance": 5, "dismissed": false},
+    {"published_at": "2025-10-19T13:00:00+02:00", "title": "Kommunale Wärmeplanung startet", "source": "Tagesspiegel Background", "relevance": 3, "importance": 6, "dismissed": false},
+    {"published_at": "2025-10-29T18:45:00+01:00", "title": "Preisrunde bei Speichern", "source": "pv-magazine", "relevance": 2, "importance": 4, "dismissed": false},
+
+    {"published_at": "2025-12-03T09:00:00+01:00", "title": "Jahresrückblick Solar", "source": "Energate", "relevance": 3, "importance": 6, "dismissed": false},
+    {"published_at": "2025-12-09T12:00:00+01:00", "title": "Förderstopp angekündigt", "source": "Handelsblatt", "relevance": 4, "importance": 7, "dismissed": false},
+    {"published_at": "2025-12-12T08:00:00+01:00", "title": "Gleichnamige Firma in Österreich", "source": "Der Standard", "relevance": 3, "importance": 8, "dismissed": true},
+    {"published_at": "2025-12-16T08:00:00+01:00", "title": "Verwechslung in einer Liste", "source": "Branchendienst", "relevance": 3, "importance": 9, "dismissed": true},
+    {"published_at": "2025-12-22T08:00:00+01:00", "title": "Erneut die falsche Firma", "source": "Branchendienst", "relevance": 3, "importance": 9, "dismissed": true},
+
+    {"published_at": "2026-01-13T10:00:00+01:00", "title": "Neue EU-Vorgaben für Wärmepumpen", "source": "Politico", "relevance": 4, "importance": 9, "dismissed": false},
+    {"published_at": "2026-01-20T09:00:00+01:00", "title": "Markt zieht wieder an", "source": "Handelsblatt", "relevance": 3, "importance": 5, "dismissed": false},
+    {"published_at": "2026-01-28T15:00:00+01:00", "title": "Personalie beim Verband", "source": "Energate", "relevance": 2, "importance": 4, "dismissed": false},
+
+    {"published_at": "2026-07-06T09:00:00+02:00", "title": "Sommerflaute im Vertrieb", "source": "pv-magazine", "relevance": 3, "importance": 6, "dismissed": false},
+    {"published_at": "2026-07-15T09:00:00+02:00", "title": "Ausschreibung überzeichnet", "source": "FAZ", "relevance": 3, "importance": 7, "dismissed": false},
+    {"published_at": "2026-07-24T09:00:00+02:00", "title": "Netzausbau kommt voran", "source": "Tagesspiegel Background", "relevance": 3, "importance": 6, "dismissed": false}
+  ]
+}
