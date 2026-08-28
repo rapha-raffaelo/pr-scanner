@@ -105,8 +105,16 @@ def upgrade() -> None:
     )
     op.create_index("ix_crises_client_id", "crises", ["client_id"])
     op.create_index("ix_crises_article_id", "crises", ["article_id"])
+    # Both dialect spellings: the predicate is a dialect keyword, and the one a
+    # backend does not recognise is dropped rather than refused — which would
+    # leave a plain UNIQUE(client_id) here and forbid a mandate a second crisis.
     op.create_index(
-        _OPEN_INDEX, "crises", ["client_id"], unique=True, sqlite_where=sa.text(_OPEN)
+        _OPEN_INDEX,
+        "crises",
+        ["client_id"],
+        unique=True,
+        sqlite_where=sa.text(_OPEN),
+        postgresql_where=sa.text(_OPEN),
     )
 
 

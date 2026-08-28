@@ -2137,10 +2137,14 @@ class Crisis(Base):
       second row even if two browser tabs press the button at the same second.
       :func:`newspulse.crisis.declare` hands the standing one back so the caller
       never has to see the ``IntegrityError``.
-    * **A closed crisis keeps its reason.** ``close_reason`` is empty exactly
-      while the crisis is open; the CHECK ties the two together, because "why did
-      we stand this down" is the first question the review asks and an empty
-      string answers it with silence.
+    * **A closed crisis always carries a reason.** That is what the CHECK
+      enforces — one direction, not both: it cannot be closed without a reason,
+      because "why did we stand this down" is the first question the review asks
+      and an empty string answers it with silence. The other direction is a
+      convention of :func:`newspulse.crisis.close`, which is the only writer of
+      the pair, and not something a reader may infer from the column: a
+      non-empty ``close_reason`` does not by itself mean a crisis is closed.
+      ``closed_at IS NULL`` is what open means.
     * **The level is arithmetic, and the arithmetic is on the row.** The four
       counts it was computed from are stored beside it, so the number is
       checkable months later against coverage that has since grown. A level
@@ -2232,11 +2236,18 @@ class Crisis(Base):
         ),
         # One open crisis per mandate, as a partial index: closed rows are
         # excluded, so a mandate may have had ten crises and be in none.
+        #
+        # Both dialect spellings, like the partial index on ``assets``. The
+        # predicate is a dialect keyword rather than a portable argument, and the
+        # one that is not recognised is silently dropped — which on a backend
+        # this file did not name would leave a plain UNIQUE(client_id) behind and
+        # forbid a mandate a second crisis for ever.
         Index(
             "uq_crises_one_open_per_client",
             "client_id",
             unique=True,
             sqlite_where=text("closed_at IS NULL"),
+            postgresql_where=text("closed_at IS NULL"),
         ),
     )
 

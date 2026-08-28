@@ -170,6 +170,11 @@ def _crisis_tick(now: dt.datetime) -> None:
     A reading that raises takes the rest of this tick with it, and that costs at
     most a minute: ``run_crisis`` stamps the row before it reads, so the crisis
     that failed is no longer due and the next tick reaches the ones behind it.
+
+    The errors a reading *isolated* rather than raised are logged here at
+    WARNING, because a crisis reading writes no ``runs`` row: a dead feed or an
+    expired ``claude`` login has no other place to surface, and a crisis is the
+    worst moment for a degraded reading to look exactly like a healthy one.
     """
     with get_session() as session:
         if not crisis.due(session, now=now):
@@ -185,14 +190,29 @@ def _crisis_tick(now: dt.datetime) -> None:
         with get_session() as session:
             for declared in crisis.due(session, now=now):
                 sweep = job.run_crisis(session, declared, now=lambda: now)
-                _log.info(
-                    "crisis %d: %d new article(s), level %d",
+                _log.log(
+                    logging.WARNING if sweep.errors else logging.INFO,
+                    "crisis %d: %d new article(s), %d analysis(es), level %d%s",
                     declared.id,
                     sweep.articles,
+                    sweep.analyses,
                     sweep.level,
+                    _degraded(sweep.errors),
                 )
     finally:
         runlock.guard.release()
+
+
+def _degraded(errors: list[str]) -> str:
+    """The tail of the log line when a reading isolated something, else empty.
+
+    Only the first error, and the count beside it: an operator grepping the log
+    needs to see *that* a reading was degraded and roughly why, and the rest of a
+    forty-feed failure would push the line itself off the screen.
+    """
+    if not errors:
+        return ""
+    return f" — degraded: {len(errors)} error(s), first: {errors[0]}"
 
 
 def _crisis_loop(stop: threading.Event) -> None:

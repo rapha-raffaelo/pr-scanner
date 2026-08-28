@@ -484,7 +484,20 @@ def crisis_sweep_minutes() -> int:
     scheduler uses is the one currently configured.
     """
     value = _env_int(ENV_CRISIS_SWEEP_MINUTES, _DEFAULT_CRISIS_SWEEP_MINUTES)
-    return max(value, _MIN_CRISIS_SWEEP_MINUTES)
+    if value < _MIN_CRISIS_SWEEP_MINUTES:
+        # Same reason ``_env_int`` warns on a typo: a setting that does not take
+        # effect must not be silent. ``NEWSPULSE_CRISIS_SWEEP_MINUTES=1`` is a
+        # plausible deliberate choice, and without this line the operator has no
+        # way to learn it became five.
+        _log.warning(
+            "%s=%d is below the %d-minute floor; using %d",
+            ENV_CRISIS_SWEEP_MINUTES,
+            value,
+            _MIN_CRISIS_SWEEP_MINUTES,
+            _MIN_CRISIS_SWEEP_MINUTES,
+        )
+        return _MIN_CRISIS_SWEEP_MINUTES
+    return value
 
 
 def gemini_configured() -> bool:
