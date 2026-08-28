@@ -108,6 +108,12 @@
     </label>
     <noscript><button type="submit" class="btn btn--quiet">{{ t("Anzeigen") }}</button></noscript>
   </form>
+  {#- Outside the "has a report" guard on purpose: a Pressespiegel is the
+      archive of a period read back, so it exists for any month the mandate was
+      covered in, including the ones nobody has drafted a report for. Tying it
+      to a report row would hide the document exactly where it is the only one
+      there is to show. -#}
+  <a class="btn btn--quiet" href="/client/{{ client.id }}/pressespiegel?zeitraum={{ period_key }}">{{ t("Pressespiegel") }}</a>
   {#- The generate button only where it is the answer: beside a report that
       exists but is not released. With no report at all it belongs under the
       sentence that says so, which is where the reader is looking. -#}

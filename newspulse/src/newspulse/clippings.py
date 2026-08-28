@@ -33,6 +33,18 @@ from . import stories as stories_mod
 from .models import Analysis, Article, Client, Tonality, visible_coverage
 from .reporting import Period
 
+#: Ceiling on a feed snippet reproduced in the document. The same line
+#: :data:`newspulse.assets._MAX_SNIPPET_CHARS` draws in front of a prompt, drawn
+#: again here for the same reason: a feed carries a sentence or two, anything
+#: longer is somebody's full article in a ``<description>`` tag, and this
+#: document is the one artefact that leaves the house. The stored analysis
+#: summary is not cut — that text is ours, and it is what the client is owed.
+_MAX_SNIPPET_CHARS = 400
+
+#: Marks a snippet that was cut, so a sentence ending mid-thought reads as a
+#: quotation that stops rather than as a document that broke.
+_ELLIPSIS = " …"
+
 
 @dataclass(frozen=True, slots=True)
 class Clipping:
@@ -90,12 +102,34 @@ class PressClippings:
 
     @property
     def period_last(self) -> dt.datetime:
-        """The last day the period contains.
+        """The last day the period contains, for the header that names it."""
+        return self.period.last
 
-        ``Period.end`` is exclusive, and a header reading "1.7. bis 1.8." claims
-        a day the document does not cover — the same correction the report makes.
-        """
-        return self.period.end - dt.timedelta(days=1)
+
+def _summary(analysis: Analysis, article: Article) -> str:
+    """What one clipping says under its headline, and the only text it may carry.
+
+    The analysis' own summary first — the stored, client-facing one the workbook
+    already exports — with the feed snippet standing in for rows analysed before
+    summaries were written. Both are stored text; nothing is fetched or generated
+    for the document.
+
+    The snippet is cut and the summary is not, and that asymmetry is the point.
+    A summary is text this tool wrote about an article; a snippet is the outlet's
+    own copy, and a feed that syndicates a whole body into its ``<description>``
+    would otherwise reproduce that article verbatim in a client's Pressespiegel.
+    Cut on a word boundary where there is one within reach, so the quotation
+    stops rather than breaking off inside a word.
+    """
+    written = prose.plain(analysis.summary or "").strip()
+    if written:
+        return written
+    snippet = (article.summary_text or "").strip()
+    if len(snippet) <= _MAX_SNIPPET_CHARS:
+        return snippet
+    cut = snippet[:_MAX_SNIPPET_CHARS].rstrip()
+    spaced = cut.rsplit(" ", 1)[0] if " " in cut else cut
+    return spaced.rstrip(",;:") + _ELLIPSIS
 
 
 def _top_outlet(items: Sequence[Clipping]) -> str:
@@ -132,11 +166,7 @@ def _rows(session: Session, client_id: int, period: Period) -> list[Clipping]:
             headline=article.title or "",
             source=article.source or "",
             published_at=article.published_at,
-            # The analysis' own summary first — the stored, client-facing one the
-            # workbook already exports — with the feed snippet standing in for
-            # rows analysed before summaries were written. Both are stored text;
-            # nothing is fetched or generated for the document.
-            summary=prose.plain(analysis.summary or "") or (article.summary_text or ""),
+            summary=_summary(analysis, article),
             tonality=analysis.tonality,
             url=article.url or "",
             importance=analysis.importance_score,

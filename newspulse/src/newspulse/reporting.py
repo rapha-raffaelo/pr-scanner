@@ -510,6 +510,17 @@ class Period:
         return self.end - self.start
 
     @property
+    def last(self) -> dt.datetime:
+        """The last day the period actually contains.
+
+        ``end`` is exclusive, so a header built from it reads "01.07. bis 01.08."
+        and claims a day the document does not cover. Every artefact that names
+        its period in words has to make that correction, so it lives on the type
+        that owns the exclusivity rather than in each of them.
+        """
+        return self.end - dt.timedelta(days=1)
+
+    @property
     def previous(self) -> Period:
         """The window of the same length immediately before this one.
 

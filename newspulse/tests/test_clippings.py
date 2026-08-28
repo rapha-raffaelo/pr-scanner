@@ -249,6 +249,52 @@ def test_a_clipping_carries_the_stored_summary_or_falls_back_to_the_snippet(
     assert summaries[_OTHER] == "Nur der Feed-Ausriss."
 
 
+def test_a_long_feed_snippet_is_cut_so_no_article_body_reaches_the_document(
+    factory, mandate
+):
+    """The one way a full text could enter the Pressespiegel, closed.
+
+    ``summary_text`` is the only body-ish column in the archive, and a feed that
+    syndicates a whole article into its ``<description>`` would otherwise put
+    that article verbatim into a document a client is sent.
+    """
+    body = "Wort " * 400
+    with factory() as session:
+        client = session.get(Client, mandate)
+        _piece(session, client, _WIRE[0], summary=None, snippet=body)
+        session.commit()
+        document = clippings.build(session, client, JULY)
+
+    summary = document.stories[0].items[0].summary
+    assert len(summary) <= clippings._MAX_SNIPPET_CHARS + len(clippings._ELLIPSIS)
+    assert summary.endswith("\u2026")
+    # Cut on a word boundary: the quotation stops, it does not break mid-word.
+    assert not summary.removesuffix("\u2026").rstrip().endswith("Wor")
+
+
+def test_a_short_feed_snippet_is_reproduced_whole(factory, mandate):
+    with factory() as session:
+        client = session.get(Client, mandate)
+        _piece(session, client, _WIRE[0], summary=None, snippet="Zwei kurze Sätze.")
+        session.commit()
+        document = clippings.build(session, client, JULY)
+
+    assert document.stories[0].items[0].summary == "Zwei kurze Sätze."
+
+
+def test_the_stored_analysis_summary_is_never_cut(factory, mandate):
+    """The cut is on the outlet's copy, not on ours: an agency summary is the
+    text the client is owed, and truncating it would be losing our own work."""
+    written = "Ausführliche Einordnung. " * 40
+    with factory() as session:
+        client = session.get(Client, mandate)
+        _piece(session, client, _WIRE[0], summary=written)
+        session.commit()
+        document = clippings.build(session, client, JULY)
+
+    assert document.stories[0].items[0].summary == written.strip()
+
+
 def test_dismissed_and_irrelevant_coverage_stays_out_of_the_document(factory, mandate):
     """The same visibility gate as every screen: a piece a person dismissed must
     not resurface in a document that leaves the house."""
@@ -272,6 +318,19 @@ def test_coverage_outside_the_period_stays_out(factory, mandate):
 
     assert document.total == 0
     assert document.stories == ()
+
+
+def test_the_header_names_the_last_day_the_period_contains_not_the_next_first(
+    factory, mandate
+):
+    """``Period.end`` is exclusive; a header built from it claims a day the
+    document does not cover."""
+    with factory() as session:
+        document = clippings.build(session, session.get(Client, mandate), JULY)
+
+    assert document.period_last == JULY.last
+    assert document.period_last.astimezone(config.local_zone()).day == 31
+    assert document.period_last < JULY.end
 
 
 def test_an_empty_period_builds_an_empty_document_not_an_error(factory, mandate):
@@ -340,6 +399,16 @@ def test_the_download_carries_no_links_back_into_the_application(http, factory, 
     # The content itself is identical: the difference is chrome outside the document.
     doc = re.compile(r'<article class="doc">.*</article>', re.DOTALL)
     assert doc.search(screen).group() == doc.search(export).group()
+
+
+def test_the_review_page_links_to_the_pressespiegel_of_the_same_period(
+    http, mandate
+):
+    """The document has to be reachable from somewhere, and the period picker is
+    where a consultant already is when they are thinking in months. Offered even
+    with no report drafted: the archive of a month exists either way."""
+    body = http.get(f"/client/{mandate}/berichte?zeitraum=2026-07").text
+    assert f'href="/client/{mandate}/pressespiegel?zeitraum=2026-07"' in body
 
 
 def test_an_empty_period_yields_the_explanatory_sentence(http, mandate):
