@@ -1041,6 +1041,95 @@ def test_a_crisis_stood_down_is_not_offered_again(session, mandate):
     assert crisis.propose(session, mandate, now=_NOW) is None
 
 
+def test_a_crisis_stood_down_months_ago_does_not_silence_a_fresh_wave(
+    session, mandate
+):
+    """A stood-down story is an *event*, and an event ends.
+
+    ``stories.cluster`` groups on headline similarity alone and knows nothing
+    about time, so collecting a stood-down story over everything published since
+    its trigger put today's coverage into February's story and suppressed it. The
+    consumer group that came after this mandate once would then never be offered
+    as a crisis again — a false negative that is silent, permanent, and likelier
+    the longer the tool is used.
+    """
+    long_ago = _NOW - dt.timedelta(days=180)
+    trigger = _cover(
+        session,
+        mandate,
+        source="FAZ",
+        category=Category.KRISE,
+        importance=9,
+        published=long_ago,
+    )
+    standing = crisis.declare(session, mandate, trigger, by="lucas", now=long_ago)
+    crisis.close(
+        session, standing, reason="Fehlalarm", now=long_ago + dt.timedelta(days=1)
+    )
+
+    # The same kind of story breaks again half a year later: three outlets, all
+    # negative, all inside the proposal window.
+    for source in ("Handelsblatt", "Badische Zeitung", "Nordkurier"):
+        _cover(session, mandate, source=source)
+
+    offer = crisis.propose(session, mandate, now=_NOW)
+
+    assert offer is not None, "February's stand-down silenced August's crisis"
+    assert offer.trigger is crisis.Trigger.WELLE
+    assert offer.outlets == 3
+
+
+def test_the_offer_does_not_read_the_archive_behind_an_old_crisis(session, mandate):
+    """The daily page render asks ``propose`` once per mandate.
+
+    Collecting each stood-down story over everything published since its trigger
+    made that a scan of the whole archive back to the mandate's oldest crisis —
+    clustered quadratically, on every render, growing for ever. The suppression
+    only concerns coverage still inside the proposal window, so nothing older is
+    worth reading.
+    """
+    long_ago = _NOW - dt.timedelta(days=180)
+    trigger = _cover(
+        session, mandate, source="FAZ", importance=9, published=long_ago
+    )
+    standing = crisis.declare(session, mandate, trigger, by="lucas", now=long_ago)
+    crisis.close(session, standing, reason="durch", now=long_ago)
+
+    # Six months of ordinary coverage between that crisis and today.
+    for day in range(1, 180):
+        _cover(
+            session,
+            mandate,
+            source="Solarserver",
+            title=f"Solarbranche meldet Zahlen fuer Woche {day} im Ueberblick",
+            tonality=Tonality.NEUTRAL,
+            published=_NOW - dt.timedelta(days=day),
+        )
+
+    windows: list[dt.datetime] = []
+    original = crisis._rows
+
+    # ``**rest`` rather than a named ``until``: the spy has to survive the
+    # signature this test is about, so that removing the upper bound fails on the
+    # assertion below rather than on a TypeError that hides what broke.
+    def _spy(session_, client_, *, since, **rest):
+        windows.append(since)
+        return original(session_, client_, since=since, **rest)
+
+    crisis._rows = _spy
+    try:
+        crisis.propose(session, mandate, now=_NOW)
+    finally:
+        crisis._rows = original
+
+    assert windows, "propose never read any coverage"
+    earliest = min(windows)
+    assert earliest >= _NOW - dt.timedelta(days=2), (
+        f"propose read back to {earliest}, i.e. into the archive behind the "
+        "closed crisis rather than the proposal window"
+    )
+
+
 # --- The scheduler's second clock -----------------------------------------------
 
 

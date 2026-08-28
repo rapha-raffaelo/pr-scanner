@@ -202,20 +202,34 @@ class _Row:
 # --- Reading the stored coverage -----------------------------------------------
 
 
-def _rows(session: Session, client: Client, *, since: dt.datetime) -> list[_Row]:
+def _rows(
+    session: Session,
+    client: Client,
+    *,
+    since: dt.datetime,
+    until: dt.datetime | None = None,
+) -> list[_Row]:
     """This mandate's visible coverage published since ``since``, richest first.
 
     Ordered by importance because :func:`~newspulse.stories.cluster` takes input
     order as the ranking and makes the first member of a story its lead, so the
     lead is the strongest copy rather than whichever one the database returned.
+
+    ``until`` closes the window at the top. It is left open by default because
+    the live callers want it open — a crisis that is still spreading has to keep
+    counting the pickups arriving now — and it is set only where a *bounded*
+    event is the question (see :func:`_stood_down`).
     """
+    window = [Article.published_at >= since]
+    if until is not None:
+        window.append(Article.published_at <= until)
     pairs = session.execute(
         select(Article, Analysis)
         .join(Analysis, Analysis.article_id == Article.id)
         .where(
             Analysis.client_id == client.id,
             visible_coverage(),
-            Article.published_at >= since,
+            *window,
         )
         .order_by(Analysis.importance_score.desc(), Article.published_at.asc())
     ).all()
@@ -254,17 +268,29 @@ def _row_for(session: Session, client: Client, article: Article) -> _Row:
     )
 
 
-def _story_rows(session: Session, client: Client, article: Article) -> list[_Row]:
+def _story_rows(
+    session: Session,
+    client: Client,
+    article: Article,
+    *,
+    until: dt.datetime | None = None,
+) -> list[_Row]:
     """Every stored row that reports the same event as ``article``.
 
     The window is hung off the trigger's publication rather than off the clock
     (see :data:`STORY_WINDOW`), so re-grading a crisis on its third day still
     reads the coverage that started it.
 
+    ``until`` closes it at the top, and the default leaves it open on purpose:
+    :func:`severity` must keep counting the pickups that arrive while a crisis
+    runs, or a crisis would stop getting worse the moment it was declared.
+
     The trigger is always a member of its own story, even when it is older than
     the window or its analysis was dismissed or never written.
     """
-    rows = _rows(session, client, since=article.published_at - STORY_WINDOW)
+    rows = _rows(
+        session, client, since=article.published_at - STORY_WINDOW, until=until
+    )
     if not any(row.article.id == article.id for row in rows):
         rows = [_row_for(session, client, article), *rows]
     for story in cluster(rows):
@@ -397,7 +423,9 @@ def _proposal(
     )
 
 
-def _stood_down(session: Session, client: Client, rows: list[_Row]) -> set[int]:
+def _stood_down(
+    session: Session, client: Client, rows: list[_Row], *, since: dt.datetime
+) -> set[int]:
     """The article ids belonging to a story this mandate has already stood down.
 
     DEC-1's whole rationale is that a false alarm costs one click. Suppressing a
@@ -412,11 +440,35 @@ def _stood_down(session: Session, client: Client, rows: list[_Row]) -> set[int]:
 
     Deliberately not "no proposals for N hours". A different story breaking the
     same afternoon is a different question and still gets asked.
+
+    **A stood-down story is an event, and an event ends.**
+    :func:`~newspulse.stories.cluster` groups on headline similarity alone and
+    has no notion of time, so an unbounded reach here would group February's
+    stood-down coverage with an identically-shaped wave breaking in August and
+    silence the second one for ever — the worst failure this module can have,
+    because it is silent and it gets likelier the longer the tool is used. Two
+    bounds keep the suppression the length of the event that earned it:
+
+    * only crises whose trigger is recent enough that some member of its story
+      can still be inside the caller's window are read at all. A story's last
+      possible member lands one :data:`STORY_WINDOW` after its trigger, so a
+      trigger older than ``since - STORY_WINDOW`` cannot silence anything;
+    * each story is collected over its own window rather than over everything
+      published since, so today's coverage cannot join a months-old event.
+
+    Together they also keep this off the archive: the daily page render used to
+    load and cluster every row published since the oldest crisis this mandate
+    ever had, on every render, for ever.
     """
+    reach = since - STORY_WINDOW
     triggers = session.scalars(
         select(Article)
         .join(Crisis, Crisis.article_id == Article.id)
-        .where(Crisis.client_id == client.id, Crisis.closed_at.is_not(None))
+        .where(
+            Crisis.client_id == client.id,
+            Crisis.closed_at.is_not(None),
+            Article.published_at >= reach,
+        )
     ).all()
     if not triggers:
         return set()
@@ -424,7 +476,13 @@ def _stood_down(session: Session, client: Client, rows: list[_Row]) -> set[int]:
     silenced: set[int] = set()
     for trigger in triggers:
         silenced.update(
-            row.article.id for row in _story_rows(session, client, trigger)
+            row.article.id
+            for row in _story_rows(
+                session,
+                client,
+                trigger,
+                until=trigger.published_at + STORY_WINDOW,
+            )
         )
     # Only the ones still in view matter; a trigger that has aged out of the
     # window costs nothing to carry and nothing to drop.
@@ -448,8 +506,9 @@ def propose(
     reference = now or dt.datetime.now(dt.UTC)
     if open_crisis(session, client) is not None:
         return None
-    rows = _rows(session, client, since=reference - _PROPOSAL_WINDOW)
-    silenced = _stood_down(session, client, rows)
+    since = reference - _PROPOSAL_WINDOW
+    rows = _rows(session, client, since=since)
+    silenced = _stood_down(session, client, rows, since=since)
     rows = [row for row in rows if row.article.id not in silenced]
     if not rows:
         return None
