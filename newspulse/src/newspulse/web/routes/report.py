@@ -58,6 +58,7 @@ from ...analyzer import AnalyzerError, ParseError, invoke_with_fallback
 from ...models import Client, Report, ReportFinding
 from ...reporting import Period
 from .. import texte
+from ..filenames import client_slug
 from ..mandates import mandate_or_404
 from ..app import get_db, templates, translator
 from .today import _fetch_last_run, _local_tz
@@ -115,12 +116,6 @@ _ERR_FORBIDDEN_FIGURE = (
     "„{terms}“ kann RauteOS aus Archiv und Ledger nicht belegen und steht deshalb "
     "in keinem Bericht. Der Text bleibt wie er war."
 )
-
-#: The filename a download falls back to when the mandate's name survives
-#: sanitising as nothing at all — a name written entirely in a script the
-#: allow-list drops. A file called ``bericht__2026-07.html`` reads as broken.
-_FILENAME_FALLBACK = "mandant"
-
 
 # --- Periods --------------------------------------------------------------------
 
@@ -631,12 +626,12 @@ def _filename(prefix: str, client: Client, period_start: dt.datetime) -> str:
 
     One builder for the report and the Pressespiegel, so the two artefacts of the
     same mandate and month sort beside each other in a client's download folder.
+    The mandate's half comes from :mod:`newspulse.web.filenames`, which the plan
+    also reads — three artefacts sorting together needs one spelling of the name,
+    not three regexes that agree today.
     """
-    safe = (
-        re.sub(r"[^A-Za-z0-9_-]+", "_", client.name).strip("_") or _FILENAME_FALLBACK
-    )
     stamp = f"{period_start.astimezone(_local_tz()):%Y-%m}"
-    return f"{prefix}_{safe}_{stamp}.html"
+    return f"{prefix}_{client_slug(client.name)}_{stamp}.html"
 
 
 @router.get(

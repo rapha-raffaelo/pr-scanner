@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-import re
 import threading
 from dataclasses import dataclass, replace
 from urllib.parse import urlencode
@@ -63,6 +62,7 @@ from ..mandates import mandate_or_404
 from ..runlock import SWEEP_RUNNING as _sweep_running
 from ..runlock import guard as _run_guard
 from .. import spawn
+from ..filenames import client_slug
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -83,12 +83,6 @@ _MONTHS_SHORT = (
     "Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
     "Jul", "Aug", "Sep", "Okt", "Nov", "Dez",
 )
-
-#: The filename a download falls back to when the mandate's name survives
-#: sanitising as nothing at all — the same fallback the report and the
-#: Pressespiegel use, so the three artefacts of one mandate sort together.
-_FILENAME_FALLBACK = "mandant"
-
 
 @dataclass(frozen=True, slots=True)
 class Klasse:
@@ -846,14 +840,13 @@ def write_from_hook(
 def _filename(client: Client, months: list[MonthView]) -> str:
     """What the downloaded plan is called: what it is, whose it is, which span.
 
-    The same shape ``report._filename`` builds, so a mandate's plan sorts beside
-    its reports and its Pressespiegel in a download folder.
+    The same shape ``report._filename`` builds, off the same
+    :func:`~newspulse.web.filenames.client_slug`, so a mandate's plan sorts
+    beside its reports and its Pressespiegel in a download folder. The span is
+    this artefact's own: a plan covers six months where a report covers one.
     """
-    safe = (
-        re.sub(r"[^A-Za-z0-9_-]+", "_", client.name).strip("_") or _FILENAME_FALLBACK
-    )
     span = f"{months[0].key}_{months[-1].key}" if months else "leer"
-    return f"redaktionsplan_{safe}_{span}.html"
+    return f"redaktionsplan_{client_slug(client.name)}_{span}.html"
 
 
 @router.get("/client/{client_id}/plan.html")
