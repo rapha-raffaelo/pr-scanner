@@ -1890,6 +1890,113 @@ _EN: dict[str, str] = {
         "What is measured is what the connected assistants answer to the same set of "
         "questions, not what \"AI\" thinks. RauteOS measures and reports; it optimises "
         "nothing and sends nothing.",
+    # --- Der Redaktionsplan (UHR-07) ------------------------------------------
+    # The page a retainer conversation is held over: six months of hooks, each
+    # resolving to a stored row.
+    "Plan": "Plan",
+    "Redaktionsplan": "Editorial plan",
+    "%(n)s Monate voraus, gebaut aus datierten Marktsignalen, geprüften Themen und dem, was das Archiv im selben Monat des Vorjahres getragen hat. Jeder Haken hängt an einer gespeicherten Zeile. Kein Datum wird geraten.":
+        "%(n)s months ahead, built from dated market signals, checked themes and "
+        "what the archive carried in the same month a year ago. Every hook hangs "
+        "on a stored row. No date is guessed.",
+    "Neu berechnen": "Recompute",
+    "Wird berechnet…": "Recomputing…",
+    "Als Dokument": "As a document",
+    "laufender Monat": "current month",
+    "Haken": "hooks",
+    "1 Haken": "1 hook",
+    "kein Haken": "no hook",
+    "verworfen": "discarded",
+    "Leer.": "Empty.",
+    "Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat. Ein leerer Monat wird nicht gefüllt, er wird gezeigt: entweder ist hier wirklich nichts, oder dem Mandat fehlt ein Thema.":
+        "No dated signal, no archive pattern, no theme with evidenced resonance "
+        "in this month. An empty month is not filled, it is shown: either there "
+        "genuinely is nothing here, or the client is missing a theme.",
+    "Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat.":
+        "No dated signal, no archive pattern, no theme with evidenced resonance "
+        "in this month.",
+    "Themen prüfen": "Review the themes",
+    "Text schreiben": "Write a text",
+    "In einen anderen Monat verschieben": "Move to another month",
+    "Verschieben": "Move",
+    "Beleg": "Evidence",
+    "Der Beleg zu diesem Haken ist nicht mehr auffindbar.":
+        "The evidence behind this hook can no longer be found.",
+    # The Herkunftsklassen, as ``plan_view.KLASSEN`` names them.
+    "Studie": "Study",
+    "Regulierung": "Regulation",
+    "Veranstaltung": "Event",
+    "Thema": "Theme",
+    "Archivmuster": "Archive pattern",
+    "Marktsignal": "Market signal",
+    # The hook states, as ``plan_view.STATE_LABELS`` names them.
+    "Vorgeschlagen": "Proposed",
+    "Angenommen": "Accepted",
+    "Erledigt": "Done",
+    # The honest half of the date rule: a source that names only a month yields a
+    # hook that names only a month, and the page says so rather than showing the
+    # first of it.
+    "ohne Tag": "no day",
+    "Für diesen Mandanten lässt sich noch kein Plan bauen.":
+        "No plan can be built for this client yet.",
+    "Ein Haken entsteht aus einem datierten Marktsignal, aus einem Thema mit gemessener Resonanz oder aus einem Monat, den das Archiv im Vorjahr getragen hat. Für dieses Mandat liegt keines davon vor — das ist eine Lücke in der Einrichtung und keine Aussage über den Markt.":
+        "A hook comes from a dated market signal, from a theme with measured "
+        "resonance, or from a month the archive carried a year ago. This client "
+        "has none of the three — that is a gap in the setup, not a statement "
+        "about the market.",
+    "Keine geprüften Themen hinterlegt.": "No checked themes on file.",
+    "Kein Marktsignal gefunden.": "No market signal found.",
+    "Jeder Termin in diesem Plan stammt aus einer gespeicherten Zeile: einem datierten Marktsignal, einem Thema mit gemessener Resonanz oder einem Monat, den das Archiv im Vorjahr getragen hat. Kein Datum ist geschätzt.":
+        "Every date in this plan comes from a stored row: a dated market signal, "
+        "a theme with measured resonance, or a month the archive carried a year "
+        "ago. No date is estimated.",
+    "Der Monat ist die Einheit, in der eine Agentur ohnehin arbeitet: der Bericht ist monatlich, das Retainer-Gespräch ist monatlich. Der Plan ist deshalb ein Stapel Monate, und ein leerer Monat ist eine Aussage, keine Lücke im Layout.":
+        "The month is the unit an agency already works in: the report is monthly, "
+        "the retainer meeting is monthly. The plan is therefore a stack of "
+        "months, and an empty month is a statement rather than a gap in the "
+        "layout.",
+    "Der Plan reicht so weit, wie belegte Termine reichen; ein leerer Monat bleibt leer, statt gefüllt zu werden.":
+        "The plan reaches as far as evidenced dates reach; an empty month stays "
+        "empty rather than being filled.",
+    # What a refused click leaves behind, in ``plan_view``.
+    "Der Plan wird gerade neu berechnet. Der Auftrag wurde nicht angenommen: warten Sie, bis der laufende steht, sonst wird derselbe Aufruf zweimal bezahlt.":
+        "The plan is being recomputed right now. The request was not accepted: "
+        "wait for the running one, or the same call is paid for twice.",
+    "Es läuft gerade ein Sammellauf. Der Auftrag wurde nicht angenommen: warten Sie, bis er durch ist, und klicken Sie dann noch einmal.":
+        "A sweep is running. The request was not accepted: wait for it to finish "
+        "and then click again.",
+    "Die Neuberechnung ist mit einem Fehler abgebrochen. Der bisherige Plan steht unverändert. Details stehen im Log.":
+        "The recompute stopped with an error. The plan you had stands unchanged. "
+        "Details are in the log.",
+    "Der gewählte Monat liegt nicht im Plan. Verschoben wird nur innerhalb der Monate, die der Plan zeigt.":
+        "The month you picked is not in the plan. A hook can only be moved inside "
+        "the months the plan shows.",
+    # The calendar. Spelled out rather than taken from ``locale``, for the reason
+    # ``web.app`` spells them out: a de_DE locale is absent from most containers
+    # and setlocale is process-global.
+    "Januar": "January",
+    "Februar": "February",
+    "März": "March",
+    "April": "April",
+    "Mai": "May",
+    "Juni": "June",
+    "Juli": "July",
+    "August": "August",
+    "September": "September",
+    "Oktober": "October",
+    "November": "November",
+    "Dezember": "December",
+    "Jan": "Jan",
+    "Feb": "Feb",
+    "Mär": "Mar",
+    "Apr": "Apr",
+    "Jun": "Jun",
+    "Jul": "Jul",
+    "Aug": "Aug",
+    "Sep": "Sep",
+    "Okt": "Oct",
+    "Nov": "Nov",
+    "Dez": "Dec",
 }
 
 _TABLES = {"de": {}, "en": _EN}

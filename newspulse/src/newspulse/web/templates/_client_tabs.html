@@ -36,6 +36,10 @@
      the consultant keeps or discards, what is left is handed over. The rail on
      the page is where an occasion or a period is chosen. #}
   <a href="/client/{{ client.id }}/advice"{% if active == 'texte' %} class="active" aria-current="page"{% endif %}>{{ t("Texte") }}</a>
+  {# The long clock. Sits right after the texts because it is where the next
+     occasion comes from: six months of dated hooks, each on a stored row
+     (DEC-5). #}
+  <a href="/client/{{ client.id }}/plan"{% if active == 'plan' %} class="active" aria-current="page"{% endif %}>{{ t("Plan") }}</a>
   <a href="/client/{{ client.id }}/wettbewerb"{% if active == 'rivals' %} class="active" aria-current="page"{% endif %}>{{ t("Wettbewerb") }}</a>
   {# The month, read and cut down. Sits after the daily work and before the
      standing material because that is the order it is used in: the report is what

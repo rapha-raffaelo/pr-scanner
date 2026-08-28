@@ -1,0 +1,185 @@
+{# Der Redaktionsplan, in the shape DEC-5 A locks: a stack of months.
+
+   Every style rule for this page lives in app.css rather than in a <style>
+   block here, because the document beside it (client_plan_document.html) is
+   self-contained and must carry its own copy — two inline blocks would drift,
+   and the page-local one would win only on the page.
+
+   The one property this page has that a prettier list would not: every hook
+   carries a link to the stored row it was built from. A hook whose row has been
+   deleted says so and carries no link — an evidence link that 404s would be
+   worse than none, because it would look checked. #}
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Redaktionsplan") }} · {{ client.name }} · RauteOS{% endblock %}
+
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'plan' %}
+{% include '_client_tabs.html' %}
+
+<div class="planhead">
+  <div>
+    <h1 class="pagetitle">{{ t("Redaktionsplan") }}</h1>
+    <p class="planhead__d">
+      {{ t("%(n)s Monate voraus, gebaut aus datierten Marktsignalen, geprüften Themen und dem, was das Archiv im selben Monat des Vorjahres getragen hat. Jeder Haken hängt an einer gespeicherten Zeile. Kein Datum wird geraten.") | format(n=plan_months) }}
+    </p>
+  </div>
+  <div class="planhead__r">
+    <form method="post" action="/client/{{ client.id }}/plan/neu">
+      <button type="submit" class="btn btn--ghost"{% if busy %} disabled{% endif %}>
+        {% if busy %}{{ t("Wird berechnet…") }}{% else %}{{ t("Neu berechnen") }}{% endif %}
+      </button>
+    </form>
+    <a class="btn" href="/client/{{ client.id }}/plan.html" download>{{ t("Als Dokument") }}</a>
+  </div>
+</div>
+
+{% if note %}
+  <p class="notice">{{ t(note) }}</p>
+{% endif %}
+
+{% if gap %}
+  {# No themes and no market signals: there is nothing a hook could be made of,
+     so the page says what is missing instead of showing six empty months. Six
+     empty months would read as "your market has nothing coming", which is a
+     statement about the market rather than about the configuration. #}
+  <section class="plangap">
+    <h2 class="plangap__h">{{ t("Für diesen Mandanten lässt sich noch kein Plan bauen.") }}</h2>
+    <p class="plangap__d">
+      {{ t("Ein Haken entsteht aus einem datierten Marktsignal, aus einem Thema mit gemessener Resonanz oder aus einem Monat, den das Archiv im Vorjahr getragen hat. Für dieses Mandat liegt keines davon vor — das ist eine Lücke in der Einrichtung und keine Aussage über den Markt.") }}
+    </p>
+    <ul class="plangap__list">
+      <li>
+        <span class="plangap__miss">{{ t("Keine geprüften Themen hinterlegt.") }}</span>
+        <a href="/settings?edit={{ client.id }}">{{ t("Themen hinterlegen") }} →</a>
+      </li>
+      <li>
+        <span class="plangap__miss">{{ t("Kein Marktsignal gefunden.") }}</span>
+        <a href="/client/{{ client.id }}/market">{{ t("Marktumfeld ansehen") }} →</a>
+      </li>
+    </ul>
+  </section>
+{% else %}
+
+<div class="plankey">
+  {% for klasse in klassen %}
+    <span><b class="plankey__b plankey__b--{{ klasse.key }}"></b>{{ t(klasse.label) }}</span>
+  {% endfor %}
+</div>
+
+{% for month in months %}
+  <section class="month{% if month.empty %} month--empty{% endif %}" id="monat-{{ month.key }}">
+    <div class="month__h">
+      <span class="month__n">{{ t(month.name) }}</span>
+      <span class="month__s">{% if month.current %}{{ t("laufender Monat") }}{% else %}{{ month.year }}{% endif %}</span>
+      <span class="month__r">
+        {%- if not month.live -%}
+          {{ t("kein Haken") }}
+        {%- elif month.live | length == 1 -%}
+          {{ t("1 Haken") }}
+        {%- else -%}
+          {{ month.live | length }} {{ t("Haken") }}
+        {%- endif -%}
+        {%- if month.done %}, {{ month.done }} {{ t("erledigt") }}{% endif -%}
+        {%- if month.discarded %} · {{ month.discarded | length }} {{ t("verworfen") }}{% endif -%}
+      </span>
+    </div>
+
+    {% if month.empty %}
+      {# An empty month is written out, not skipped: DEC-5's whole argument. #}
+      <div class="month__empty">
+        <b>{{ t("Leer.") }}</b>
+        {{ t("Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat. Ein leerer Monat wird nicht gefüllt, er wird gezeigt: entweder ist hier wirklich nichts, oder dem Mandat fehlt ein Thema.") }}
+        <a href="/settings?edit={{ client.id }}">{{ t("Themen prüfen") }}</a>
+      </div>
+    {% endif %}
+
+    {% for view in month.live %}
+      {% set hook = view.hook %}
+      <div class="hook" id="haken-{{ hook.id }}">
+        <div class="hook__d{% if not view.dated %} hook__d--soft{% endif %}">
+          <div class="hook__dd">{{ view.day_label }}</div>
+          <div class="hook__dm">{{ t(view.month_label) }}</div>
+        </div>
+        <div class="hook__b">
+          <div class="hook__t">
+            <span class="hook__title">{{ hook.title }}</span>
+            <span class="tag tag--{{ view.klasse.key }}">{{ t(view.klasse.label) }}</span>
+            {% if view.done %}<span class="tag tag--done">{{ t("Erledigt") }}</span>{% endif %}
+            {% if view.accepted and not view.done %}
+              <span class="tag">{{ t("Angenommen") }}</span>
+            {% endif %}
+          </div>
+          {% if hook.reason %}<p class="hook__w">{{ hook.reason }}</p>{% endif %}
+          <div class="hook__e">
+            {% if view.evidence %}
+              <a href="{{ view.evidence.href }}">{{ t("Beleg") }}: {{ view.evidence.label }}</a>
+              <span class="hook__src">{{ view.evidence.ref }}</span>
+            {% else %}
+              {# The row this hook was stored against has since been deleted. Said
+                 rather than linked: a link that 404s looks checked. #}
+              <span class="hook__gone">{{ t("Der Beleg zu diesem Haken ist nicht mehr auffindbar.") }}</span>
+            {% endif %}
+            {% for asset in view.released %}
+              <a href="/client/{{ client.id }}/advice?eintrag=anlass-{{ view.angle_id }}#impulse-{{ view.angle_id }}">{{ format_labels.get(asset.kind, asset.kind) }} {{ t("freigegeben") }} {{ asset.released_at | de_date }}</a>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="hook__a">
+          <form method="post" action="/client/{{ client.id }}/plan/{{ hook.id }}/text">
+            <button type="submit" class="btn btn--sm">{{ t("Text schreiben") }}</button>
+          </form>
+          {% if view.format_name %}
+            <span class="hook__fmt">{{ t("Vorschlag") }}: {{ view.format_name }}</span>
+          {% endif %}
+          {# Moving and discarding are quiet on purpose: DEC-5 puts one button on
+             a hook, and these two are the decisions that make a plan a person's
+             rather than a machine's. Both survive every later recompute. #}
+          <form method="post" action="/client/{{ client.id }}/plan/{{ hook.id }}/verschieben" class="hook__move">
+            <select name="monat" aria-label="{{ t('In einen anderen Monat verschieben') }}">
+              {% for option in months %}
+                <option value="{{ option.key }}"{% if option.key == hook.month %} selected{% endif %}>{{ t(option.name) }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="linkbtn">{{ t("Verschieben") }}</button>
+          </form>
+          <form method="post" action="/client/{{ client.id }}/plan/{{ hook.id }}/verwerfen">
+            <button type="submit" class="linkbtn linkbtn--danger">{{ t("Verwerfen") }}</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+
+    {% for view in month.discarded %}
+      {# A discarded hook stays on the page, greyed. What was proposed and
+         refused is part of how a plan was arrived at, and a row that vanished on
+         a click cannot be argued about at the jour fixe. #}
+      <div class="hook hook--out" id="haken-{{ view.hook.id }}">
+        <div class="hook__d{% if not view.dated %} hook__d--soft{% endif %}">
+          <div class="hook__dd">{{ view.day_label }}</div>
+          <div class="hook__dm">{{ t(view.month_label) }}</div>
+        </div>
+        <div class="hook__b">
+          <div class="hook__t">
+            <span class="hook__title">{{ view.hook.title }}</span>
+            <span class="tag">{{ t(view.state_label) }}</span>
+          </div>
+          <div class="hook__e">
+            {% if view.evidence %}
+              <a href="{{ view.evidence.href }}">{{ t("Beleg") }}: {{ view.evidence.label }}</a>
+              <span class="hook__src">{{ view.evidence.ref }}</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </section>
+{% endfor %}
+
+<p class="planfoot">
+  {{ t("Der Monat ist die Einheit, in der eine Agentur ohnehin arbeitet: der Bericht ist monatlich, das Retainer-Gespräch ist monatlich. Der Plan ist deshalb ein Stapel Monate, und ein leerer Monat ist eine Aussage, keine Lücke im Layout.") }}
+</p>
+{% endif %}
+{% endblock %}

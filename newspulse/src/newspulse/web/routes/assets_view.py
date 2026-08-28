@@ -401,18 +401,30 @@ def page_context(
     angles: list[Angle],
     targets: dict[int, list[pitch.PitchTarget]],
     letters: dict[int, list],
+    *,
+    preselect: str = "",
 ) -> dict[str, object]:
     """Everything the impulse page needs about the package, as one merge.
 
     One call rather than four, so ``advisory`` does not have to know that a strip,
     a progress record, a lock and a note are separate things here — and so a fifth
     of them arrives without that route changing.
+
+    ``preselect`` is a format key whose tick box the page opens with already
+    ticked. It exists for the surfaces that arrive here *carrying* an occasion
+    and a suggestion — the editorial plan's "Text schreiben" hands over the
+    format its hook proposes — so the reader lands on one press and confirms it,
+    rather than hunting the row the previous page just recommended. Nothing is
+    written by it: a tick is a tick, and the write button is still a second
+    press. A key the registry does not know is dropped rather than passed
+    through, so a hand-edited query string cannot tick a row that does not exist.
     """
     return {
         "packages": package(session, client, angles, targets, letters),
         "asset_progress": progress_for(client.id),
         "asset_busy": busy(),
         "asset_notes": {angle.id: package_note(angle.id) for angle in angles},
+        "asset_preselect": preselect if preselect in assets.REGISTRY else "",
     }
 
 

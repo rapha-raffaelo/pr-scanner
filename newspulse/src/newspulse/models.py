@@ -1188,6 +1188,25 @@ class Angle(Base):
     brain_version: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
+    #: The plan hook this occasion was opened from, when it was opened from one.
+    #:
+    #: An impulse normally comes from the radar and belongs to the morning it was
+    #: drafted. A hook is the other way round: a person clicked "Text schreiben"
+    #: on a dated entry in the editorial plan, and the texts written afterwards
+    #: are that hook's texts — which is what makes the plan page able to say
+    #: "Gastbeitrag am 03.09. freigegeben" beside the entry it came from.
+    #: :class:`Asset` keeps hanging on the occasion rather than on the hook, so a
+    #: format needs to know nothing about where its occasion came from.
+    #:
+    #: NULL for every impulse the radar drafted, which is nearly all of them.
+    #: ``SET NULL`` rather than ``CASCADE``: a hook a recompute removed must not
+    #: take a released press release with it.
+    plan_hook_id: Mapped[int | None] = mapped_column(
+        ForeignKey("plan_hooks.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+        index=True,
+    )
 
 
 class ClientFact(Base):

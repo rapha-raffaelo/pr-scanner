@@ -1993,3 +1993,97 @@ button:disabled { opacity: .55; cursor: default; }
 .vis-cell--unmeasured b { color: var(--warn); }
 
 .vis-foot { font-size: var(--t-caption); color: var(--faint); margin-top: var(--s4); max-width: 76ch; }
+
+/* --- Der Redaktionsplan (DEC-5 A: Monat für Monat) -------------------------
+   Here rather than in a <style> in client_plan.html because the plan document
+   beside it carries its own self-contained copy; two page-local blocks for the
+   same component drift, and the page-local one wins only on its own page.
+
+   The classes the mock declares, in the mock's own colours — the four source
+   classes it names, plus the fifth (a theme with measured resonance) that is a
+   hook class in the engine and needs a swatch of its own rather than being
+   folded into one of the four. */
+:root {
+  --hook-study: #5856d6;
+  --hook-reg: var(--warn);
+  --hook-event: var(--tint);
+  --hook-thema: var(--teal);
+  --hook-archiv: var(--good);
+}
+
+.planhead { display: flex; align-items: flex-start; gap: var(--s4); flex-wrap: wrap; margin-bottom: var(--s5); }
+.planhead__d { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s1); max-width: 64ch; }
+.planhead__r { margin-left: auto; display: flex; gap: var(--s2); align-items: center; }
+/* The download is an <a>, so it needs the button's own line-height to sit level
+   with the recompute button beside it. */
+.planhead__r .btn { display: inline-flex; align-items: center; }
+
+.plankey { display: flex; gap: var(--s4); flex-wrap: wrap; font-size: var(--t-caption);
+           color: var(--muted); margin-bottom: var(--s5); }
+.plankey span { display: flex; align-items: center; gap: 5px; }
+.plankey__b { width: 8px; height: 8px; border-radius: 2px; display: inline-block; background: var(--neutral); }
+.plankey__b--study { background: var(--hook-study); }
+.plankey__b--reg { background: var(--hook-reg); }
+.plankey__b--event { background: var(--hook-event); }
+.plankey__b--thema { background: var(--hook-thema); }
+.plankey__b--archiv { background: var(--hook-archiv); }
+
+/* The month is the unit. A card each, and an empty one drawn dashed rather than
+   left out — a month absent from a six-month plan reads as unchecked. */
+.month { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+         margin-bottom: var(--s4); overflow: hidden; }
+.month--empty { border-style: dashed; background: transparent; }
+.month__h { display: flex; align-items: baseline; gap: var(--s3); padding: var(--s4) var(--s4) var(--s3); flex-wrap: wrap; }
+.month__n { font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.015em; }
+.month__s { font-size: var(--t-caption); color: var(--muted); }
+.month__r { margin-left: auto; font-size: var(--t-caption); color: var(--muted); }
+.month__empty { padding: var(--s4); font-size: var(--t-footnote); color: var(--muted); }
+.month__empty b { color: var(--warn); font-weight: 600; }
+
+.hook { display: flex; gap: var(--s3); padding: var(--s3) var(--s4);
+        border-top: 1px solid var(--line); align-items: flex-start; }
+.hook--out { opacity: 0.55; }
+/* The date block. Two lines, tabular numerals, and the "soft" variant for a hook
+   whose source names only a month — the missing day is never drawn as "01". */
+.hook__d { width: 56px; flex: none; text-align: center; padding-top: 2px; }
+.hook__dd { font-size: var(--t-title3); font-weight: 700; line-height: 1;
+            font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.hook__dm { font-size: var(--t-caption2); color: var(--faint); text-transform: uppercase;
+            letter-spacing: 0.05em; margin-top: 2px; }
+.hook__d--soft .hook__dd { color: var(--faint); font-size: var(--t-subhead); font-weight: 600; }
+.hook__b { min-width: 0; flex: 1; }
+.hook__t { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.hook__title { font-size: var(--t-subhead); font-weight: 600; }
+.hook__w { font-size: var(--t-footnote); color: var(--muted); margin-top: 3px; line-height: 1.5; }
+.hook__e { font-size: var(--t-footnote); margin-top: 6px; display: flex; gap: var(--s3);
+           align-items: center; flex-wrap: wrap; }
+.hook__src { color: var(--faint); }
+.hook__gone { color: var(--warn); }
+.hook__a { margin-left: auto; display: flex; gap: 6px; align-items: center; flex: none;
+           padding-top: 2px; flex-wrap: wrap; justify-content: flex-end; max-width: 260px; }
+.hook__fmt { font-size: var(--t-caption); color: var(--faint); }
+.hook__move { display: flex; gap: 4px; align-items: center; }
+.hook__move select { font-size: var(--t-caption); padding: 2px 4px; }
+
+/* The class tags. The base `.tag` is the global one; these are its five plan
+   variants, one per Herkunftsklasse, in the mock's colours. */
+.tag--study { background: rgba(88, 86, 214, 0.10); color: var(--hook-study); }
+.tag--reg { background: var(--warn-wash); color: var(--hook-reg); }
+.tag--event { background: var(--tint-wash); color: var(--hook-event); }
+.tag--thema { background: rgba(0, 113, 164, 0.10); color: var(--hook-thema); }
+.tag--archiv { background: var(--good-wash); color: var(--hook-archiv); }
+.tag--done { background: var(--good-wash); color: var(--good); font-weight: 600; }
+
+/* A mandate with neither themes nor market signals: what is missing, and where
+   it is filled in. Not six empty months, which would blame the market. */
+.plangap { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+           padding: var(--s5); max-width: 72ch; }
+.plangap__h { font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.015em; }
+.plangap__d { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s2); }
+.plangap__list { list-style: none; margin-top: var(--s4); padding: 0; }
+.plangap__list li { display: flex; gap: var(--s3); align-items: baseline; flex-wrap: wrap;
+                    font-size: var(--t-subhead); padding: var(--s2) 0;
+                    border-top: 1px solid var(--line); }
+.plangap__miss { color: var(--warn); font-weight: 600; }
+
+.planfoot { font-size: var(--t-caption); color: var(--faint); margin-top: var(--s5); max-width: 78ch; }

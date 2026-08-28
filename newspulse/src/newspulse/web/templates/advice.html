@@ -477,10 +477,14 @@
               <div class="fmtrow{% if loop.first %} is-on{% endif %}{% if not slot.readiness.ok %} fmtrow--blocked{% endif %}">
                 {# Released texts are final; the box is drawn and disabled rather
                    than left out, so the row still lines up with the five others. #}
+                {# ``asset_preselect`` is the format a page that sent the reader
+                   here proposed — the plan hook's suggestion. A tick, never a
+                   write: the button below is still the reader's own press. #}
                 <input class="fmtrow__tick" type="checkbox" name="kind"
                        value="{{ slot.key }}" form="write-{{ angle.id }}"
                        id="tick-{{ angle.id }}-{{ slot.key }}"
                        aria-label="{{ t(slot.fmt.name) }}"
+                       {% if slot.key == asset_preselect and slot.writable %}checked{% endif %}
                        {% if slot.state == 'freigegeben' or busy %}disabled{% endif %}>
                 <button type="button" class="fmttab{% if loop.first %} is-on{% endif %}"
                         role="tab" id="tab-{{ angle.id }}-{{ slot.key }}"
