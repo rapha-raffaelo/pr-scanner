@@ -25,6 +25,7 @@ import datetime as dt
 import hashlib
 import html as htmllib
 import re
+import threading
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -103,6 +104,31 @@ def berlin(monkeypatch):
     monkeypatch.setattr(config, "LOCAL_ZONE", _BERLIN)
 
 
+#: How long a test waits for the recompute worker to reach its stub. Generous,
+#: because it is only ever paid when something is broken: the thread is started
+#: by the request the test just made and does two statements.
+_WORKER_TIMEOUT = 5.0
+
+
+class _Spawned:
+    """What the recompute button handed to a thread, and when it got there.
+
+    The route returns as soon as ``Thread.start()`` does, and ``start()`` waits
+    for the bootstrap rather than for ``run()``. Asserting straight after the
+    POST therefore races the worker — passing nearly always and failing under
+    load, which is the worst way for a test to be wrong. ``wait`` is the
+    handshake that makes the assertion mean what it reads as.
+    """
+
+    def __init__(self) -> None:
+        self.ids: list[int] = []
+        self.done = threading.Event()
+
+    def wait(self) -> list[int]:
+        assert self.done.wait(_WORKER_TIMEOUT), "the recompute worker never ran"
+        return self.ids
+
+
 @pytest.fixture(autouse=True)
 def no_background_recompute(monkeypatch):
     """Stop the recompute button from starting a real worker in a test run.
@@ -113,14 +139,20 @@ def no_background_recompute(monkeypatch):
     would hold it for the rest of the process, which is invisible here and hangs
     a later test.
     """
-    started: list[int] = []
+    spawned = _Spawned()
 
     def _stub(client_id: int) -> None:
-        started.append(client_id)
-        plan_view._recomputing.release()
+        try:
+            spawned.ids.append(client_id)
+            plan_view._recomputing.release()
+        finally:
+            # Set last and always, so a stub that raised is still a stub that
+            # ran — a test waiting on it should fail on its own assertion rather
+            # than time out five seconds later saying nothing.
+            spawned.done.set()
 
     monkeypatch.setattr(plan_view, "_run_recompute", _stub)
-    return started
+    return spawned
 
 
 @pytest.fixture(autouse=True)
@@ -806,7 +838,7 @@ def test_the_recompute_button_hands_the_work_to_a_worker(
     posted = web.post(f"/client/{mandate.id}/plan/neu", follow_redirects=False)
 
     assert posted.status_code == 303
-    assert no_background_recompute == [mandate.id]
+    assert no_background_recompute.wait() == [mandate.id]
     assert not plan_view.busy(), "the recompute left its lock held"
 
 
