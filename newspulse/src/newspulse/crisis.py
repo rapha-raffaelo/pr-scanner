@@ -41,11 +41,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import config, outlets
 from .matching import mentions_client, name_matcher
 from .models import (
+    CRISIS_DECLARED_BY_MAX,
     CRISIS_LEVEL_MAX,
     CRISIS_LEVEL_MIN,
     Analysis,
@@ -331,28 +333,43 @@ def _by_category(rows: list[_Row]) -> _Row | None:
     return None
 
 
-def _by_wave(rows: list[_Row]) -> _Row | None:
-    """The lead of the first story at least :data:`PROPOSAL_OUTLETS` outlets carry
-    negatively.
+#: One clustered story as this module passes it around: its lead, and every row
+#: that reports the same event. Named because the clustering is done exactly once
+#: per :func:`propose` and the same grouping then answers both conditions *and*
+#: supplies the pickup count.
+_Story = tuple[_Row, tuple[_Row, ...]]
+
+
+def _by_wave(stories: list[_Story]) -> _Story | None:
+    """The first story at least :data:`PROPOSAL_OUTLETS` outlets carry negatively,
+    led by the strongest negative copy.
 
     Only the negative members count, towards the total and towards the lead:
     three outlets on a story two of them praise is not a wave against the
     mandate, and pointing the proposal at the one approving write-up would read
-    as nonsense.
+    as nonsense. The *story* handed back is still the whole story, because that
+    is what the pickup count on the offer means.
     """
-    for story in cluster(rows):
-        members: tuple[_Row, ...] = story.members
+    for _lead, members in stories:
         against = [row for row in members if row.tonality is Tonality.NEGATIV]
         carriers = {
             outlets.normalize_outlet(row.source) for row in against if row.source
         }
         if len(carriers) >= PROPOSAL_OUTLETS:
-            return against[0]
+            return against[0], members
     return None
 
 
+def _story_of(stories: list[_Story], row: _Row) -> tuple[_Row, ...]:
+    """The clustered story ``row`` belongs to, out of the grouping already made."""
+    for _lead, members in stories:
+        if any(member.article.id == row.article.id for member in members):
+            return members
+    return (row,)
+
+
 def _proposal(
-    session: Session, client: Client, row: _Row, trigger: Trigger
+    client: Client, row: _Row, trigger: Trigger, members: tuple[_Row, ...]
 ) -> Proposal:
     """A proposal for ``row``, carrying how far the story it belongs to has run.
 
@@ -361,8 +378,13 @@ def _proposal(
     offer is what ``trigger`` says; overloading the count to mean "negative
     carriers" in one case and "all carriers" in the other would put two different
     numbers under one label.
+
+    ``members`` comes from the *same* clustering that answered the condition, and
+    that is the point rather than an economy: re-clustering the story over a
+    window hung off the trigger's publication rather than off the clock produced
+    a different grouping, so the number on the offer could disagree with the one
+    that met the threshold.
     """
-    members = _story_rows(session, client, row.article)
     carriers = {
         outlets.normalize_outlet(member.source) for member in members if member.source
     }
@@ -373,6 +395,40 @@ def _proposal(
         headline=row.headline,
         outlets=len(carriers),
     )
+
+
+def _stood_down(session: Session, client: Client, rows: list[_Row]) -> set[int]:
+    """The article ids belonging to a story this mandate has already stood down.
+
+    DEC-1's whole rationale is that a false alarm costs one click. Suppressing a
+    proposal only while a crisis is *open* spends that click again on every page
+    load for the next twenty-four hours, because the article that triggered it is
+    still inside :data:`_PROPOSAL_WINDOW` — so a stood-down story stops
+    proposing, not merely the row it was declared off.
+
+    The whole story rather than the trigger alone: the pickups are what the wave
+    condition counts, and leaving them behind would re-offer the same event under
+    a different headline the moment the trigger aged out.
+
+    Deliberately not "no proposals for N hours". A different story breaking the
+    same afternoon is a different question and still gets asked.
+    """
+    triggers = session.scalars(
+        select(Article)
+        .join(Crisis, Crisis.article_id == Article.id)
+        .where(Crisis.client_id == client.id, Crisis.closed_at.is_not(None))
+    ).all()
+    if not triggers:
+        return set()
+    visible = {row.article.id for row in rows}
+    silenced: set[int] = set()
+    for trigger in triggers:
+        silenced.update(
+            row.article.id for row in _story_rows(session, client, trigger)
+        )
+    # Only the ones still in view matter; a trigger that has aged out of the
+    # window costs nothing to carry and nothing to drop.
+    return silenced & visible
 
 
 def propose(
@@ -386,21 +442,29 @@ def propose(
     :data:`_PROPOSAL_WINDOW`.
 
     A mandate that is already in a declared crisis gets no proposal: there is at
-    most one open crisis per mandate, so there is nothing left to offer.
+    most one open crisis per mandate, so there is nothing left to offer. Neither
+    does a story somebody has already stood down — see :func:`_stood_down`.
     """
     reference = now or dt.datetime.now(dt.UTC)
     if open_crisis(session, client) is not None:
         return None
     rows = _rows(session, client, since=reference - _PROPOSAL_WINDOW)
+    silenced = _stood_down(session, client, rows)
+    rows = [row for row in rows if row.article.id not in silenced]
     if not rows:
         return None
 
+    # Clustered once, and every answer below comes out of this one grouping.
+    stories: list[_Story] = [(story.lead, story.members) for story in cluster(rows)]
     flagged = _by_category(rows)
     if flagged is not None:
-        return _proposal(session, client, flagged, Trigger.KATEGORIE)
-    lead = _by_wave(rows)
-    if lead is not None:
-        return _proposal(session, client, lead, Trigger.WELLE)
+        return _proposal(
+            client, flagged, Trigger.KATEGORIE, _story_of(stories, flagged)
+        )
+    wave = _by_wave(stories)
+    if wave is not None:
+        lead, members = wave
+        return _proposal(client, lead, Trigger.WELLE, members)
     return None
 
 
@@ -414,6 +478,24 @@ def open_crisis(session: Session, client: Client) -> Crisis | None:
             Crisis.client_id == client.id, Crisis.closed_at.is_(None)
         )
     ).first()
+
+
+def still_open(session: Session, crisis: Crisis) -> bool:
+    """Whether ``crisis`` is *still* open — read from the table, not the object.
+
+    A crisis reading is minutes long: feed fetches, then a model call per batch.
+    The object it started with was loaded before any of that, so asking it
+    answers a question about the past. Somebody pressing "stand down" during
+    those minutes is exactly the case the caller has to notice, and the only
+    place that fact exists is the row.
+
+    A crisis whose row is gone reads as not open, which is the honest answer for
+    a caller deciding whether to write to it.
+    """
+    row = session.execute(
+        select(Crisis.closed_at).where(Crisis.id == crisis.id)
+    ).first()
+    return row is not None and row[0] is None
 
 
 def open_crises(session: Session) -> list[Crisis]:
@@ -474,6 +556,12 @@ def declare(
     rows makes that a schema guarantee; this returns the standing row rather than
     letting the caller discover it as an ``IntegrityError``, so a double click, a
     second browser tab and a restart mid-declaration all land on the same crisis.
+
+    The read-then-insert is not atomic, so that promise is kept twice: once by
+    the read, and once by catching the index doing its job. Two connections can
+    both see no open crisis before either commits — one browser tab per
+    replica — and the loser of that race has to be handed the winner's crisis
+    rather than a traceback.
     """
     standing = open_crisis(session, client)
     if standing is not None:
@@ -481,12 +569,30 @@ def declare(
     crisis = Crisis(
         client_id=client.id,
         article_id=article.id,
-        declared_by=(by or "").strip() or DECLARED_BY_DEFAULT,
+        # Truncated rather than refused: an eighty-character ceiling on a
+        # sign-in name may cost the tail of the name, never the declaration.
+        declared_by=((by or "").strip() or DECLARED_BY_DEFAULT)[
+            :CRISIS_DECLARED_BY_MAX
+        ],
         declared_at=now or dt.datetime.now(dt.UTC),
     )
     _grade(crisis, severity(session, client, article))
     session.add(crisis)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # ``uq_crises_one_open_per_client`` fired: somebody else declared between
+        # the read above and this commit. Their row is the crisis.
+        session.rollback()
+        standing = open_crisis(session, client)
+        if standing is None:
+            raise
+        _log.info(
+            "a concurrent declaration for %r won; using crisis %d",
+            client.name,
+            standing.id,
+        )
+        return standing
     _log.info(
         "crisis declared for %r at level %d by %r",
         client.name,
@@ -588,4 +694,5 @@ __all__ = [
     "propose",
     "regrade",
     "severity",
+    "still_open",
 ]

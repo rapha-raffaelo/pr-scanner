@@ -2119,6 +2119,12 @@ class VisibilityAnswer(Base):
 CRISIS_LEVEL_MIN = 1
 CRISIS_LEVEL_MAX = 5
 
+#: How much of a declarer's name the row keeps. Eighty characters is the same
+#: width :attr:`ClientFact.filled_by` uses, and it is a ceiling rather than a
+#: validation rule: :func:`newspulse.crisis.declare` truncates to it, because a
+#: long sign-in name must cost the tail of a name and never the declaration.
+CRISIS_DECLARED_BY_MAX = 80
+
 
 class Crisis(Base):
     """One declared crisis: when it began, how bad it is, who said so, when it ended.
@@ -2170,7 +2176,9 @@ class Crisis(Base):
     #: ``"mensch"`` token :attr:`ClientFact.filled_by` already uses — never a
     #: name nobody typed. DEC-1 turns on a *person* having decided, so the row
     #: has to be able to say that a person did.
-    declared_by: Mapped[str] = mapped_column(String(80), nullable=False)
+    declared_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
     declared_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
     )
@@ -2254,6 +2262,7 @@ class Crisis(Base):
 
 __all__ = [
     "Crisis",
+    "CRISIS_DECLARED_BY_MAX",
     "CRISIS_LEVEL_MIN",
     "CRISIS_LEVEL_MAX",
     "VisibilityBand",
