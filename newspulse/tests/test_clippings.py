@@ -38,6 +38,9 @@ JULY = Period.month(2026, 7)
 
 GOLDEN = Path(__file__).parent / "fixtures" / "clippings" / "pressespiegel_2026-07.html"
 
+#: Every address the rendered document points at, however it is spelled.
+_TARGETS = re.compile(r'(?:href|src|action)\s*=\s*"([^"]*)"')
+
 
 @pytest.fixture
 def factory():
@@ -333,6 +336,60 @@ def test_the_header_names_the_last_day_the_period_contains_not_the_next_first(
     assert document.period_last < JULY.end
 
 
+def test_the_header_names_the_last_day_of_a_month_that_loses_an_hour(monkeypatch):
+    """A spring-forward month's last local day is 23 hours long, so a header
+    corrected by a whole day would name the 30th while the document lists a piece
+    from the 31st — a document contradicting itself in front of a client."""
+    monkeypatch.setattr(config, "LOCAL_ZONE", ZoneInfo("Europe/Berlin"))
+    for year, month, last in ((2024, 3, 31), (2019, 3, 31), (2026, 7, 31), (2026, 2, 28)):
+        period = Period.month(year, month)
+        named = period.last.astimezone(config.local_zone())
+        assert (named.month, named.day) == (month, last), (year, month, named)
+        assert period.start <= period.last < period.end
+
+
+def test_one_outlet_spelled_two_ways_is_one_aufgriff(factory, mandate):
+    """The pickup count is the one figure the grouping exists to state, and the
+    one a client cannot check — so it counts mastheads, not feed spellings."""
+    with factory() as session:
+        client = session.get(Client, mandate)
+        for title, source, hour in (
+            (_WIRE[0], "Handelsblatt", 6),
+            (_WIRE[1], "handelsblatt.de", 9),
+        ):
+            _piece(
+                session, client, title, source=source,
+                when=dt.datetime(2026, 7, 8, hour, 0, tzinfo=dt.UTC),
+            )
+        session.commit()
+        document = clippings.build(session, client, JULY)
+
+    story = document.stories[0]
+    assert story.pickup_count == 1
+    assert len(story.items) == 2
+    # And the line names the masthead, not whichever spelling arrived first.
+    assert story.top_outlet == "Handelsblatt"
+
+
+def test_a_snippet_with_no_word_boundary_in_reach_is_cut_at_the_ceiling(
+    factory, mandate
+):
+    """Cutting back to the last space is only a kindness while there is a space
+    near the ceiling. A run without one would otherwise be published as its first
+    word, throwing the outlet's summary away instead of trimming it."""
+    with factory() as session:
+        client = session.get(Client, mandate)
+        _piece(
+            session, client, _WIRE[0], summary=None, snippet="Kurz " + "x" * 500
+        )
+        session.commit()
+        document = clippings.build(session, client, JULY)
+
+    summary = document.stories[0].items[0].summary
+    assert len(summary) == clippings._MAX_SNIPPET_CHARS + len(clippings._ELLIPSIS)
+    assert summary.endswith("…")
+
+
 def test_an_empty_period_builds_an_empty_document_not_an_error(factory, mandate):
     with factory() as session:
         document = clippings.build(session, session.get(Client, mandate), JULY)
@@ -395,7 +452,12 @@ def test_the_download_carries_no_links_back_into_the_application(http, factory, 
     screen = http.get(f"/client/{mandate}/pressespiegel?zeitraum=2026-07").text
     export = http.get(f"/client/{mandate}/pressespiegel.html?zeitraum=2026-07").text
     assert 'href="/' in screen
-    assert 'href="/' not in export
+    # Every target the file carries, not just the root-relative ones: a bare
+    # "client/1/berichte" or a protocol-relative "//host/…" is a link back into
+    # the application too, and asserting on one spelling would let those through.
+    targets = _TARGETS.findall(export)
+    assert targets, "the export should still carry the outlets' own links"
+    assert all(target.startswith(("http://", "https://")) for target in targets), targets
     # The content itself is identical: the difference is chrome outside the document.
     doc = re.compile(r'<article class="doc">.*</article>', re.DOTALL)
     assert doc.search(screen).group() == doc.search(export).group()
@@ -444,6 +506,21 @@ def test_an_unknown_mandate_is_a_404(http):
 
 def test_an_unreadable_period_falls_back_instead_of_erroring(http, mandate):
     assert http.get(f"/client/{mandate}/pressespiegel?zeitraum=quatsch").status_code == 200
+
+
+@pytest.mark.parametrize("zeitraum", ["0001-01", "0000-01", "9999-12", "2026-13"])
+def test_a_period_outside_the_calendar_falls_back_instead_of_erroring(
+    http, mandate, zeitraum
+):
+    """A month with the right shape can still leave the calendar, and at both
+    ends: converting local midnight of the first year to UTC underflows past it
+    (an OverflowError, not a ValueError), and December 9999 ends in a year that
+    does not exist. A hand-edited query string is not a 500."""
+    assert http.get(f"/client/{mandate}/pressespiegel?zeitraum={zeitraum}").status_code == 200
+    assert (
+        http.get(f"/client/{mandate}/pressespiegel.html?zeitraum={zeitraum}").status_code
+        == 200
+    )
 
 
 # --- Language --------------------------------------------------------------------
