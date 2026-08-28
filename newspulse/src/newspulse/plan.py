@@ -25,7 +25,13 @@ not defaulted, and not rendered as the first of the month.
 Recomputing never throws away a person's work. A hook that was accepted,
 discarded or moved to another month survives every recompute; only untouched
 proposals inside the window are replaced, and a source a surviving hook already
-points at is skipped rather than proposed a second time.
+points at is skipped rather than proposed a second time. A theme is skipped by
+its term rather than by its evidence row, because the row that evidences a theme
+moves with the radar while the refusal a person recorded does not.
+
+The swap itself is one transaction. A recompute that fails partway gives the
+person the plan they had back, not an empty one they will not be offered again
+for a week.
 """
 
 from __future__ import annotations
@@ -38,7 +44,7 @@ from importlib import resources
 from string import Template
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, select
+from sqlalchemy import ColumnElement, and_, delete, select
 from sqlalchemy.orm import Session
 
 from . import brain, config, prose
@@ -112,6 +118,23 @@ class HookCandidate:
     day: int | None
     title: str
     context: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Claimed:
+    """What this mandate's surviving hooks already speak for.
+
+    Two shapes because a hook has two identities and they are not the same one.
+    ``sources`` is the evidence row, which is what ``uq_plan_hooks_source``
+    enforces and what a signal or an archive month is fully described by.
+    ``themes`` is the term, which is what a theme hook is *about*: its evidence
+    row is only the newest article that happened to carry the term, and the
+    radar files a newer one most nights. Keying a theme by its evidence would
+    let a refusal a person recorded expire with the next article.
+    """
+
+    sources: frozenset[tuple[HookSource, int]]
+    themes: frozenset[str]
 
 
 # --- What the model is asked for -------------------------------------------------
@@ -255,8 +278,35 @@ def _client_themes(client: Client) -> list[str]:
     ]
 
 
+def _theme_evidence(
+    hits: list[tuple[TopicHit, Article]], claimed: _Claimed, spent: set[int]
+) -> TopicHit | None:
+    """The newest matching radar row no other hook already cites, or ``None``.
+
+    Not simply ``hits[0]``, and the reason is a collision that reaches
+    production. Two of a mandate's themes routinely land on one article —
+    "Wärmepumpe" and "Heizung" both match a headline about replacing the second
+    with the first — while ``topic_hits`` carries exactly one row per (article,
+    mandate). The newest matching row would therefore be the *same* row for both
+    terms, which is two hooks on one source: ``uq_plan_hooks_source`` refuses the
+    second and takes the whole recompute down with it. Each resonant theme cites
+    a row of its own instead. A theme whose every hit is already spoken for is
+    not stored at all — it waits for the next article, which the radar files
+    within days.
+    """
+    for hit, _ in hits:
+        if hit.id in spent or (HookSource.THEMA, hit.id) in claimed.sources:
+            continue
+        return hit
+    return None
+
+
 def _theme_candidates(
-    session: Session, client: Client, months: list[str], now: dt.datetime
+    session: Session,
+    client: Client,
+    months: list[str],
+    now: dt.datetime,
+    claimed: _Claimed,
 ) -> list[HookCandidate]:
     """The themes whose resonance the radar has actually measured.
 
@@ -266,6 +316,12 @@ def _theme_candidates(
     evidence supports: "the trade press writes about this now". Spreading a
     theme across the empty months would be exactly the generic filler DEC-4
     forbids.
+
+    A term a surviving hook already carries is skipped here rather than filtered
+    out later by its evidence id, because a theme's evidence id is the newest
+    matching article and the radar keeps producing newer ones. Filtering by the
+    row would re-propose a "verworfen" theme the night after it was refused —
+    which is precisely how a person is trained to stop deciding.
     """
     since = now - THEME_LOOKBACK
     rows = session.execute(
@@ -274,23 +330,31 @@ def _theme_candidates(
         .where(TopicHit.client_id == client.id, Article.published_at >= since)
         .order_by(Article.published_at.desc(), TopicHit.id)
     ).all()
+    # Folded once per row, not once per (term, row): a mandate with a dozen
+    # themes and a busy quarter of radar would otherwise rebuild and case-fold
+    # the same haystack tens of thousands of times for one recompute.
+    haystacks = [
+        (hit, article, f"{article.title or ''}\n{article.summary_text or ''}".casefold())
+        for hit, article in rows
+    ]
     candidates: list[HookCandidate] = []
+    spent: set[int] = set()
     for term in _client_themes(client):
+        if term in claimed.themes:
+            continue
         matcher = terms_matcher([term])
         if matcher is None:
             continue
         hits = [
-            (hit, article)
-            for hit, article in rows
-            if matcher.search(
-                f"{article.title or ''}\n{article.summary_text or ''}".casefold()
-            )
+            (hit, article) for hit, article, text in haystacks if matcher.search(text)
         ]
         if len(hits) < THEME_RESONANCE_MIN:
             continue
-        # The newest matching radar row is the evidence: deterministic, so a
-        # recompute against an unchanged archive names the same row again.
-        evidence, newest = hits[0]
+        evidence = _theme_evidence(hits, claimed, spent)
+        if evidence is None:
+            continue
+        spent.add(evidence.id)
+        _, newest = hits[0]
         candidates.append(
             HookCandidate(
                 kind=HookSource.THEMA,
@@ -355,15 +419,42 @@ def _vorjahr_candidates(
 
 
 def _candidates(
-    session: Session, client: Client, months: list[str], now: dt.datetime
+    session: Session,
+    client: Client,
+    months: list[str],
+    now: dt.datetime,
+    claimed: _Claimed,
 ) -> list[HookCandidate]:
-    """Every evidenced candidate, dated ones first, capped deterministically."""
+    """Every *fresh* evidenced candidate, dated ones first, capped deterministically.
+
+    Filtered before the cap rather than after it. A mandate in a regulated field
+    can carry two dozen future-dated signals a person has long since decided on;
+    capping the raw list would spend the whole budget on sources that can never
+    be proposed again and truncate the themes and the previous year away before
+    either was looked at. The cap exists to bound the prompt, and only what
+    survives this filter ever reaches one.
+
+    The dedupe against ``seen`` is the invariant ``uq_plan_hooks_source``
+    encodes, enforced where the batch is built. Two candidates on one row is a
+    database error at ``add_all`` time, by which point the recompute has already
+    decided what the plan should be — cheaper to notice here.
+    """
     gathered = [
         *_signal_candidates(session, client, months, now),
-        *_theme_candidates(session, client, months, now),
+        *_theme_candidates(session, client, months, now, claimed),
         *_vorjahr_candidates(session, client, months),
     ]
-    return gathered[:_MAX_CANDIDATES]
+    fresh: list[HookCandidate] = []
+    seen: set[tuple[HookSource, int]] = set()
+    for candidate in gathered:
+        source = (candidate.kind, candidate.source_id)
+        if source in claimed.sources or source in seen:
+            continue
+        if not _resolves(session, candidate.kind, candidate.source_id):
+            continue
+        seen.add(source)
+        fresh.append(candidate)
+    return fresh[:_MAX_CANDIDATES]
 
 
 # --- Evidence resolution ----------------------------------------------------------
@@ -458,8 +549,77 @@ def _prose_fields(entry: HookProse | None) -> tuple[str, str]:
 # --- Recompute --------------------------------------------------------------------
 
 
-def _reference(now) -> dt.datetime:
-    return now() if callable(now) else (now or dt.datetime.now(dt.UTC))
+def _reference(now: dt.datetime | None) -> dt.datetime:
+    """The moment a plan is counted from: ``now``, or the clock.
+
+    A naive value is read as UTC rather than rejected, the same reading
+    :class:`~newspulse.models.UTCDateTime` gives one on the way into the
+    database and the same one :func:`newspulse.visibility._reference` gives.
+    Without it a naive ``now`` would silently reinterpret the calendar in
+    :func:`month_key` — ``astimezone`` reads a naive value as the *host's* local
+    time — and would raise ``TypeError`` in :func:`due`, where the stored stamp
+    always comes back aware.
+    """
+    reference = now or dt.datetime.now(dt.UTC)
+    if reference.tzinfo is None:
+        return reference.replace(tzinfo=dt.UTC)
+    return reference
+
+
+def _replaceable(months: list[str]) -> ColumnElement[bool]:
+    """The hooks a recompute may throw away: proposals inside the window that
+    nobody has touched.
+
+    Written once and read twice — by the delete and by :func:`_claimed` — because
+    the two must not drift. A row the survivor scan counts but the delete removes
+    would leave its source blocked and its hook gone; a row the delete keeps but
+    the scan misses would be proposed a second time.
+    """
+    return and_(
+        PlanHook.state == HookState.VORGESCHLAGEN,
+        PlanHook.moved_at.is_(None),
+        PlanHook.month >= months[0],
+    )
+
+
+def _claimed(session: Session, client: Client, months: list[str]) -> _Claimed:
+    """What this mandate's surviving hooks already speak for.
+
+    Read *before* the delete rather than after it, so the model call happens
+    outside any open write transaction: the swap in :func:`_replace` is then a
+    single short transaction rather than one held open for the length of a
+    model call.
+    """
+    rows = session.scalars(
+        select(PlanHook).where(
+            PlanHook.client_id == client.id, ~_replaceable(months)
+        )
+    ).all()
+    return _Claimed(
+        sources=frozenset((row.source_kind, row.source_id) for row in rows),
+        themes=frozenset(
+            row.title for row in rows if row.source_kind is HookSource.THEMA
+        ),
+    )
+
+
+def _replace(
+    session: Session, client: Client, months: list[str], hooks: list[PlanHook]
+) -> None:
+    """Swap the replaceable proposals for the fresh ones, in one transaction.
+
+    Atomic on purpose, and the failure it bounds is a real one. With the delete
+    committed on its own, anything raising between the two commits — a database
+    read, an integrity error on the batch — left the mandate with an emptied
+    plan *and* a weekly stamp already written, so the next six sweeps would not
+    even try again. One transaction means a failed recompute hands the person
+    back the plan they had.
+    """
+    session.execute(
+        delete(PlanHook).where(PlanHook.client_id == client.id, _replaceable(months))
+    )
+    session.add_all(hooks)
+    session.commit()
 
 
 def recompute(
@@ -467,7 +627,7 @@ def recompute(
     client: Client,
     *,
     invoke=invoke_with_fallback,
-    now=None,
+    now: dt.datetime | None = None,
 ) -> list[PlanHook]:
     """Rebuild this mandate's plan window; return the hooks newly stored.
 
@@ -476,72 +636,54 @@ def recompute(
     * Only untouched proposals inside the window are deleted. Accepted,
       discarded and moved hooks all survive, and so does everything before the
       window — an old hook falls out of the *read*, never out of the table.
-    * A source a surviving hook already points at is not proposed again, so a
-      "verworfen" stays refused and a moved hook does not reappear in its old
-      month.
+    * A source a surviving hook already points at is not proposed again, and
+      neither is a theme one already carries, so a "verworfen" stays refused and
+      a moved hook does not reappear in its old month.
     * The model is asked once, about the whole candidate list, and only when
       there is one — a mandate with no evidence costs no call. Its answer
       contributes prose and a format suggestion; month, day and evidence are
       already fixed before the call is made.
     * A candidate whose evidence does not resolve is dropped, not stored.
+    * The delete and the insert land together. The plan a person had is only
+      gone once its replacement is written in the same transaction.
     """
     reference = _reference(now)
     months = month_window(reference)
     _record_computed(session, client, reference)
 
-    session.execute(
-        delete(PlanHook).where(
-            PlanHook.client_id == client.id,
-            PlanHook.state == HookState.VORGESCHLAGEN,
-            PlanHook.moved_at.is_(None),
-            PlanHook.month >= months[0],
-        )
+    fresh = _candidates(
+        session, client, months, reference, _claimed(session, client, months)
     )
-    session.commit()
-
-    taken = {
-        (row.source_kind, row.source_id)
-        for row in session.scalars(
-            select(PlanHook).where(PlanHook.client_id == client.id)
-        ).all()
-    }
-    fresh = [
-        candidate
-        for candidate in _candidates(session, client, months, reference)
-        if (candidate.kind, candidate.source_id) not in taken
-        and _resolves(session, candidate.kind, candidate.source_id)
-    ]
-    if not fresh:
-        return []
-
-    # Captured before the model call, the way angles does it: a consultant
-    # editing a standard while the sweep runs must not retroactively change what
-    # a stored reason claims to have been written under.
-    written_under = brain.version(session)
-    prose_by_ref = _ask_for_prose(client, fresh, invoke)
     hooks: list[PlanHook] = []
-    for index, candidate in enumerate(fresh, 1):
-        reason, fmt = _prose_fields(prose_by_ref.get(f"K{index}"))
-        hooks.append(
-            PlanHook(
-                client_id=client.id,
-                source_kind=candidate.kind,
-                source_id=candidate.source_id,
-                month=candidate.month,
-                day=candidate.day,
-                title=candidate.title,
-                reason=reason,
-                format=fmt,
-                brain_version=brain.stamp(written_under, what="a plan hook"),
+    if fresh:
+        # Captured before the model call, the way angles does it: a consultant
+        # editing a standard while the sweep runs must not retroactively change
+        # what a stored reason claims to have been written under.
+        written_under = brain.version(session)
+        prose_by_ref = _ask_for_prose(client, fresh, invoke)
+        for index, candidate in enumerate(fresh, 1):
+            reason, fmt = _prose_fields(prose_by_ref.get(f"K{index}"))
+            hooks.append(
+                PlanHook(
+                    client_id=client.id,
+                    source_kind=candidate.kind,
+                    source_id=candidate.source_id,
+                    month=candidate.month,
+                    day=candidate.day,
+                    title=candidate.title,
+                    reason=reason,
+                    format=fmt,
+                    brain_version=brain.stamp(written_under, what="a plan hook"),
+                )
             )
-        )
-    session.add_all(hooks)
-    session.commit()
+    _replace(session, client, months, hooks)
     _log.info("plan recomputed for %r: %d hook(s)", client.name, len(hooks))
     return hooks
 
 
-def due(session: Session, client: Client, *, now=None) -> bool:
+def due(
+    session: Session, client: Client, *, now: dt.datetime | None = None
+) -> bool:
     """Whether the sweep should recompute this mandate's plan yet.
 
     Stamped at the *start* of a recompute (the same posture as
@@ -575,7 +717,7 @@ def _record_computed(session: Session, client: Client, reference: dt.datetime) -
 
 
 def read(
-    session: Session, client: Client, *, now=None
+    session: Session, client: Client, *, now: dt.datetime | None = None
 ) -> list[tuple[str, list[PlanHook]]]:
     """The plan as the page will show it: every window month, empty ones included.
 
@@ -602,7 +744,9 @@ def read(
     return [(month, by_month[month]) for month in months]
 
 
-def accept(session: Session, hook: PlanHook, *, now=None) -> PlanHook:
+def accept(
+    session: Session, hook: PlanHook, *, now: dt.datetime | None = None
+) -> PlanHook:
     """A person takes the hook up. Survives every later recompute."""
     hook.state = HookState.ANGENOMMEN
     hook.decided_at = _reference(now)
@@ -610,7 +754,9 @@ def accept(session: Session, hook: PlanHook, *, now=None) -> PlanHook:
     return hook
 
 
-def discard(session: Session, hook: PlanHook, *, now=None) -> PlanHook:
+def discard(
+    session: Session, hook: PlanHook, *, now: dt.datetime | None = None
+) -> PlanHook:
     """A person refuses the hook. It stays as a row — the refusal is what stops
     the next recompute from proposing the same source again."""
     hook.state = HookState.VERWORFEN
@@ -619,16 +765,30 @@ def discard(session: Session, hook: PlanHook, *, now=None) -> PlanHook:
     return hook
 
 
-def move(session: Session, hook: PlanHook, month: str, *, now=None) -> PlanHook:
-    """A person moves the hook to another month. The move is a touch: the hook
-    survives recomputes from here on, whatever its state. The day is cleared —
-    the source's date belongs to the source's month, and carrying it into a
-    month a person chose would date the hook to a day nobody named.
+def move(
+    session: Session, hook: PlanHook, month: str, *, now: dt.datetime | None = None
+) -> PlanHook:
+    """A person moves the hook to a month the plan actually reaches.
+
+    The move is a touch: the hook survives recomputes from here on, whatever its
+    state. The day is cleared — the source's date belongs to the source's month,
+    and carrying it into a month a person chose would date the hook to a day
+    nobody named.
+
+    The target has to be inside the window, and membership in it is the whole
+    validation: every malformed string fails the same check, so there is no
+    hand-rolled month parser here to disagree with :func:`month_window`. Beyond
+    the window a hook would be stored, would count as touched for good, and
+    would never appear in :func:`read` again — thrown away silently, with no
+    page left to get it back from. Six months is what DEC-5 renders, so six
+    months is what a person can move within.
     """
-    if len(month) != 7 or month[4] != "-" or not (month[:4] + month[5:7]).isdigit():
-        raise ValueError(f"not a plan month: {month!r} (expected 'YYYY-MM')")
-    if not 1 <= int(month[5:7]) <= 12:
-        raise ValueError(f"not a plan month: {month!r} (expected 'YYYY-MM')")
+    window = month_window(_reference(now))
+    if month not in window:
+        raise ValueError(
+            f"not a plan month: {month!r} "
+            f"(expected one of {window[0]} … {window[-1]})"
+        )
     if month != hook.month:
         hook.day = None
     hook.month = month
