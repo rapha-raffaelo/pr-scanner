@@ -525,6 +525,50 @@ a:hover { text-decoration: underline; }
   flex-wrap: wrap;
 }
 
+/* --- Left rail: the crisis, and the offer of one -------------------------
+   Two cards that sit above the alert cards. They are drawn apart from them on
+   purpose: an alert is a story to read, and these two are a decision. The offer
+   is deliberately the quieter of the two — DEC-1 locked "the tool proposes, a
+   person declares", and a proposal that shouted would be the emergency it is
+   only asking about. */
+.crisis {
+  background: var(--card); border-radius: var(--radius);
+  padding: var(--s4); margin-bottom: var(--s2);
+}
+.crisis--open { border: 1px solid var(--alert); background: var(--alert-wash); }
+.crisis--offer { border: 1px dashed var(--line-strong); }
+.crisis__head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 5px;
+}
+.crisis__badge {
+  background: var(--alert); color: #fff; border-radius: 5px;
+  padding: 1px 7px; font-size: var(--t-caption2); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.crisis__badge--offer { background: var(--warn); }
+.crisis__level, .crisis__why {
+  font-size: var(--t-caption); font-weight: 600; color: var(--ink-2);
+}
+.crisis .cli {
+  font-size: var(--t-caption); font-weight: 700; color: var(--ink);
+  text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 4px;
+}
+.crisis .hl { font-size: var(--t-subhead); font-weight: 600; margin-bottom: 4px; }
+.crisis__counts, .crisis__note {
+  font-size: var(--t-caption2); color: var(--muted);
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-bottom: var(--s2);
+}
+.crisis__note { display: block; }
+.crisis__close { display: flex; gap: 6px; flex-wrap: wrap; }
+.crisis__close input[type="text"] {
+  flex: 1 1 10rem; min-width: 0;
+  font-size: var(--t-caption); padding: 4px 7px;
+  border: 1px solid var(--line-strong); border-radius: 6px;
+}
+.triage-btn--crisis { color: var(--alert); font-weight: 700; }
+
 /* --- Right pane: ranked feed -------------------------------------------- */
 .item {
   background: var(--card);

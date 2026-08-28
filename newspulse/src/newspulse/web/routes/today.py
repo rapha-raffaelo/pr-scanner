@@ -16,8 +16,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import angles, config
-from ...models import Analysis, Article, Client, Run, TopicHit, visible_coverage
+from ... import angles, config, crisis
+from ...models import Analysis, Article, Client, Crisis, Run, TopicHit, visible_coverage
 from ...outlets import tier_for
 from ...stories import cluster
 from ..app import get_db, templates
@@ -102,6 +102,43 @@ class QuietClientView:
     #: sweep. More precise than the generic sentence, and the reason the page can
     #: say something true about an attempt made at 06:10.
     note: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class CrisisOffer:
+    """The offer to declare a crisis, as the rail renders it.
+
+    DEC-1 locked option A: this is the *whole* effect of crossing the threshold.
+    Nothing about the cadence, the drafts or the notifications changes while this
+    card is on screen — it is a question, and the answer is a click.
+    """
+
+    client_id: int
+    client_name: str
+    article_id: int
+    headline: str
+    #: Which of the two stored conditions produced it, so the reader can tell
+    #: "the analyzer called this a crisis" from "nobody did and it is everywhere".
+    trigger: str
+    #: How many outlets carry the story the offer is about.
+    outlets: int
+
+
+@dataclass(frozen=True, slots=True)
+class OpenCrisisView:
+    """A declared crisis, as the rail renders it: since when, how bad, and the
+    way out of it."""
+
+    id: int
+    client_id: int
+    client_name: str
+    level: int
+    level_max: int
+    declared_at: dt.datetime
+    declared_by: str
+    outlet_count: int
+    negative_count: int
+    article_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,6 +412,63 @@ def _fetch_quiet_clients(
     ]
 
 
+def _fetch_crises(
+    session: Session, mandates: list[Client]
+) -> tuple[list[OpenCrisisView], list[CrisisOffer]]:
+    """What the rail says about crises: the declared ones, and the offers.
+
+    Read on every render rather than cached, because both halves are answers
+    about *now*: an offer is withdrawn the moment somebody declares, and a
+    declared crisis disappears from the rail the moment somebody stands it down.
+
+    Both are read per mandate over the same roster the filter strip uses, so a
+    deactivated mandate never offers anything — the same kill switch the cadence
+    honours.
+    """
+    open_rows = {
+        row.client_id: row
+        for row in session.scalars(
+            select(Crisis).where(Crisis.closed_at.is_(None))
+        ).all()
+    }
+    declared: list[OpenCrisisView] = []
+    offers: list[CrisisOffer] = []
+    for mandate in mandates:
+        standing = open_rows.get(mandate.id)
+        if standing is not None:
+            declared.append(
+                OpenCrisisView(
+                    id=standing.id,
+                    client_id=mandate.id,
+                    client_name=mandate.name,
+                    level=standing.level,
+                    level_max=crisis.LEVEL_MAX,
+                    declared_at=standing.declared_at,
+                    declared_by=standing.declared_by,
+                    outlet_count=standing.outlet_count,
+                    negative_count=standing.negative_count,
+                    article_count=standing.article_count,
+                )
+            )
+            # At most one open crisis per mandate, so there is nothing left to
+            # offer this one — ``propose`` would return None anyway; this saves
+            # the query.
+            continue
+        offer = crisis.propose(session, mandate)
+        if offer is not None:
+            offers.append(
+                CrisisOffer(
+                    client_id=mandate.id,
+                    client_name=mandate.name,
+                    article_id=offer.article_id,
+                    headline=offer.headline,
+                    trigger=offer.trigger.value,
+                    outlets=offer.outlets,
+                )
+            )
+    return declared, offers
+
+
 def _fetch_last_run(session: Session) -> RunStatusView | None:
     """The most recent run for the header, or None if the job never ran."""
     run: Run | None = session.execute(
@@ -549,6 +643,10 @@ def today_view(
     # computed on a copy that is not the lead.
     alerts = [s for s in stories if any(m.is_alert for m in s.members)]
 
+    # The offer DEC-1 locked, and the crises somebody already declared. Read off
+    # the same mandate roster the filter strip uses, and filtered with it below.
+    open_crises, crisis_offers = _fetch_crises(session, mandates)
+
     # Follows the client filter, like the rest of the page: looking at one mandate
     # means looking at one mandate, including what to send them.
     drafts = _fetch_angles(session, day)
@@ -556,6 +654,8 @@ def today_view(
     if selected_client is not None:
         drafts = [d for d in drafts if d.client_id == selected_client]
         quiet = [q for q in quiet if q.client_id == selected_client]
+        open_crises = [c for c in open_crises if c.client_id == selected_client]
+        crisis_offers = [o for o in crisis_offers if o.client_id == selected_client]
 
     return templates.TemplateResponse(
         request,
@@ -598,6 +698,11 @@ def today_view(
             "items": items,
             "stories": stories,
             "alerts": alerts,
+            # Above the alert rail, because a crisis is the one thing on this
+            # page that outranks a day's worth of alerts — and because DEC-1's
+            # offer has to be where the alerting already is.
+            "open_crises": open_crises,
+            "crisis_offers": crisis_offers,
             "angles": drafts,
             "quiet_clients": quiet,
             "angle_days": angles.COLUMN_DAYS,

@@ -204,6 +204,58 @@
 <div class="cols">
   <aside class="alertcol" aria-label="{{ t('Warnungen') }}">
     <div class="colhead">{{ t("Warnungen") }} <span class="n">{{ alerts | length }}</span></div>
+    {# A declared crisis sits above the day's alerts, because it is the one thing
+       on this page that outranks all of them at once. The row is the state — the
+       tighter cadence reads the same one — so this card disappears the moment
+       somebody stands it down, on every open tab. #}
+    {% for open_crisis in open_crises %}
+      <div class="crisis crisis--open">
+        <div class="crisis__head">
+          <span class="crisis__badge">{{ t("Krise") }}</span>
+          <span class="crisis__level">{{ t("Stufe") }} {{ open_crisis.level }} {{ t("von") }} {{ open_crisis.level_max }}</span>
+        </div>
+        <div class="cli">{{ open_crisis.client_name }}</div>
+        {# The counts the level was computed from, beside the level. A consultant
+           asked "why is this a 4" gets the numbers, not a paragraph. #}
+        <div class="crisis__counts">
+          {{ open_crisis.outlet_count }} {{ t("Medien") }} <span>·</span>
+          {{ open_crisis.negative_count }}/{{ open_crisis.article_count }} {{ t("negativ") }} <span>·</span>
+          {{ t("erklärt von") }} {{ open_crisis.declared_by }}, {{ open_crisis.declared_at | de_when }}
+        </div>
+        {# The reason is required at the button as well as in ``crisis.close``:
+           "why did we stand this down" is the first question the review asks. #}
+        <form method="post" action="/crisis/{{ open_crisis.id }}/close" class="crisis__close">
+          <input type="hidden" name="redirect_to" value="{{ request.url.path }}?{{ request.url.query }}">
+          <input type="text" name="reason" required maxlength="200"
+                 placeholder="{{ t('Grund: warum wird sie geschlossen?') }}">
+          <button type="submit" class="triage-btn">{{ t("Krise schließen") }}</button>
+        </form>
+      </div>
+    {% endfor %}
+    {# DEC-1, option A: the tool proposes and a person declares. This card is the
+       *entire* effect of crossing the threshold — no tighter cadence, no text, no
+       notification beyond the alerting that already fired — so a false alarm
+       costs one click instead of a morning in emergency mode. #}
+    {% for offer in crisis_offers %}
+      <div class="crisis crisis--offer">
+        <div class="crisis__head">
+          <span class="crisis__badge crisis__badge--offer">{{ t("Krise?") }}</span>
+          <span class="crisis__why">
+            {% if offer.trigger == 'kategorie' %}{{ t("Als Krise eingestuft") }}
+            {% else %}{{ offer.outlets }} {{ t("Medien in 24 Stunden") }}{% endif %}
+          </span>
+        </div>
+        <div class="cli">{{ offer.client_name }}</div>
+        <div class="hl">{{ offer.headline }}</div>
+        <div class="crisis__note">{{ t("Vorgeschlagen, nicht erklärt. Bis jemand hier drückt, ändert sich nichts.") }}</div>
+        <form method="post" action="/crisis/declare">
+          <input type="hidden" name="client_id" value="{{ offer.client_id }}">
+          <input type="hidden" name="article_id" value="{{ offer.article_id }}">
+          <input type="hidden" name="redirect_to" value="{{ request.url.path }}?{{ request.url.query }}">
+          <button type="submit" class="triage-btn triage-btn--crisis">{{ t("Krise erklären") }}</button>
+        </form>
+      </div>
+    {% endfor %}
     {% for story in alerts %}
       {% set item = story.lead %}
       <div class="acard">

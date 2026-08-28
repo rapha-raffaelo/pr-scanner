@@ -53,6 +53,23 @@ _EN: dict[str, str] = {
     "Es hält etwas in diesem Text für unbelegt. Wenn Sie widersprechen, geht die Nachricht so hinaus.": "It holds something in this text to be unsupported. Overrule it and the message goes out as it stands.",
     "Das Zweitmodell rät ab.": "The second model advises against it.",
     "Keine Warnungen am": "No alerts on",
+    # --- The crisis rail on Heute (UHR-01, DEC-1) ----------------------------
+    # The offer is worded as a question and the declaration as a statement, in
+    # both languages: the whole point of DEC-1 is that the tool asks and a person
+    # answers, and a label that read as an announcement would be option B.
+    "Krise": "Crisis",
+    "Krise?": "Crisis?",
+    "Krise erklären": "Declare a crisis",
+    "Krise schließen": "Stand down",
+    "Stufe": "Level",
+    # "von", "Medien" and "negativ" are already translated further down — this
+    # rail reuses them rather than restating them.
+    "erklärt von": "declared by",
+    "Grund: warum wird sie geschlossen?": "Reason: why is it being stood down?",
+    "Als Krise eingestuft": "Filed as a crisis",
+    "Medien in 24 Stunden": "outlets in 24 hours",
+    "Vorgeschlagen, nicht erklärt. Bis jemand hier drückt, ändert sich nichts.":
+        "Proposed, not declared. Nothing changes until somebody presses this.",
     "Tagen nichts, aber im Archiv liegt ältere Berichterstattung:": "days nothing, but the archive holds older coverage:",
     "In den letzten": "In the last",
     "seit %(days)s Tagen kein Lauf": "no run for %(days)s days",
