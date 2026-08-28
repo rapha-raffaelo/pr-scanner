@@ -369,6 +369,91 @@ def test_radar_material_that_does_not_carry_the_term_is_not_resonance(
     assert plan.recompute(session, mandate, invoke=unasked, now=_NOW) == []
 
 
+def test_two_themes_carried_by_one_article_each_cite_a_row_of_their_own(session, mandate):
+    """The collision that took a whole recompute down.
+
+    Two of a mandate's themes on one headline is the ordinary case, not the
+    exotic one — a piece about replacing a boiler with a heat pump carries both
+    terms — and ``topic_hits`` holds one row per (article, mandate). "The newest
+    matching row" therefore named the *same* evidence for both terms, which is
+    two hooks on one source: ``uq_plan_hooks_source`` refuses the second and the
+    recompute dies with an IntegrityError, after the stamp is written and the old
+    proposals are gone.
+    """
+    mandate.keywords = ["Wärmepumpe", "Heizung"]
+    session.commit()
+    hits = [
+        _radar_hit(
+            session, mandate, title=f"Wärmepumpe ersetzt Heizung {index}", days_ago=day
+        )
+        for index, day in enumerate((30, 20, 10))
+    ]
+
+    hooks = plan.recompute(
+        session, mandate, invoke=_Generator(_prose("K1"), _prose("K2")), now=_NOW
+    )
+
+    assert [hook.title for hook in hooks] == ["Wärmepumpe", "Heizung"]
+    assert all(hook.source_kind is HookSource.THEMA for hook in hooks)
+    # A row each, and both of them real: the newest for the first term, the next
+    # one down for the second.
+    assert [hook.source_id for hook in hooks] == [hits[-1].id, hits[-2].id]
+
+
+def test_a_theme_with_no_unspoken_row_left_waits_rather_than_colliding(session, mandate):
+    """Four themes over three shared articles: the fourth has no row of its own.
+
+    It is not stored, and — the part that matters — the three that could be
+    evidenced still are. Storing it anyway would be a second hook on a row
+    another theme already cites, which is the collision the database refuses and
+    the recompute cannot survive. The radar files a fourth article within days;
+    the theme is proposed then.
+    """
+    mandate.keywords = ["Wärmepumpe", "Heizung", "Altbau", "Sanierung"]
+    session.commit()
+    for index, day in enumerate((30, 20, 10)):
+        _radar_hit(
+            session,
+            mandate,
+            title=f"Wärmepumpe ersetzt Heizung bei der Sanierung im Altbau {index}",
+            days_ago=day,
+        )
+
+    hooks = plan.recompute(
+        session,
+        mandate,
+        invoke=_Generator(_prose("K1"), _prose("K2"), _prose("K3")),
+        now=_NOW,
+    )
+
+    assert [hook.title for hook in hooks] == ["Wärmepumpe", "Heizung", "Altbau"]
+    assert len({hook.source_id for hook in hooks}) == 3
+
+
+def test_a_discarded_theme_stays_refused_when_the_radar_files_a_newer_article(
+    session, mandate, unasked
+):
+    """AC 5 for the one hook class whose evidence row moves.
+
+    A theme is evidenced by a radar row, and the radar files a newer one most
+    nights. Keying the refusal on that row meant a "verworfen" came back within
+    days — the reader is then being asked to decide the same thing every week,
+    which is how a person learns to stop deciding at all. The term is what is
+    refused, so the term is what the skip reads.
+    """
+    for index, day in enumerate((30, 20, 10)):
+        _radar_hit(session, mandate, title=f"Wärmepumpe im Bestand {index}", days_ago=day)
+    refused = plan.recompute(session, mandate, invoke=_Generator(_prose()), now=_NOW)[0]
+    plan.discard(session, refused, now=_NOW)
+
+    _radar_hit(session, mandate, title="Wärmepumpe im Neubau", days_ago=1)
+    plan.recompute(session, mandate, invoke=unasked, now=_NOW)
+
+    assert unasked.calls == 0
+    survivors = session.scalars(select(PlanHook)).all()
+    assert [(h.id, h.state) for h in survivors] == [(refused.id, HookState.VERWORFEN)]
+
+
 # --- The previous year, against a hand-counted archive ----------------------------
 
 
@@ -661,6 +746,68 @@ def test_an_untouched_proposal_whose_source_fell_out_of_the_window_is_dropped(
     assert session.scalars(select(PlanHook)).all() == []
 
 
+def test_a_recompute_that_fails_midway_gives_the_person_their_plan_back(
+    session, mandate, monkeypatch
+):
+    """The delete and the insert are one transaction, and this is the failure.
+
+    Committed separately, anything raising between them left the mandate with an
+    emptied plan *and* the weekly stamp already written — so the sweep would not
+    try again for seven days, and a consultant would open the tab to nothing for
+    a week. The failure is injected at the insert, on the far side of the delete:
+    were the delete still committing on its own, no rollback could bring the hook
+    back.
+    """
+    before = _one_signal_hook(session, mandate).id
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("the insert failed")
+
+    monkeypatch.setattr(session, "add_all", _explode)
+    with pytest.raises(RuntimeError):
+        plan.recompute(session, mandate, invoke=_Generator(_prose()), now=_NOW)
+    # What job._recompute_plans does inside its per-mandate fault boundary.
+    session.rollback()
+
+    assert [h.id for h in session.scalars(select(PlanHook)).all()] == [before]
+
+
+def test_decided_sources_do_not_spend_the_candidate_budget(session, mandate):
+    """The cap bounds the prompt, so it belongs after the filter and not before.
+
+    A mandate in a regulated field can carry more future-dated signals than one
+    prompt is willing to hold. Capping before the decided ones are dropped
+    truncated the themes and the previous year away behind a wall of sources
+    nobody could be offered again — and the wall never moves, so the plan would
+    hold nothing but signals for good.
+    """
+    for index in range(plan._MAX_CANDIDATES):
+        _signal(
+            session,
+            mandate,
+            title=f"Konsultation {index} schließt",
+            deadline_at=dt.datetime(2026, 9, 18, 12, 0, tzinfo=dt.UTC)
+            + dt.timedelta(days=index),
+        )
+    first = plan.recompute(
+        session,
+        mandate,
+        invoke=_Generator(*[_prose(f"K{n}") for n in range(1, plan._MAX_CANDIDATES + 1)]),
+        now=_NOW,
+    )
+    assert len(first) == plan._MAX_CANDIDATES
+    for hook in first:
+        plan.discard(session, hook, now=_NOW)
+    for index, day in enumerate((30, 20, 10)):
+        _radar_hit(session, mandate, title=f"Wärmepumpe im Bestand {index}", days_ago=day)
+
+    second = plan.recompute(session, mandate, invoke=_Generator(_prose()), now=_NOW)
+
+    assert [(h.source_kind, h.title) for h in second] == [
+        (HookSource.THEMA, "Wärmepumpe")
+    ]
+
+
 @pytest.mark.parametrize("decide", [plan.accept, plan.discard])
 def test_a_decided_hook_survives_a_recompute_and_is_not_proposed_again(
     session, mandate, decide, unasked
@@ -728,6 +875,20 @@ def test_move_refuses_anything_that_is_not_a_plan_month(session, mandate, month)
 
     with pytest.raises(ValueError):
         plan.move(session, hook, month, now=_NOW)
+
+
+@pytest.mark.parametrize("month", ["2026-07", "2027-02", "2028-03"])
+def test_move_refuses_a_month_the_plan_does_not_reach(session, mandate, month):
+    """A well-formed month outside the window is a place a hook cannot come back
+    from: it is stored, it counts as touched for good, it blocks its own source
+    forever, and no read of the plan will ever show it again. Silently throwing a
+    person's hook away is worse than refusing the move."""
+    hook = _one_signal_hook(session, mandate)
+
+    with pytest.raises(ValueError):
+        plan.move(session, hook, month, now=_NOW)
+
+    assert hook.month == "2026-09"
 
 
 # --- The window -------------------------------------------------------------------
