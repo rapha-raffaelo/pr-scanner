@@ -22,7 +22,7 @@ import threading
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -308,21 +308,25 @@ def advice_view(
     request: Request,
     client_id: int,
     eintrag: str = "",
-    format: str = "",
+    format_key: str = Query("", alias="format"),
     session: Session = Depends(get_db),
 ) -> HTMLResponse:
     """This client's impulses, the messages written off them, and why not.
 
-    ``format`` opens the page with one format's tick box already ticked. It is
+    ``?format=`` opens the page with one format's tick box already ticked. It is
     how a surface that arrives carrying a suggestion hands it over — the
     editorial plan's "Text schreiben" sends the format its hook proposes — and it
     only ticks: writing is still the reader's own second press.
+
+    Aliased rather than named ``format`` in Python: the URL key is the contract
+    and stays as it is, while the local name no longer shadows the builtin in a
+    module that formats strings.
     """
     client = mandate_or_404(session, client_id)
     return templates.TemplateResponse(
         request,
         "advice.html",
-        _advice_context(session, client, eintrag=eintrag, preselect=format),
+        _advice_context(session, client, eintrag=eintrag, preselect=format_key),
     )
 
 
