@@ -210,6 +210,30 @@ def field_is_usable(client: Client, *, fetch=fetch_feed, now=None) -> bool | Non
     return False if any(c.measured for c in candidates) else None
 
 
+def _competitor_term(client: Client, invoke) -> str | None:
+    """The most specific proposal for a competitor, unmeasured. ``None`` if there
+    is none, which sends the caller back to the measured path.
+
+    The measurement exists because the industry is a *search clause*: a term the
+    German press does not write intersects every query to nothing, and the
+    mandate sits for months with no market material. None of that applies to a
+    competitor. ``themes.settle`` returns immediately for one, so a competitor
+    never gets a radar, and the field is therefore never searched with. What does
+    read it is the analyzer's client profile — where the only thing that matters
+    is whether it describes the company.
+
+    Measured on the row that prompted this: "G-20" measures best as
+    "Beteiligungsgesellschaft", a word the press writes often and one that
+    describes a crypto market maker not at all. It would pass every filter test
+    and tell the model deciding relevance exactly nothing — while the accurate
+    term, which would indeed filter poorly, has no filter to be poor at.
+    """
+    proposed = [term.strip() for term in propose(client, invoke=invoke) if term.strip()]
+    # Most specific first, which is the order propose() returns and the reason
+    # classify() walks it rather than sorting by hits.
+    return proposed[0] if proposed else None
+
+
 def settle(session, client: Client, *, invoke=invoke_with_fallback, fetch=fetch_feed, now=None) -> bool:
     """Give a company a searchable industry if it has none. Returns whether one
     was written.
@@ -232,20 +256,22 @@ def settle(session, client: Client, *, invoke=invoke_with_fallback, fetch=fetch_
     """
     if (client.industry or "").strip():
         return False
-    best = classify(client, invoke=invoke, fetch=fetch, now=now)
-    if best is None:
-        _log.info("no usable industry term for %r; leaving the field empty", client.name)
-        return False
+    term = _competitor_term(client, invoke) if client.is_competitor else None
+    if term is None:
+        best = classify(client, invoke=invoke, fetch=fetch, now=now)
+        if best is None:
+            _log.info(
+                "no usable industry term for %r; leaving the field empty", client.name
+            )
+            return False
+        term = best.term
     # Imported here, not at module import: clients imports models which imports
     # nothing from here, but the reverse edge would close a cycle through the
     # feed and analyzer imports at the top of this module.
     from .clients import update_client
 
-    update_client(session, client.id, industry=best.term)
-    _log.info(
-        "classified %r as %r (%d item(s) of press use the word)",
-        client.name, best.term, best.hits,
-    )
+    update_client(session, client.id, industry=term)
+    _log.info("classified %r as %r", client.name, term)
     return True
 
 

@@ -325,15 +325,40 @@ def test_the_sweep_settles_a_competitor_that_arrived_as_a_bare_name(
     session.add(rival)
     session.commit()
     monkeypatch.setattr(
+        industry, "propose", lambda c, **_: ["Krypto-Market-Making", "Finanzdienstleistung"]
+    )
+    monkeypatch.setattr(
         industry,
         "classify",
-        lambda c, **_: industry.Candidate(term="Krypto-Market-Making", hits=48),
+        lambda c, **_: pytest.fail("a competitor's term is a description, not a filter"),
     )
 
     settled = job._settle_industries(session, [rival], lambda *a, **k: [])
 
     assert settled == 1
+    # The most specific proposal, unmeasured. Measured, "G-20" comes back as
+    # "Beteiligungsgesellschaft" — a word the press writes often and one that
+    # describes a crypto market maker not at all.
     assert session.get(Client, rival.id).industry == "Krypto-Market-Making"
+
+
+def test_a_mandates_term_is_still_measured_before_it_is_written(session, monkeypatch, no_industry_settling):
+    """The measurement is what stops an accurate term the press never writes from
+    filtering a mandate's market material away to nothing. A mandate has a radar;
+    that is the whole difference."""
+    monkeypatch.setattr(industry, "settle", no_industry_settling)
+    client = _client(industry=None)
+    session.add(client)
+    session.commit()
+    monkeypatch.setattr(
+        industry, "propose", lambda c, **_: pytest.fail("must go through classify")
+    )
+    monkeypatch.setattr(
+        industry, "classify", lambda c, **_: industry.Candidate(term="Kosmetik", hits=62)
+    )
+
+    assert industry.settle(session, client) is True
+    assert session.get(Client, client.id).industry == "Kosmetik"
 
 
 def test_a_failed_classification_does_not_stop_the_sweep(
