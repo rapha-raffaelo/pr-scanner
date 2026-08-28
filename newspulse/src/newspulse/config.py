@@ -457,6 +457,36 @@ def daily_run_at() -> tuple[int, int]:
     return at
 
 
+# The one condition in the tool under which the sweep changes its cadence. While
+# a mandate is in a declared crisis its own sources are re-read this often, and
+# nothing else happens on that tick — no positioning drafts, no profile work, no
+# other mandate (see ``job.run_crisis``).
+#
+# An hour, because that is the resolution the source actually has: a news search
+# refreshes in minutes but the coverage behind it does not, and a ten-minute
+# cadence would spend ten times the requests to find the same three articles. It
+# is also the spend ceiling, since every reading that finds something new costs
+# an analyzer batch.
+ENV_CRISIS_SWEEP_MINUTES = "NEWSPULSE_CRISIS_SWEEP_MINUTES"
+_DEFAULT_CRISIS_SWEEP_MINUTES = 60
+
+# The floor a configured value is clamped to. Zero or a negative number would
+# make the crisis sweep due on every scheduler tick — a fetch a minute against
+# the same feed, for the whole time a crisis is open — so a typo cannot buy that.
+_MIN_CRISIS_SWEEP_MINUTES = 5
+
+
+def crisis_sweep_minutes() -> int:
+    """How often an open crisis re-reads its mandate's sources.
+
+    Read per call rather than at import, like :func:`daily_run_at`, so a platform
+    variable set after start-up is still seen — and so the value a running
+    scheduler uses is the one currently configured.
+    """
+    value = _env_int(ENV_CRISIS_SWEEP_MINUTES, _DEFAULT_CRISIS_SWEEP_MINUTES)
+    return max(value, _MIN_CRISIS_SWEEP_MINUTES)
+
+
 def gemini_configured() -> bool:
     """Whether the fallback provider can be used at all.
 
