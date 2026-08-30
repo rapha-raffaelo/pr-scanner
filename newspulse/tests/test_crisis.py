@@ -1320,8 +1320,17 @@ def test_the_offer_on_heute_only_becomes_a_crisis_when_somebody_presses_it(
     dashboard, factory, session, mandate
 ):
     """The whole of DEC-1 in one pass: offered, unwritten, then declared."""
+    # Relative to the real clock, unlike every other test here: this one renders
+    # the real route, and the route reads *now* — a trigger pinned to ``_NOW``
+    # ages out of the 24-hour proposal window the day after the fixture is
+    # written, and the test starts failing by calendar.
     trigger = _cover(
-        session, mandate, source="FAZ", category=Category.KRISE, importance=9
+        session,
+        mandate,
+        source="FAZ",
+        category=Category.KRISE,
+        importance=9,
+        published=dt.datetime.now(dt.UTC) - dt.timedelta(hours=2),
     )
 
     assert "Krise erklären" in dashboard.get("/today").text
