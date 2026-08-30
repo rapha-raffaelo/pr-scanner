@@ -421,9 +421,12 @@ def _fetch_crises(
     about *now*: an offer is withdrawn the moment somebody declares, and a
     declared crisis disappears from the rail the moment somebody stands it down.
 
-    Both are read per mandate over the same roster the filter strip uses, so a
-    deactivated mandate never offers anything — the same kill switch the cadence
-    honours.
+    *Offers* are read per mandate over the same roster the filter strip uses, so
+    a deactivated mandate never offers anything — the same kill switch the
+    cadence honours. *Declared* crises are broader on purpose: an open crisis is
+    rendered even when its mandate has left the roster (deactivated mid-crisis),
+    because this rail is the only close button there is, and a crisis nobody can
+    see is a crisis nobody can stand down.
     """
     open_rows = {
         row.client_id: row
@@ -431,25 +434,32 @@ def _fetch_crises(
             select(Crisis).where(Crisis.closed_at.is_(None))
         ).all()
     }
+    names = dict(
+        session.execute(
+            select(Client.id, Client.name).where(Client.id.in_(list(open_rows)))
+        ).all()
+    ) if open_rows else {}
+
+    def _view(standing: Crisis) -> OpenCrisisView:
+        return OpenCrisisView(
+            id=standing.id,
+            client_id=standing.client_id,
+            client_name=names.get(standing.client_id, "—"),
+            level=standing.level,
+            level_max=crisis.LEVEL_MAX,
+            declared_at=standing.declared_at,
+            declared_by=standing.declared_by,
+            outlet_count=standing.outlet_count,
+            negative_count=standing.negative_count,
+            article_count=standing.article_count,
+        )
+
     declared: list[OpenCrisisView] = []
     offers: list[CrisisOffer] = []
     for mandate in mandates:
-        standing = open_rows.get(mandate.id)
+        standing = open_rows.pop(mandate.id, None)
         if standing is not None:
-            declared.append(
-                OpenCrisisView(
-                    id=standing.id,
-                    client_id=mandate.id,
-                    client_name=mandate.name,
-                    level=standing.level,
-                    level_max=crisis.LEVEL_MAX,
-                    declared_at=standing.declared_at,
-                    declared_by=standing.declared_by,
-                    outlet_count=standing.outlet_count,
-                    negative_count=standing.negative_count,
-                    article_count=standing.article_count,
-                )
-            )
+            declared.append(_view(standing))
             # At most one open crisis per mandate, so there is nothing left to
             # offer this one — ``propose`` would return None anyway; this saves
             # the query.
@@ -466,6 +476,10 @@ def _fetch_crises(
                     outlets=offer.outlets,
                 )
             )
+    # Whatever is left is open on a mandate the roster no longer lists. Shown so
+    # it stays closable; never offered for, and never swept (``crisis.due``
+    # excludes it), so showing it is the whole remaining duty.
+    declared.extend(_view(standing) for standing in open_rows.values())
     return declared, offers
 
 
