@@ -24,18 +24,13 @@ from sqlalchemy.orm import Session
 from ... import crisis
 from ...models import Article, Client, Crisis
 from ..app import get_db
+from ..redirects import local_target
 
 router = APIRouter()
 
 _log = logging.getLogger(__name__)
 
 _SEE_OTHER = 303
-
-
-def _safe_back(target: str) -> str:
-    """Only a same-site path: the target comes from a form field, so an absolute
-    URL here would make the endpoint an open redirect."""
-    return target if target.startswith("/") else "/"
 
 
 def _who(request: Request) -> str:
@@ -63,18 +58,29 @@ def declare_crisis(
     a dismissal or a re-match can remove while the page sits open, and losing the
     dashboard over that would be worse than doing nothing.
 
+    So is a mandate that is not on the roster the offer came from — a competitor,
+    or one deactivated while the page sat open. Heute only ever offers for active
+    non-competitor mandates, and a crisis declared past that filter would be a
+    trap: the cadence would fetch and analyse it every hour while no page renders
+    it and no button can close it.
+
     A second submission is not a second crisis — :func:`newspulse.crisis.declare`
     hands back the standing one — so a double click, a second tab and a reload of
     the POST all land on the same row.
     """
     client = session.get(Client, client_id)
     article = session.get(Article, article_id)
-    if client is not None and article is not None:
+    if (
+        client is not None
+        and article is not None
+        and client.active
+        and not client.is_competitor
+    ):
         declared = crisis.declare(session, client, article, by=_who(request))
         _log.info(
             "crisis %d declared for %r from the dashboard", declared.id, client.name
         )
-    return RedirectResponse(_safe_back(redirect_to), status_code=_SEE_OTHER)
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
 
 @router.post("/crisis/{crisis_id}/close")
@@ -95,4 +101,4 @@ def close_crisis(
     standing = session.get(Crisis, crisis_id)
     if standing is not None and reason.strip():
         crisis.close(session, standing, reason=reason)
-    return RedirectResponse(_safe_back(redirect_to), status_code=_SEE_OTHER)
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
