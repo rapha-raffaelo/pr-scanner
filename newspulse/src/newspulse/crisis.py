@@ -40,7 +40,7 @@ import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -735,12 +735,37 @@ def regrade(session: Session, crisis: Crisis) -> Severity:
     A crisis that spreads gets worse and one that is dropped by the press does
     not, and both are read off the same stored rows the first grade was. Still
     arithmetic, still no model.
+
+    The write itself is conditional on the row still being open. The caller's
+    read-side checks (``run_crisis`` asks :func:`still_open` three times) shrink
+    the window, but the severity computation between the last of them and this
+    commit is clustering plus a match per row — long enough for a stand-down to
+    land, and a closed crisis is a finished document whose level is what it was
+    at the moment it ended. ``WHERE closed_at IS NULL`` closes the window at the
+    only place a window can be closed: the write.
     """
     client = crisis.client or session.get(Client, crisis.client_id)
     article = crisis.article or session.get(Article, crisis.article_id)
     computed = severity(session, client, article)
-    _grade(crisis, computed)
+    written = session.execute(
+        update(Crisis)
+        .where(Crisis.id == crisis.id, Crisis.closed_at.is_(None))
+        .values(
+            level=computed.level,
+            outlet_count=computed.outlets,
+            article_count=computed.articles,
+            negative_count=computed.negative,
+            national=computed.national,
+            named=computed.named,
+        )
+    )
     session.commit()
+    if written.rowcount == 0:
+        _log.info(
+            "crisis %d was closed before its regrade could commit; "
+            "the row keeps its final level",
+            crisis.id,
+        )
     return computed
 
 
