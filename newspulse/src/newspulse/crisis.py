@@ -40,7 +40,7 @@ import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, case, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -507,6 +507,46 @@ def _stood_down(
     return silenced & visible
 
 
+def _worth_clustering(session: Session, client: Client, *, since: dt.datetime) -> bool:
+    """A cheap necessary condition for either trigger, before any clustering.
+
+    ``propose`` runs on every render of every workspace page of every non-crisis
+    mandate (the tab strip asks it), and loading plus clustering a day of
+    coverage per page view is real work that almost always answers ``None``.
+    One aggregate query rules the common case out first: the category condition
+    needs at least one visible ``krise`` analysis at or above
+    :data:`PROPOSAL_IMPORTANCE`, and the wave condition needs at least
+    :data:`PROPOSAL_OUTLETS` distinct negative carriers — which cannot exist
+    with fewer than that many negative rows. Counting is strictly wider than
+    the real conditions (silencing and outlet-distinctness only remove
+    candidates), so a ``False`` here is never a lost proposal.
+    """
+    flagged, negative = session.execute(
+        select(
+            func.count(
+                case(
+                    (
+                        and_(
+                            Analysis.category == Category.KRISE,
+                            Analysis.importance_score >= PROPOSAL_IMPORTANCE,
+                        ),
+                        1,
+                    )
+                )
+            ),
+            func.count(case((Analysis.tonality == Tonality.NEGATIV, 1))),
+        )
+        .select_from(Analysis)
+        .join(Article, Article.id == Analysis.article_id)
+        .where(
+            Analysis.client_id == client.id,
+            visible_coverage(),
+            Article.published_at >= since,
+        )
+    ).one()
+    return bool(flagged) or negative >= PROPOSAL_OUTLETS
+
+
 def propose(
     session: Session, client: Client, *, now: dt.datetime | None = None
 ) -> Proposal | None:
@@ -525,6 +565,8 @@ def propose(
     if open_crisis(session, client) is not None:
         return None
     since = reference - _PROPOSAL_WINDOW
+    if not _worth_clustering(session, client, since=since):
+        return None
     rows = _rows(session, client, since=since)
     silenced = _stood_down(session, client, rows, since=since)
     rows = [row for row in rows if row.article.id not in silenced]
