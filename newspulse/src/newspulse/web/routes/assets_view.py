@@ -31,11 +31,21 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import RedirectResponse, Response
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ... import assets, config, pitch, profile
 from ...db import get_session
-from ...models import Angle, Asset, CheckState, Client, ClientFact
+from ...models import (
+    Angle,
+    Asset,
+    CheckState,
+    Client,
+    ClientFact,
+    NewsjackOpportunity,
+    Standing,
+)
 from ..app import get_db
 from ..runlock import SWEEP_RUNNING as _sweep_running
 from ..runlock import guard as _run_guard
@@ -909,11 +919,125 @@ def release_asset(
     return _back(client_id, angle_id)
 
 
+# --- The fast lane's occasion (UHR-05) -------------------------------------------
+
+
+def occasion_for_opportunity(
+    session: Session, client: Client, opportunity: NewsjackOpportunity
+) -> Angle:
+    """The impulse this opportunity stands for, created on the first click and
+    reused ever after.
+
+    The same contract :func:`newspulse.web.routes.plan_view.occasion_for` keeps
+    for a hook, on the same race: a double-clicked "Text schreiben" is two
+    threadpool requests that both read nothing, and ``ux_angles_newsjack`` is
+    what settles which write wins — the loser re-reads and returns the winner's
+    row.
+
+    The occasion carries the opportunity's own words: the origin headline as the
+    subject, the standing's sentence as the message (which is what a format
+    prompt argues from), and the story's shape as the context. ``article_ids``
+    names the origin piece, so every text written off this occasion cites the
+    story as stored rather than a headline from memory.
+    """
+    found = _newsjack_occasion(session, client, opportunity)
+    if found is not None:
+        return found
+    origin = opportunity.article
+    angle = Angle(
+        client_id=client.id,
+        newsjack_id=opportunity.id,
+        subject=origin.title,
+        message=opportunity.reason or _opportunity_fallback(opportunity),
+        context=(
+            f"Zuerst bei {origin.source}; "
+            f"{opportunity.pickup_count} Medien tragen die Story."
+        ),
+        thesis="",
+        statements=[],
+        article_ids=[opportunity.article_id],
+    )
+    session.add(angle)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raced = _newsjack_occasion(session, client, opportunity)
+        if raced is None:
+            # Not the unique index, then: something else about this row is
+            # wrong, and swallowing it would hand the picker an occasion that
+            # does not exist.
+            raise
+        return raced
+    return angle
+
+
+def _newsjack_occasion(
+    session: Session, client: Client, opportunity: NewsjackOpportunity
+) -> Angle | None:
+    """This opportunity's occasion, if one has been opened. Ordered by id for
+    the reason ``plan_view._occasion`` is: two readers of one relation that
+    sort differently can name different rows on a pre-index database."""
+    return session.scalars(
+        select(Angle)
+        .where(Angle.client_id == client.id, Angle.newsjack_id == opportunity.id)
+        .order_by(Angle.id)
+    ).first()
+
+
+def _opportunity_fallback(opportunity: NewsjackOpportunity) -> str:
+    """What the occasion says when the stored reason is empty. The story's
+    shape is the substance, and all of it is in hand here."""
+    origin = opportunity.article
+    return (
+        f"{origin.title} — Gelegenheit aus der schnellen Spur: "
+        f"{opportunity.pickup_count} Medien tragen die Story, "
+        f"zuerst bei {origin.source}."
+    )
+
+
+@router.post("/client/{client_id}/gelegenheit/{opportunity_id}/text")
+def write_from_opportunity(
+    client_id: int,
+    opportunity_id: int,
+    session: Session = Depends(get_db),
+) -> Response:
+    """Open the format picker with this opportunity as the occasion.
+
+    Nothing is written by the click — the picker is where a person says which
+    formats they want, and a model call spent on "show me" is the thing the
+    tick boxes exist to stop. Unlike the plan's hook there is no format to
+    pre-tick: the fast lane weighs standing, not form.
+
+    Only a ``belegt`` row can be opened: a rejection is an audit record, never
+    a card, and a URL pointing at one is a mis-aimed or forged POST. A
+    dismissed or just-expired opportunity is deliberately *not* refused — the
+    person saw the card when it stood, and whether a text still makes the
+    closing window is their call, not a 404's.
+    """
+    client = session.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    opportunity = session.get(NewsjackOpportunity, opportunity_id)
+    if (
+        opportunity is None
+        or opportunity.client_id != client_id
+        or opportunity.standing is not Standing.BELEGT
+    ):
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    angle = occasion_for_opportunity(session, client, opportunity)
+    return RedirectResponse(
+        f"/client/{client_id}/advice?eintrag=anlass-{angle.id}#impulse-{angle.id}",
+        status_code=_SEE_OTHER,
+    )
+
+
 __all__ = [
     "Package",
     "Progress",
     "Slot",
     "busy",
+    "occasion_for_opportunity",
     "package",
     "package_note",
     "page_context",

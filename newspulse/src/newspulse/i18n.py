@@ -2056,6 +2056,30 @@ _EN: dict[str, str] = {
     "Der gewählte Monat liegt nicht im Plan. Verschoben wird nur innerhalb der Monate, die der Plan zeigt.":
         "The month you picked is not in the plan. A hook can only be moved inside "
         "the months the plan shows.",
+    # --- The fast lane on Heute (UHR-05, DEC-6 A) ---------------------------
+    # The card's two load-bearing pieces are the remaining time as a number and
+    # the standing's one sentence; the sentence itself is stored data and stays
+    # in the language it was written in. "Std", "Min", "aufgegriffen", "Text
+    # schreiben" and "Verwerfen" are already translated above and reused.
+    "Gelegenheit": "Opportunity",
+    "Gelegenheiten": "Opportunities",
+    "verbleibend": "left",
+    "Zuerst bei": "First at",
+    "Stehen": "Standing",
+    "Verbleibende Zeit im Fenster ab dem Ursprungsbeitrag":
+        "Time left in the window that runs from the origin piece",
+    "Text(e) ansehen": "text(s) — view",
+    # The cap's visible name: never more than three cards per mandate, cut by
+    # pickup count, and the cut says so instead of happening silently.
+    "weitere Gelegenheit(en) bei": "more opportunit(y/ies) for",
+    "nach Aufgriffszahl gekürzt — hier stehen die drei mit den meisten Aufgriffen.":
+        "trimmed by pickup count — the three with the most pickups stand here.",
+    # The mandate's archive: an expired or waved-off opportunity stays readable
+    # there with its outcome, and only there.
+    "Gelegenheiten aus der schnellen Spur": "Opportunities from the fast lane",
+    "Verworfen am": "Waved off on",
+    "Abgelaufen am": "Expired on",
+    "Kein Text entstanden.": "No text came of it.",
     # The calendar. Spelled out rather than taken from ``locale``, for the reason
     # ``web.app`` spells them out: a de_DE locale is absent from most containers
     # and setlocale is process-global.
