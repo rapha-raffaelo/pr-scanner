@@ -373,6 +373,29 @@ def test_dismiss_ignores_a_stale_or_foreign_target(web, session, mandate):
     assert session.scalar(select(func.count()).select_from(CrisisDismissal)) == 0
 
 
+def test_dismiss_refuses_an_article_never_analyzed_for_the_mandate(web, session, mandate):
+    """A dismissal pre-silences a whole story, so a forged or mis-aimed POST
+    naming coverage this mandate never had must write nothing."""
+    at = dt.datetime.now(dt.UTC) - dt.timedelta(hours=1)
+    stranger = Article(
+        title="Völlig anderes Thema heute",
+        url="https://example.de/fremd",
+        source="X",
+        published_at=at,
+        fetched_at=at,
+        title_hash=title_hash("Völlig anderes Thema heute", "X"),
+    )
+    session.add(stranger)
+    session.commit()
+    resp = web.post(
+        "/crisis/dismiss",
+        data={"client_id": mandate.id, "article_id": stranger.id, "redirect_to": "/"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert session.scalar(select(func.count()).select_from(CrisisDismissal)) == 0
+
+
 # --- The left column --------------------------------------------------------------
 
 

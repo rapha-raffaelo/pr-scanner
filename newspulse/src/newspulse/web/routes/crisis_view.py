@@ -161,12 +161,33 @@ def dismiss_offer(
     ask :func:`newspulse.crisis.propose`. The guards mirror ``declare``: a stale
     id and a double click both cost nothing, and a mandate off the roster is a
     no-op because it was never offered for.
+
+    One guard is this route's own: the article must have been *analyzed* for
+    this mandate. A dismissal pre-silences the article's whole story via
+    ``_stood_down``, so an arbitrary (client, article) pair — a mis-aimed or
+    forged POST — could suppress a future legitimate proposal before it was
+    ever shown. Every offer ``propose`` makes comes out of analyzed rows, so
+    the check costs a real click nothing. Deliberately not "must match the
+    current offer": the offer's lead can shift to a stronger copy of the same
+    story between render and click, and refusing that stale-by-minutes click
+    would spend DEC-1's one click twice.
     """
     client = session.get(Client, client_id)
     article = session.get(Article, article_id)
+    analyzed = (
+        session.execute(
+            select(Analysis.id)
+            .where(
+                Analysis.client_id == client_id, Analysis.article_id == article_id
+            )
+            .limit(1)
+        ).first()
+        is not None
+    )
     if (
         client is not None
         and article is not None
+        and analyzed
         and client.active
         and not client.is_competitor
     ):
