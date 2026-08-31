@@ -173,6 +173,12 @@ class AssetKind(StrEnum):
     TALKING_POINTS = "talking_points"
     GASTBEITRAG = "gastbeitrag"
     INTERVIEW_BRIEFING = "interview_briefing"
+    # The two crisis formats (UHR-02). Written off a declared crisis rather than
+    # an impulse, and the only two in the tool where minutes count. They live in
+    # their own registry (:data:`newspulse.assets.CRISIS_FORMATS`) so the
+    # impulse's format strip never offers them.
+    HOLDING_STATEMENT = "holding_statement"
+    KRISEN_QA = "krisen_qa"
 
 
 class CheckState(StrEnum):
@@ -1807,14 +1813,42 @@ class Asset(Base):
             sqlite_where=text("released_at IS NULL"),
             postgresql_where=text("released_at IS NULL"),
         ),
+        # The same rule for the crisis texts, which hang on no angle: one
+        # unreleased draft per format per crisis. The ``crisis_id IS NOT NULL``
+        # half keeps the angle-anchored rows out of it, since NULLs would not
+        # collide anyway and the predicate says so out loud.
+        Index(
+            "ux_assets_crisis_kind_unreleased",
+            "crisis_id",
+            "kind",
+            unique=True,
+            sqlite_where=text("released_at IS NULL AND crisis_id IS NOT NULL"),
+            postgresql_where=text("released_at IS NULL AND crisis_id IS NOT NULL"),
+        ),
+        # A text hangs on the impulse it argues or on the crisis it answers,
+        # never on nothing: a stored text nothing can trace back to its occasion
+        # is a text nothing can check.
+        CheckConstraint(
+            "angle_id IS NOT NULL OR crisis_id IS NOT NULL",
+            name="ck_assets_anchor",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     client_id: Mapped[int] = mapped_column(
         ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    angle_id: Mapped[int] = mapped_column(
-        ForeignKey("angles.id", ondelete="CASCADE"), nullable=False, index=True
+    #: The impulse this text argues — NULL exactly for the crisis texts, which
+    #: argue no position and hang on ``crisis_id`` instead. The CHECK above
+    #: guarantees one of the two anchors is always set.
+    angle_id: Mapped[int | None] = mapped_column(
+        ForeignKey("angles.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    #: The declared crisis this text answers (UHR-02). CASCADE like the angle's:
+    #: a crisis text whose crisis is gone cannot be explained, and crises are
+    #: only ever deleted with their whole mandate anyway.
+    crisis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crises.id", ondelete="CASCADE"), nullable=True, index=True
     )
     kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     # Indexed for the same reason as the letter's: a day's texts are asked for
