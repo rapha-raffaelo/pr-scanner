@@ -506,6 +506,28 @@ def test_closing_requires_a_reason(web, session, mandate):
     assert session.get(Crisis, standing.id).closed_at is None
 
 
+def test_a_reasonless_close_says_why_the_crisis_is_still_open(web, session, mandate):
+    """A whitespace reason submitted around the browser's ``required`` must not
+    close anything — and must not refuse mutely either."""
+    standing = _declared(session, mandate)
+    web.post(
+        f"/crisis/{standing.id}/close",
+        data={"reason": "   ", "redirect_to": f"/client/{mandate.id}/krise"},
+        follow_redirects=False,
+    )
+    session.expire_all()
+    assert session.get(Crisis, standing.id).closed_at is None
+    assert "es fehlt die Begründung" in web.get(f"/client/{mandate.id}/krise").text
+
+
+def test_a_worker_note_is_shown_once_and_does_not_outlive_its_render(web, session, mandate):
+    """A note describes one click; stale forever was the bug."""
+    _declared(session, mandate)
+    crisis_view._last_note[mandate.id] = "Der Lauf ist mit einem Fehler abgebrochen."
+    assert "abgebrochen" in web.get(f"/client/{mandate.id}/krise").text
+    assert "abgebrochen" not in web.get(f"/client/{mandate.id}/krise").text
+
+
 def test_a_closed_crisis_stays_readable_with_its_full_chronology(web, session, mandate):
     standing = _declared(session, mandate)
     _crisis_text(session, mandate, standing, checked=True, released=True)

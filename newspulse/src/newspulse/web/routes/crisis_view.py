@@ -132,11 +132,17 @@ def close_crisis(
     raising: the field is marked ``required`` in the form, so an empty one
     reaching this point means the form was submitted around the browser, and a
     500 is not the answer to that. ``close`` itself still refuses it, so the
-    invariant lives in one place.
+    invariant lives in one place. The refusal is not mute, though — the page
+    the redirect lands on says why the crisis is still open.
     """
     standing = session.get(Crisis, crisis_id)
-    if standing is not None and reason.strip():
-        crisis.close(session, standing, reason=reason)
+    if standing is not None:
+        if reason.strip():
+            crisis.close(session, standing, reason=reason)
+        else:
+            _last_note[standing.client_id] = (
+                "Die Krise wurde nicht geschlossen: es fehlt die Begründung."
+            )
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
 
@@ -588,7 +594,13 @@ def crisis_page(
             "zeitleiste": zeitleiste,
             "previous": [row for row in past if row.id != selected.id],
             "busy": _writing.locked(),
-            "note": _last_note.get(client.id, ""),
+            # Popped, not read: a note describes one click, and showing it once
+            # is its whole job. Left in the dict it would outlive its morning —
+            # on every later crisis view of this mandate, including old closed
+            # ones — until the next run happened to clear it. A run still in
+            # progress rewrites it on its next sentence, so consuming a
+            # mid-run reload costs nothing.
+            "note": _last_note.pop(client.id, ""),
         },
     )
 
