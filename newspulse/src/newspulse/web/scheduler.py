@@ -108,7 +108,10 @@ def _run_once() -> None:
     # client. The dashboard's own trigger and the asset writer both take it this
     # way; this was the one that queued.
     if not runlock.guard.acquire(blocking=False):
-        _log.info("a sweep is already running; leaving the scheduled one for tomorrow")
+        # The holder decides what happens next, and this thread need not know
+        # which it is: a manual sweep writes the runs row that makes tomorrow the
+        # next chance, a crisis reading writes none and the next tick retries.
+        _log.info("another fetch holds the run guard; the sweep stays due")
         return
     try:
         with get_session() as session:

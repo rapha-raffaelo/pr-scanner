@@ -708,7 +708,11 @@ def notify_after_run(
     return notify_alerts(
         alerts,
         resolved,
-        proposals=collect_proposals(session),
+        # Only worth collecting when something will carry them: with no alerts,
+        # build_summary returns None and nothing goes out (see its docstring), so
+        # a quiet morning skips the per-mandate clustering pass entirely. The
+        # offer waits on Heute either way.
+        proposals=collect_proposals(session) if alerts else (),
         send_desktop=send_desktop,
         send_email=send_email,
     )
