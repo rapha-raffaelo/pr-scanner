@@ -163,4 +163,21 @@ def cluster(items: Sequence[T]) -> list[Story]:
     ]
 
 
-__all__ = ["Story", "cluster"]
+def origin(story: Story):
+    """The story's earliest member — the article that had it first.
+
+    Everything after it is a pickup, and the distinction is what the fast lane
+    turns on: a story whose first piece is four hours old and just gained its
+    third outlet is still rising, one whose first piece ran yesterday is
+    through. Members must carry a ``published_at``; the clusterer's own protocol
+    does not require one, so this is asked only of callers who need an origin.
+
+    Ties in the timestamp are broken by retrieval order, never by chance:
+    ``min`` is stable and ``members`` preserves the order the items arrived in,
+    so two pieces stamped to the same minute resolve to whichever was fetched
+    first — the same answer on every run over the same rows.
+    """
+    return min(story.members, key=lambda member: member.published_at)
+
+
+__all__ = ["Story", "cluster", "origin"]
