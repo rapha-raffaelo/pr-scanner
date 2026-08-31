@@ -426,6 +426,22 @@ def test_a_request_naming_no_deadline_says_so(web, session, mandate):
     assert "keine Frist genannt" in page.text
 
 
+def test_a_request_received_before_the_declaration_is_visible(web, session, mandate):
+    """The realistic timeline: trigger 06:12, journalist mail 06:30, a person
+    declares 06:41. The mail is still open, belongs to this crisis, and must
+    stand on the page with its deadline — the AC does not say "since declared"."""
+    standing = _declared(session, mandate)
+    _reply(
+        session,
+        mandate,
+        body="Drei Fragen zur Widerrufsfrist. Frist ist 14:00 Uhr.",
+        received_at=standing.declared_at - dt.timedelta(minutes=30),
+    )
+    page = web.get(f"/client/{mandate.id}/krise")
+    assert "Maren Kessler" in page.text
+    assert "14:00 Uhr" in page.text
+
+
 def test_a_resolved_request_no_longer_counts_as_open(web, session, mandate):
     _declared(session, mandate)
     _reply(session, mandate, body="Danke!", state=OutreachState.VEROEFFENTLICHT)

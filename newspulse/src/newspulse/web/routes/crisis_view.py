@@ -412,11 +412,15 @@ def _requests(session: Session, client: Client, standing: Crisis) -> list[Reques
     """The open requests from the connected mailbox, newest first.
 
     Open means the letter stands in ANTWORT: a journalist wrote back and no
-    person has filed the outcome yet. Bounded to the crisis — received since it
-    was declared, and up to its close for a closed one — because this page is
-    the crisis's record, not a second inbox.
+    person has filed the outcome yet. Bounded to the crisis — the same reach the
+    coverage column reads, one story window before the trigger, because the
+    realistic morning runs trigger → journalist mail → declaration, and a
+    request that arrived in the minutes before somebody pressed the button
+    belongs to this crisis exactly as much as the coverage does. Up to its close
+    for a closed one — this page is the crisis's record, not a second inbox.
     """
-    window = [OutreachReply.received_at >= standing.declared_at]
+    reach = standing.article.published_at - crisis.STORY_WINDOW
+    window = [OutreachReply.received_at >= reach]
     if standing.closed_at is not None:
         window.append(OutreachReply.received_at <= standing.closed_at)
     pairs = session.execute(
