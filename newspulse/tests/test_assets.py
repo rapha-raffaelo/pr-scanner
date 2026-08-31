@@ -1840,7 +1840,8 @@ def test_a_malformed_reply_is_still_a_parse_error_to_an_older_caller(session):
 
 def test_every_format_name_and_description_has_an_english_entry():
     """The chrome switches language; a card that stays German in an English UI
-    reads as broken rather than as untranslated."""
-    for fmt in assets.FORMATS:
+    reads as broken rather than as untranslated. Both registries, so the crisis
+    surface story inherits translated formats the way the impulse strip did."""
+    for fmt in (*assets.FORMATS, *assets.CRISIS_FORMATS):
         assert i18n.translate(fmt.name, "en"), fmt.name
         assert i18n.translate(fmt.description, "en") != fmt.description, fmt.key

@@ -1223,7 +1223,12 @@ def _open_without_reason(answer: str) -> bool:
     at = folded.find(_STILL_OPEN)
     if at < 0:
         return False
-    reason = answer[at + len(_STILL_OPEN) :].strip(" .:,;")
+    # Sliced on the folded text, not the original: casefolding German lengthens
+    # the string ("ß" → "ss"), so an index found in one does not address the
+    # other, and a "Straße" before the marker would shave characters off the
+    # reason. Folding never shortens, so measuring the folded reason is safe in
+    # the lenient direction.
+    reason = folded[at + len(_STILL_OPEN) :].strip(" .:,;")
     return len(reason) < _MIN_OPEN_REASON_CHARS
 
 
@@ -2055,12 +2060,25 @@ def _crisis_sources(
 ) -> str:
     """Everything a crisis draft may take a number from, as one searchable text.
 
-    Exactly the three inputs the story names — the profile, the guide and the
-    coverage that counts to the crisis — and exactly as the prompt carried
-    them, because a validator may only hold the text to what the writer saw.
+    The three inputs the story names — the profile, the guide and the coverage
+    that counts to the crisis — exactly as the prompt carried them, because a
+    validator may only hold the text to what the writer saw. The profile is
+    both halves the prompt hands over: the mandate's identity (name, website,
+    keywords) and the kick-off facts. Without the first, a client whose own
+    name carries a digit could never be named in his own holding statement.
+
+    Deliberately absent: the Krisenstufe line. The prompt states it so the
+    writer knows the register, but "Stufe 3 von 5" is the tool's internal
+    reading and has no place in a text that goes outside — a draft that
+    echoes it is refused on purpose.
     """
     return "\n".join(
-        (_fact_lines(facts), (client.comms_guide or "").strip(), evidence)
+        (
+            _client_profile(client),
+            _fact_lines(facts),
+            (client.comms_guide or "").strip(),
+            evidence,
+        )
     )
 
 
@@ -2347,9 +2365,12 @@ def write_crisis(
     untouched. :class:`Malformed` when the model twice failed the structure,
     including a number no handed-over source carries.
 
-    The validator's material is exactly the prompt's: the same evidence block
-    is rendered once and travels into both, so the number check can never hold
-    the text to a source list the writer did not see.
+    The validator's material is drawn from the prompt's: the same evidence
+    block is rendered once and travels into both, and the same profile and
+    guide the prompt carries back every number, so the check can never hold
+    the text to a source list the writer did not see. The one prompt line
+    kept out of the sources — the internal Krisenstufe — is kept out on
+    purpose; see :func:`_crisis_sources`.
     """
     facts = profile.stored(session, client.id)
     readiness = requirements_met(session, fmt, client, None, facts=facts, target=None)
@@ -3085,6 +3106,14 @@ def guide_pending(asset: Asset) -> bool:
     visibly not. "Answered" means a verdict with a reviewer's name behind it —
     a check that broke wrote no name, keeps the lock, and is released by a
     re-check that succeeds, never by the failure itself.
+
+    That includes the rare mandate whose guide was deleted while the checks
+    were in flight: ``check_guide`` then answers NO_GUIDE, no name is written,
+    and the lock holds. Intended recovery, not a dead end — both crisis
+    formats require ``comms_guide`` at write time, so the guide existed
+    minutes ago; restoring it and re-checking is the path back. A crisis text
+    released against no guide at all is the one thing DEC-3's lock exists to
+    prevent.
     """
     return asset.crisis_id is not None and not asset.guide_reviewed_by
 

@@ -445,6 +445,18 @@ _EN: dict[str, str] = {
     "Interview-Briefing": "Interview briefing",
     "Wer fragt, was er zuletzt schrieb, und was gesagt werden soll.":
         "Who is asking, what they wrote lately, and what to get said.",
+    # --- The two crisis formats (newspulse.assets.CRISIS_FORMATS) -------------
+    # Same rule, same guard: the test iterates both registries, so a crisis
+    # format defined without an English card fails the suite. "Holding
+    # Statement" is the same words in both languages and is listed anyway.
+    "Holding Statement": "Holding statement",
+    "Der erste kurze Text nach draußen: was feststeht, was geprüft wird, wer erreichbar ist.":
+        "The first short text to the outside: what is established, what is "
+        "being checked, who can be reached.",
+    "Q&A-Haltung": "Q&A stance",
+    "Was der Sprecher in der Hand hält, wenn das Telefon klingelt; offene Fragen bleiben ausdrücklich offen.":
+        "What the spokesperson holds when the phone rings; open questions stay "
+        "explicitly open.",
     # --- The package on an impulse (DEC-1) -----------------------------------
     # One occasion, one package: the formats are a strip on the impulse, each
     # carrying the state it is in. The four state names are the load-bearing ones

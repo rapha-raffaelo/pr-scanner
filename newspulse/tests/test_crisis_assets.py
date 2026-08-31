@@ -260,6 +260,29 @@ def test_a_backed_number_passes_the_number_check():
     assert assets.validate(_holding(), draft, given) == []
 
 
+def test_the_clients_own_name_is_not_an_unbacked_number(session):
+    """A mandate whose name carries a digit can be named in its own statement.
+
+    The prompt hands the writer the mandate's identity, so the sources the
+    number check searches carry it too. Without that, a client called
+    "Energie 2050 AG" could never appear in his own holding statement — the
+    one text that exists to carry his name."""
+    client, crisis = _crisis_mandate(session)
+    client.name = "Energie 2050 AG"
+    session.commit()
+    body = _GOOD_HOLDING_BODY.replace("Alpha AG", "Energie 2050 AG")
+
+    draft = assets.write_crisis(
+        session,
+        _holding(),
+        client,
+        crisis,
+        invoke=lambda *a, **k: _reply(body=body),
+    )
+
+    assert "Energie 2050 AG" in draft.body
+
+
 def test_the_checking_sentence_is_required():
     draft = AssetDraft(title="", body="Die Alpha AG nimmt die Lage ernst.")
 
