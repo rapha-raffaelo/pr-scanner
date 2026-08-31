@@ -387,6 +387,9 @@ CARRIED_BEFORE = {
     "visibility_read.txt": set(),
     # New with UHR-06, so there is no "before" to carry either.
     "plan_hooks.txt": set(),
+    # New with UHR-02: the two crisis formats. No "before" to carry.
+    "holding_statement.txt": set(),
+    "krisen_qa.txt": set(),
 }
 
 #: Standards a prompt did *not* carry before and now does. Every one is a
@@ -483,6 +486,21 @@ ADDED_IN_MIGRATION = {
     # candidates, which is not the model's call to make. journalistic_value
     # and position address a text aimed at an editor, which this is not.
     "plan_hooks.txt": {"no_invention", "house_style"},
+    # The two crisis formats (UHR-02, DEC-3). crisis_discipline is the block the
+    # story exists for — one place for the four crisis rules, composed into both
+    # prompts and written out in neither. evidence and no_invention, because a
+    # crisis text is written from headlines and feed snippets under maximum time
+    # pressure, which is exactly when a plausible number gets invented.
+    # house_style, because a holding statement is the most quoted text the tool
+    # ever writes. journalistic_value and position are absent on purpose: neither
+    # text argues a thesis or courts an editor, and "the second-best position" is
+    # advice about a job a holding statement must not do. The generic refusal
+    # block is absent for the same reason as on the six formats: both compose
+    # $refusal, which names this format's own required fields.
+    "holding_statement.txt": {"crisis_discipline", "evidence", "no_invention",
+                              "house_style"},
+    "krisen_qa.txt": {"crisis_discipline", "evidence", "no_invention",
+                      "house_style"},
 }
 
 #: Phrases that only appear in a prompt if somebody wrote a standard out again
@@ -509,6 +527,11 @@ RESTATEMENT_TELLS = {
                 "keine Fehlleistung", "erfinde keinen Anlass"],
     "false_alarm": ["nach dem dritten Mal ignoriert", "Ist etwas in Ordnung, sag das"],
     "press_relevance": ["ohnehin nicht schreibt", "Eigenwerbung, kein Impuls"],
+    # UHR-02's acceptance in guard form: the crisis rules live in the block and
+    # in neither prompt. A prompt that writes one of these clauses out again has
+    # forked the standard the block exists to hold in one place.
+    "crisis_discipline": ["Kein zugesagter Zeitpunkt", "wird morgen zitiert",
+                          "verspricht nichts", "Zitat von morgen"],
 }
 
 #: The other half of DEC-2's guard, and the half RESTATEMENT_TELLS structurally

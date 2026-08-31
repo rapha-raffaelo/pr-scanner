@@ -220,6 +220,32 @@ def _briefing_body(*, outlet: str = _OUTLET, journalist: str = _BYLINE) -> str:
     )
 
 
+def _holding_statement_body() -> str:
+    """A holding statement carrying its contract: the checking sentence, no
+    digits at all — so it passes the number check against any source list."""
+    return (
+        "Die Alpha AG nimmt die Berichterstattung ernst. Belegt ist, dass "
+        "mehrere Medien über die Verwahrung berichten. Wir prüfen derzeit die "
+        "betroffenen Abläufe. Sobald gesicherte Erkenntnisse vorliegen, "
+        "informieren wir öffentlich.\n\n"
+        "Erreichbar: Jonas Weber, Leiter Kommunikation."
+    )
+
+
+def _krisen_qa_body(*, open_answer: str | None = None) -> str:
+    """A Q&A-Haltung at the floor of its band: six questions, one honestly open."""
+    answered = "\n".join(
+        f"Frage Nummer {word}?\nDie Antwort stützt sich auf die Meldungen oben."
+        for word in ("eins", "zwei", "drei", "vier", "fünf")
+    )
+    gap = (
+        open_answer
+        if open_answer is not None
+        else "Noch offen: die Zahl der Betroffenen ist in keiner Quelle belegt."
+    )
+    return f"{answered}\nWie viele Kunden sind betroffen?\n{gap}"
+
+
 _BODIES = {
     AssetKind.PRESSEMITTEILUNG: _release_body,
     AssetKind.STATEMENT: _statement_body,
@@ -227,6 +253,8 @@ _BODIES = {
     AssetKind.TALKING_POINTS: _talking_points_body,
     AssetKind.GASTBEITRAG: _gastbeitrag_body,
     AssetKind.INTERVIEW_BRIEFING: _briefing_body,
+    AssetKind.HOLDING_STATEMENT: _holding_statement_body,
+    AssetKind.KRISEN_QA: _krisen_qa_body,
 }
 
 
@@ -262,10 +290,16 @@ def _guide_verdict(**over) -> str:
 
 
 def test_every_declared_format_has_a_definition_and_a_prompt_file():
-    """The registry and the value set say the same thing, and every definition
-    points at a prompt that exists."""
-    assert set(assets.REGISTRY) == {kind.value for kind in AssetKind}
-    for fmt in assets.FORMATS:
+    """The registries and the value set say the same thing, and every definition
+    points at a prompt that exists. Two registries since UHR-02 — the impulse
+    formats and the crisis formats — and no kind may be in both or in neither:
+    a kind in both would make definition() ambiguous, a kind in neither is a
+    stored text nothing can describe."""
+    assert set(assets.REGISTRY) | set(assets.CRISIS_REGISTRY) == {
+        kind.value for kind in AssetKind
+    }
+    assert not set(assets.REGISTRY) & set(assets.CRISIS_REGISTRY)
+    for fmt in (*assets.FORMATS, *assets.CRISIS_FORMATS):
         assert fmt.template().template.strip(), f"{fmt.key} has an empty prompt"
         assert fmt.structure, f"{fmt.key} declares no structure"
 
@@ -1806,7 +1840,8 @@ def test_a_malformed_reply_is_still_a_parse_error_to_an_older_caller(session):
 
 def test_every_format_name_and_description_has_an_english_entry():
     """The chrome switches language; a card that stays German in an English UI
-    reads as broken rather than as untranslated."""
-    for fmt in assets.FORMATS:
+    reads as broken rather than as untranslated. Both registries, so the crisis
+    surface story inherits translated formats the way the impulse strip did."""
+    for fmt in (*assets.FORMATS, *assets.CRISIS_FORMATS):
         assert i18n.translate(fmt.name, "en"), fmt.name
         assert i18n.translate(fmt.description, "en") != fmt.description, fmt.key
