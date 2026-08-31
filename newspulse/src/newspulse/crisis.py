@@ -40,7 +40,7 @@ import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, case, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -55,6 +55,7 @@ from .models import (
     Category,
     Client,
     Crisis,
+    CrisisDismissal,
     Tonality,
     visible_coverage,
 )
@@ -459,14 +460,31 @@ def _stood_down(
     Together they also keep this off the archive: the daily page render used to
     load and cluster every row published since the oldest crisis this mandate
     ever had, on every render, for ever.
+
+    Two kinds of trigger, one meaning. A closed crisis and a dismissed proposal
+    (UHR-03's "Verwerfen") are opposite records — one says the mandate was in a
+    crisis, the other says a person decided it was not — but to *this* question
+    they answer identically: the story has been dealt with, and offering it
+    again would spend DEC-1's one click twice. Both are bounded by the same
+    reach for the same reason.
     """
     reach = since - STORY_WINDOW
-    triggers = session.scalars(
+    triggers = list(
+        session.scalars(
+            select(Article)
+            .join(Crisis, Crisis.article_id == Article.id)
+            .where(
+                Crisis.client_id == client.id,
+                Crisis.closed_at.is_not(None),
+                Article.published_at >= reach,
+            )
+        ).all()
+    )
+    triggers += session.scalars(
         select(Article)
-        .join(Crisis, Crisis.article_id == Article.id)
+        .join(CrisisDismissal, CrisisDismissal.article_id == Article.id)
         .where(
-            Crisis.client_id == client.id,
-            Crisis.closed_at.is_not(None),
+            CrisisDismissal.client_id == client.id,
             Article.published_at >= reach,
         )
     ).all()
@@ -489,6 +507,46 @@ def _stood_down(
     return silenced & visible
 
 
+def _worth_clustering(session: Session, client: Client, *, since: dt.datetime) -> bool:
+    """A cheap necessary condition for either trigger, before any clustering.
+
+    ``propose`` runs on every render of every workspace page of every non-crisis
+    mandate (the tab strip asks it), and loading plus clustering a day of
+    coverage per page view is real work that almost always answers ``None``.
+    One aggregate query rules the common case out first: the category condition
+    needs at least one visible ``krise`` analysis at or above
+    :data:`PROPOSAL_IMPORTANCE`, and the wave condition needs at least
+    :data:`PROPOSAL_OUTLETS` distinct negative carriers — which cannot exist
+    with fewer than that many negative rows. Counting is strictly wider than
+    the real conditions (silencing and outlet-distinctness only remove
+    candidates), so a ``False`` here is never a lost proposal.
+    """
+    flagged, negative = session.execute(
+        select(
+            func.count(
+                case(
+                    (
+                        and_(
+                            Analysis.category == Category.KRISE,
+                            Analysis.importance_score >= PROPOSAL_IMPORTANCE,
+                        ),
+                        1,
+                    )
+                )
+            ),
+            func.count(case((Analysis.tonality == Tonality.NEGATIV, 1))),
+        )
+        .select_from(Analysis)
+        .join(Article, Article.id == Analysis.article_id)
+        .where(
+            Analysis.client_id == client.id,
+            visible_coverage(),
+            Article.published_at >= since,
+        )
+    ).one()
+    return bool(flagged) or negative >= PROPOSAL_OUTLETS
+
+
 def propose(
     session: Session, client: Client, *, now: dt.datetime | None = None
 ) -> Proposal | None:
@@ -507,6 +565,8 @@ def propose(
     if open_crisis(session, client) is not None:
         return None
     since = reference - _PROPOSAL_WINDOW
+    if not _worth_clustering(session, client, since=since):
+        return None
     rows = _rows(session, client, since=since)
     silenced = _stood_down(session, client, rows, since=since)
     rows = [row for row in rows if row.article.id not in silenced]
@@ -661,6 +721,99 @@ def declare(
     return crisis
 
 
+def dismiss(
+    session: Session,
+    client: Client,
+    article: Article,
+    *,
+    by: str,
+    now: dt.datetime | None = None,
+) -> CrisisDismissal:
+    """Stand a proposal down: the same story stops being offered for this mandate.
+
+    The other half of DEC-1's one-click false alarm. Nothing else changes — no
+    crisis row, no tab, no cadence — because nothing was declared: the row
+    records that a person looked and said no, and :func:`_stood_down` reads it
+    through the same clustering the closed crises use, so the pickups of the
+    dismissed wave stop re-offering it under a different headline.
+
+    Idempotent per (mandate, trigger), on the same two-layer promise
+    :func:`declare` keeps: the read hands the standing row back, and the UNIQUE
+    over the pair catches the race the read cannot see.
+    """
+    standing = session.scalars(
+        select(CrisisDismissal).where(
+            CrisisDismissal.client_id == client.id,
+            CrisisDismissal.article_id == article.id,
+        )
+    ).first()
+    if standing is not None:
+        return standing
+    dismissal = CrisisDismissal(
+        client_id=client.id,
+        article_id=article.id,
+        # Truncated rather than refused, like the declaration's name: the tail
+        # of a long sign-in name is never worth losing the click.
+        dismissed_by=((by or "").strip() or DECLARED_BY_DEFAULT)[
+            :CRISIS_DECLARED_BY_MAX
+        ],
+        dismissed_at=now or dt.datetime.now(dt.UTC),
+    )
+    session.add(dismissal)
+    try:
+        session.commit()
+    except IntegrityError:
+        # ``uq_crisis_dismissals_once`` fired: a second tab dismissed the same
+        # offer between the read above and this commit. Their row is the record.
+        session.rollback()
+        standing = session.scalars(
+            select(CrisisDismissal).where(
+                CrisisDismissal.client_id == client.id,
+                CrisisDismissal.article_id == article.id,
+            )
+        ).first()
+        if standing is None:
+            raise
+        return standing
+    _log.info(
+        "crisis proposal for %r dismissed by %r (article %d)",
+        client.name,
+        dismissal.dismissed_by,
+        article.id,
+    )
+    return dismissal
+
+
+def has_history(session: Session, client: Client) -> bool:
+    """Whether a crisis was ever *declared* for this mandate.
+
+    What the Krise tab turns on (UHR-03): a mandate that never had one gets no
+    tab, and a dismissed proposal deliberately does not count — nobody declared
+    anything, so there is no page worth a daily glance.
+    """
+    return bool(
+        session.execute(
+            select(Crisis.id).where(Crisis.client_id == client.id).limit(1)
+        ).first()
+    )
+
+
+def history(session: Session, client: Client) -> list[Crisis]:
+    """Every crisis this mandate ever had, newest declaration first.
+
+    Open and closed alike: the crisis page reads the open one while it runs and
+    keeps the closed ones readable afterwards — the chronology is the
+    after-action record, and hiding a closed row would delete it.
+    """
+    return list(
+        session.scalars(
+            select(Crisis)
+            .where(Crisis.client_id == client.id)
+            .order_by(Crisis.declared_at.desc())
+        ).all()
+    )
+
+
 def close(
     session: Session, crisis: Crisis, *, reason: str, now: dt.datetime | None = None
 ) -> Crisis:
@@ -781,7 +934,10 @@ __all__ = [
     "Trigger",
     "close",
     "declare",
+    "dismiss",
     "due",
+    "has_history",
+    "history",
     "mark_swept",
     "open_crises",
     "open_crisis",

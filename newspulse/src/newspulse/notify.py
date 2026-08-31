@@ -84,8 +84,9 @@ _WINDOWS_BALLOON_SECONDS = 4
 # happened yet.
 _PROPOSAL_HEADER = "Crisis proposed (nothing has changed yet):"
 _PROPOSAL_FOOTER = (
-    "Open NewsPulse and press 'Krise erklären' to declare one. Until somebody "
-    "does, the sweep runs exactly as it did."
+    "Open NewsPulse and press 'Krise erklären' to declare one, or 'Verwerfen' "
+    "to stand the offer down — a dismissed story is not offered again. Until "
+    "somebody does either, the sweep runs exactly as it did."
 )
 _PROPOSAL_TAIL = "crisis proposed for"
 

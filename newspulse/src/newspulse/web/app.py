@@ -335,6 +335,14 @@ def create_app() -> FastAPI:
         rivals_view, runstatus, settings, today, triage, visibility_view,
     )
 
+    # The workspace chrome asks per mandate whether a Krise tab exists and
+    # whether DEC-1 has a question outstanding. A global for the same reason
+    # ``nav_clients`` is — the tab strip is shared markup and no route should
+    # have to remember to pass it. Registered here rather than at module level
+    # because the route module cannot be imported up top (it imports from this
+    # one); re-assignment on a second create_app() is idempotent.
+    templates.env.globals["crisis_tab"] = crisis_view.crisis_tab
+
     # First, so the sign-in pages exist before anything that needs a session.
     app.include_router(login.router)
     app.include_router(today.router)

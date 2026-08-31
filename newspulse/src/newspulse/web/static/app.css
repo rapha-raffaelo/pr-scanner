@@ -2131,3 +2131,110 @@ button:disabled { opacity: .55; cursor: default; }
 .plangap__miss { color: var(--warn); font-weight: 600; }
 
 .planfoot { font-size: var(--t-caption); color: var(--faint); margin-top: var(--s5); max-width: 78ch; }
+
+/* --- Die Krisenseite (UHR-03, DEC-2 option C: two columns) -------------------
+   The k- prefix keeps this page's layout classes apart from the Heute rail's
+   .crisis cards, which stay as they are. Colours and spacing come from the
+   mock's own system: red for what runs about us, tint for what we set against
+   it, warn for what waits, and the gap box dashed because it names an absence. */
+
+.kbar { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--alert);
+        border-radius: var(--radius); padding: var(--s4) var(--s5); margin-bottom: var(--s4);
+        display: flex; align-items: flex-start; gap: var(--s5); flex-wrap: wrap; }
+.kbar--closed { border-left-color: var(--line-strong); }
+.kbar__b { min-width: 0; flex: 1; }
+.kbar__k { font-size: var(--t-caption); font-weight: 700; text-transform: uppercase;
+           letter-spacing: 0.06em; color: var(--alert); }
+.kbar--closed .kbar__k { color: var(--muted); }
+.kbar__t { font-size: var(--t-title2); font-weight: 700; letter-spacing: -0.02em;
+           margin: var(--s1) 0 0; max-width: 44ch; }
+.kbar__m { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s2); }
+.kbar__stat { display: flex; gap: var(--s5); margin-right: var(--s5); }
+.kbar__n { font-size: var(--t-large); font-weight: 700; letter-spacing: -0.03em;
+           line-height: 1; font-variant-numeric: tabular-nums; }
+.kbar__n--hot { color: var(--alert); }
+.kbar__n--us { color: var(--tint); }
+.kbar__n--wait { color: var(--warn); }
+.kbar__l { font-size: var(--t-caption); color: var(--muted); margin-top: 3px; }
+.kbar__r { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+.kbar__close { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.kbar__close input[type="text"] { font: inherit; font-size: var(--t-footnote);
+        padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-s);
+        min-width: 210px; }
+.btn--stop { background: var(--fill); color: var(--alert); }
+
+.kprev { font-size: var(--t-footnote); color: var(--muted); margin: 0 0 var(--s4); }
+
+.ktwo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); align-items: start; }
+@media (max-width: 1020px) { .ktwo { grid-template-columns: 1fr; } }
+
+.kcol__h { display: flex; align-items: baseline; gap: var(--s2); margin-bottom: var(--s3);
+           padding: 0 var(--s1); flex-wrap: wrap; }
+.kcol__t { font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.015em; }
+.kcol__s { font-size: var(--t-caption); color: var(--muted); }
+.kcol__r { margin-left: auto; }
+.kcol__empty { font-size: var(--t-footnote); color: var(--muted); padding: var(--s2) var(--s1); }
+
+.kcard { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+         padding: var(--s3) var(--s4); margin-bottom: var(--s3); }
+.kcard--them { border-left: 3px solid var(--alert); }
+.kcard--us { border-left: 3px solid var(--tint); }
+.kcard--wait { border-left: 3px solid var(--warn); }
+.kcard__h { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.kcard__src { font-size: var(--t-footnote); font-weight: 600; color: var(--ink-2); }
+.kcard__time { margin-left: auto; font-size: var(--t-caption); color: var(--faint);
+               font-variant-numeric: tabular-nums; }
+.kcard__t { font-size: var(--t-subhead); font-weight: 500; margin: var(--s2) 0 0; line-height: 1.45; }
+.kcard__d { font-size: var(--t-footnote); color: var(--muted); margin: var(--s2) 0 0; line-height: 1.5; }
+.kcard__q { font-size: var(--t-footnote); color: var(--ink-2); margin: var(--s2) 0 0; line-height: 1.55;
+            border-left: 2px solid var(--line-strong); padding-left: var(--s3); white-space: pre-line; }
+.kcard__f { font-size: var(--t-footnote); margin-top: var(--s3); display: flex; gap: var(--s3);
+            align-items: center; flex-wrap: wrap; }
+.kcard__meta { color: var(--muted); }
+
+.kpill { font-size: var(--t-caption); padding: 1px 8px; border-radius: 20px;
+         background: var(--fill); color: var(--muted); white-space: nowrap; }
+.kpill--neg { background: var(--alert-wash); color: var(--alert); }
+.kpill--ok { background: var(--good-wash); color: var(--good); }
+.kpill--wait { background: var(--warn-wash); color: var(--warn); }
+
+/* The box between the columns: it names an absence, so it is dashed, and it is
+   not a card because nothing in it has happened yet. */
+.kgap { background: var(--fill-2); border: 1px dashed var(--line-strong); border-radius: var(--radius);
+        padding: var(--s3) var(--s4); margin-bottom: var(--s3); font-size: var(--t-footnote);
+        color: var(--muted); }
+.kgap b { color: var(--warn); font-weight: 600; }
+
+.kesc { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+        margin-top: var(--s4); }
+.kesc__h { padding: var(--s3) var(--s4); font-size: var(--t-subhead); font-weight: 600; }
+.kesc__r { display: flex; align-items: baseline; gap: var(--s3); padding: 7px var(--s4);
+           border-top: 1px solid var(--line); font-size: var(--t-subhead); }
+.kesc__role { width: 118px; flex: none; color: var(--muted); font-size: var(--t-footnote); }
+.kesc__miss { color: var(--warn); font-size: var(--t-footnote); }
+
+.ktl { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
+.ktl__row { display: flex; gap: var(--s3); align-items: baseline; padding: 7px var(--s4);
+            border-top: 1px solid var(--line); font-size: var(--t-footnote); }
+.ktl__row:first-child { border-top: 0; }
+.ktl__at { flex: none; width: 118px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.ktl__what { flex: none; width: 118px; font-weight: 600; color: var(--ink-2); }
+.ktl__d { min-width: 0; }
+.ktl__src { color: var(--muted); }
+
+.kfoot { font-size: var(--t-caption); color: var(--faint); margin-top: var(--s5); max-width: 76ch; }
+
+/* The two-button offer on the Mandantenkarte (DEC-1), and the hot tab while a
+   crisis is open. */
+.koffer { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap;
+          border: 1px dashed var(--line-strong); border-radius: var(--radius);
+          padding: var(--s2) var(--s4); margin: calc(var(--s6) * -1 + var(--s2)) 0 var(--s6); }
+.koffer__badge { font-size: var(--t-caption); font-weight: 700; background: var(--warn);
+                 color: #fff; border-radius: 5px; padding: 1px 7px; }
+.koffer__t { font-size: var(--t-subhead); font-weight: 600; min-width: 0; }
+.koffer__why { font-size: var(--t-caption); color: var(--muted); }
+.subtabs > a.subtabs__hot { color: var(--alert); font-weight: 600; }
+.subtabs > a.subtabs__hot.active { border-bottom-color: var(--alert); color: var(--alert); }
+
+/* The offer card on Heute grew a second button (Verwerfen). */
+.crisis__acts { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }

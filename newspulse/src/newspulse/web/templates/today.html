@@ -248,12 +248,22 @@
         <div class="cli">{{ offer.client_name }}</div>
         <div class="hl">{{ offer.headline }}</div>
         <div class="crisis__note">{{ t("Vorgeschlagen, nicht erklärt. Bis jemand hier drückt, ändert sich nichts.") }}</div>
-        <form method="post" action="/crisis/declare">
-          <input type="hidden" name="client_id" value="{{ offer.client_id }}">
-          <input type="hidden" name="article_id" value="{{ offer.article_id }}">
-          <input type="hidden" name="redirect_to" value="{{ request.url.path }}?{{ request.url.query }}">
-          <button type="submit" class="triage-btn triage-btn--crisis">{{ t("Krise erklären") }}</button>
-        </form>
+        <div class="crisis__acts">
+          <form method="post" action="/crisis/declare">
+            <input type="hidden" name="client_id" value="{{ offer.client_id }}">
+            <input type="hidden" name="article_id" value="{{ offer.article_id }}">
+            <input type="hidden" name="redirect_to" value="{{ request.url.path }}?{{ request.url.query }}">
+            <button type="submit" class="triage-btn triage-btn--crisis">{{ t("Krise erklären") }}</button>
+          </form>
+          {# The false alarm's one click (DEC-1): the same story stops being
+             offered for this mandate, and nothing else happens. #}
+          <form method="post" action="/crisis/dismiss">
+            <input type="hidden" name="client_id" value="{{ offer.client_id }}">
+            <input type="hidden" name="article_id" value="{{ offer.article_id }}">
+            <input type="hidden" name="redirect_to" value="{{ request.url.path }}?{{ request.url.query }}">
+            <button type="submit" class="triage-btn">{{ t("Verwerfen") }}</button>
+          </form>
+        </div>
       </div>
     {% endfor %}
     {% for story in alerts %}
