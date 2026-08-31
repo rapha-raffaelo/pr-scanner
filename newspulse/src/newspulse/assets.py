@@ -2459,6 +2459,12 @@ class Checked:
     #: are stored differently on purpose: having nothing to check against is a
     #: state of the mandate, and a check that ran and broke is a text nobody read.
     guide_failed: bool = False
+    #: The crosscheck's mirror of the two fields above: why it produced no
+    #: verdict, and that this was a malfunction. Symmetric on purpose — the
+    #: crisis release gates on the guide's answer alone (DEC-3), so a crosscheck
+    #: that dies must not be the reason the guide check never got asked.
+    review_note: str = ""
+    review_failed: bool = False
 
 
 def crosscheck(
@@ -2540,13 +2546,27 @@ def check(
     averaged into a style note.
 
     Two verdicts also means two failures, and neither takes the other down with
-    it. The crosscheck has been paid for by the time the guide check runs, so a
-    guide pass that breaks leaves a :class:`Checked` carrying the verdict that did
-    arrive and a note saying the other one did not. Discarding a completed check
-    because a second one failed would spend a model call to end up with less than
-    the caller had a line earlier.
+    it — in either direction. The crosscheck has been paid for by the time the
+    guide check runs, so a guide pass that breaks leaves a :class:`Checked`
+    carrying the verdict that did arrive and a note saying the other one did
+    not. And a crosscheck that breaks does not stop the guide check from being
+    asked: for a crisis text the guide's answer is the one thing release waits
+    on (DEC-3, "der Gegenprüfer darf nachlaufen"), and a dead second call must
+    not starve the one that gates.
     """
-    review, reviewed_by = crosscheck(session, client, item, generate=generate)
+    review: MessageReview | None = None
+    reviewed_by = ""
+    review_note = ""
+    review_failed = False
+    try:
+        review, reviewed_by = crosscheck(session, client, item, generate=generate)
+    except _CHECK_FAULTS as exc:
+        _log.error("crosscheck failed for %r", client.name, exc_info=True)
+        # The same two-line shape recheck() has always stored: the reader's
+        # sentence first, the backend's words under it, rendered line by line
+        # through the translator.
+        review_note = f"{CHECK_UNAVAILABLE}\n{exc}"
+        review_failed = True
     # The same strings the crosscheck read, and the same ones store() will write.
     # A breach quotes the sentence it objects to and that quote is stored verbatim,
     # so a guide check reading the raw reply produces an objection whose quoted
@@ -2569,10 +2589,16 @@ def check(
             reviewed_by=reviewed_by,
             guide_note=guide.CHECK_FAILED,
             guide_failed=True,
+            review_note=review_note,
+            review_failed=review_failed,
         )
     if verdict is None:
         return Checked(
-            review=review, reviewed_by=reviewed_by, guide_note=guide.NO_GUIDE
+            review=review,
+            reviewed_by=reviewed_by,
+            guide_note=guide.NO_GUIDE,
+            review_note=review_note,
+            review_failed=review_failed,
         )
     guide_verdict, guide_reviewed_by = verdict
     return Checked(
@@ -2580,6 +2606,8 @@ def check(
         reviewed_by=reviewed_by,
         guide=guide_verdict,
         guide_reviewed_by=guide_reviewed_by,
+        review_note=review_note,
+        review_failed=review_failed,
     )
 
 
@@ -2628,9 +2656,13 @@ def _apply_checks(row: Asset, checked: Checked | None) -> None:
     it stand over a text it never read.
     """
     if checked is None or checked.review is None:
-        row.review = ""
+        # The crosscheck's mirror of the guide branch below: a check that never
+        # ran leaves the field empty, and one that ran and broke leaves the
+        # note saying so — never ok, so the page draws the warning dot on a
+        # text nothing could read.
+        row.review = checked.review_note if checked else ""
         row.reviewed_by = ""
-        row.review_ok = True
+        row.review_ok = not (checked and checked.review_failed)
     else:
         concerns = "\n".join(checked.review.concerns)
         if checked.review.fix:
@@ -2790,6 +2822,16 @@ def produce(
             f"{fmt.name}: Der Text steht, aber das Zweitmodell hat ihn nicht "
             f"gegengelesen: {exc}",
         )
+    if checked is not None and checked.review_failed:
+        # check() no longer raises for a crosscheck that broke — it carries the
+        # note and asks the guide anyway — so the worker's sentence is told off
+        # the flag. The backend's words are the note's second line.
+        _unused, _sep, why = checked.review_note.partition("\n")
+        _tell(
+            note,
+            f"{fmt.name}: Der Text steht, aber das Zweitmodell hat ihn nicht "
+            f"gegengelesen: {why}",
+        )
     return store(session, fmt, client, angle, draft, checked)
 
 
@@ -2857,6 +2899,12 @@ def produce_crisis(
     """
     draft = write_crisis(session, fmt, client, crisis, invoke=invoke, note=note)
     row = store_crisis(session, fmt, client, crisis, draft)
+    # Which text the verdicts will belong to. The row id is not enough: a
+    # rewrite of the same format reuses the row (and resets edited_at), so two
+    # workers on the same crisis morning could otherwise have A's verdicts
+    # land on B's words. version() is both timestamps, which is exactly what a
+    # replacement changes and a wait does not.
+    written = version(row)
     try:
         checked = check(
             session,
@@ -2875,8 +2923,14 @@ def produce_crisis(
             f"laufen. Er bleibt ungeprüft: {exc}",
         )
         return row
+    if checked.review_failed or checked.guide_failed:
+        _tell(
+            note,
+            f"{fmt.name}: Der Entwurf steht, aber eine Prüfung konnte nicht "
+            "laufen. Was sie nicht gelesen hat, bleibt ungeprüft.",
+        )
     session.refresh(row)
-    if row.released or row.edited_at is not None:
+    if row.released or version(row) != written:
         _log.info(
             "%s for %r moved on while its checks ran; the verdicts are dropped",
             fmt.key,
