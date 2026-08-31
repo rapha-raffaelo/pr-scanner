@@ -617,6 +617,22 @@ def test_the_write_button_hands_the_open_crisis_to_the_worker(
     assert spawned == [(mandate.id, standing.id)]
 
 
+def test_another_mandates_run_is_not_presented_as_this_ones(web, session, mandate):
+    """The writer lock is process-global; the busy state on the page is not.
+    While mandate B writes, mandate A's button stays live, and a click that
+    loses to B's run explains itself instead of no-opping silently."""
+    _declared(session, mandate)
+    assert crisis_view._writing.acquire(blocking=False)
+    crisis_view._writing_for = mandate.id + 1
+    try:
+        page = web.get(f"/client/{mandate.id}/krise")
+        assert "Wird geschrieben" not in page.text
+        web.post(f"/client/{mandate.id}/krise/text", follow_redirects=False)
+        assert "ein anderes Mandat" in web.get(f"/client/{mandate.id}/krise").text
+    finally:
+        crisis_view._writing.release()
+
+
 def test_the_write_button_is_a_noop_without_an_open_crisis(
     web, session, mandate, no_background_writer
 ):

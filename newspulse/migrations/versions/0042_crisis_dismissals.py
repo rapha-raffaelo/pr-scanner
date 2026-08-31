@@ -55,7 +55,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("dismissed_by", sa.String(_BY_MAX), nullable=False),
-        sa.Column("dismissed_at", sa.DateTime(), nullable=False),
+        sa.Column("dismissed_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint(
             "client_id", "article_id", name="uq_crisis_dismissals_once"
         ),

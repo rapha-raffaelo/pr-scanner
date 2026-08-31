@@ -614,7 +614,7 @@ def crisis_page(
             "timeline": _timeline(selected, coverage, texts, requests) if zeitleiste else [],
             "zeitleiste": zeitleiste,
             "previous": [row for row in past if row.id != selected.id],
-            "busy": _writing.locked(),
+            "busy": _writing.locked() and _writing_for == client.id,
             # Popped, not read: a note describes one click, and showing it once
             # is its whole job. Left in the dict it would outlive its morning —
             # on every later crisis view of this mandate, including old closed
@@ -631,6 +631,12 @@ def crisis_page(
 # One crisis writer at a time, the same posture as the impulse button: the
 # worker shells out to a model and holds the sweep guard while it does.
 _writing = threading.Lock()
+
+# Whose run holds the lock. The lock is process-global on purpose — one writer
+# at a time — but the *page* is per mandate, and mandate B's button must not
+# present mandate A's run as "Wird geschrieben…". Only ever read together with
+# ``_writing.locked()``; a stale value under a released lock means nothing.
+_writing_for: int | None = None
 
 # Why the last click produced what it produced, per mandate. In memory and not a
 # schema change on purpose: it describes one click, and going stale on a restart
@@ -711,19 +717,31 @@ def write_crisis_texts(
 ) -> Response:
     """The page's one button: write what does not exist yet, in the background.
 
-    Refused quietly when a writer is already running — the page shows the button
-    disabled, and a second click from a stale tab must not spend a second model
-    call on the same morning.
+    Refused when a writer is already running — a second click from a stale tab
+    must not spend a second model call on the same morning. Refused with a
+    note, not silently: this mandate's own run shows its button disabled, but a
+    run for a *different* mandate does not, and the click that loses to it has
+    to say why nothing happened.
     """
+    global _writing_for
     client = mandate_or_404(session, client_id)
     standing = crisis.open_crisis(session, client)
-    if standing is not None and _writing.acquire(blocking=False):
-        spawn.start_or_release(
-            _run_crisis_texts,
-            args=(client.id, standing.id),
-            name=f"newspulse-crisis-texts-{client.id}",
-            release=_writing.release,
-        )
+    if standing is not None:
+        if _writing.acquire(blocking=False):
+            _writing_for = client.id
+            spawn.start_or_release(
+                _run_crisis_texts,
+                args=(client.id, standing.id),
+                name=f"newspulse-crisis-texts-{client.id}",
+                release=_writing.release,
+            )
+        elif _writing_for == client.id:
+            _last_note[client.id] = "Die Texte werden bereits geschrieben."
+        else:
+            _last_note[client.id] = (
+                "Es schreibt gerade ein Lauf für ein anderes Mandat. "
+                "Bitte gleich noch einmal drücken."
+            )
     return RedirectResponse(f"/client/{client_id}/krise", status_code=_SEE_OTHER)
 
 
