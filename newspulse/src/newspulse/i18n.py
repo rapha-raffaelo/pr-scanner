@@ -70,6 +70,58 @@ _EN: dict[str, str] = {
     "Medien in 24 Stunden": "outlets in 24 hours",
     "Vorgeschlagen, nicht erklärt. Bis jemand hier drückt, ändert sich nichts.":
         "Proposed, not declared. Nothing changes until somebody presses this.",
+    # --- The crisis page (UHR-03, DEC-2 option C) ----------------------------
+    # "Verwerfen", "Frist", "Krisenkontakt", "Sprecher", "Pressekontakt",
+    # "Medien", "negativ", "positiv", "Beiträge", "bis" and the check states are
+    # already translated elsewhere in this table — the page reuses them.
+    "Krise offen seit": "Crisis open for",
+    "Krise geschlossen": "Crisis closed",
+    "offen von": "open from",
+    "Tg": "d",
+    "Std": "h",
+    "Min": "min",
+    "Erklärt von": "Declared by",
+    "um": "at",
+    "Grund der Schließung:": "Reason it was stood down:",
+    "Solange sie offen ist, läuft der Sweep alle %(n)s Minuten.":
+        "While it is open, the sweep runs every %(n)s minutes.",
+    "über uns": "about us",
+    "von uns": "from us",
+    "offen": "open",
+    "Zeitleiste": "Timeline",
+    "Zwei Spalten": "Two columns",
+    "Frühere Krisen dieses Mandats:": "This mandate's earlier crises:",
+    "Was gesagt wird": "What is being said",
+    "Was wir sagen": "What we say",
+    "eine Story": "one story",
+    "Storys": "stories",
+    "Auslöser": "Trigger",
+    "Öffnen": "Open",
+    "Kein gespeicherter Beitrag im Fenster dieser Krise.":
+        "No stored coverage inside this crisis's window.",
+    "im Entwurf": "in draft",
+    "Wird geschrieben…": "Being written…",
+    "Noch kein Text im Format": "No text yet in the format",
+    "Eine Anfrage ist offen": "One request is open",
+    "Anfragen sind offen": "requests are open",
+    "Im Profil fehlt der Krisenkontakt.": "The profile has no crisis contact.",
+    "Im Kickoff nachtragen": "Add it in the kickoff",
+    "Ungeprüft": "Unchecked",
+    "Anfrage": "Request",
+    "keine Frist genannt": "no deadline stated",
+    "Wer erreichbar ist": "Who is reachable",
+    "Nicht im Profil hinterlegt.": "Not on file in the profile.",
+    "Noch kein Text zu dieser Krise.": "No text for this crisis yet.",
+    "Beitrag": "Coverage",
+    "Krise erklärt": "Crisis declared",
+    "Text entworfen": "Text drafted",
+    "Text freigegeben": "Text released",
+    "Die Krise ist der Abstand zwischen den beiden Spalten. Links wächst, was ohne uns läuft, rechts steht, was wir dagegen gesetzt haben, und der Kasten dazwischen sagt, wo nichts steht. Die Zeitleiste liegt einen Klick entfernt und wird beim Schließen zum Nachbericht.":
+        "The crisis is the distance between the two columns. On the left grows "
+        "what runs without us, on the right stands what we have set against it, "
+        "and the box between them says where nothing stands. The timeline sits "
+        "one click away and becomes the after-action record when the crisis "
+        "closes.",
     "Tagen nichts, aber im Archiv liegt ältere Berichterstattung:": "days nothing, but the archive holds older coverage:",
     "In den letzten": "In the last",
     "seit %(days)s Tagen kein Lauf": "no run for %(days)s days",
