@@ -1168,6 +1168,17 @@ class Angle(Base):
             sqlite_where=text("plan_hook_id IS NOT NULL"),
             postgresql_where=text("plan_hook_id IS NOT NULL"),
         ),
+        # One occasion per newsjack opportunity, for the same race the plan
+        # hook's index settles: a double-clicked "Text schreiben" on the fast
+        # lane's card is two threadpool requests that both read nothing and
+        # both insert. Partial, because NULL is the value on nearly every row.
+        Index(
+            "ux_angles_newsjack",
+            "newsjack_id",
+            unique=True,
+            sqlite_where=text("newsjack_id IS NOT NULL"),
+            postgresql_where=text("newsjack_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -1230,6 +1241,20 @@ class Angle(Base):
     #: column would be dead weight on every write.
     plan_hook_id: Mapped[int | None] = mapped_column(
         ForeignKey("plan_hooks.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    #: The newsjack opportunity this occasion was opened from (UHR-05), on the
+    #: same terms as :attr:`plan_hook_id`: a person clicked "Text schreiben" on
+    #: the fast lane's card, and the texts written afterwards are that
+    #: opportunity's texts — which is what lets the card and the mandate's
+    #: archive say "dazu ist ein Text entstanden" and link to it.
+    #: :class:`Asset` keeps hanging on the occasion, so a format needs to know
+    #: nothing about where its occasion came from. NULL everywhere else, and
+    #: ``SET NULL`` so deleting a weighed story cannot take a released text
+    #: down with it. Indexed by ``ux_angles_newsjack`` above.
+    newsjack_id: Mapped[int | None] = mapped_column(
+        ForeignKey("newsjack_opportunities.id", ondelete="SET NULL"),
         nullable=True,
         default=None,
     )
