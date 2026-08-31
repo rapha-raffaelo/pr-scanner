@@ -64,7 +64,21 @@ from sqlalchemy.orm import Session
 
 from . import brain, config, gemini, guide, pitch, profile, prose
 from .analyzer import AnalyzerError, ParseError, invoke_with_fallback, strip_code_fence
-from .models import Angle, Article, Asset, AssetKind, CheckState, Client, ClientFact
+
+# The same clustering the crisis level is counted from — deliberately that
+# helper rather than a re-derivation here, so the holding statement's evidence
+# and the stored level can never disagree about which coverage the crisis is.
+from .crisis import _story_rows as _crisis_story_rows
+from .models import (
+    Angle,
+    Article,
+    Asset,
+    AssetKind,
+    CheckState,
+    Client,
+    ClientFact,
+    Crisis,
+)
 from .pitch import PitchTarget
 from .schemas import (
     MAX_CONCERNS,
@@ -126,6 +140,39 @@ _MAX_RELEASE_QUOTES = 1
 #: A Q&A below this is a talking point with a question mark. Three is the floor at
 #: which grouping the questions means anything at all.
 _MIN_QA_QUESTIONS = 3
+
+#: The bounds of the Q&A-Haltung (UHR-02). Six is where a stance stops being
+#: three talking points with question marks; past twelve nobody finds the right
+#: answer while the phone is already ringing.
+_MIN_CRISIS_QA = 6
+_MAX_CRISIS_QA = 12
+
+#: How an open answer announces itself, to the model in the prompt and to the
+#: validator here. One spelling, because the two halves have to look for exactly
+#: the same words; matched case-insensitively so "Noch offen:" counts.
+_STILL_OPEN = "noch offen"
+
+#: How much text an open answer owes beyond the marker. The reason is the whole
+#: value of the format — "Noch offen." alone is a gap wearing a label — and
+#: fifteen characters is the floor under which no German clause says what is
+#: missing and why.
+_MIN_OPEN_REASON_CHARS = 15
+
+#: The stem that says a holding statement names what is being worked on:
+#: "prüfen", "geprüft", "Prüfung" all carry it. The explicit checking sentence
+#: is the one part of the format that promises work without promising results,
+#: and a draft without it has done one of the two.
+_CHECKING_STEM = "prüf"
+
+#: A digit run in a crisis draft. Every one has to appear in what the writer was
+#: handed: a number with no stored source is the most expensive invention a
+#: crisis text can carry, because it is quoted before it can be corrected.
+_NUMBER = re.compile(r"\d+")
+
+#: The profile field the holding statement's contact line is written from. Read
+#: by the prompt builder and declared as a requirement, so it is written once —
+#: the same rule as :data:`_SEAT_KEY`.
+_CRISIS_CONTACT_KEY = "krisenkontakt"
 
 #: The profile field the release's dateline names. Read by the validator as well
 #: as declared as a requirement, so it is written once: a rename that reached the
@@ -357,6 +404,13 @@ class Given:
     #: may name these and no others, so the validator needs the same list rather
     #: than the target's own evidence tuple, which is a different one.
     headlines: tuple[str, ...] = ()
+    #: Everything a crisis draft was allowed to take a number from, as one
+    #: searchable text: the profile facts, the guide and the crisis coverage,
+    #: exactly as the prompt carried them. Empty for the six impulse formats,
+    #: whose validators do not count digits — and empty means the number check
+    #: does not run, the same "only judge what was handed over" rule the
+    #: dateline check follows.
+    sources: str = ""
 
 
 #: A format's structural check: the finished draft in, everything it fails to
@@ -1087,6 +1141,122 @@ def _briefing_contract(draft: AssetDraft, given: Given) -> list[str]:
     return faults
 
 
+def _unbacked_numbers(text: str, sources: str) -> list[str]:
+    """The digit runs in ``text`` that appear nowhere in what the writer was handed.
+
+    A substring test on purpose, and lenient in exactly one direction: "14" is
+    backed by a source saying "14:30" or "2014", so a wrongly *refused* number —
+    two paid calls and no text — stays rare, while a number with no digits
+    anywhere behind it can never pass. Empty ``sources`` means the caller did
+    not hand the material over, and nothing is judged against it.
+    """
+    if not sources:
+        return []
+    return sorted({run for run in _NUMBER.findall(text) if run not in sources})
+
+
+def _holding_statement_contract(draft: AssetDraft, given: Given) -> list[str]:
+    """The checking sentence is on the page, and every number has a source.
+
+    Deliberately only the two rules a machine can hold without taste. The rest
+    of the crisis discipline — no promised time in words, no blame — is stated
+    by the ``crisis_discipline`` block and read by the crosscheck; a validator
+    that tried to detect a Schuldzuweisung mechanically would refuse texts on
+    grammar, twice, and deliver nothing in the minutes this format exists for.
+    """
+    faults: list[str] = []
+    if _CHECKING_STEM not in draft.body.casefold():
+        faults.append(
+            "Der ausdrückliche Satz fehlt, worauf gerade geprüft wird. Er ist "
+            "der Kern des Formats."
+        )
+    numbers = _unbacked_numbers(f"{draft.title}\n{draft.body}", given.sources)
+    if numbers:
+        faults.append(
+            f"Zahlen ohne belegte Quelle: {', '.join(numbers)}. Jede Zahl und "
+            "jeder Zeitpunkt muss in den oben belegten Quellen stehen; was dort "
+            "nicht steht, wird nicht beziffert."
+        )
+    return faults
+
+
+def _qa_pairs(body: str) -> list[tuple[str, str]]:
+    """The Q&A's (question, answer) pairs, in the order they stand.
+
+    A question is a line ending in a question mark; its answer is everything
+    beneath it up to the next question or heading. Headings do not count as
+    questions even when they are phrased as one — the same rule
+    :func:`_qa_contract` applies — so a stance cannot satisfy its floor with
+    section titles.
+    """
+    pairs: list[tuple[str, str]] = []
+    question: str | None = None
+    answer: list[str] = []
+
+    def close() -> None:
+        nonlocal question, answer
+        if question is not None:
+            pairs.append((question, " ".join(answer)))
+        question, answer = None, []
+
+    for line in _lines(body):
+        if line.startswith(_GROUP):
+            close()
+        elif line.endswith("?"):
+            close()
+            question = line
+        elif question is not None:
+            answer.append(line)
+    close()
+    return pairs
+
+
+def _open_without_reason(answer: str) -> bool:
+    """Whether an answer says "noch offen" and then stops.
+
+    The marker plus at least :data:`_MIN_OPEN_REASON_CHARS` of reason is a
+    complete answer; the marker alone is a gap wearing a label. Measured after
+    the marker, so "Noch offen: die Zahl der Betroffenen ist unbelegt." passes
+    and "Noch offen." does not.
+    """
+    folded = answer.casefold()
+    at = folded.find(_STILL_OPEN)
+    if at < 0:
+        return False
+    reason = answer[at + len(_STILL_OPEN) :].strip(" .:,;")
+    return len(reason) < _MIN_OPEN_REASON_CHARS
+
+
+def _krisen_qa_contract(draft: AssetDraft, given: Given) -> list[str]:
+    """Six to twelve questions, each with a backed answer or a reasoned gap.
+
+    Counted as pairs, not as two totals, because the format's whole promise is
+    per question: every one carries either an answer or an explicit "noch
+    offen" with its reason. A guessed answer in a crisis briefing is worse than
+    a gap, so the fault the retry carries names the questions that stand bare.
+    """
+    faults: list[str] = []
+    pairs = _qa_pairs(draft.body)
+    if not _MIN_CRISIS_QA <= len(pairs) <= _MAX_CRISIS_QA:
+        faults.append(
+            f"Die Haltung stellt {len(pairs)} Fragen, verlangt sind "
+            f"{_MIN_CRISIS_QA} bis {_MAX_CRISIS_QA}."
+        )
+    unanswered = sum(1 for _question, answer in pairs if not answer.strip())
+    if unanswered:
+        faults.append(
+            f"{unanswered} Fragen stehen ohne Antwort da. Jede Frage trägt eine "
+            'belegte Antwort oder ein "Noch offen:" mit Begründung.'
+        )
+    bare = sum(1 for _question, answer in pairs if _open_without_reason(answer))
+    if bare:
+        faults.append(
+            f'"Noch offen" ohne Begründung bei {bare} Fragen. Eine offene '
+            "Antwort sagt, was fehlt und woran es hängt."
+        )
+    return faults
+
+
 @dataclass(frozen=True, slots=True)
 class FormatDef:
     """One format, entirely as data.
@@ -1277,6 +1447,71 @@ FORMATS: tuple[FormatDef, ...] = (
 REGISTRY: dict[str, FormatDef] = {fmt.key: fmt for fmt in FORMATS}
 
 
+#: The two crisis formats (UHR-02): the same :class:`FormatDef` contract, in a
+#: registry of their own. Not appended to :data:`FORMATS`, because that tuple is
+#: what the impulse's format strip and the plan's format picker iterate, and a
+#: holding statement offered on an ordinary Tuesday impulse would be a button
+#: that writes a crisis text for a mandate that is not in one. They are written
+#: off a declared :class:`newspulse.models.Crisis` by :func:`produce_crisis`,
+#: and they are the only two formats in the tool where minutes count — which is
+#: why their order of operations is DEC-3's, not :func:`produce`'s.
+CRISIS_FORMATS: tuple[FormatDef, ...] = (
+    FormatDef(
+        kind=AssetKind.HOLDING_STATEMENT,
+        name="Holding Statement",
+        description=(
+            "Der erste kurze Text nach draußen: was feststeht, was geprüft "
+            "wird, wer erreichbar ist."
+        ),
+        prompt="prompts/holding_statement.txt",
+        # The spokesperson and the crisis contact are hard requirements for the
+        # same reason the release's seat is: the prompt asks for both by name,
+        # forbids invention two blocks above, and the only honest source for
+        # either is the profile field a person filled in the kick-off. A
+        # holding statement quoting an invented spokesperson is the single
+        # worst artefact this tool can produce, in the hour it is quoted most.
+        requires=(
+            Requirement(Source.PROFIL, "sprecher"),
+            Requirement(Source.PROFIL, _CRISIS_CONTACT_KEY),
+            Requirement(Source.MANDAT, "comms_guide"),
+        ),
+        structure=(
+            "Vier bis sieben Sätze, in einer Minute vorlesbar.",
+            "Was belegt feststeht, ohne Bewertung und ohne Dementi.",
+            "Der ausdrückliche Satz, worauf gerade geprüft wird.",
+            "Als letzte Zeile der Krisenkontakt, exakt wie oben angegeben.",
+            "Keine Zahl und kein Datum, die nicht in den Quellen oben stehen.",
+        ),
+        speaker_key="sprecher",
+        validator=_holding_statement_contract,
+    ),
+    FormatDef(
+        kind=AssetKind.KRISEN_QA,
+        name="Q&A-Haltung",
+        description=(
+            "Was der Sprecher in der Hand hält, wenn das Telefon klingelt; "
+            "offene Fragen bleiben ausdrücklich offen."
+        ),
+        prompt="prompts/krisen_qa.txt",
+        requires=(
+            Requirement(Source.PROFIL, "sprecher"),
+            Requirement(Source.MANDAT, "comms_guide"),
+        ),
+        structure=(
+            f"{_MIN_CRISIS_QA} bis {_MAX_CRISIS_QA} Fragen, jede als eigene "
+            "Zeile mit Fragezeichen, die Antwort darunter.",
+            'Jede Antwort ist belegt oder beginnt mit "Noch offen:" und '
+            "begründet, was fehlt und woran es hängt.",
+            "Jede Antwort für sich sprechbar, ohne die vorherige.",
+        ),
+        speaker_key="sprecher",
+        validator=_krisen_qa_contract,
+    ),
+)
+
+CRISIS_REGISTRY: dict[str, FormatDef] = {fmt.key: fmt for fmt in CRISIS_FORMATS}
+
+
 def _validate_registry() -> None:
     """Fail at import when a definition names a field nothing can label.
 
@@ -1286,7 +1521,7 @@ def _validate_registry() -> None:
     that has no such row. He cannot act on that and cannot tell it from a real
     gap. Loud at import is the one place it costs nothing.
     """
-    for fmt in FORMATS:
+    for fmt in (*FORMATS, *CRISIS_FORMATS):
         for req in fmt.requires:
             if _label_for(req.source, req.key) is None:
                 raise RuntimeError(
@@ -1302,6 +1537,11 @@ def _validate_registry() -> None:
             f"the dateline is written from profile field {_SEAT_KEY!r}, which no "
             "longer exists; fix the key or drop the check"
         )
+    if _CRISIS_CONTACT_KEY not in profile.FIELDS_BY_KEY:
+        raise RuntimeError(
+            "the holding statement's contact line is written from profile field "
+            f"{_CRISIS_CONTACT_KEY!r}, which no longer exists; fix the key"
+        )
 
 
 _validate_registry()
@@ -1313,8 +1553,14 @@ def definition(kind: AssetKind | str) -> FormatDef:
     Loud on an unknown kind by design: a stored text whose format nothing can
     describe is a text nothing can check, and rendering it as though it were fine
     is the failure worth avoiding.
+
+    Both registries, because a stored row does not say which surface wrote it
+    and the readers — :func:`recheck`, the state renderers — must not care.
     """
-    return REGISTRY[str(kind)]
+    key = str(kind)
+    if key in REGISTRY:
+        return REGISTRY[key]
+    return CRISIS_REGISTRY[key]
 
 
 class RequirementsMissing(RuntimeError):
@@ -1766,6 +2012,96 @@ def prompt_for(
     )
 
 
+# --- The crisis prompt (UHR-02) --------------------------------------------------
+
+
+def _crisis_contact(facts: dict[str, ClientFact]) -> str:
+    """Who is reachable in the evening, exactly as the profile holds it."""
+    fact = facts.get(_CRISIS_CONTACT_KEY)
+    return fact.value.strip() if fact else ""
+
+
+def _crisis_evidence_block(session: Session, client: Client, crisis: Crisis) -> str:
+    """The headlines and feed snippets of the coverage the crisis counts, and
+    nothing else.
+
+    The same Leistungsschutzrecht guarantee as :func:`_evidence_block`: the two
+    fields read here are the headline and the feed's own snippet, cut at
+    :data:`_MAX_SNIPPET_CHARS`, and the story membership is the clustering the
+    crisis level was counted from.
+    """
+    article = crisis.article or session.get(Article, crisis.article_id)
+    rows = _crisis_story_rows(session, client, article) if article else []
+    lines: list[str] = []
+    for row in rows[:_MAX_EVIDENCE]:
+        lines.append(f"- ({row.article.source}) {row.article.title}")
+        snippet = (row.article.summary_text or "").strip()
+        if snippet:
+            lines.append(f"  Feed-Anriss: {snippet[:_MAX_SNIPPET_CHARS]}")
+    if not lines:
+        return (
+            "BEITRÄGE, DIE ZUR KRISE ZÄHLEN\nKeine gespeichert. Der Text darf "
+            "sich also auf keine Berichterstattung berufen."
+        )
+    return (
+        "BEITRÄGE, DIE ZUR KRISE ZÄHLEN\n"
+        "Schlagzeilen und Feed-Anrisse, mehr war nie zu sehen. Was hier nicht "
+        "steht, ist über diese Beiträge nicht bekannt.\n" + "\n".join(lines)
+    )
+
+
+def _crisis_sources(
+    facts: dict[str, ClientFact], client: Client, evidence: str
+) -> str:
+    """Everything a crisis draft may take a number from, as one searchable text.
+
+    Exactly the three inputs the story names — the profile, the guide and the
+    coverage that counts to the crisis — and exactly as the prompt carried
+    them, because a validator may only hold the text to what the writer saw.
+    """
+    return "\n".join(
+        (_fact_lines(facts), (client.comms_guide or "").strip(), evidence)
+    )
+
+
+def crisis_prompt_for(
+    session: Session,
+    fmt: FormatDef,
+    client: Client,
+    crisis: Crisis,
+    *,
+    facts: dict[str, ClientFact] | None = None,
+    evidence: str | None = None,
+) -> str:
+    """Render one crisis format's prompt: guide, profile and the crisis coverage.
+
+    The same one-slot-set rule as :func:`prompt_for`, over the crisis's own
+    inputs. There is no thesis and no overclaim, because a holding statement
+    argues nothing; what stands in their place is the computed level and the
+    coverage the crisis counts.
+
+    ``evidence`` is the rendered coverage block when the caller already holds
+    it — :func:`write_crisis` does, because the number validator is held to the
+    same text.
+    """
+    if facts is None:
+        facts = profile.stored(session, client.id)
+    if evidence is None:
+        evidence = _crisis_evidence_block(session, client, crisis)
+    return fmt.template().substitute(
+        format_name=fmt.name,
+        structure="\n".join(f"- {line}" for line in fmt.structure),
+        refusal=_refusal_block(fmt),
+        client_profile=_client_profile(client),
+        profile_facts=_facts_block(facts),
+        comms_guide=guide.for_prompt(client),
+        speaker=_speaker(fmt, facts) or "Niemand benannt.",
+        crisis_contact=_crisis_contact(facts) or "Niemand benannt.",
+        level=str(crisis.level),
+        evidence=evidence,
+    )
+
+
 # --- Writing -------------------------------------------------------------------
 
 
@@ -1991,6 +2327,56 @@ def _tell(note: Callable[[str], None] | None, reason: str) -> None:
     """Hand the refusal to whoever is storing reasons, if anyone is."""
     if note is not None:
         note(reason)
+
+
+def write_crisis(
+    session: Session,
+    fmt: FormatDef,
+    client: Client,
+    crisis: Crisis,
+    *,
+    invoke: Callable[..., str] = invoke_with_fallback,
+    note: Callable[[str], None] | None = None,
+) -> AssetDraft:
+    """Write one crisis format off a declared crisis: :func:`write`'s crisis twin.
+
+    The same two refusals, for the same reasons. :class:`RequirementsMissing`
+    before a model call when a required field — the spokesperson, the crisis
+    contact, the guide — is not on file, naming the field rather than inventing
+    a person; nothing is stored, so the previous text for this format stands
+    untouched. :class:`Malformed` when the model twice failed the structure,
+    including a number no handed-over source carries.
+
+    The validator's material is exactly the prompt's: the same evidence block
+    is rendered once and travels into both, so the number check can never hold
+    the text to a source list the writer did not see.
+    """
+    facts = profile.stored(session, client.id)
+    readiness = requirements_met(session, fmt, client, None, facts=facts, target=None)
+    if not readiness.ok:
+        _log.info("%s refused for %r: %s", fmt.key, client.name, readiness.reason)
+        refused = RequirementsMissing(fmt, readiness)
+        _tell(note, str(refused))
+        raise refused
+    evidence = _crisis_evidence_block(session, client, crisis)
+    prompt = crisis_prompt_for(
+        session, fmt, client, crisis, facts=facts, evidence=evidence
+    )
+    # Captured beside the prompt it describes, exactly as write() does.
+    written_under = brain.version(session)
+    given = Given(
+        speaker=_speaker(fmt, facts),
+        nogos=nogos(client),
+        sources=_crisis_sources(facts, client, evidence),
+    )
+    try:
+        drafted = _drafted(
+            fmt, prompt, given, facts, invoke=invoke, label=client.name
+        )
+        return drafted.model_copy(update={"brain_version": written_under})
+    except Malformed as exc:
+        _tell(note, str(exc))
+        raise
 
 
 # --- The checks, shared by every format ----------------------------------------
@@ -2307,8 +2693,15 @@ def store(
     row = _replaceable(session, angle.id, fmt.key) or Asset(
         client_id=client.id, angle_id=angle.id, kind=fmt.key
     )
+    return _persist(session, row, draft, checked)
+
+
+def _persist(
+    session: Session, row: Asset, draft: AssetDraft, checked: Checked | None
+) -> Asset:
+    """Write one draft onto its row and commit — the shared half of both stores."""
     # House style, enforced rather than requested: the prompts ask for no dashes
-    # and the model relapses by the third paragraph. One call site for all seven
+    # and the model relapses by the third paragraph. One call site for all the
     # formats. See newspulse.prose.
     row.title = prose.plain(draft.title)
     row.body = prose.plain(draft.body)
@@ -2327,6 +2720,28 @@ def store(
     return row
 
 
+def store_crisis(
+    session: Session,
+    fmt: FormatDef,
+    client: Client,
+    crisis: Crisis,
+    draft: AssetDraft,
+    checked: Checked | None = None,
+) -> Asset:
+    """Persist one crisis text against the crisis it answers.
+
+    :func:`store`'s rules, on the crisis anchor: re-writing a format for the
+    same crisis replaces the unreleased draft, a released text is never
+    replaced, and ``checked=None`` — the normal call under DEC-3, where the
+    checks have not run yet — stores a row whose ``check_state`` says
+    UNGEPRUEFT, never clean.
+    """
+    row = _crisis_replaceable(session, crisis.id, fmt.key) or Asset(
+        client_id=client.id, crisis_id=crisis.id, kind=fmt.key
+    )
+    return _persist(session, row, draft, checked)
+
+
 def produce(
     session: Session,
     fmt: FormatDef,
@@ -2342,9 +2757,11 @@ def produce(
 
     The surface asks for a text, not for three steps, and the three steps have an
     order that must not be got wrong twice. Composed here rather than in the route
-    that starts the worker, because a second surface calling it — the daily sweep,
-    a crisis in PR-06 — would otherwise recompose it from memory and get the
-    fault isolation below subtly different.
+    that starts the worker, because a second surface calling it — the daily sweep —
+    would otherwise recompose it from memory and get the fault isolation below
+    subtly different. The crisis, long foreseen as the second caller, got its own
+    composition instead (:func:`produce_crisis`): DEC-3 reverses the order there,
+    the draft is stored before the checks run.
 
     That isolation is the part worth stating. A check that cannot run must not
     lose the text that has already been paid for: the model call is spent, the
@@ -2374,6 +2791,102 @@ def produce(
             f"gegengelesen: {exc}",
         )
     return store(session, fmt, client, angle, draft, checked)
+
+
+def crisis_checkable(
+    session: Session,
+    fmt: FormatDef,
+    client: Client,
+    crisis: Crisis,
+    draft: AssetDraft,
+    *,
+    facts: dict[str, ClientFact] | None = None,
+) -> Checkable:
+    """A crisis draft, packed for :func:`check` with everything that backs it.
+
+    No thesis and no overclaim — a holding statement argues nothing — so both
+    stand empty and the checker's questions reduce to the two that matter here:
+    is every claim about the coverage in the coverage, and is every claim about
+    the mandate in the profile.
+    """
+    if facts is None:
+        facts = profile.stored(session, client.id)
+    return Checkable(
+        kind=f"ein Krisentext im Format {fmt.name}",
+        title_label=fmt.title_label,
+        title=draft.title,
+        body=draft.body,
+        thesis="",
+        overclaim="",
+        evidence=_crisis_evidence_block(session, client, crisis),
+        profile_facts=_fact_lines(facts),
+    )
+
+
+def produce_crisis(
+    session: Session,
+    fmt: FormatDef,
+    client: Client,
+    crisis: Crisis,
+    *,
+    invoke: Callable[..., str] = invoke_with_fallback,
+    generate: Callable[..., str] | None = None,
+    guide_generate: Callable[..., str] | None = None,
+    note: Callable[[str], None] | None = None,
+) -> Asset:
+    """Write one crisis format, store it at once, and let the checks run after.
+
+    DEC-3 option A, as an order of operations. :func:`produce` checks before it
+    stores, which is right for every format where nobody is waiting; here the
+    draft is committed the moment it exists — on screen, visibly UNGEPRUEFT —
+    and the two checks run against the stored text. The consultant reads and
+    cuts while they do.
+
+    Two failure isolations, both asymmetric on purpose:
+
+    * A refusal (missing field, structure missed twice) raises before anything
+      is stored, so the previous text for this format stands untouched.
+    * A check that cannot run loses nothing: the paid-for draft is already on
+      the row, no reviewer's name is written, and ``check_state`` keeps saying
+      UNGEPRUEFT — never clean. Release stays locked until the guide check has
+      answered (:func:`release`); a re-check is how it gets to answer.
+
+    Verdicts are only written onto a row that still holds the words they were
+    given on: a text released or hand-edited while the checks were running
+    keeps its own state, exactly as :func:`recheck` refuses a released row.
+    """
+    draft = write_crisis(session, fmt, client, crisis, invoke=invoke, note=note)
+    row = store_crisis(session, fmt, client, crisis, draft)
+    try:
+        checked = check(
+            session,
+            client,
+            crisis_checkable(session, fmt, client, crisis, draft),
+            generate=generate,
+            guide_generate=guide_generate,
+        )
+    except _CHECK_FAULTS as exc:
+        _log.warning(
+            "%s for %r stands unchecked: %s", fmt.key, client.name, exc
+        )
+        _tell(
+            note,
+            f"{fmt.name}: Der Entwurf steht, aber die Prüfung konnte nicht "
+            f"laufen. Er bleibt ungeprüft: {exc}",
+        )
+        return row
+    session.refresh(row)
+    if row.released or row.edited_at is not None:
+        _log.info(
+            "%s for %r moved on while its checks ran; the verdicts are dropped",
+            fmt.key,
+            client.name,
+        )
+        return row
+    _apply_checks(row, checked)
+    session.add(row)
+    session.commit()
+    return row
 
 
 # --- What state one stored text is in ------------------------------------------
@@ -2418,6 +2931,16 @@ RELEASED_IS_FINAL = (
 UNREAD_SINCE_EDIT = (
     "Der Text wurde nach der Prüfung von Hand geändert. Vor der Freigabe muss "
     "ihn das Zweitmodell noch einmal lesen."
+)
+
+#: Why a crisis text cannot be released yet: DEC-3's one hard lock. The draft
+#: is on screen the moment it exists and the consultant works in it while the
+#: checks run — but released is it only after the mandate's own guide has
+#: answered. The crosscheck deliberately does not lock: it is a judgement that
+#: may run late, where a No-Go is a rule the client wrote down.
+GUIDE_UNANSWERED = (
+    "Die Guide-Prüfung hat zu diesem Text noch nicht geantwortet. Freigegeben "
+    "wird ein Krisentext erst danach; der Gegenprüfer darf nachlaufen."
 )
 
 #: What is stored on a text whose check was attempted and could not run, in the
@@ -2499,9 +3022,22 @@ def needs_recheck(asset: Asset) -> bool:
     return asset.edited_at is not None and not _read_since_edit(asset)
 
 
+def guide_pending(asset: Asset) -> bool:
+    """Whether DEC-3's lock still holds: a crisis text whose guide check has not
+    answered.
+
+    Only the crisis texts, because only there does a draft stand on screen
+    before its checks have run; the six impulse formats arrive checked or
+    visibly not. "Answered" means a verdict with a reviewer's name behind it —
+    a check that broke wrote no name, keeps the lock, and is released by a
+    re-check that succeeds, never by the failure itself.
+    """
+    return asset.crisis_id is not None and not asset.guide_reviewed_by
+
+
 def releasable(asset: Asset) -> bool:
     """Whether the release control may be offered for this text at all."""
-    return not asset.released and not needs_recheck(asset)
+    return not asset.released and not needs_recheck(asset) and not guide_pending(asset)
 
 
 def _stamp(when: dt.datetime | None) -> str:
@@ -2576,16 +3112,7 @@ def recheck(
     not a clean one: no reviewer's name is written, so ``check_state`` still says
     UNGEPRUEFT and the page still draws the text as unread.
     """
-    angle = session.get(Angle, asset.angle_id)
-    if angle is None:  # pragma: no cover - the FK cascades, so only a race
-        raise Refused("Der Impuls zu diesem Text existiert nicht mehr.")
-    fmt = definition(asset.kind)
-    item = checkable(
-        session,
-        fmt,
-        angle,
-        AssetDraft(title=asset.title, body=asset.body, speaker=asset.speaker),
-    )
+    item = _recheck_item(session, client, asset)
     verdicts: Checked | None = None
     unavailable = ""
     try:
@@ -2623,6 +3150,27 @@ def recheck(
     return asset
 
 
+def _recheck_item(session: Session, client: Client, asset: Asset) -> Checkable:
+    """The stored text, packed against whichever occasion it hangs on.
+
+    The crisis anchor first, because a row carries exactly one of the two (the
+    schema's CHECK) and a crisis text has no impulse to look up. Both misses
+    are races — the FKs cascade — and both refuse rather than checking a text
+    against nothing.
+    """
+    fmt = definition(asset.kind)
+    draft = AssetDraft(title=asset.title, body=asset.body, speaker=asset.speaker)
+    if asset.crisis_id is not None:
+        crisis = session.get(Crisis, asset.crisis_id)
+        if crisis is None:  # pragma: no cover - the FK cascades, so only a race
+            raise Refused("Die Krise zu diesem Text existiert nicht mehr.")
+        return crisis_checkable(session, fmt, client, crisis, draft)
+    angle = session.get(Angle, asset.angle_id)
+    if angle is None:  # pragma: no cover - the FK cascades, so only a race
+        raise Refused("Der Impuls zu diesem Text existiert nicht mehr.")
+    return checkable(session, fmt, angle, draft)
+
+
 #: What fits in ``assets.released_by``. Cut here rather than at the database,
 #: which would raise on a long operator name instead of releasing the text.
 _MAX_RELEASER_CHARS = 80
@@ -2642,6 +3190,8 @@ def release(session: Session, asset: Asset, by: str = "") -> Asset:
         return asset
     if needs_recheck(asset):
         raise Refused(UNREAD_SINCE_EDIT)
+    if guide_pending(asset):
+        raise Refused(GUIDE_UNANSWERED)
     # The freeze holds in the database, not in the copy this session read. The
     # in-memory check above is what stops the common second click; it is not
     # what makes the first release stand, because two requests each get their
@@ -2676,6 +3226,35 @@ def _replaceable(session: Session, angle_id: int, kind: str) -> Asset | None:
         )
         .order_by(Asset.generated_at.desc(), Asset.id.desc())
     ).first()
+
+
+def _crisis_replaceable(session: Session, crisis_id: int, kind: str) -> Asset | None:
+    """The crisis draft this write would replace, if one may be replaced."""
+    return session.scalars(
+        select(Asset)
+        .where(
+            Asset.crisis_id == crisis_id,
+            Asset.kind == kind,
+            Asset.released_at.is_(None),
+        )
+        .order_by(Asset.generated_at.desc(), Asset.id.desc())
+    ).first()
+
+
+def for_crisis(session: Session, crisis_id: int) -> list[Asset]:
+    """Every text written for one crisis, newest first.
+
+    The crisis's whole paper trail in one query — what the crisis page shows
+    beside the coverage, and what makes both texts findable off the crisis
+    rather than off an impulse they do not have.
+    """
+    return list(
+        session.scalars(
+            select(Asset)
+            .where(Asset.crisis_id == crisis_id)
+            .order_by(Asset.generated_at.desc(), Asset.id.desc())
+        ).all()
+    )
 
 
 def for_angle(session: Session, angle_id: int) -> list[Asset]:
@@ -2748,8 +3327,11 @@ def _standing_per_kind(rows: list[Asset]) -> dict[str, Asset]:
 
 __all__ = [
     "CHECK_UNAVAILABLE",
+    "CRISIS_FORMATS",
+    "CRISIS_REGISTRY",
     "FORMATS",
     "GASTBEITRAG_CHARS",
+    "GUIDE_UNANSWERED",
     "MAX_TALKING_POINTS",
     "REGISTRY",
     "RELEASED_IS_FINAL",
@@ -2770,15 +3352,20 @@ __all__ = [
     "by_angle",
     "check",
     "checkable",
+    "crisis_checkable",
+    "crisis_prompt_for",
     "crosscheck",
     "current",
     "definition",
     "edit",
     "for_angle",
+    "for_crisis",
+    "guide_pending",
     "needs_recheck",
     "nogo_terms",
     "nogos",
     "produce",
+    "produce_crisis",
     "prompt_for",
     "recheck",
     "recipient",
@@ -2787,8 +3374,10 @@ __all__ = [
     "requirements_met",
     "state_of",
     "store",
+    "store_crisis",
     "today",
     "validate",
     "version",
     "write",
+    "write_crisis",
 ]
