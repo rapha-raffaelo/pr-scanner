@@ -2481,8 +2481,60 @@ class Crisis(Base):
     )
 
 
+class CrisisDismissal(Base):
+    """One proposal a person stood down without declaring anything (UHR-03).
+
+    Its own table rather than an instantly-closed :class:`Crisis` row, because
+    the two are opposite statements. A crisis row says a person decided the
+    mandate *was* in one; a dismissal says a person looked at the same offer and
+    decided it was not. Writing the second as the first would put a phantom
+    crisis into the mandate's record — the Krise tab would appear, the
+    chronology would show a crisis nobody declared — and every reader of
+    ``crises`` would have to know a secret marker to tell them apart.
+
+    What it silences is the *story*, not the row: :func:`newspulse.crisis.propose`
+    reads these triggers through the same clustering the closed crises use, so
+    the pickups of a dismissed wave stop re-offering it under a different
+    headline. DEC-1's whole rationale — a false alarm costs one click — is this
+    row.
+
+    ``(client_id, article_id)`` is UNIQUE so a double click, a second tab and a
+    replayed POST all land on the same dismissal rather than growing copies.
+    """
+
+    __tablename__ = "crisis_dismissals"
+    __table_args__ = (
+        UniqueConstraint(
+            "client_id", "article_id", name="uq_crisis_dismissals_once"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The proposal's trigger article. CASCADE like the crisis's own trigger: a
+    #: dismissal of coverage that no longer exists silences nothing and explains
+    #: nothing, so it does not outlive it.
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Who pressed "Verwerfen" — the same discipline as ``Crisis.declared_by``:
+    #: a user name where the tool has one, the ``"mensch"`` token otherwise,
+    #: never a name nobody typed.
+    dismissed_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    dismissed_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    article: Mapped["Article"] = relationship(lazy="selectin")
+
+
 __all__ = [
     "Crisis",
+    "CrisisDismissal",
     "CRISIS_DECLARED_BY_MAX",
     "CRISIS_LEVEL_MIN",
     "CRISIS_LEVEL_MAX",
