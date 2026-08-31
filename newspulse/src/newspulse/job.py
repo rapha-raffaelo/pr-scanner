@@ -58,6 +58,7 @@ from . import (
     industry,
     mailsync,
     market_sources,
+    newsjack,
     notify,
     plan,
     profile_refresh,
@@ -89,6 +90,7 @@ from .models import (
     Crisis,
     Run,
     RunStatus,
+    Standing,
     TopicHit,
     visible_coverage,
 )
@@ -2285,6 +2287,88 @@ def draft_impulse(
     return True
 
 
+# --- The light run: the fast lane's every-three-hours pass (UHR-04, DEC-6 A) ---
+
+
+@dataclass(frozen=True, slots=True)
+class NewsjackRun:
+    """What one light run produced. Counters only — it writes no ``runs`` row."""
+
+    mandates: int
+    opportunities: int
+    rejected: int
+    errors: list[str]
+
+
+def run_newsjack(
+    session: Session,
+    *,
+    fetch: FetchFeed = fetch_feed,
+    invoke=None,
+    now: Callable[[], dt.datetime] | None = None,
+) -> NewsjackRun:
+    """One pass of the fast lane: refresh each active mandate's topic radar and
+    weigh what it holds. Deliberately poor, and the poverty is the point.
+
+    It reads the topic radar of the active mandates and nothing else: no
+    registry feeds, no client name searches, no market classes. It analyses no
+    client coverage — the radar's material is stored unanalysed, exactly as the
+    daily sweep stores it — and it writes no profile data, no positioning
+    drafts, no impulse notes. A model call happens only inside
+    :func:`newspulse.newsjack.scan`, and only for a story that has crossed the
+    media threshold, so the great majority of runs cost nothing (DEC-6).
+
+    **No ``runs`` row**, for the reason :func:`backfill_client` and
+    :func:`run_crisis` state and this inherits unchanged: ``_determine_since``
+    takes the last successful run's start as the next sweep's watermark, so
+    recording a radar-only pass as a run would tell tomorrow's sweep the whole
+    portfolio had already been covered.
+
+    Each mandate sits inside its own fault boundary: a dead radar feed or a
+    failed scan is logged and reported, and the next mandate is tried.
+    """
+    now_fn = now or _utcnow
+    errors: list[str] = []
+    opportunities = 0
+    rejected = 0
+    mandates = 0
+    for client in list_clients(session):
+        # A yardstick is tracked to compare its share of the conversation;
+        # nobody writes a contribution on its behalf, so weighing openings for
+        # it would spend model calls on nothing.
+        if client.is_competitor:
+            continue
+        mandates += 1
+        # Read before the boundary: a rollback expires loaded attributes, and
+        # the log line below must not query the connection that just failed.
+        name = client.name
+        try:
+            refresh_radar(session, client, fetch=fetch, now=now_fn)
+            stored = newsjack.scan(session, client, invoke=invoke, now=now_fn())
+        except Exception as exc:  # noqa: BLE001 — per-mandate fault boundary
+            session.rollback()
+            _log.warning("newsjack pass for %r failed: %s; skipping", name, exc)
+            errors.append(f"newsjack {name!r}: {exc}")
+            continue
+        fresh_openings = sum(1 for row in stored if row.standing is Standing.BELEGT)
+        opportunities += fresh_openings
+        rejected += len(stored) - fresh_openings
+    _log.info(
+        "newsjack run done: %d mandate(s), %d opportunit(y/ies), "
+        "%d rejection(s), %d error(s)",
+        mandates,
+        opportunities,
+        rejected,
+        len(errors),
+    )
+    return NewsjackRun(
+        mandates=mandates,
+        opportunities=opportunities,
+        rejected=rejected,
+        errors=errors,
+    )
+
+
 # --- The tighter cadence: one mandate, its own sources, nothing else -----------
 
 #: How far back one crisis reading looks. Bound to — not a copy of — the window a
@@ -2524,6 +2608,7 @@ def _crisis_result(
 __all__ = [
     "CrisisSweep",
     "IMPULSE_LOOKBACK",
+    "NewsjackRun",
     "ONBOARDING_ARTICLES",
     "draft_impulse",
     "RunReport",
@@ -2531,5 +2616,6 @@ __all__ = [
     "lookback_since",
     "run",
     "run_crisis",
+    "run_newsjack",
     "setup_logging",
 ]

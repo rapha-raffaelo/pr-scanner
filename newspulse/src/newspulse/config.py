@@ -509,6 +509,40 @@ def crisis_sweep_minutes() -> int:
     return value
 
 
+# How long a newsjacking window stays open, counted from the *origin* article of
+# a story — never from when a run happened to notice it. Thirty-six hours,
+# because that is roughly how long a German market story carries pickups before
+# it is through: a window wider than the wave it measures would keep offering
+# yesterday's story as an opportunity, which is the task list that only grows.
+ENV_NEWSJACK_WINDOW_HOURS = "NEWSPULSE_NEWSJACK_WINDOW_HOURS"
+_DEFAULT_NEWSJACK_WINDOW_HOURS = 36
+
+# The floor a configured window is clamped to. Zero or a negative number would
+# make every opportunity born expired — created and never shown — so a typo
+# cannot buy that.
+_MIN_NEWSJACK_WINDOW_HOURS = 1
+
+
+def newsjack_window_hours() -> int:
+    """How many hours a story stays an opportunity, from its origin article.
+
+    Read per call rather than at import, like :func:`crisis_sweep_minutes` and
+    for the same reason: a platform variable set after start-up is still seen,
+    and the value a running scan uses is the one currently configured.
+    """
+    value = _env_int(ENV_NEWSJACK_WINDOW_HOURS, _DEFAULT_NEWSJACK_WINDOW_HOURS)
+    if value < _MIN_NEWSJACK_WINDOW_HOURS:
+        _log.warning(
+            "%s=%d is below the %d-hour floor; using %d",
+            ENV_NEWSJACK_WINDOW_HOURS,
+            value,
+            _MIN_NEWSJACK_WINDOW_HOURS,
+            _MIN_NEWSJACK_WINDOW_HOURS,
+        )
+        return _MIN_NEWSJACK_WINDOW_HOURS
+    return value
+
+
 def gemini_configured() -> bool:
     """Whether the fallback provider can be used at all.
 

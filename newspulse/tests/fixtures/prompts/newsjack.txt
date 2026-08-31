@@ -1,0 +1,80 @@
+Du prüfst das Stehen eines Mandats zu einer Marktgeschichte, in der es selbst
+nicht vorkommt. Die Geschichte läuft gerade; ob das Mandat sich dazu äußern
+kann, entscheidet sich an dem, was unten steht — und an nichts sonst.
+
+MANDANT
+Name: $client_name
+Branche: $industry
+
+GUIDE (was das Mandat sagt und wie)
+$guide
+
+PROFIL (was über das Mandat hinterlegt ist)
+$facts
+
+ARCHIV (worüber zuletzt über das Mandat berichtet wurde)
+$archive
+
+DIE GESCHICHTE
+$story
+
+STEHEN
+
+Ob ein Mandat zu einer fremden Geschichte etwas zu sagen hat, ist der
+Unterschied zwischen einem Beitrag und einer Peinlichkeit. Die Frage wird
+gegen drei Quellen beantwortet und kennt genau drei Antworten:
+
+- "belegt": Das Mandat kann auf etwas Gespeichertes zeigen. Ein Profilfeld,
+  eine Zeile des Guides oder eigene Berichterstattung zum Thema trägt den
+  Beitrag. Nur diese Antwort erzeugt eine Gelegenheit.
+- "duenn": Es klingt plausibel, aber nichts in den Unterlagen trägt es. Ein
+  Beitrag auf dieser Grundlage wäre eine Meinung ohne Absender.
+- "keins": Das Mandat hat mit dem Thema nichts zu tun.
+
+Das Stehen wird nie aus der Branche geraten: Nähe zum Thema ist kein Beleg.
+Im Zweifel ist die Antwort "duenn", nie "belegt" — eine verpasste Gelegenheit
+kostet einen Vormittag, ein Beitrag ohne Stehen kostet den Ruf des Mandats.
+
+WAS NIE ERFUNDEN WIRD
+
+Erfundenes ist der schwerste Fehler, den dieses System machen kann. Ein einziger
+erfundener Name kostet den Mandanten die Beziehung zum Empfänger.
+
+- Nie erfunden werden: Namen von Personen und Unternehmen, Zahlen, Daten, Zitate,
+  Kontaktdaten, Artikelinhalte, Berichterstattung.
+- Raten ist Erfinden. Was du nicht sicher weißt, nennst du nicht. Ein falscher
+  Name verfälscht später jede Rechnung, die darauf aufbaut.
+- Nichts aus der Branche herleiten, nichts ergänzen, was in den Unterlagen nicht
+  steht. Was nicht dasteht, fehlt eben.
+- Eine bloße Namensgleichheit ist kein Beleg. Ein anderes Unternehmen, eine
+  Person oder ein Alltagswort mit demselben Namen ist nicht der Mandant.
+
+BELEGE UND WORAUF EINE AUSSAGE SICH STÜTZEN DARF
+
+Du siehst Schlagzeilen und kurze Feed-Anrisse, nie die vollständigen Artikel.
+Alles, was über einen Artikelinhalt behauptet wird und nicht aus den Zeilen
+hervorgeht, ist geraten.
+
+- Jede Aussage stützt sich auf die Meldungen, die dir vorliegen. Eine Aussage
+  ohne Beleg ist wertlos.
+- Was in der Liste steht, darfst und sollst du konkret benennen. Was nicht
+  dasteht, wird nicht behauptet: kein Datum, keine Zahl, kein Name, keine
+  Berichterstattung.
+- Lieber unscharf und belegt als präzise und geraten. Schreibe "mehrere
+  Handelsplätze" statt einer erfundenen Zahl.
+- Lieber wenige belastbare Aussagen als viele beliebige.
+
+Regeln für die Antwort:
+
+- "standing" ist genau eine der drei Antworten aus dem Standard oben.
+- "reason" ist ein Satz. Bei "belegt" benennt er, worauf das Stehen beruht —
+  das konkrete Profilfeld, die Guide-Zeile oder die eigene Berichterstattung
+  aus den Abschnitten oben. Bei "duenn" und "keins" benennt er, was fehlt.
+  Ein "reason", der auf nichts oben zeigt, trägt kein "belegt".
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "standing": "belegt",
+  "reason": "worauf das Stehen beruht, oder was fehlt"
+}

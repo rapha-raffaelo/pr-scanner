@@ -1916,6 +1916,115 @@ class Asset(Base):
 
 
 
+class Standing(StrEnum):
+    """Whether a mandate has something to say on a market story it is not in.
+
+    The question the positioning drafts never ask, and the difference between a
+    contribution and an embarrassment (UHR-04). Answered against profile, guide
+    and archive, and the set is closed at exactly three:
+
+    * ``belegt`` — the mandate can point at something stored: a profile fact, a
+      guide line, its own past coverage of the subject. The only answer that
+      produces an opportunity.
+    * ``duenn`` — plausible, but nothing stored backs it. Spelled without the
+      umlaut the way ``ungeprueft`` and ``veroeffentlicht`` are.
+    * ``keins`` — the mandate has nothing to do with the subject.
+
+    There is deliberately no fourth member and no default: an unreadable verdict
+    stores nothing at all (the next scan asks again), because a misfiled
+    standing either spends a consultant's morning or silences a real opening.
+    """
+
+    BELEGT = "belegt"
+    DUENN = "duenn"
+    KEINS = "keins"
+
+
+class NewsjackOpportunity(Base):
+    """One market story weighed for one mandate: its origin, window and standing.
+
+    A row is written at most once per story per mandate, and it is written for
+    *every* verdict, not only the good one. A ``belegt`` row is the opportunity
+    the Today page shows; a ``duenn`` or ``keins`` row is the rejection, kept
+    with its reason — both because "warum schlägt das Werkzeug hier nichts vor"
+    deserves an answer, and because the stored row is what stops the next scan
+    from paying for the same model call again.
+
+    ``article_id`` is the story's **origin** — its earliest piece, resolved by
+    :func:`newspulse.stories.origin` — and the UNIQUE over (client, article) is
+    what makes "dieselbe Story je Mandat höchstens einmal" a schema guarantee:
+    a second scan re-clusters the same rows to the same origin and cannot file
+    a second row even if its pre-check raced another process.
+
+    ``window_ends_at`` is stored rather than derived at read, so the promise
+    "expired after N hours from the origin, whether or not a run ever happened
+    again" survives a later change to the configured width: the window an
+    opportunity was created under is the window it expires under. Expiry itself
+    is a comparison against the clock, never a job — a row nothing ever touches
+    again still stops being shown on time.
+
+    ``dismissed_at`` is the fast lane's stand-down (UHR-05): a person waving a
+    story off for this mandate. Stamped, not deleted, for the same reason a
+    rejection is stored — the row is what keeps the story from coming back.
+    """
+
+    __tablename__ = "newsjack_opportunities"
+    __table_args__ = (
+        UniqueConstraint(
+            "client_id", "article_id", name="uq_newsjack_client_article"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The origin article: the story's earliest piece. CASCADE like the crisis
+    #: trigger's, and required for the same reason — an opportunity without its
+    #: origin cannot say who had the story first or when its window ends.
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    standing: Mapped[Standing] = mapped_column(
+        SAEnum(
+            Standing,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="newsjack_standing",
+        ),
+        nullable=False,
+    )
+    #: The model's one sentence: what the standing rests on (``belegt``), or why
+    #: there is none (``duenn``/``keins``). The one thing here a model writes.
+    reason: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: Distinct outlets carrying the story when the verdict was made — the
+    #: number the card shows beside "wer hatte es zuerst".
+    pickup_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: When the window closes: origin ``published_at`` plus the configured
+    #: hours, fixed at creation. Read against the clock, never against a run.
+    window_ends_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: When a person waved the story off for this mandate. NULL while it stands.
+    dismissed_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+    #: The standards the standing check was composed under, on the same terms as
+    #: :attr:`Angle.brain_version`: captured with the prompt, NULL only for a
+    #: row from before there was anything to stamp.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    client: Mapped["Client"] = relationship(lazy="selectin")
+    article: Mapped["Article"] = relationship(lazy="selectin")
+
+
 class ReportState(StrEnum):
     """Whether a report is still the tool's proposal or the agency's document.
 
@@ -2483,6 +2592,8 @@ class Crisis(Base):
 
 __all__ = [
     "Crisis",
+    "NewsjackOpportunity",
+    "Standing",
     "CRISIS_DECLARED_BY_MAX",
     "CRISIS_LEVEL_MIN",
     "CRISIS_LEVEL_MAX",

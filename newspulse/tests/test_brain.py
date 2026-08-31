@@ -48,6 +48,7 @@ from newspulse import (
     brain,
     config,
     i18n,
+    newsjack,
     outreach,
     plan,
     prose,
@@ -64,9 +65,11 @@ from newspulse.models import (
     Category,
     Client,
     MarketSignal,
+    NewsjackOpportunity,
     Outreach,
     PlanHook,
     SignalKind,
+    TopicHit,
 )
 from newspulse.pitch import PitchTarget
 from newspulse.schemas import AngleDraft, PersonalMessage
@@ -390,6 +393,8 @@ CARRIED_BEFORE = {
     # New with UHR-02: the two crisis formats. No "before" to carry.
     "holding_statement.txt": set(),
     "krisen_qa.txt": set(),
+    # New with UHR-04: the standing check. No "before" to carry.
+    "newsjack.txt": set(),
 }
 
 #: Standards a prompt did *not* carry before and now does. Every one is a
@@ -501,6 +506,20 @@ ADDED_IN_MIGRATION = {
                               "house_style"},
     "krisen_qa.txt": {"crisis_discipline", "evidence", "no_invention",
                       "house_style"},
+    # The standing check (UHR-04, DEC-6). standing is the block the story
+    # exists for — the three answers and the rule that only "belegt" carries,
+    # held in one place and written out in neither the prompt nor a second
+    # copy. no_invention, because the check's whole failure mode is inferring
+    # standing from the industry ("Nähe zum Thema ist kein Beleg" is the
+    # block's own sentence, and the model must not invent the profile fact it
+    # rests a "belegt" on). evidence, because the archive and story sections
+    # are headlines and feed snippets, never full articles. house_style is
+    # absent on purpose: the one sentence the model writes lands on an internal
+    # card, not in a text that leaves the house. journalistic_value and
+    # position address a text aimed at an editor, which a verdict is not, and
+    # refusal's "empty answer" clauses would read as permission to answer
+    # nothing where the schema requires one of three answers.
+    "newsjack.txt": {"standing", "no_invention", "evidence"},
 }
 
 #: Phrases that only appear in a prompt if somebody wrote a standard out again
@@ -532,6 +551,13 @@ RESTATEMENT_TELLS = {
     # forked the standard the block exists to hold in one place.
     "crisis_discipline": ["Kein zugesagter Zeitpunkt", "wird morgen zitiert",
                           "verspricht nichts", "Zitat von morgen"],
+    # UHR-04's acceptance in the same guard form: the standing rule lives in
+    # the block and the prompt only points at it. The prompt may *name* the
+    # three answers — the schema requires the labels — but not restate what
+    # they mean or when one carries.
+    "standing": ["Nähe zum Thema ist kein Beleg", "Meinung ohne Absender",
+                 "kostet den Ruf des Mandats",
+                 "Beitrag und einer Peinlichkeit"],
 }
 
 #: The other half of DEC-2's guard, and the half RESTATEMENT_TELLS structurally
@@ -1692,6 +1718,41 @@ def _store_a_hook(session) -> PlanHook:
     return hooks[0]
 
 
+def _store_a_verdict(session) -> NewsjackOpportunity:
+    """Drive ``newsjack`` the way the light run does: one scan over a story two
+    outlets carry, with the standing verdict injected. The dates and the pickup
+    count come from stored rows; the one sentence the model writes is exactly
+    what the stamp is about."""
+    client = _a_mandate(session)
+    fresh = dt.datetime.now(dt.UTC) - dt.timedelta(hours=2)
+    for index, source in enumerate(("Börsen-Zeitung", "Handelsblatt")):
+        article = Article(
+            title="Bafin ordnet die Verwahrung von Kryptowerten neu",
+            url=f"https://ex.de/newsjack-{index}",
+            source=source,
+            published_at=fresh + dt.timedelta(minutes=index),
+            fetched_at=fresh,
+            summary_text=None,
+            language="de",
+            title_hash=f"nj{index}",
+        )
+        session.add(article)
+        session.commit()
+        session.add(
+            TopicHit(article_id=article.id, client_id=client.id, found_at=fresh)
+        )
+    session.commit()
+    stored = newsjack.scan(
+        session,
+        client,
+        invoke=lambda *a, **k: json.dumps(
+            {"standing": "belegt", "reason": "Das Archiv trägt das Thema."}
+        ),
+    )
+    assert stored
+    return stored[0]
+
+
 #: Every generator in the tool, each paired with a call that drives its real
 #: generate-then-store path. The point of the list is that it is exhaustive, and
 #: the test below it is what keeps it that way: a stamp on the two generators
@@ -1708,6 +1769,10 @@ GENERATORS = [
     # reason a client reads in the retainer conversation is model prose, and
     # model prose a consultant forwards is exactly what the stamp is about.
     ("plan", _store_a_hook),
+    # The fast lane's standing verdicts (UHR-04): origin, window and pickup
+    # count come from stored rows, but the sentence naming what a "belegt"
+    # rests on is model prose a consultant acts on within hours.
+    ("newsjack", _store_a_verdict),
 ]
 
 
