@@ -53,6 +53,7 @@ from sqlalchemy.orm import Session
 from . import (
     angles,
     config,
+    crisis,
     gnews,
     industry,
     mailsync,
@@ -85,6 +86,7 @@ from .models import (
     Analysis,
     Article,
     Client,
+    Crisis,
     Run,
     RunStatus,
     TopicHit,
@@ -747,16 +749,24 @@ def _candidate_pairs(
 
 
 def _backfill_pairs(
-    session: Session, clients: Sequence[Client], started: dt.datetime
+    session: Session,
+    clients: Sequence[Client],
+    started: dt.datetime,
+    window: dt.timedelta = _BACKFILL_WINDOW,
 ) -> list[tuple[Article, Client]]:
     """Re-match recently stored articles against the active clients (self-healing pass).
 
     A transient analyzer outage leaves an article stored with no analysis; if the story
     then drops out of its feed, this run's fetch never surfaces it again. Re-matching
-    the articles fetched within :data:`_BACKFILL_WINDOW` recovers those pairs so a later
+    the articles fetched within ``window`` recovers those pairs so a later
     run analyses them once the analyzer is healthy again. Bounded by the window so the
-    scan stays proportional to recent history, not the whole archive."""
-    cutoff = started - _BACKFILL_WINDOW
+    scan stays proportional to recent history, not the whole archive.
+
+    ``window`` defaults to :data:`_BACKFILL_WINDOW` — the daily sweep's week. The
+    crisis reading passes its own, much shorter one: it runs up to twelve times an
+    hour, and a week-wide re-match on that cadence would re-read the whole recent
+    archive to recover an analysis the next morning's sweep will recover anyway."""
+    cutoff = started - window
     articles = session.scalars(
         select(Article).where(Article.fetched_at >= cutoff)
     ).all()
@@ -1391,6 +1401,7 @@ def _analysis_targets(
     candidates: Sequence[Candidate],
     clients: Sequence[Client],
     started: dt.datetime,
+    backfill_window: dt.timedelta = _BACKFILL_WINDOW,
 ) -> list[tuple[Client, list[Article]]]:
     """Every (client, articles) group that still needs analysis this run.
 
@@ -1399,9 +1410,12 @@ def _analysis_targets(
     distinct match carried only on a collapsed copy, and re-analyses a still-in-feed
     story whose analysis failed earlier), plus a backfill re-match of recently stored
     articles (recovers a story that has since left its feed). Pairs already analysed are
-    dropped, so a re-run adds nothing."""
+    dropped, so a re-run adds nothing.
+
+    ``backfill_window`` is how far that second source reaches back; see
+    :func:`_backfill_pairs` for why the crisis reading narrows it."""
     pairs = _candidate_pairs(session, candidates)
-    pairs.extend(_backfill_pairs(session, clients, started))
+    pairs.extend(_backfill_pairs(session, clients, started, backfill_window))
     return _group_pairs(session, pairs)
 
 
@@ -2271,7 +2285,244 @@ def draft_impulse(
     return True
 
 
+# --- The tighter cadence: one mandate, its own sources, nothing else -----------
+
+#: How far back one crisis reading looks. Bound to — not a copy of — the window a
+#: crisis's story is read over, because a lookback shorter than that window would
+#: leave the level counting coverage the reading never fetched. The cadence is
+#: hourly and a search feed keeps listing what it listed an hour ago, so the
+#: width costs one dedup filter and buys the pickups that arrived late.
+_CRISIS_LOOKBACK = crisis.STORY_WINDOW
+
+
+@dataclass(frozen=True, slots=True)
+class _CrisisFetch:
+    """What the network half of one crisis reading brought back.
+
+    Kept apart from the analysis half so the caller can look at the crisis row
+    again in between: the fetch is the long part, and the model calls are the
+    expensive one.
+    """
+
+    candidates: list[Candidate]
+    stored: int
+    feeds: int
+    feeds_ok: int
+
+
+def _fetch_crisis_sources(
+    session: Session,
+    client: Client,
+    *,
+    started: dt.datetime,
+    fetch: FetchFeed,
+    errors: list[str],
+) -> _CrisisFetch:
+    """Read this one mandate's own feeds and store whatever is new. No model."""
+    feeds = gnews.client_feeds([client])
+    if not feeds:
+        return _CrisisFetch(candidates=[], stored=0, feeds=0, feeds_ok=0)
+    items, feeds_ok = _fetch_all(
+        feeds, started - _CRISIS_LOOKBACK, fetch, started, errors
+    )
+    # This mandate only. Matching against the whole portfolio would let a crisis
+    # run store and analyse coverage for a mandate that is not in one.
+    candidates = _match(items, [client], errors)
+    known_urls, known_hashes = _load_known(session)
+    kept = deduplicate(
+        _distinct_items(candidates),
+        known_urls=known_urls,
+        known_title_hashes=known_hashes,
+    )
+    stored = _persist_articles(session, kept, started) if kept else []
+    return _CrisisFetch(
+        candidates=candidates,
+        stored=len(stored),
+        feeds=len(feeds),
+        feeds_ok=feeds_ok,
+    )
+
+
+def _analyse_crisis_sources(
+    session: Session,
+    client: Client,
+    read: _CrisisFetch,
+    *,
+    started: dt.datetime,
+    analyzer: Analyzer | None,
+    errors: list[str],
+) -> int:
+    """Analyse what this mandate still needs analysed. Returns how many were written.
+
+    The analysis targets are resolved as the daily sweep resolves them
+    (:func:`_analysis_targets`), and that is the point rather than an economy.
+    Analysing only what this reading *stored* would leave a story that is in the
+    archive without an analysis — the documented shape of a dropped analyzer
+    batch — permanently invisible to the level: every later reading re-fetches
+    it, dedup drops it as known, and the crisis stays under-graded until the next
+    morning's sweep backfills it. During a crisis the level is the whole point of
+    the number, so the reading self-heals on the same terms the sweep does.
+
+    The self-heal reaches back exactly as far as the level can see
+    (:data:`_CRISIS_LOOKBACK`) and no further. The sweep's week would re-match the
+    whole recent archive up to twelve times an hour to recover an analysis that
+    changes nothing about this crisis's level — and would hand the analyzer
+    articles from outside the window the story is even counted over.
+
+    It costs nothing on a quiet reading: :func:`_group_pairs` drops every pair
+    that already carries an analysis, so an hour with no news resolves its
+    candidates, finds them all analysed, and never reaches the model.
+    """
+    targets = _analysis_targets(
+        session, read.candidates, [client], started, _CRISIS_LOOKBACK
+    )
+    if not targets:
+        return 0
+    resolved = analyzer or get_analyzer()
+    analyses = 0
+    for target_client, target_articles in targets:
+        analyses += _analyze_and_persist(
+            session, target_client, target_articles, resolved, errors
+        )
+    return analyses
+
+
+@dataclass(frozen=True, slots=True)
+class CrisisSweep:
+    """What one crisis reading produced. Counters, and the level it left behind.
+
+    ``feeds`` / ``feeds_ok`` are carried because a crisis reading writes no
+    ``runs`` row: a feed that self-isolated to an empty list is otherwise
+    indistinguishable from a quiet hour, and a crisis is the worst moment for
+    those two to look the same.
+    """
+
+    articles: int
+    analyses: int
+    level: int
+    errors: list[str]
+    feeds: int = 0
+    feeds_ok: int = 0
+
+    @property
+    def feeds_failed(self) -> int:
+        """How many of this mandate's feeds returned nothing but a failure."""
+        return max(0, self.feeds - self.feeds_ok)
+
+
+def run_crisis(
+    session: Session,
+    declared: Crisis,
+    *,
+    analyzer: Analyzer | None = None,
+    fetch: FetchFeed = fetch_feed,
+    now: Callable[[], dt.datetime] | None = None,
+) -> CrisisSweep:
+    """Re-read one mandate's own sources, because it is in a declared crisis.
+
+    This is the *only* thing a crisis changes about how the tool runs, and it is
+    deliberately the narrowest run in the codebase. It reads the crisis mandate's
+    own search feeds and nothing else — not the registry, not the topic radar,
+    not another mandate — and it stores coverage and analyses and nothing else.
+    No positioning draft is written, no profile field is touched, no market class
+    is fetched. A crisis is not a reason to spend a model call on next month's
+    impulse.
+
+    **No ``runs`` row**, for the reason :func:`backfill_client` states and this
+    inherits unchanged: ``_determine_since`` takes the last successful run's
+    start as the next sweep's watermark, so recording an hourly single-mandate
+    reading as a run would tell tomorrow's sweep that the whole portfolio had
+    already been covered.
+
+    Crash-safety is on the row rather than in the caller. ``last_swept_at`` is
+    stamped and committed *before* the fetch, so a reading that dies halfway
+    leaves an open crisis that is simply not due again yet — never a hung crisis,
+    and never a second reading racing the first one back.
+
+    A stand-down is checked three times, and that is not belt-and-braces. The
+    reading is *minutes* long — feed fetches, then a model call per batch — and
+    all three of the things it does after "stand down" is pressed are wrong: the
+    fetch is work nobody asked for, the analyzer batch is money, and the regrade
+    writes new counts onto a row whose level is supposed to be what it was at the
+    moment it ended. Each check is read from the table
+    (:func:`newspulse.crisis.still_open`), because the object this was handed was
+    loaded before any of it.
+    """
+    now_fn = now or _utcnow
+    started = now_fn()
+    if not crisis.still_open(session, declared):
+        # Somebody stood the crisis down between the scheduler reading its due
+        # list and this call. A closed crisis is a finished document: its level is
+        # what it was at the moment it ended, and a reading would rewrite that.
+        _log.info("crisis %d was closed before its reading; leaving it as it is", declared.id)
+        return CrisisSweep(articles=0, analyses=0, level=declared.level, errors=[])
+    client = declared.client or session.get(Client, declared.client_id)
+    if not client.active:
+        # The other half of the same race, and the same answer: ``active`` is the
+        # kill switch for a mandate, so a crisis on a deactivated one is read no
+        # further. ``crisis.due`` already filters these out; this catches the
+        # mandate deactivated between that read and this call.
+        _log.info("crisis %d belongs to a deactivated mandate; not reading", declared.id)
+        return CrisisSweep(articles=0, analyses=0, level=declared.level, errors=[])
+    # Before the reading, and committed. See the docstring above.
+    crisis.mark_swept(session, declared, now=started)
+
+    errors: list[str] = []
+    read = _fetch_crisis_sources(
+        session, client, started=started, fetch=fetch, errors=errors
+    )
+    if not crisis.still_open(session, declared):
+        # Stood down while the feeds were out. Stop before the analyzer: the
+        # coverage is stored either way, but the model calls would be spent on a
+        # crisis that no longer exists.
+        _log.info(
+            "crisis %d was closed during its reading; not analysing and not regrading",
+            declared.id,
+        )
+        return _crisis_result(read, analyses=0, level=declared.level, errors=errors)
+    analyses = _analyse_crisis_sources(
+        session, client, read, started=started, analyzer=analyzer, errors=errors
+    )
+    if not crisis.still_open(session, declared):
+        _log.info("crisis %d was closed during its reading; not regrading", declared.id)
+        return _crisis_result(read, analyses=analyses, level=declared.level, errors=errors)
+
+    # Counted from what is stored now, including whatever the reading just added.
+    # Still arithmetic and still no model — see :func:`newspulse.crisis.severity`.
+    graded = crisis.regrade(session, declared)
+    _log.info(
+        "crisis reading for %r: %d new article(s), %d analysis(es), level %d "
+        "(%d outlet(s), %d/%d negative), %d/%d feed(s) ok, %d error(s)",
+        client.name,
+        read.stored,
+        analyses,
+        graded.level,
+        graded.outlets,
+        graded.negative,
+        graded.articles,
+        read.feeds_ok,
+        read.feeds,
+        len(errors),
+    )
+    return _crisis_result(read, analyses=analyses, level=graded.level, errors=errors)
+
+
+def _crisis_result(
+    read: _CrisisFetch, *, analyses: int, level: int, errors: list[str]
+) -> CrisisSweep:
+    """One reading's counters, carrying the feed health the fetch half measured."""
+    return CrisisSweep(
+        articles=read.stored,
+        analyses=analyses,
+        level=level,
+        errors=errors,
+        feeds=read.feeds,
+        feeds_ok=read.feeds_ok,
+    )
+
+
 __all__ = [
+    "CrisisSweep",
     "IMPULSE_LOOKBACK",
     "ONBOARDING_ARTICLES",
     "draft_impulse",
@@ -2279,5 +2530,6 @@ __all__ = [
     "backfill_client",
     "lookback_since",
     "run",
+    "run_crisis",
     "setup_logging",
 ]

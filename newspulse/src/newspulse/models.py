@@ -2300,7 +2300,158 @@ class VisibilityAnswer(Base):
     question: Mapped["VisibilityQuestion"] = relationship(lazy="selectin")
 
 
+#: The bounds of a crisis level. Five steps, because a consultant grades a
+#: morning on a hand and not on a percentage, and because the arithmetic behind
+#: it (:mod:`newspulse.crisis`) tops out at exactly five distinct outcomes.
+CRISIS_LEVEL_MIN = 1
+CRISIS_LEVEL_MAX = 5
+
+#: How much of a declarer's name the row keeps. Eighty characters is the same
+#: width :attr:`ClientFact.filled_by` uses, and it is a ceiling rather than a
+#: validation rule: :func:`newspulse.crisis.declare` truncates to it, because a
+#: long sign-in name must cost the tail of a name and never the declaration.
+CRISIS_DECLARED_BY_MAX = 80
+
+
+class Crisis(Base):
+    """One declared crisis: when it began, how bad it is, who said so, when it ended.
+
+    A crisis used to be a red card on Today — an ``Analysis`` with
+    ``category = krise`` and nothing else. That is a *story*, not a state, and no
+    state meant nothing in the tool could behave differently while one lasted.
+    This row is the state, and it is the only condition under which the sweep
+    changes its cadence.
+
+    Three properties are load-bearing and each is a schema guarantee rather than
+    something a caller has to remember:
+
+    * **At most one open crisis per mandate.** A partial UNIQUE index over the
+      rows with no ``closed_at`` — a second declaration therefore cannot create a
+      second row even if two browser tabs press the button at the same second.
+      :func:`newspulse.crisis.declare` hands the standing one back so the caller
+      never has to see the ``IntegrityError``.
+    * **A closed crisis always carries a reason.** That is what the CHECK
+      enforces — one direction, not both: it cannot be closed without a reason,
+      because "why did we stand this down" is the first question the review asks
+      and an empty string answers it with silence. The other direction is a
+      convention of :func:`newspulse.crisis.close`, which is the only writer of
+      the pair, and not something a reader may infer from the column: a
+      non-empty ``close_reason`` does not by itself mean a crisis is closed.
+      ``closed_at IS NULL`` is what open means.
+    * **The level is arithmetic, and the arithmetic is on the row.** The four
+      counts it was computed from are stored beside it, so the number is
+      checkable months later against coverage that has since grown. A level
+      nobody can re-derive is a level nobody will trust in the hour they need to.
+
+    ``last_swept_at`` is the tighter cadence's entire memory. It lives here and
+    not in the scheduler thread, so a restart mid-crisis neither loses the crisis
+    nor runs its sweep twice.
+    """
+
+    __tablename__ = "crises"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The piece of coverage the crisis was declared off. Required: a crisis
+    #: without a trigger cannot be graded and cannot be explained.
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Who declared it. A user name where the tool has one, otherwise the
+    #: ``"mensch"`` token :attr:`ClientFact.filled_by` already uses — never a
+    #: name nobody typed. DEC-1 turns on a *person* having decided, so the row
+    #: has to be able to say that a person did.
+    declared_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    declared_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: NULL exactly while the crisis is open. It is what the partial unique index
+    #: below is built on, and what the tighter cadence reads.
+    closed_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    close_reason: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+
+    # --- The level, and the four counts behind it ------------------------------
+    #
+    # Computed by :func:`newspulse.crisis.severity` and stored together, because
+    # the counts are what make the level checkable. A model that estimates a
+    # crisis level returns a number nobody can re-derive, in exactly the hour
+    # somebody wants to.
+    level: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=CRISIS_LEVEL_MIN, server_default=text("1")
+    )
+    #: How many distinct outlets carry the story.
+    outlet_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: How many stored pieces the story has at all — the denominator of the
+    #: negative share, kept as an integer beside its numerator so no rounded
+    #: percentage has to be trusted.
+    article_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: How many of them read negative *for this mandate* (see :class:`Tonality`).
+    negative_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: Whether any of the outlets is a national one (outlet tier 1).
+    national: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    #: Whether the mandate is named in the feed-provided text of any of them.
+    named: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+
+    #: When the tighter cadence last read this mandate's sources. NULL means it
+    #: never has, which is due immediately — a crisis declared at nine should not
+    #: wait an hour for its first reading.
+    last_swept_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+
+    client: Mapped["Client"] = relationship(lazy="selectin")
+    article: Mapped["Article"] = relationship(lazy="selectin")
+
+    __table_args__ = (
+        CheckConstraint(
+            f"level >= {CRISIS_LEVEL_MIN} AND level <= {CRISIS_LEVEL_MAX}",
+            name="ck_crises_level_range",
+        ),
+        # Open means no reason, closed means a reason. Written with the bare
+        # column rather than "closed_at IS NOT NULL AND ..." so both halves read
+        # in the same direction as the sentence above them.
+        CheckConstraint(
+            "closed_at IS NULL OR close_reason <> ''", name="ck_crises_close_reason"
+        ),
+        # One open crisis per mandate, as a partial index: closed rows are
+        # excluded, so a mandate may have had ten crises and be in none.
+        #
+        # Both dialect spellings, like the partial index on ``assets``. The
+        # predicate is a dialect keyword rather than a portable argument, and the
+        # one that is not recognised is silently dropped — which on a backend
+        # this file did not name would leave a plain UNIQUE(client_id) behind and
+        # forbid a mandate a second crisis for ever.
+        Index(
+            "uq_crises_one_open_per_client",
+            "client_id",
+            unique=True,
+            sqlite_where=text("closed_at IS NULL"),
+            postgresql_where=text("closed_at IS NULL"),
+        ),
+    )
+
+
 __all__ = [
+    "Crisis",
+    "CRISIS_DECLARED_BY_MAX",
+    "CRISIS_LEVEL_MIN",
+    "CRISIS_LEVEL_MAX",
     "VisibilityBand",
     "VisibilityQuestion",
     "VisibilityRun",

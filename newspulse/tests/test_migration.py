@@ -12,10 +12,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 from newspulse import config
 
@@ -69,6 +71,10 @@ def test_alembic_upgrade_creates_schema_and_round_trips_arrays(tmp_path, monkeyp
             # tool wrong, and nobody would notice until a client report counted a
             # consultation as press.
             "market_signals",
+            # The crisis as an object. Without this table a crisis stays a red
+            # card on Today, and the one condition under which the sweep changes
+            # its cadence has nowhere to be stored.
+            "crises",
         } <= tables
 
         # The acceptance-required array round-trip, but against the *migrated*
@@ -297,6 +303,129 @@ def test_the_same_market_url_may_belong_to_two_mandates(tmp_path, monkeypatch):
             assert conn.execute(
                 text("SELECT COUNT(*) FROM market_signals")
             ).scalar() == 2
+    finally:
+        engine.dispose()
+
+
+_CLIENT_INSERT = (
+    "INSERT INTO clients "
+    "(name, aliases, industry, country, keywords, alert_topics, active, created_at) "
+    "VALUES (:name, '[]', 'Solarenergie', 'DE', '[]', '[]', 1, "
+    "'2026-08-28 06:10:00')"
+)
+
+_ARTICLE_INSERT = (
+    "INSERT INTO articles (title, url, source, published_at, fetched_at, title_hash) "
+    "VALUES ('Verbraucherzentrale mahnt ab', :url, 'FAZ', "
+    "'2026-08-28 07:00:00', '2026-08-28 07:05:00', :hash)"
+)
+
+_CRISIS_INSERT = (
+    "INSERT INTO crises "
+    "(client_id, article_id, declared_by, declared_at, closed_at, close_reason, level) "
+    "VALUES (:client_id, 1, 'lucas', '2026-08-28 09:00:00', :closed_at, "
+    ":close_reason, :level)"
+)
+
+
+def _seeded_crisis_db(tmp_path, monkeypatch, name: str):
+    """A migrated database holding one mandate and one article, ready for a crisis."""
+    db_path = tmp_path / name
+    monkeypatch.setattr(config, "DATABASE_PATH", db_path)
+    command.upgrade(_alembic_config(), "head")
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    with engine.begin() as conn:
+        conn.execute(text(_CLIENT_INSERT), {"name": "Solaris AG"})
+        conn.execute(
+            text(_ARTICLE_INSERT), {"url": "https://faz.example.de/a1", "hash": "h1"}
+        )
+    return engine
+
+
+def _declare(conn, *, client_id=1, closed_at=None, close_reason="", level=3):
+    conn.execute(
+        text(_CRISIS_INSERT),
+        {
+            "client_id": client_id,
+            "closed_at": closed_at,
+            "close_reason": close_reason,
+            "level": level,
+        },
+    )
+
+
+def test_one_open_crisis_per_mandate_is_a_schema_guarantee(tmp_path, monkeypatch):
+    """The partial UNIQUE index, against the real migration.
+
+    ``newspulse.crisis.declare`` hands the standing crisis back rather than
+    writing a second one, but two processes can reach that write in the same
+    moment and only the database can settle it. Partial rather than plain,
+    because the same mandate must be able to have had five crises and be in none
+    — which the second half of this test is.
+    """
+    engine = _seeded_crisis_db(tmp_path, monkeypatch, "crisis.db")
+    try:
+        with engine.begin() as conn:
+            _declare(conn)
+        with pytest.raises(IntegrityError):
+            with engine.begin() as conn:
+                _declare(conn)
+
+        # Closed rows are outside the index: a mandate with a history can be in a
+        # new crisis, and can have as many closed ones behind it as it has had.
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE crises SET closed_at = '2026-08-28 18:00:00', "
+                              "close_reason = 'vorbei'"))
+            _declare(conn)
+            _declare(conn, closed_at="2026-08-20 18:00:00", close_reason="alt")
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT COUNT(*) FROM crises")).scalar() == 3
+    finally:
+        engine.dispose()
+
+
+def test_a_closed_crisis_cannot_be_stored_without_its_reason(tmp_path, monkeypatch):
+    """"Warum haben wir das abgeblasen" is the first question a review asks, and a
+    row that answers it with an empty string is a row nobody can review."""
+    engine = _seeded_crisis_db(tmp_path, monkeypatch, "reason.db")
+    try:
+        with pytest.raises(IntegrityError):
+            with engine.begin() as conn:
+                _declare(conn, closed_at="2026-08-28 18:00:00", close_reason="")
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("level", [0, 6])
+def test_a_level_outside_one_to_five_is_refused(tmp_path, monkeypatch, level):
+    """The scale is the whole vocabulary of the feature. A six would render as a
+    step nothing in the tool knows how to read."""
+    engine = _seeded_crisis_db(tmp_path, monkeypatch, f"level{level}.db")
+    try:
+        with pytest.raises(IntegrityError):
+            with engine.begin() as conn:
+                _declare(conn, level=level)
+    finally:
+        engine.dispose()
+
+
+def test_the_cadence_stamp_starts_empty_rather_than_at_the_declaration(
+    tmp_path, monkeypatch
+):
+    """NULL means "never read", which is due immediately. Backfilling it with the
+    declaration time would make a crisis declared at nine wait an hour for the
+    first reading it exists to get."""
+    engine = _seeded_crisis_db(tmp_path, monkeypatch, "stamp.db")
+    try:
+        with engine.begin() as conn:
+            _declare(conn)
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT last_swept_at, close_reason, level FROM crises")
+            ).one()
+        assert row[0] is None
+        assert row[1] == ""
+        assert row[2] == 3
     finally:
         engine.dispose()
 
