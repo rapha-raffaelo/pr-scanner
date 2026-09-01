@@ -184,6 +184,19 @@ def test_under_an_hour_the_card_counts_minutes(web, session, mandate):
     assert "0 Std" not in page.text
 
 
+def test_an_empty_reason_still_gives_the_card_a_standing_sentence(
+    web, session, mandate
+):
+    """``newsjack._parse`` can legitimately store an empty reason; the card
+    falls back to the story's shape rather than rendering a bare label."""
+    _opportunity(session, mandate, reason="", pickup_count=3)
+
+    page = web.get("/today")
+
+    assert "3 Medien tragen die Story" in page.text
+    assert "zuerst bei Handelsblatt" in page.text
+
+
 def test_the_cards_stand_above_the_days_coverage(web, session, mandate):
     """Above, not beside and not in a tab: an opening is worthless the moment
     it has to be searched for."""

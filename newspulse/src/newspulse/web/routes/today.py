@@ -217,6 +217,24 @@ def _remaining(window_ends_at: dt.datetime, now: dt.datetime) -> tuple[int, int]
     return int(left.total_seconds() // 3600), int((left.total_seconds() // 60) % 60)
 
 
+def _standing_sentence(row: NewsjackOpportunity) -> str:
+    """The card's one sentence, never blank.
+
+    ``newsjack._parse`` can legitimately return an empty reason, and the card
+    then rendered a bare "Stehen" label — while the acceptance promises the
+    grounds in one sentence. The stored reason is data and shown as written;
+    when the model gave none, the story's shape stands in, the same posture as
+    ``assets_view._opportunity_fallback`` takes for the occasion.
+    """
+    reason = row.reason.strip()
+    if reason:
+        return reason
+    return (
+        f"{row.pickup_count} Medien tragen die Story, "
+        f"zuerst bei {row.article.source}."
+    )
+
+
 def _opportunity_texts(
     session: Session, opportunity_ids: list[int]
 ) -> tuple[dict[int, int], dict[int, int]]:
@@ -292,7 +310,7 @@ def _fetch_opportunities(
                     source=row.article.source,
                     published_at=row.article.published_at.astimezone(tz),
                     pickup_count=row.pickup_count,
-                    reason=row.reason,
+                    reason=_standing_sentence(row),
                     window_ends_at=row.window_ends_at,
                     hours_left=hours,
                     minutes_left=minutes,
