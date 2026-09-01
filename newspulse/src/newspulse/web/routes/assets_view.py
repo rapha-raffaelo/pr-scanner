@@ -1014,6 +1014,11 @@ def write_from_opportunity(
     dismissed or just-expired opportunity is deliberately *not* refused — the
     person saw the card when it stood, and whether a text still makes the
     closing window is their call, not a 404's.
+
+    Deliberately not guarded by the run lock, like ``plan_view``'s occasion
+    creation: the click fetches nothing and writes one ``Angle`` row, and the
+    only race it can lose — a double click, a concurrent scan — is settled by
+    ``ux_angles_newsjack`` inside :func:`occasion_for_opportunity`.
     """
     client = session.get(Client, client_id)
     if client is None:

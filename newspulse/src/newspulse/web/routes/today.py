@@ -26,6 +26,7 @@ from ...models import (
     Crisis,
     NewsjackOpportunity,
     Run,
+    Standing,
     TopicHit,
     visible_coverage,
 )
@@ -757,9 +758,17 @@ def dismiss_opportunity(
     stands, and an unknown id redirects back the same way — the card the click
     aimed at is gone either way, and there is nothing a 404 page would let the
     reader do about it.
+
+    Only a ``belegt`` row can be waved off, the same gate ``write_from_opportunity``
+    keeps: a rejection is an audit record and never a card, so a POST naming one
+    is mis-aimed or forged and must not stamp the record it aims at.
     """
     row = session.get(NewsjackOpportunity, opportunity_id)
-    if row is not None and row.dismissed_at is None:
+    if (
+        row is not None
+        and row.standing is Standing.BELEGT
+        and row.dismissed_at is None
+    ):
         row.dismissed_at = dt.datetime.now(dt.UTC)
         session.commit()
     return RedirectResponse(local_target(redirect_to), status_code=303)
