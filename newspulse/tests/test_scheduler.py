@@ -195,6 +195,53 @@ def test_the_loop_survives_a_failing_sweep(monkeypatch):
     assert still_running, "the thread was alive until we asked it to stop"
 
 
+def test_the_newsjack_pass_runs_on_its_own_cadence(monkeypatch):
+    """DEC-6 A: something in the deployed process actually runs the fast lane —
+    and on the interval, not on every tick. Without this wiring no opportunity
+    row is ever written and the whole UHR-05 surface is unreachable."""
+    from newspulse.job import NewsjackRun
+
+    ran: list[str] = []
+
+    def _pass(session) -> NewsjackRun:
+        ran.append("pass")
+        return NewsjackRun(mandates=1, opportunities=0, rejected=0, errors=[])
+
+    monkeypatch.setattr(scheduler.job, "setup_logging", lambda *a, **k: None)
+    monkeypatch.setattr(scheduler.job, "run_newsjack", _pass)
+    monkeypatch.setattr(scheduler, "_newsjack_last", None)
+
+    first = dt.datetime(2026, 8, 3, 12, 0, tzinfo=dt.UTC)
+    scheduler._newsjack_tick(first)
+    scheduler._newsjack_tick(first + dt.timedelta(hours=1))  # not due yet
+    scheduler._newsjack_tick(first + dt.timedelta(hours=3))  # due again
+
+    assert ran == ["pass", "pass"]
+
+
+def test_the_newsjack_pass_gives_way_to_a_running_sweep(monkeypatch):
+    """Non-blocking on the guard, and the pass stays due: the next tick is a
+    minute out, and queueing behind a portfolio sweep would fetch the same
+    radar feeds twice in a row."""
+    ran: list[str] = []
+    monkeypatch.setattr(scheduler.job, "setup_logging", lambda *a, **k: None)
+    monkeypatch.setattr(
+        scheduler.job, "run_newsjack", lambda session: ran.append("pass")
+    )
+    monkeypatch.setattr(scheduler, "_newsjack_last", None)
+
+    assert scheduler.runlock.guard.acquire(blocking=False)
+    try:
+        scheduler._newsjack_tick(dt.datetime(2026, 8, 3, 12, 0, tzinfo=dt.UTC))
+    finally:
+        scheduler.runlock.guard.release()
+
+    assert ran == []
+    assert scheduler._newsjack_due(
+        dt.datetime(2026, 8, 3, 12, 1, tzinfo=dt.UTC)
+    ), "the refused pass was not stamped as run"
+
+
 def test_a_sweep_started_by_hand_does_not_earn_a_second_one(session, monkeypatch):
     """The window between "is one running?" and taking the guard.
 

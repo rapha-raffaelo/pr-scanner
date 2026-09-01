@@ -37,6 +37,16 @@ gives way — its next tick is a minute out, the daily sweep's is a day.
 Its state is read from ``crises.last_swept_at`` for exactly the same reason the
 daily one reads ``runs``: a restart or a crash halfway through a reading must
 leave neither a hung crisis nor a second reading racing the first.
+
+The third clock: the fast lane (UHR-05, DEC-6 A)
+------------------------------------------------
+Every ``NEWSPULSE_NEWSJACK_EVERY_HOURS`` hours a light run
+(:func:`newspulse.job.run_newsjack`) refreshes the active mandates' topic radar
+and weighs what it holds — nothing else. Its state is this process's memory
+rather than a table, deliberately: the light run writes no ``runs`` row (it must
+not move the daily sweep's watermark), and repeating it is nearly free — every
+model call is gated behind stored verdicts — so the worst a restart costs is one
+extra radar read, run promptly, which is what DEC-6's ninety minutes want anyway.
 """
 
 from __future__ import annotations
@@ -256,12 +266,91 @@ def _crisis_loop(stop: threading.Event) -> None:
             _log.exception("a crisis reading failed; the cadence stands")
 
 
-def start() -> threading.Event | None:
-    """Start both clocks. Returns the stop event they share, or ``None`` if off.
+# --- The third clock: the fast lane's light run (UHR-05, DEC-6 A) ---------------
 
-    The daily sweep and the crisis cadence get a thread each and one stop event,
-    because ``NEWSPULSE_SCHEDULER=0`` means "an external cron does the unattended
-    work" and that has to be true of both of them.
+#: When this process last started a light run. In-memory on purpose — see the
+#: module docstring: no ``runs`` row may be written, and an extra pass after a
+#: restart costs one radar read.
+_newsjack_last: dt.datetime | None = None
+
+
+def _newsjack_due(now: dt.datetime) -> bool:
+    """Whether the fast lane's interval has elapsed since this process's last
+    pass. The first tick after a start is always due — promptness is the point
+    of the lane, and the pass is cheap by construction."""
+    if _newsjack_last is None:
+        return True
+    return now - _newsjack_last >= dt.timedelta(hours=config.newsjack_every_hours())
+
+
+def _newsjack_tick(now: dt.datetime) -> None:
+    """One light run, if it is due: :func:`newspulse.job.run_newsjack` and
+    nothing else.
+
+    Non-blocking on the guard, like the crisis reading and for the same reason:
+    the pass fetches radar feeds, and queueing behind a portfolio sweep would
+    fetch the same URLs twice in a row — the next tick is a minute out. While it
+    holds the guard it raises :data:`newspulse.web.runlock.crisis_reading`,
+    whose real meaning is "the guard's holder is not a portfolio sweep":
+    without it the header would announce a radar-only pass as a full sweep
+    every few hours.
+
+    The stamp lands *before* the run, the way ``run_crisis`` stamps its row: a
+    pass that fails must fall due again next interval, not next minute — a dead
+    radar feed retried every sixty seconds is the loop the daily scheduler's
+    ``_already_ran`` exists to prevent, and this pass has no table to prevent
+    it with.
+    """
+    global _newsjack_last
+    if not _newsjack_due(now):
+        return
+    # The web process installs no file handler of its own; idempotent, so
+    # calling it per pass costs nothing — same as the other two clocks.
+    job.setup_logging()
+    if not runlock.guard.acquire(blocking=False):
+        _log.info("another fetch holds the run guard; the newsjack pass stays due")
+        return
+    runlock.crisis_reading.set()
+    try:
+        _newsjack_last = now
+        with get_session() as session:
+            report = job.run_newsjack(session)
+        _log.log(
+            logging.WARNING if report.errors else logging.INFO,
+            "newsjack pass: %d mandate(s), %d opportunit(y/ies), "
+            "%d rejection(s), %d error(s)",
+            report.mandates,
+            report.opportunities,
+            report.rejected,
+            len(report.errors),
+        )
+    finally:
+        # Cleared before the lock, so no render can ever see the guard held
+        # with the flag already down and call a radar pass a sweep.
+        runlock.crisis_reading.clear()
+        runlock.guard.release()
+
+
+def _newsjack_loop(stop: threading.Event) -> None:
+    """The fast lane's own tick. Same posture as the other two loops: it may
+    fail, and it may never stop."""
+    while not stop.wait(_TICK_SECONDS):
+        try:
+            _newsjack_tick(dt.datetime.now(dt.UTC))
+        except Exception:  # noqa: BLE001 — this thread must outlive every failure
+            # The stamp already landed inside the tick, so the failed pass is
+            # not retried in a loop; it falls due again next interval.
+            _log.exception("a newsjack pass failed; the cadence stands")
+
+
+def start() -> threading.Event | None:
+    """Start all three clocks. Returns the stop event they share, or ``None``
+    if off.
+
+    The daily sweep, the crisis cadence and the fast lane's light run get a
+    thread each and one stop event, because ``NEWSPULSE_SCHEDULER=0`` means "an
+    external cron does the unattended work" and that has to be true of all of
+    them.
 
     Called from ``web.app.main`` rather than ``create_app`` on purpose: the tests
     build the app hundreds of times, and none of them wants a thread that fetches
@@ -284,6 +373,15 @@ def start() -> threading.Event | None:
     _log.info(
         "crisis cadence armed at every %d minute(s) while a crisis is open",
         config.crisis_sweep_minutes(),
+    )
+    # The same stop event again: the switch means "an external cron does the
+    # unattended work", and the fast lane is unattended work (DEC-6 A).
+    threading.Thread(
+        target=_newsjack_loop, args=(stop,), daemon=True, name="newspulse-newsjack"
+    ).start()
+    _log.info(
+        "newsjack cadence armed: a light run every %d hour(s) (DEC-6)",
+        config.newsjack_every_hours(),
     )
     return stop
 
