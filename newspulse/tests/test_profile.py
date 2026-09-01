@@ -634,3 +634,93 @@ def test_an_emptied_offer_is_not_saved_and_stays_on_offer(factory, web):
         assert "sitz" not in profiles.stored(session, client_id)
         still = profile_refresh.outstanding(session, client_id)
     assert [p.key for p in still] == ["sitz"], "it comes back next time"
+
+
+def test_the_fill_all_button_answers_and_gives_its_lock_back(web, session, monkeypatch):
+    """Same contract as the per-mandate button, for the portfolio-wide one:
+
+    303 back to the page the click came from, the worker started exactly once,
+    and the process-wide lock returned however the worker ends. The two buttons
+    share that lock on purpose — research spends a model call with a web search
+    behind it, and "all profiles" is the most expensive click on the page.
+    """
+    from newspulse.web.routes import profile as route
+
+    client = _client(session)
+    started = threading.Event()
+    calls: list[str] = []
+
+    def _record() -> None:
+        try:
+            calls.append("all")
+        finally:
+            route._researching.release()
+            started.set()
+
+    monkeypatch.setattr(route, "_run_research_all", _record)
+
+    answer = web.post(
+        f"/client/{client.id}/profil/fill-alle", follow_redirects=False
+    )
+
+    assert answer.status_code == 303
+    assert answer.headers["location"] == f"/client/{client.id}/profil"
+    assert started.wait(timeout=2), "the worker was never started"
+    assert calls == ["all"]
+    assert route._researching.acquire(blocking=False), "the lock never came back"
+    route._researching.release()
+
+
+def test_the_fill_all_pass_skips_complete_profiles_and_reads_the_rest(
+    session, monkeypatch
+):
+    """The pass reads the web only where a blank line is left to fill.
+
+    One mandate hand-filled to the last field, one untouched. The complete one
+    gets no research call — re-reading a page with no gap spends the budget on
+    the answer we already have — and adoption still runs for both, because the
+    pile may hold rows for a complete profile too (they surface as
+    contradictions, not writes). The untouched one is researched and its finds
+    adopted in the same pass.
+    """
+    from contextlib import contextmanager
+
+    from newspulse.web.routes import profile as route
+    from newspulse import profile as profiles
+
+    full = _client(session)
+    for field in profiles.FIELDS:
+        profiles.save(session, full, field.key, "von Hand", filled_by=profiles.BY_HAND)
+    gappy = Client(name="Raisin", aliases=[], industry="Fintech", country="DE",
+                   website="https://raisin.com", keywords=[], alert_topics=[])
+    session.add(gappy)
+    session.commit()
+
+    @contextmanager
+    def _same_session():
+        yield session
+
+    researched: list[int] = []
+    adopted: list[int] = []
+    monkeypatch.setattr(route, "get_session", _same_session)
+    monkeypatch.setattr(
+        route.profile_refresh,
+        "refresh",
+        lambda s, c, *, now, generate=None: researched.append(c.id) or 0,
+    )
+    monkeypatch.setattr(
+        route.profile_refresh,
+        "adopt",
+        lambda s, c, *, proposed_by: adopted.append(c.id) or [],
+    )
+    monkeypatch.setattr(route.config, "review_model", lambda: "test-model")
+
+    assert route._researching.acquire(blocking=False)
+    route._run_research_all()
+
+    assert researched == [gappy.id], "only the profile with gaps is worth a read"
+    # The complete mandate is adopted once; the gappy one before and after its read.
+    assert adopted.count(full.id) == 1
+    assert adopted.count(gappy.id) == 2
+    assert route._researching.acquire(blocking=False), "the lock never came back"
+    route._researching.release()

@@ -123,6 +123,14 @@
   <span class="panel-hint">
     {{ t("Liest das offene Netz und schlägt Werte vor — mit Quelle, und ohne etwas zu speichern. Was hier steht, entscheiden Sie.") }}
   </span>
+  <form method="post" action="/client/{{ client.id }}/profil/fill-alle">
+    <button type="submit" class="btn"{% if researching %} disabled{% endif %}>
+      {{ t("Alle Profile ausfüllen") }}
+    </button>
+  </form>
+  <span class="panel-hint">
+    {{ t("Recherchiert jeden Mandanten mit Lücken und pflegt belegte Werte gleich ein. Handgepflegte Felder bleiben unangetastet.") }}
+  </span>
   {# When the profile was last read, on every visit and not only after a failure:
      a stale profile has to be visible instead of assumed fresh. #}
   <span class="fillbar__checked">{% include "partials/profile_checked.html" %}</span>
