@@ -2068,12 +2068,16 @@ _EN: dict[str, str] = {
     "Stehen": "Standing",
     "Verbleibende Zeit im Fenster ab dem Ursprungsbeitrag":
         "Time left in the window that runs from the origin piece",
-    "Text(e) ansehen": "text(s) — view",
-    # The cap's visible name: never more than three cards per mandate, cut by
-    # pickup count, and the cut says so instead of happening silently.
+    "Text(e) ansehen": "text(s) to view",
+    # The cap's visible name: never more than the capped number of cards per
+    # mandate, cut by pickup count, and the cut says so instead of happening
+    # silently. Split around the number so the sentence carries the cap the
+    # route actually applies (``today._MAX_OPEN_OPPORTUNITIES``) rather than a
+    # hardcoded "drei" that lies the day the constant changes.
     "weitere Gelegenheit(en) bei": "more opportunit(y/ies) for",
-    "nach Aufgriffszahl gekürzt — hier stehen die drei mit den meisten Aufgriffen.":
-        "trimmed by pickup count — the three with the most pickups stand here.",
+    "nach Aufgriffszahl gekürzt; hier stehen die":
+        "trimmed by pickup count; the",
+    "mit den meisten Aufgriffen.": "with the most pickups stand here.",
     # The mandate's archive: an expired or waved-off opportunity stays readable
     # there with its outcome, and only there.
     "Gelegenheiten aus der schnellen Spur": "Opportunities from the fast lane",

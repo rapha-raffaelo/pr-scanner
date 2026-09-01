@@ -216,7 +216,7 @@
     {% for cut in opportunity_cuts %}
       <p class="njacks__cut">
         {{ cut.hidden }} {{ t("weitere Gelegenheit(en) bei") }} {{ cut.client_name }}
-        {{ t("nach Aufgriffszahl gekürzt — hier stehen die drei mit den meisten Aufgriffen.") }}
+        {{ t("nach Aufgriffszahl gekürzt; hier stehen die") }} {{ opportunity_cap }} {{ t("mit den meisten Aufgriffen.") }}
       </p>
     {% endfor %}
   </section>

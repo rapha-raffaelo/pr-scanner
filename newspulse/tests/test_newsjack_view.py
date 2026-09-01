@@ -281,6 +281,8 @@ def test_never_more_than_three_cards_per_mandate_cut_by_pickup_and_named(
     assert "2 weitere Gelegenheit(en) bei" in page.text
     assert "Solaris AG" in page.text
     assert "nach Aufgriffszahl gekürzt" in page.text
+    # The sentence carries the cap the route applied, not a hardcoded word.
+    assert "hier stehen die 3" in page.text
 
 
 def test_three_open_opportunities_are_no_cut(web, session, mandate):
@@ -482,6 +484,8 @@ def test_every_new_string_carries_an_english_side():
         ("Zuerst bei", "First at"),
         ("Stehen", "Standing"),
         ("weitere Gelegenheit(en) bei", "more opportunit(y/ies) for"),
+        ("nach Aufgriffszahl gekürzt; hier stehen die", "trimmed by pickup count; the"),
+        ("mit den meisten Aufgriffen.", "with the most pickups stand here."),
         ("Gelegenheiten aus der schnellen Spur", "Opportunities from the fast lane"),
         ("Verworfen am", "Waved off on"),
         ("Abgelaufen am", "Expired on"),

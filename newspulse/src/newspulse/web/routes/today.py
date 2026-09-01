@@ -946,6 +946,9 @@ def today_view(
             # without an open opportunity, Heute looks exactly as it does today.
             "opportunities": opportunities,
             "opportunity_cuts": opportunity_cuts,
+            # The cap itself, so the cut's sentence names the number the route
+            # actually applied rather than hardcoding "drei" in the template.
+            "opportunity_cap": _MAX_OPEN_OPPORTUNITIES,
             "angles": drafts,
             "quiet_clients": quiet,
             "angle_days": angles.COLUMN_DAYS,
