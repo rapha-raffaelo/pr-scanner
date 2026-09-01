@@ -1087,6 +1087,11 @@ def test_the_offer_does_not_read_the_archive_behind_an_old_crisis(session, manda
     clustered quadratically, on every render, growing for ever. The suppression
     only concerns coverage still inside the proposal window, so nothing older is
     worth reading.
+
+    A live wave sits inside the window so ``propose`` gets past the UHR-05
+    ``_worth_clustering`` fast lane and actually reads coverage — the reads are
+    what this test measures. With nothing proposable the fast lane answers
+    without a single row read, which is even less than this test demands.
     """
     long_ago = _NOW - dt.timedelta(days=180)
     trigger = _cover(
@@ -1105,6 +1110,11 @@ def test_the_offer_does_not_read_the_archive_behind_an_old_crisis(session, manda
             tonality=Tonality.NEUTRAL,
             published=_NOW - dt.timedelta(days=day),
         )
+
+    # Today's live wave: enough negative carriers that the pre-check says the
+    # window is worth reading, and the stood-down suppression runs for real.
+    for source in ("Handelsblatt", "Badische Zeitung", "Nordkurier"):
+        _cover(session, mandate, source=source)
 
     windows: list[dt.datetime] = []
     original = crisis._rows
