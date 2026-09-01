@@ -28,7 +28,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import config, job, newsjack, profile, stories
+from newspulse import config, job, newsjack, notify, profile, stories
 from newspulse.analyzer import AnalyzerError
 from newspulse.ingest import FeedItem
 from newspulse.models import (
@@ -446,6 +446,13 @@ def test_the_standing_is_checked_against_profile_guide_and_archive(session, mand
 
 # --- The light run -----------------------------------------------------------------
 
+#: Every ``run_newsjack`` call here switches the channel off explicitly. Left to
+#: default, the run resolves ``NotifyConfig.from_env()`` — and on the machine
+#: this tool is built for that means real osascript notifications (or real mail)
+#: popping out of a test run. The channel itself is pinned in ``test_notify.py``
+#: and ``test_newsjack_view.py`` with injected senders.
+_NOTIFY_OFF = notify.NotifyConfig(channel=notify.Channel.OFF)
+
 
 def _feed_items() -> list[FeedItem]:
     """What the injected radar fetch returns: one story on two outlets, plus an
@@ -484,6 +491,7 @@ def test_the_light_run_finds_the_opportunity_off_the_radar_alone(session, mandat
         fetch=lambda *a, **k: _feed_items(),
         invoke=_belegt,
         now=lambda: _NOW,
+        notify_config=_NOTIFY_OFF,
     )
     assert report.opportunities == 1
     assert report.rejected == 0
@@ -499,6 +507,7 @@ def test_the_light_run_analyses_nothing_and_writes_no_profile_or_run_row(
         fetch=lambda *a, **k: _feed_items(),
         invoke=_belegt,
         now=lambda: _NOW,
+        notify_config=_NOTIFY_OFF,
     )
     # No client coverage is analysed: the radar's material is stored unanalysed,
     # exactly as the daily sweep stores it.
@@ -524,5 +533,8 @@ def test_the_light_run_skips_a_competitor(session, mandate):
         fetched.append(url)
         return []
 
-    report = job.run_newsjack(session, fetch=fetch, invoke=_belegt, now=lambda: _NOW)
+    report = job.run_newsjack(
+        session, fetch=fetch, invoke=_belegt, now=lambda: _NOW,
+        notify_config=_NOTIFY_OFF,
+    )
     assert report.mandates == 1  # the mandate, never the yardstick
