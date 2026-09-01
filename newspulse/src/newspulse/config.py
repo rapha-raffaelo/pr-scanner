@@ -84,6 +84,14 @@ _ENV_GEMINI_API_KEY = "NEWSPULSE_GEMINI_API_KEY"
 _ENV_GEMINI_MODEL = "NEWSPULSE_GEMINI_MODEL"
 _ENV_VISIBILITY = "NEWSPULSE_VISIBILITY"
 _ENV_VISIBILITY_EVERY_DAYS = "NEWSPULSE_VISIBILITY_EVERY_DAYS"
+_ENV_PLAN_MONTHS = "NEWSPULSE_PLAN_MONTHS"
+
+# How far the editorial plan reaches, in months counted from the current one.
+# Six, because that is what a retainer conversation looks at: far enough that a
+# consultation closing in five weeks and a regulation landing in January both
+# appear, near enough that the far months are not decoration. Hooks older than
+# the window fall out of the *read*, never out of the table.
+_DEFAULT_PLAN_MONTHS = 6
 
 # The OAuth client of the Google Cloud project the mailbox is connected through
 # (DEC-5: an *Internal* app inside RAUTE's own Workspace, so no Google
@@ -327,6 +335,7 @@ VISIBILITY_ENABLED: bool = _env_bool(_ENV_VISIBILITY, _DEFAULT_VISIBILITY)
 VISIBILITY_EVERY_DAYS: int = _env_int(
     _ENV_VISIBILITY_EVERY_DAYS, _DEFAULT_VISIBILITY_EVERY_DAYS
 )
+PLAN_MONTHS: int = _env_int(_ENV_PLAN_MONTHS, _DEFAULT_PLAN_MONTHS)
 CLAUDE_CONFIG_DIR: str = os.environ.get(
     _ENV_CLAUDE_CONFIG_DIR, _DEFAULT_CLAUDE_CONFIG_DIR
 )
@@ -455,6 +464,116 @@ def daily_run_at() -> tuple[int, int]:
     if not (0 <= at[0] <= 23 and 0 <= at[1] <= 59):
         return (6, 10)
     return at
+
+
+# The one condition in the tool under which the sweep changes its cadence. While
+# a mandate is in a declared crisis its own sources are re-read this often, and
+# nothing else happens on that tick — no positioning drafts, no profile work, no
+# other mandate (see ``job.run_crisis``).
+#
+# An hour, because that is the resolution the source actually has: a news search
+# refreshes in minutes but the coverage behind it does not, and a ten-minute
+# cadence would spend ten times the requests to find the same three articles. It
+# is also the spend ceiling, since every reading that finds something new costs
+# an analyzer batch.
+ENV_CRISIS_SWEEP_MINUTES = "NEWSPULSE_CRISIS_SWEEP_MINUTES"
+_DEFAULT_CRISIS_SWEEP_MINUTES = 60
+
+# The floor a configured value is clamped to. Zero or a negative number would
+# make the crisis sweep due on every scheduler tick — a fetch a minute against
+# the same feed, for the whole time a crisis is open — so a typo cannot buy that.
+_MIN_CRISIS_SWEEP_MINUTES = 5
+
+
+def crisis_sweep_minutes() -> int:
+    """How often an open crisis re-reads its mandate's sources.
+
+    Read per call rather than at import, like :func:`daily_run_at`, so a platform
+    variable set after start-up is still seen — and so the value a running
+    scheduler uses is the one currently configured.
+    """
+    value = _env_int(ENV_CRISIS_SWEEP_MINUTES, _DEFAULT_CRISIS_SWEEP_MINUTES)
+    if value < _MIN_CRISIS_SWEEP_MINUTES:
+        # Same reason ``_env_int`` warns on a typo: a setting that does not take
+        # effect must not be silent. ``NEWSPULSE_CRISIS_SWEEP_MINUTES=1`` is a
+        # plausible deliberate choice, and without this line the operator has no
+        # way to learn it became five.
+        _log.warning(
+            "%s=%d is below the %d-minute floor; using %d",
+            ENV_CRISIS_SWEEP_MINUTES,
+            value,
+            _MIN_CRISIS_SWEEP_MINUTES,
+            _MIN_CRISIS_SWEEP_MINUTES,
+        )
+        return _MIN_CRISIS_SWEEP_MINUTES
+    return value
+
+
+# How long a newsjacking window stays open, counted from the *origin* article of
+# a story — never from when a run happened to notice it. Thirty-six hours,
+# because that is roughly how long a German market story carries pickups before
+# it is through: a window wider than the wave it measures would keep offering
+# yesterday's story as an opportunity, which is the task list that only grows.
+ENV_NEWSJACK_WINDOW_HOURS = "NEWSPULSE_NEWSJACK_WINDOW_HOURS"
+_DEFAULT_NEWSJACK_WINDOW_HOURS = 36
+
+# The floor a configured window is clamped to. Zero or a negative number would
+# make every opportunity born expired — created and never shown — so a typo
+# cannot buy that.
+_MIN_NEWSJACK_WINDOW_HOURS = 1
+
+
+def newsjack_window_hours() -> int:
+    """How many hours a story stays an opportunity, from its origin article.
+
+    Read per call rather than at import, like :func:`crisis_sweep_minutes` and
+    for the same reason: a platform variable set after start-up is still seen,
+    and the value a running scan uses is the one currently configured.
+    """
+    value = _env_int(ENV_NEWSJACK_WINDOW_HOURS, _DEFAULT_NEWSJACK_WINDOW_HOURS)
+    if value < _MIN_NEWSJACK_WINDOW_HOURS:
+        _log.warning(
+            "%s=%d is below the %d-hour floor; using %d",
+            ENV_NEWSJACK_WINDOW_HOURS,
+            value,
+            _MIN_NEWSJACK_WINDOW_HOURS,
+            _MIN_NEWSJACK_WINDOW_HOURS,
+        )
+        return _MIN_NEWSJACK_WINDOW_HOURS
+    return value
+
+
+# How often the fast lane's light run happens (DEC-6 A: "ein zweiter, leichter
+# Lauf alle drei Stunden"). Three hours is the locked cadence — an opportunity is
+# on the screen after ninety minutes on average instead of twenty hours — and a
+# pass over a quiet radar costs no model call, which is what makes it affordable.
+ENV_NEWSJACK_EVERY_HOURS = "NEWSPULSE_NEWSJACK_EVERY_HOURS"
+_DEFAULT_NEWSJACK_EVERY_HOURS = 3
+
+# The floor a configured cadence is clamped to. Below an hour the pass would
+# re-fetch the same radar feeds for material that has not changed — the same
+# reason the crisis cadence has a floor, so a typo cannot buy that either.
+_MIN_NEWSJACK_EVERY_HOURS = 1
+
+
+def newsjack_every_hours() -> int:
+    """How many hours pass between two light runs of the fast lane.
+
+    Read per call rather than at import, like :func:`crisis_sweep_minutes` and
+    for the same reason: a platform variable set after start-up is still seen,
+    and the value the running cadence uses is the one currently configured.
+    """
+    value = _env_int(ENV_NEWSJACK_EVERY_HOURS, _DEFAULT_NEWSJACK_EVERY_HOURS)
+    if value < _MIN_NEWSJACK_EVERY_HOURS:
+        _log.warning(
+            "%s=%d is below the %d-hour floor; using %d",
+            ENV_NEWSJACK_EVERY_HOURS,
+            value,
+            _MIN_NEWSJACK_EVERY_HOURS,
+            _MIN_NEWSJACK_EVERY_HOURS,
+        )
+        return _MIN_NEWSJACK_EVERY_HOURS
+    return value
 
 
 def gemini_configured() -> bool:

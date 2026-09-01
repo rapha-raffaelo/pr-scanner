@@ -53,6 +53,7 @@ from .config import (
     _ENV_SMTP_STARTTLS,
     _ENV_SMTP_USERNAME,
 )
+from . import crisis
 from .models import Analysis, Article, Client, Run
 
 _log = logging.getLogger(__name__)
@@ -75,6 +76,19 @@ _SMTP_TIMEOUT = 30
 # balloon, so the process must outlive the render. Kept safely under _DESKTOP_TIMEOUT
 # (the subprocess wall-clock ceiling) so the keep-alive never trips its own timeout.
 _WINDOWS_BALLOON_SECONDS = 4
+
+# What the proposal paragraph says, in the notification's own language (English,
+# like the rest of this module's wording — the interface is German, the operator
+# mail is not). Constants rather than inline literals because the three of them
+# have to keep saying the same thing: the tool is *asking*, and nothing has
+# happened yet.
+_PROPOSAL_HEADER = "Crisis proposed (nothing has changed yet):"
+_PROPOSAL_FOOTER = (
+    "Open NewsPulse and press 'Krise erklären' to declare one, or 'Verwerfen' "
+    "to stand the offer down — a dismissed story is not offered again. Until "
+    "somebody does either, the sweep runs exactly as it did."
+)
+_PROPOSAL_TAIL = "crisis proposed for"
 
 # Truthy/falsy spellings accepted for boolean env vars, matching common shell idiom.
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
@@ -135,6 +149,45 @@ class FiredAlert:
 
 
 @dataclass(frozen=True, slots=True)
+class ProposedCrisis:
+    """A crisis the tool is *offering*, as the summary renders it.
+
+    DEC-1 locked option A: the tool proposes and a person declares. The offer
+    appears on Heute and in the notification, and nowhere else — this line rides
+    along inside the alert summary that was already going out. It is deliberately
+    not a notification of its own: "keine zusätzliche Benachrichtigung über die
+    bestehende Alarmierung hinaus" is the acceptance criterion, so a quiet morning
+    with a proposal and no alerts stays as silent as a quiet morning without one.
+
+    The plain projection, like :class:`FiredAlert`: no ORM object reaches the
+    formatting.
+    """
+
+    client_name: str
+    headline: str
+    outlets: int
+
+
+@dataclass(frozen=True, slots=True)
+class FoundOpportunity:
+    """One fresh fast-lane opportunity, as its notification renders it (UHR-05).
+
+    Unlike the crisis proposal this is *not* a ride-along: the light run exists
+    to put an opening on the screen within hours (DEC-6 A), and its findings
+    would otherwise wait for the next morning's alert mail — which is exactly
+    the twenty-hour delay the fast lane was built against. The plain
+    projection, like :class:`FiredAlert`: no ORM object reaches the formatting.
+    """
+
+    client_name: str
+    headline: str
+    outlets: int
+    #: Whole hours left in the window when the run found it — the same number
+    #: the card on Heute leads with.
+    hours_left: int
+
+
+@dataclass(frozen=True, slots=True)
 class ClientAlertGroup:
     """One client's alerts collapsed to a count and its single most important headline."""
 
@@ -159,6 +212,9 @@ class AlertSummary:
     subject: str
     body: str
     desktop_message: str
+    #: The crises being offered, carried so a caller (or a test) can assert that
+    #: an offer rode along rather than parsing it back out of the body.
+    proposals: list[ProposedCrisis] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,15 +384,38 @@ def _format_subject(total: int, clients: int) -> str:
     return f"NewsPulse: {total} {alert_word} across {clients} {client_word}"
 
 
-def _format_body(groups: Sequence[ClientAlertGroup]) -> str:
-    """Multi-line body: one bullet per client with its count and top headline."""
+def _format_body(
+    groups: Sequence[ClientAlertGroup], proposals: Sequence[ProposedCrisis] = ()
+) -> str:
+    """Multi-line body: one bullet per client with its count and top headline.
+
+    A proposal, when there is one, is a paragraph under the bullets and not a
+    bullet among them. It is a different kind of sentence: the alerts are a
+    report on what happened, and this is a question with a button behind it.
+    """
     total = sum(group.count for group in groups)
     header = f"{total} alert(s) fired across {len(groups)} client(s):"
     bullets = [
         f"• {group.client_name} ({group.count}): {group.top_headline}"
         for group in groups
     ]
-    return "\n".join([header, "", *bullets])
+    if not proposals:
+        return "\n".join([header, "", *bullets])
+    offered = [
+        f"• {p.client_name}: {p.headline} ({p.outlets} outlet(s))" for p in proposals
+    ]
+    return "\n".join(
+        [
+            header,
+            "",
+            *bullets,
+            "",
+            _PROPOSAL_HEADER,
+            *offered,
+            "",
+            _PROPOSAL_FOOTER,
+        ]
+    )
 
 
 def _one_line(text: str) -> str:
@@ -350,32 +429,53 @@ def _one_line(text: str) -> str:
     return " ".join(text.split())
 
 
-def _format_desktop_message(groups: Sequence[ClientAlertGroup]) -> str:
-    """Compact one-liner for a desktop notification (title carries the counts)."""
+def _format_desktop_message(
+    groups: Sequence[ClientAlertGroup], proposals: Sequence[ProposedCrisis] = ()
+) -> str:
+    """Compact one-liner for a desktop notification (title carries the counts).
+
+    A proposal is appended as a short tail rather than replacing the lead: a
+    desktop notification has one line, and dropping the alerts for the offer
+    would hide the coverage the offer is *about*.
+    """
     top = groups[0]
     lead = f"{top.client_name} ({top.count}): {top.top_headline}"
     others = len(groups) - 1
     message = f"{lead} +{others} more client(s)" if others else lead
+    if proposals:
+        names = ", ".join(p.client_name for p in proposals)
+        message = f"{message} — {_PROPOSAL_TAIL}: {names}"
     return _one_line(message)
 
 
-def build_summary(alerts: Sequence[FiredAlert]) -> AlertSummary | None:
+def build_summary(
+    alerts: Sequence[FiredAlert], proposals: Sequence[ProposedCrisis] = ()
+) -> AlertSummary | None:
     """Render an :class:`AlertSummary`, or ``None`` when there are no alerts.
 
     Returning ``None`` for the empty case is the contract behind "no alerts, no
     notification": callers branch on it and never send an empty summary.
+
+    A proposal does **not** change that, and that is deliberate rather than an
+    oversight. DEC-1's offer appears "auf Heute und in der Benachrichtigung", and
+    the acceptance criterion beside it forbids any notification beyond the
+    alerting that already fires. So an offer rides along inside a summary that
+    was going out anyway; on a morning with no alerts it waits on Heute, where it
+    costs nobody an interruption.
     """
     if not alerts:
         return None
     groups = _group_alerts(alerts)
     total = sum(group.count for group in groups)
+    offered = list(proposals)
     return AlertSummary(
         total=total,
         client_count=len(groups),
         groups=groups,
         subject=_format_subject(total, len(groups)),
-        body=_format_body(groups),
-        desktop_message=_format_desktop_message(groups),
+        body=_format_body(groups, offered),
+        desktop_message=_format_desktop_message(groups, offered),
+        proposals=offered,
     )
 
 
@@ -519,6 +619,7 @@ def notify_alerts(
     alerts: Sequence[FiredAlert],
     config: NotifyConfig,
     *,
+    proposals: Sequence[ProposedCrisis] = (),
     send_desktop: DesktopSender | None = None,
     send_email: EmailSender | None = None,
 ) -> NotifyResult:
@@ -536,7 +637,7 @@ def notify_alerts(
     desktop = send_desktop or _send_desktop
     email = send_email or _send_email
 
-    summary = build_summary(alerts)
+    summary = build_summary(alerts, proposals)
     if summary is None:
         _log.debug("no alerts fired; no notification sent")
         return NotifyResult(sent=False, channel=config.channel, reason="no-alerts")
@@ -574,6 +675,134 @@ def notify_alerts(
     )
 
 
+def _opportunity_summary(found: Sequence[FoundOpportunity]) -> AlertSummary:
+    """Render fresh opportunities for delivery. Same wording on every channel,
+    like :func:`build_summary`; the caller guarantees ``found`` is non-empty."""
+    clients = sorted({item.client_name for item in found})
+    word = "opportunity" if len(found) == 1 else "opportunities"
+    subject = (
+        f"NewsPulse: {len(found)} newsjack {word} for {', '.join(clients)}"
+    )
+    bullets = [
+        f"• {item.client_name}: {item.headline} "
+        f"({item.outlets} outlet(s), ~{item.hours_left}h left)"
+        for item in found
+    ]
+    body = "\n".join(
+        [
+            "The fast lane found an opening. The window is already running:",
+            "",
+            *bullets,
+            "",
+            "Open NewsPulse — the card on Heute carries the remaining time and "
+            "what the standing rests on.",
+        ]
+    )
+    lead = found[0]
+    message = f"{lead.client_name}: {lead.headline} (~{lead.hours_left}h left)"
+    if len(found) > 1:
+        message = f"{message} +{len(found) - 1} more"
+    return AlertSummary(
+        total=len(found),
+        client_count=len(clients),
+        groups=[],
+        subject=subject,
+        body=body,
+        desktop_message=_one_line(message),
+    )
+
+
+def notify_opportunities(
+    found: Sequence[FoundOpportunity],
+    config: NotifyConfig | None = None,
+    *,
+    send_desktop: DesktopSender | None = None,
+    send_email: EmailSender | None = None,
+) -> NotifyResult:
+    """Announce the light run's fresh opportunities; never raises.
+
+    The guards mirror :func:`notify_alerts`, and the first one carries the
+    fast lane's own promise: **no finding, no noise.** A run over a quiet radar
+    — the great majority of them, eight a day — sends nothing at all, so the
+    channel stays trusted for the runs that do. Only *fresh* rows belong here
+    (what :func:`newspulse.job.run_newsjack` just stored), never the standing
+    stock, or every three-hour tick would re-announce the same opening.
+    """
+    resolved = config or NotifyConfig.from_env()
+    desktop = send_desktop or _send_desktop
+    email = send_email or _send_email
+    if not found:
+        return NotifyResult(
+            sent=False, channel=resolved.channel, reason="no-opportunities"
+        )
+    if resolved.channel is Channel.OFF:
+        return NotifyResult(
+            sent=False,
+            channel=Channel.OFF,
+            reason="channel-off",
+            alert_count=len(found),
+        )
+    summary = _opportunity_summary(found)
+    try:
+        _dispatch(summary, resolved, desktop, email)
+    except Exception as exc:  # noqa: BLE001 — notification must never fail the run
+        _log.error(
+            "opportunity notification via %s failed: %s; "
+            "run data already persisted, not rolled back",
+            resolved.channel.value,
+            exc,
+        )
+        return NotifyResult(
+            sent=False,
+            channel=resolved.channel,
+            reason="delivery-error",
+            alert_count=len(found),
+            error=str(exc),
+        )
+    _log.info(
+        "delivered %d-opportunity notification via %s",
+        len(found),
+        resolved.channel.value,
+    )
+    return NotifyResult(
+        sent=True,
+        channel=resolved.channel,
+        reason="delivered",
+        alert_count=len(found),
+    )
+
+
+def collect_proposals(session: Session) -> list[ProposedCrisis]:
+    """The crises the tool is offering right now, one per mandate at most.
+
+    Read-only, like everything else this module does after a run: it asks
+    :func:`newspulse.crisis.propose`, which writes nothing, changes no cadence and
+    drafts no text. A mandate already in a declared crisis has nothing left to be
+    offered and is skipped by ``propose`` itself.
+
+    Mandates only, and active ones only — the same roster Heute puts the offer in
+    front of, so the mail and the page never disagree about whether there is a
+    question outstanding.
+    """
+    mandates = session.scalars(
+        select(Client)
+        .where(Client.is_competitor.is_(False), Client.active.is_(True))
+        .order_by(Client.name)
+    ).all()
+    offered: list[ProposedCrisis] = []
+    for mandate in mandates:
+        proposal = crisis.propose(session, mandate)
+        if proposal is not None:
+            offered.append(
+                ProposedCrisis(
+                    client_name=mandate.name,
+                    headline=proposal.headline,
+                    outlets=proposal.outlets,
+                )
+            )
+    return offered
+
+
 def notify_after_run(
     session: Session,
     run: Run,
@@ -587,11 +816,22 @@ def notify_after_run(
     Resolves the config from the environment when not supplied, reads the alerts
     flagged since the run started, and hands off to :func:`notify_alerts`. Read-only
     and non-raising: safe to call unconditionally after a sweep has committed.
+
+    DEC-1's offer is collected here and travels *inside* that same notification —
+    never as one of its own. See :func:`build_summary`.
     """
     resolved = config or NotifyConfig.from_env()
     alerts = collect_fired_alerts(session, since=run.started_at)
     return notify_alerts(
-        alerts, resolved, send_desktop=send_desktop, send_email=send_email
+        alerts,
+        resolved,
+        # Only worth collecting when something will carry them: with no alerts,
+        # build_summary returns None and nothing goes out (see its docstring), so
+        # a quiet morning skips the per-mandate clustering pass entirely. The
+        # offer waits on Heute either way.
+        proposals=collect_proposals(session) if alerts else (),
+        send_desktop=send_desktop,
+        send_email=send_email,
     )
 
 
@@ -599,6 +839,9 @@ __all__ = [
     "Channel",
     "NotifyConfigError",
     "FiredAlert",
+    "FoundOpportunity",
+    "notify_opportunities",
+    "ProposedCrisis",
     "ClientAlertGroup",
     "AlertSummary",
     "NotifyResult",
@@ -607,6 +850,7 @@ __all__ = [
     "resolve_channel",
     "build_summary",
     "collect_fired_alerts",
+    "collect_proposals",
     "notify_alerts",
     "notify_after_run",
 ]

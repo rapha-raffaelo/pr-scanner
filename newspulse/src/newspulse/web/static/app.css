@@ -525,6 +525,50 @@ a:hover { text-decoration: underline; }
   flex-wrap: wrap;
 }
 
+/* --- Left rail: the crisis, and the offer of one -------------------------
+   Two cards that sit above the alert cards. They are drawn apart from them on
+   purpose: an alert is a story to read, and these two are a decision. The offer
+   is deliberately the quieter of the two — DEC-1 locked "the tool proposes, a
+   person declares", and a proposal that shouted would be the emergency it is
+   only asking about. */
+.crisis {
+  background: var(--card); border-radius: var(--radius);
+  padding: var(--s4); margin-bottom: var(--s2);
+}
+.crisis--open { border: 1px solid var(--alert); background: var(--alert-wash); }
+.crisis--offer { border: 1px dashed var(--line-strong); }
+.crisis__head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 5px;
+}
+.crisis__badge {
+  background: var(--alert); color: #fff; border-radius: 5px;
+  padding: 1px 7px; font-size: var(--t-caption2); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.crisis__badge--offer { background: var(--warn); }
+.crisis__level, .crisis__why {
+  font-size: var(--t-caption); font-weight: 600; color: var(--ink-2);
+}
+.crisis .cli {
+  font-size: var(--t-caption); font-weight: 700; color: var(--ink);
+  text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 4px;
+}
+.crisis .hl { font-size: var(--t-subhead); font-weight: 600; margin-bottom: 4px; }
+.crisis__counts, .crisis__note {
+  font-size: var(--t-caption2); color: var(--muted);
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-bottom: var(--s2);
+}
+.crisis__note { display: block; }
+.crisis__close { display: flex; gap: 6px; flex-wrap: wrap; }
+.crisis__close input[type="text"] {
+  flex: 1 1 10rem; min-width: 0;
+  font-size: var(--t-caption); padding: 4px 7px;
+  border: 1px solid var(--line-strong); border-radius: 6px;
+}
+.triage-btn--crisis { color: var(--alert); font-weight: 700; }
+
 /* --- Right pane: ranked feed -------------------------------------------- */
 .item {
   background: var(--card);
@@ -1993,3 +2037,265 @@ button:disabled { opacity: .55; cursor: default; }
 .vis-cell--unmeasured b { color: var(--warn); }
 
 .vis-foot { font-size: var(--t-caption); color: var(--faint); margin-top: var(--s4); max-width: 76ch; }
+
+/* --- Der Redaktionsplan (DEC-5 A: Monat für Monat) -------------------------
+   Here rather than in a <style> in client_plan.html because the plan document
+   beside it carries its own self-contained copy; two page-local blocks for the
+   same component drift, and the page-local one wins only on its own page.
+
+   The classes the mock declares, in the mock's own colours — the four source
+   classes it names, plus the fifth (a theme with measured resonance) that is a
+   hook class in the engine and needs a swatch of its own rather than being
+   folded into one of the four. */
+:root {
+  --hook-study: #5856d6;
+  --hook-reg: var(--warn);
+  --hook-event: var(--tint);
+  --hook-thema: var(--teal);
+  --hook-archiv: var(--good);
+}
+
+.planhead { display: flex; align-items: flex-start; gap: var(--s4); flex-wrap: wrap; margin-bottom: var(--s5); }
+.planhead__d { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s1); max-width: 64ch; }
+.planhead__r { margin-left: auto; display: flex; gap: var(--s2); align-items: center; }
+/* The download is an <a>, so it needs the button's own line-height to sit level
+   with the recompute button beside it. */
+.planhead__r .btn { display: inline-flex; align-items: center; }
+
+.plankey { display: flex; gap: var(--s4); flex-wrap: wrap; font-size: var(--t-caption);
+           color: var(--muted); margin-bottom: var(--s5); }
+.plankey span { display: flex; align-items: center; gap: 5px; }
+.plankey__b { width: 8px; height: 8px; border-radius: 2px; display: inline-block; background: var(--neutral); }
+.plankey__b--study { background: var(--hook-study); }
+.plankey__b--reg { background: var(--hook-reg); }
+.plankey__b--event { background: var(--hook-event); }
+.plankey__b--thema { background: var(--hook-thema); }
+.plankey__b--archiv { background: var(--hook-archiv); }
+
+/* The month is the unit. A card each, and an empty one drawn dashed rather than
+   left out — a month absent from a six-month plan reads as unchecked. */
+.month { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+         margin-bottom: var(--s4); overflow: hidden; }
+.month--empty { border-style: dashed; background: transparent; }
+.month__h { display: flex; align-items: baseline; gap: var(--s3); padding: var(--s4) var(--s4) var(--s3); flex-wrap: wrap; }
+.month__n { font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.015em; }
+.month__s { font-size: var(--t-caption); color: var(--muted); }
+.month__r { margin-left: auto; font-size: var(--t-caption); color: var(--muted); }
+.month__empty { padding: var(--s4); font-size: var(--t-footnote); color: var(--muted); }
+.month__empty b { color: var(--warn); font-weight: 600; }
+
+.hook { display: flex; gap: var(--s3); padding: var(--s3) var(--s4);
+        border-top: 1px solid var(--line); align-items: flex-start; }
+.hook--out { opacity: 0.55; }
+/* The date block. Two lines, tabular numerals, and the "soft" variant for a hook
+   whose source names only a month — the missing day is never drawn as "01". */
+.hook__d { width: 56px; flex: none; text-align: center; padding-top: 2px; }
+.hook__dd { font-size: var(--t-title3); font-weight: 700; line-height: 1;
+            font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.hook__dm { font-size: var(--t-caption2); color: var(--faint); text-transform: uppercase;
+            letter-spacing: 0.05em; margin-top: 2px; }
+.hook__d--soft .hook__dd { color: var(--faint); font-size: var(--t-subhead); font-weight: 600; }
+.hook__b { min-width: 0; flex: 1; }
+.hook__t { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.hook__title { font-size: var(--t-subhead); font-weight: 600; }
+.hook__w { font-size: var(--t-footnote); color: var(--muted); margin-top: 3px; line-height: 1.5; }
+.hook__e { font-size: var(--t-footnote); margin-top: 6px; display: flex; gap: var(--s3);
+           align-items: center; flex-wrap: wrap; }
+.hook__src { color: var(--faint); }
+.hook__gone { color: var(--warn); }
+.hook__a { margin-left: auto; display: flex; gap: 6px; align-items: center; flex: none;
+           padding-top: 2px; flex-wrap: wrap; justify-content: flex-end; max-width: 260px; }
+.hook__fmt { font-size: var(--t-caption); color: var(--faint); }
+.hook__move { display: flex; gap: 4px; align-items: center; }
+.hook__move select { font-size: var(--t-caption); padding: 2px 4px; }
+
+/* The class tags. The base `.tag` is the global one; these are its five plan
+   variants, one per Herkunftsklasse, in the mock's colours. */
+.tag--study { background: rgba(88, 86, 214, 0.10); color: var(--hook-study); }
+.tag--reg { background: var(--warn-wash); color: var(--hook-reg); }
+.tag--event { background: var(--tint-wash); color: var(--hook-event); }
+.tag--thema { background: rgba(0, 113, 164, 0.10); color: var(--hook-thema); }
+.tag--archiv { background: var(--good-wash); color: var(--hook-archiv); }
+.tag--done { background: var(--good-wash); color: var(--good); font-weight: 600; }
+
+/* A mandate with neither themes nor market signals: what is missing, and where
+   it is filled in. Not six empty months, which would blame the market. */
+.plangap { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+           padding: var(--s5); max-width: 72ch; }
+.plangap__h { font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.015em; }
+.plangap__d { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s2); }
+.plangap__list { list-style: none; margin-top: var(--s4); padding: 0; }
+.plangap__list li { display: flex; gap: var(--s3); align-items: baseline; flex-wrap: wrap;
+                    font-size: var(--t-subhead); padding: var(--s2) 0;
+                    border-top: 1px solid var(--line); }
+.plangap__miss { color: var(--warn); font-weight: 600; }
+
+.planfoot { font-size: var(--t-caption); color: var(--faint); margin-top: var(--s5); max-width: 78ch; }
+
+/* --- Die Krisenseite (UHR-03, DEC-2 option C: two columns) -------------------
+   The k- prefix keeps this page's layout classes apart from the Heute rail's
+   .crisis cards, which stay as they are. Colours and spacing come from the
+   mock's own system: red for what runs about us, tint for what we set against
+   it, warn for what waits, and the gap box dashed because it names an absence. */
+
+.kbar { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--alert);
+        border-radius: var(--radius); padding: var(--s4) var(--s5); margin-bottom: var(--s4);
+        display: flex; align-items: flex-start; gap: var(--s5); flex-wrap: wrap; }
+.kbar--closed { border-left-color: var(--line-strong); }
+.kbar__b { min-width: 0; flex: 1; }
+.kbar__k { font-size: var(--t-caption); font-weight: 700; text-transform: uppercase;
+           letter-spacing: 0.06em; color: var(--alert); }
+.kbar--closed .kbar__k { color: var(--muted); }
+.kbar__t { font-size: var(--t-title2); font-weight: 700; letter-spacing: -0.02em;
+           margin: var(--s1) 0 0; max-width: 44ch; }
+.kbar__m { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s2); }
+.kbar__stat { display: flex; gap: var(--s5); margin-right: var(--s5); }
+.kbar__n { font-size: var(--t-large); font-weight: 700; letter-spacing: -0.03em;
+           line-height: 1; font-variant-numeric: tabular-nums; }
+.kbar__n--hot { color: var(--alert); }
+.kbar__n--us { color: var(--tint); }
+.kbar__n--wait { color: var(--warn); }
+.kbar__l { font-size: var(--t-caption); color: var(--muted); margin-top: 3px; }
+.kbar__r { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+.kbar__close { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.kbar__close input[type="text"] { font: inherit; font-size: var(--t-footnote);
+        padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-s);
+        min-width: 210px; }
+.btn--stop { background: var(--fill); color: var(--alert); }
+
+.kprev { font-size: var(--t-footnote); color: var(--muted); margin: 0 0 var(--s4); }
+
+.ktwo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); align-items: start; }
+@media (max-width: 1020px) { .ktwo { grid-template-columns: 1fr; } }
+
+.kcol__h { display: flex; align-items: baseline; gap: var(--s2); margin-bottom: var(--s3);
+           padding: 0 var(--s1); flex-wrap: wrap; }
+.kcol__t { font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.015em; }
+.kcol__s { font-size: var(--t-caption); color: var(--muted); }
+.kcol__r { margin-left: auto; }
+.kcol__empty { font-size: var(--t-footnote); color: var(--muted); padding: var(--s2) var(--s1); }
+
+.kcard { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+         padding: var(--s3) var(--s4); margin-bottom: var(--s3); }
+.kcard--them { border-left: 3px solid var(--alert); }
+.kcard--us { border-left: 3px solid var(--tint); }
+.kcard--wait { border-left: 3px solid var(--warn); }
+.kcard__h { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.kcard__src { font-size: var(--t-footnote); font-weight: 600; color: var(--ink-2); }
+.kcard__time { margin-left: auto; font-size: var(--t-caption); color: var(--faint);
+               font-variant-numeric: tabular-nums; }
+.kcard__t { font-size: var(--t-subhead); font-weight: 500; margin: var(--s2) 0 0; line-height: 1.45; }
+.kcard__d { font-size: var(--t-footnote); color: var(--muted); margin: var(--s2) 0 0; line-height: 1.5; }
+.kcard__q { font-size: var(--t-footnote); color: var(--ink-2); margin: var(--s2) 0 0; line-height: 1.55;
+            border-left: 2px solid var(--line-strong); padding-left: var(--s3); white-space: pre-line; }
+.kcard__f { font-size: var(--t-footnote); margin-top: var(--s3); display: flex; gap: var(--s3);
+            align-items: center; flex-wrap: wrap; }
+.kcard__meta { color: var(--muted); }
+
+.kpill { font-size: var(--t-caption); padding: 1px 8px; border-radius: 20px;
+         background: var(--fill); color: var(--muted); white-space: nowrap; }
+.kpill--neg { background: var(--alert-wash); color: var(--alert); }
+.kpill--ok { background: var(--good-wash); color: var(--good); }
+.kpill--wait { background: var(--warn-wash); color: var(--warn); }
+
+/* The box between the columns: it names an absence, so it is dashed, and it is
+   not a card because nothing in it has happened yet. */
+.kgap { background: var(--fill-2); border: 1px dashed var(--line-strong); border-radius: var(--radius);
+        padding: var(--s3) var(--s4); margin-bottom: var(--s3); font-size: var(--t-footnote);
+        color: var(--muted); }
+.kgap b { color: var(--warn); font-weight: 600; }
+
+.kesc { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+        margin-top: var(--s4); }
+.kesc__h { padding: var(--s3) var(--s4); font-size: var(--t-subhead); font-weight: 600; }
+.kesc__r { display: flex; align-items: baseline; gap: var(--s3); padding: 7px var(--s4);
+           border-top: 1px solid var(--line); font-size: var(--t-subhead); }
+.kesc__role { width: 118px; flex: none; color: var(--muted); font-size: var(--t-footnote); }
+.kesc__miss { color: var(--warn); font-size: var(--t-footnote); }
+
+.ktl { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
+.ktl__row { display: flex; gap: var(--s3); align-items: baseline; padding: 7px var(--s4);
+            border-top: 1px solid var(--line); font-size: var(--t-footnote); }
+.ktl__row:first-child { border-top: 0; }
+.ktl__at { flex: none; width: 118px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.ktl__what { flex: none; width: 118px; font-weight: 600; color: var(--ink-2); }
+.ktl__d { min-width: 0; }
+.ktl__src { color: var(--muted); }
+
+.kfoot { font-size: var(--t-caption); color: var(--faint); margin-top: var(--s5); max-width: 76ch; }
+
+/* The two-button offer on the Mandantenkarte (DEC-1), and the hot tab while a
+   crisis is open. */
+.koffer { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap;
+          border: 1px dashed var(--line-strong); border-radius: var(--radius);
+          padding: var(--s2) var(--s4); margin: calc(var(--s6) * -1 + var(--s2)) 0 var(--s6); }
+.koffer__badge { font-size: var(--t-caption); font-weight: 700; background: var(--warn);
+                 color: #fff; border-radius: 5px; padding: 1px 7px; }
+.koffer__t { font-size: var(--t-subhead); font-weight: 600; min-width: 0; }
+.koffer__why { font-size: var(--t-caption); color: var(--muted); }
+.subtabs > a.subtabs__hot { color: var(--alert); font-weight: 600; }
+.subtabs > a.subtabs__hot.active { border-bottom-color: var(--alert); color: var(--alert); }
+
+/* The offer card on Heute grew a second button (Verwerfen). */
+.crisis__acts { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
+
+/* --- The fast lane on Heute (UHR-05, DEC-6 A) ----------------------------
+   Open opportunities as a strip of cards above the day's coverage. Drawn
+   with the accent rather than the alert palette on purpose: an opportunity
+   is an opening, not an emergency, and a strip that shouted red would spend
+   the crisis colour on good news. The remaining time is a number in the
+   card's head — the ten-second decision is "is it worth it, and is there
+   still time", and a colour answers neither. */
+.njacks { margin-bottom: var(--s4); }
+.njacks__row {
+  display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.njack {
+  background: var(--card); border: 1px solid var(--accent);
+  border-radius: var(--radius); padding: var(--s4);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.njack__head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+}
+.njack__badge {
+  background: var(--accent); color: #fff; border-radius: 5px;
+  padding: 1px 7px; font-size: var(--t-caption2); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.njack__left {
+  font-size: var(--t-caption); font-weight: 700; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.njack__head .clichip { margin-left: auto; }
+.njack .hl { font-size: var(--t-subhead); font-weight: 600; }
+.njack .meta {
+  font-size: var(--t-caption2); color: var(--muted);
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+}
+.njack__standing { font-size: var(--t-caption); color: var(--ink-2); margin: 0; }
+.njack__label {
+  font-weight: 700; color: var(--muted); text-transform: uppercase;
+  font-size: var(--t-caption2); letter-spacing: 0.03em; margin-right: 4px;
+}
+.njack__acts {
+  display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap;
+  margin-top: auto;
+}
+.njack__texts { font-size: var(--t-caption); font-weight: 600; }
+.triage-btn--write { color: var(--accent); font-weight: 700; }
+/* The cap's visible name, under the cards it thinned. */
+.njacks__cut { font-size: var(--t-caption); color: var(--muted); margin: var(--s2) 0 0; }
+
+/* The mandate's archive of concluded opportunities, on the Archiv tab. */
+.njarch { background: var(--card); border-radius: var(--radius); margin-bottom: var(--s5); }
+.njarch__row {
+  padding: var(--s3) var(--s4); border-top: 1px solid var(--line);
+  font-size: var(--t-caption);
+}
+.njarch__row:first-child { border-top: 0; }
+.njarch__hl { font-weight: 600; font-size: var(--t-subhead); }
+.njarch__meta { color: var(--muted); font-size: var(--t-caption2);
+                display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.njarch__out { color: var(--ink-2); }

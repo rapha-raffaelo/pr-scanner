@@ -1,0 +1,236 @@
+{# Die Krisenseite, in the shape DEC-2 C locks: two columns.
+
+   Left, what runs about us, grouped by story. Right, what we have set against
+   it. Between them a box naming what nothing of ours answers yet — the crisis
+   is exactly that distance, and the page shows it rather than making somebody
+   compute it. The Zeitleiste sits one click away (?zeitleiste=1) and becomes
+   the after-action record when the crisis closes.
+
+   Every style rule lives in app.css, the same discipline the plan page keeps:
+   a page-local <style> block is how a shared class breaks on the second page
+   that uses it. #}
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Krise") }} · {{ client.name }} · RauteOS{% endblock %}
+
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'krise' %}
+{% include '_client_tabs.html' %}
+
+{% if note %}
+  <p class="notice">{{ note }}</p>
+{% endif %}
+
+<div class="kbar{% if crisis.closed_at %} kbar--closed{% endif %}">
+  <div class="kbar__b">
+    <div class="kbar__k">
+      {% if crisis.closed_at %}
+        {{ t("Krise geschlossen") }} &middot;
+        {{ t("offen von") }} {{ crisis.declared_at | de_datetime }}
+        {{ t("bis") }} {{ crisis.closed_at | de_datetime }}
+      {% else %}
+        {{ t("Krise offen seit") }}
+        {%- if duration.days %} {{ duration.days }} {{ t("Tg") }}{% endif %}
+        {{ duration.hours }} {{ t("Std") }} {{ duration.minutes }} {{ t("Min") }}
+      {% endif %}
+      &middot; {{ t("Stufe") }} {{ crisis.level }} {{ t("von") }} {{ level_max }}
+    </div>
+    <h1 class="kbar__t">{{ crisis.article.title }}</h1>
+    <p class="kbar__m">
+      {{ t("Erklärt von") }} {{ crisis.declared_by }} {{ t("um") }} {{ crisis.declared_at | de_when }}.
+      {% if crisis.closed_at %}
+        {{ t("Grund der Schließung:") }} {{ crisis.close_reason }}
+      {% else %}
+        {{ t("Solange sie offen ist, läuft der Sweep alle %(n)s Minuten.") | format(n=sweep_minutes) }}
+      {% endif %}
+    </p>
+  </div>
+  <div class="kbar__stat">
+    <div><div class="kbar__n kbar__n--hot">{{ coverage_count }}</div><div class="kbar__l">{{ t("über uns") }}</div></div>
+    <div><div class="kbar__n kbar__n--us">{{ texts | length }}</div><div class="kbar__l">{{ t("von uns") }}</div></div>
+    <div><div class="kbar__n kbar__n--wait">{{ requests | length }}</div><div class="kbar__l">{{ t("offen") }}</div></div>
+  </div>
+  <div class="kbar__r">
+    {% if zeitleiste %}
+      <a class="btn btn--ghost" href="/client/{{ client.id }}/krise?krise={{ crisis.id }}">{{ t("Zwei Spalten") }}</a>
+    {% else %}
+      <a class="btn btn--ghost" href="/client/{{ client.id }}/krise?krise={{ crisis.id }}&amp;zeitleiste=1">{{ t("Zeitleiste") }}</a>
+    {% endif %}
+    {% if not crisis.closed_at %}
+      {# The reason is required at the button as well as in ``crisis.close``:
+         "why did we stand this down" is the first question the review asks. #}
+      <form method="post" action="/crisis/{{ crisis.id }}/close" class="kbar__close">
+        <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/krise">
+        <input type="text" name="reason" required maxlength="200"
+               placeholder="{{ t('Grund: warum wird sie geschlossen?') }}">
+        <button type="submit" class="btn btn--stop">{{ t("Krise schließen") }}</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if previous %}
+  <p class="kprev">
+    {{ t("Frühere Krisen dieses Mandats:") }}
+    {% for row in previous %}
+      <a href="/client/{{ client.id }}/krise?krise={{ row.id }}">{{ row.declared_at | de_date }}</a>{% if not loop.last %} &middot; {% endif %}
+    {% endfor %}
+  </p>
+{% endif %}
+
+{% if zeitleiste %}
+  {# The whole crisis in time order. During the crisis it is read from the
+     bottom; afterwards from the top, and then it is the after-action record —
+     no second, generated document stands above it. #}
+  <section class="ktl" aria-label="{{ t('Zeitleiste') }}">
+    {% for event in timeline %}
+      <div class="ktl__row">
+        <span class="ktl__at">{{ event.at | de_datetime }}</span>
+        <span class="ktl__what">{{ t(event.label) }}</span>
+        <span class="ktl__d">{{ event.detail }}{% if event.source %} <span class="ktl__src">&middot; {{ event.source }}</span>{% endif %}</span>
+      </div>
+    {% endfor %}
+  </section>
+{% else %}
+
+<div class="ktwo">
+
+  <section aria-label="{{ t('Was gesagt wird') }}">
+    <div class="kcol__h">
+      <span class="kcol__t">{{ t("Was gesagt wird") }}</span>
+      <span class="kcol__s">
+        {{ coverage_count }} {{ t("Beiträge") }}, {{ outlet_count }} {{ t("Medien") }},
+        {% if stories | length == 1 %}{{ t("eine Story") }}{% else %}{{ stories | length }} {{ t("Storys") }}{% endif %}
+      </span>
+      {% if negative_count %}
+        <span class="kcol__r"><span class="kpill kpill--neg">{{ negative_count }} {{ t("negativ") }}</span></span>
+      {% endif %}
+    </div>
+
+    {% for story in stories %}
+      {% for row in story.members %}
+        <article class="kcard kcard--them">
+          <div class="kcard__h">
+            <span class="kcard__src">{{ row.source }}</span>
+            {% if row.tonality == 'negativ' %}<span class="kpill kpill--neg">{{ t("negativ") }}</span>
+            {% elif row.tonality == 'positiv' %}<span class="kpill kpill--ok">{{ t("positiv") }}</span>{% endif %}
+            {% if row.is_trigger %}<span class="kpill kpill--neg">{{ t("Auslöser") }}</span>{% endif %}
+            {% if loop.first and story.is_syndicated %}
+              <span class="kpill">{{ story.pickup_count }} {{ t("Aufgriffe") }}</span>
+            {% endif %}
+            <span class="kcard__time">{{ row.published_at | de_when }}</span>
+          </div>
+          <p class="kcard__t">{{ row.headline }}</p>
+          {% if row.summary %}<p class="kcard__d">{{ row.summary }}</p>{% endif %}
+          <div class="kcard__f">
+            <a href="{{ row.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ t("Öffnen") }}</a>
+          </div>
+        </article>
+      {% endfor %}
+    {% else %}
+      <p class="kcol__empty">{{ t("Kein gespeicherter Beitrag im Fenster dieser Krise.") }}</p>
+    {% endfor %}
+  </section>
+
+  <section aria-label="{{ t('Was wir sagen') }}">
+    <div class="kcol__h">
+      <span class="kcol__t">{{ t("Was wir sagen") }}</span>
+      <span class="kcol__s">
+        {% set released = texts | selectattr("released") | list | length %}
+        {{ released }} {{ t("freigegeben") }}, {{ texts | length - released }} {{ t("im Entwurf") }}
+      </span>
+      {% if not crisis.closed_at %}
+        <span class="kcol__r">
+          <form method="post" action="/client/{{ client.id }}/krise/text">
+            <button type="submit" class="btn btn--sm"{% if busy %} disabled{% endif %}>
+              {% if busy %}{{ t("Wird geschrieben…") }}{% else %}{{ t("Text schreiben") }}{% endif %}
+            </button>
+          </form>
+        </span>
+      {% endif %}
+    </div>
+
+    {% if not crisis.closed_at and gaps.any %}
+      {# The box between the columns: the crisis is the distance, and this names
+         it instead of making somebody compute it. Every line is a stored fact. #}
+      <div class="kgap">
+        {% for name in gaps.missing_formats %}
+          {{ t("Noch kein Text im Format") }} <b>{{ name }}</b>.
+        {% endfor %}
+        {% if gaps.open_requests %}
+          <b>
+            {% if gaps.open_requests == 1 %}{{ t("Eine Anfrage ist offen") }}{% else %}{{ gaps.open_requests }} {{ t("Anfragen sind offen") }}{% endif %}</b>{% if gaps.next_deadline %}, {{ t("Frist") }}: {{ gaps.next_deadline }}{% endif %}.
+        {% endif %}
+        {% if gaps.missing_contact %}
+          <b>{{ t("Im Profil fehlt der Krisenkontakt.") }}</b>
+          <a href="/client/{{ client.id }}/kickoff">{{ t("Im Kickoff nachtragen") }} →</a>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% for view in texts %}
+      <article class="kcard kcard--us">
+        <div class="kcard__h">
+          <span class="kcard__src">{{ view.name }}{% if view.title %} · {{ view.title }}{% endif %}</span>
+          {% if view.state == 'ungeprueft' %}
+            <span class="kpill kpill--wait">{{ t("Ungeprüft") }}</span>
+          {% elif view.state == 'einwand' %}
+            <span class="kpill kpill--neg">{{ t("Einwand") }}</span>
+          {% else %}
+            <span class="kpill kpill--ok">{{ t("Geprüft") }}</span>
+          {% endif %}
+          {% if view.released %}<span class="kpill kpill--ok">{{ t("Freigegeben") }}</span>{% endif %}
+          <span class="kcard__time">{{ (view.released_at or view.generated_at) | de_when }}</span>
+        </div>
+        <p class="kcard__q">{{ view.body }}</p>
+        {% if view.speaker %}
+          <div class="kcard__f"><span class="kcard__meta">{{ t("Sprecher") }}: {{ view.speaker }}</span></div>
+        {% endif %}
+      </article>
+    {% else %}
+      <p class="kcol__empty">{{ t("Noch kein Text zu dieser Krise.") }}</p>
+    {% endfor %}
+
+    {% for view in requests %}
+      <article class="kcard kcard--wait">
+        <div class="kcard__h">
+          <span class="kcard__src">{{ t("Anfrage") }}: {{ view.sender }}{% if view.outlet %}, {{ view.outlet }}{% endif %}</span>
+          {% if view.deadline %}
+            <span class="kpill kpill--wait">{{ t("Frist") }} {{ view.deadline }}</span>
+          {% else %}
+            <span class="kpill">{{ t("keine Frist genannt") }}</span>
+          {% endif %}
+          <span class="kcard__time">{{ view.received_at | de_when }}</span>
+        </div>
+        <p class="kcard__d">{{ view.snippet }}</p>
+      </article>
+    {% endfor %}
+
+    <section class="kesc">
+      <div class="kesc__h">{{ t("Wer erreichbar ist") }}</div>
+      {% for row in contacts %}
+        <div class="kesc__r">
+          <span class="kesc__role">{{ t(row.label) }}</span>
+          {% if row.missing %}
+            {# The named gap, not an empty line — and it links to where the
+               field is filled. For the crisis contact this is the most
+               important information on the page. #}
+            <span class="kesc__miss">{{ t("Nicht im Profil hinterlegt.") }}
+              <a href="/client/{{ client.id }}/kickoff">{{ t("Im Kickoff nachtragen") }} →</a></span>
+          {% else %}
+            <span>{{ row.value }}</span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </section>
+  </section>
+
+</div>
+{% endif %}
+
+<p class="kfoot">
+  {{ t("Die Krise ist der Abstand zwischen den beiden Spalten. Links wächst, was ohne uns läuft, rechts steht, was wir dagegen gesetzt haben, und der Kasten dazwischen sagt, wo nichts steht. Die Zeitleiste liegt einen Klick entfernt und wird beim Schließen zum Nachbericht.") }}
+</p>
+{% endblock %}

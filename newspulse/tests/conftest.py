@@ -248,6 +248,33 @@ def no_market_sweep(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_plan_recompute(monkeypatch):
+    """Keep the sweep's plan recompute out of the tests that are not about it.
+
+    ``job.run`` now recomputes the editorial plan for every mandate whose weekly
+    window is open, and a mandate with any evidenced candidate — a stored future
+    signal, a resonant theme, last year's coverage — costs a model call. Whether
+    a given fixture crosses that line depends on dates the test never thought
+    about, which is the worst kind of flake: a suite that shells out to `claude`
+    only when the seeded archive happens to be a year old.
+
+    Yields the real function, so the tests that are about the wiring can put it
+    back and prove the sweep genuinely reaches it.
+    """
+    from newspulse import job
+
+    original = job._recompute_plans
+
+    def _stub(session, clients, *, now) -> int:
+        """The real signature, so a change to it breaks the suite rather than
+        production: ``lambda *a, **k`` would have accepted anything."""
+        return 0
+
+    monkeypatch.setattr(job, "_recompute_plans", _stub)
+    return original
+
+
+@pytest.fixture(autouse=True)
 def no_theme_settling(monkeypatch):
     """Stop the sweep from proposing themes in a test run.
 

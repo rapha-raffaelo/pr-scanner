@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from collections.abc import Iterable
 from functools import lru_cache
 from importlib import resources
 
@@ -63,9 +64,32 @@ def normalize_outlet(name: str) -> str:
     return _NON_ALNUM_RE.sub("", _TLD_RE.sub("", lowered))
 
 
+def distinct_outlets(names: Iterable[str | None]) -> tuple[str, ...]:
+    """Each outlet once, in order of first appearance, spelled as first seen.
+
+    Identity is :func:`normalize_outlet`'s, not the raw string: "Handelsblatt"
+    and "handelsblatt.de" are one masthead, and counting them twice inflates
+    every "aufgegriffen von N Outlets" figure the tool states — the one number a
+    client cannot check against anything. The first spelling is kept as the
+    display name, because it is what the outlet called itself in the copy that
+    ran; only a name that normalizes to nothing at all falls back to its own
+    stripped form, so two unmappable names stay two outlets.
+    """
+    by_key: dict[str, str] = {}
+    for name in names:
+        raw = (name or "").strip()
+        by_key.setdefault(normalize_outlet(raw) or raw.casefold(), raw)
+    return tuple(by_key.values())
+
+
 @lru_cache(maxsize=1)
-def _tier_table() -> tuple[dict[str, int], dict[int, int]]:
-    """``({normalized outlet: tier}, {tier: adjustment})`` from the packaged TOML.
+def _tier_table() -> tuple[dict[str, int], dict[int, int], dict[str, str]]:
+    """``({outlet: tier}, {tier: adjustment}, {outlet: spelling})`` from the TOML.
+
+    The third map is the table's own spelling of every masthead it lists, keyed
+    the same way as the first. Building it here rather than parsing the file
+    twice: the table is the only place in the tool that knows an outlet is
+    written "Handelsblatt" and not "handelsblatt.de".
 
     Cached: the table is packaged data that cannot change within a process.
     """
@@ -75,6 +99,7 @@ def _tier_table() -> tuple[dict[str, int], dict[int, int]]:
     data = tomllib.loads(raw)
     by_outlet: dict[str, int] = {}
     adjustments: dict[int, int] = {DEFAULT_TIER: 0}
+    spellings: dict[str, str] = {}
     for key, section in data.items():
         if not key.startswith("tier") or not isinstance(section, dict):
             continue
@@ -84,19 +109,33 @@ def _tier_table() -> tuple[dict[str, int], dict[int, int]]:
             normalized = normalize_outlet(outlet)
             if normalized:
                 by_outlet[normalized] = tier
-    return by_outlet, adjustments
+                spellings.setdefault(normalized, outlet)
+    return by_outlet, adjustments, spellings
 
 
 def tier_for(source: str | None) -> int:
     """The tier of ``source``; :data:`DEFAULT_TIER` when it is not listed."""
-    by_outlet, _ = _tier_table()
+    by_outlet, _, _ = _tier_table()
     return by_outlet.get(normalize_outlet(source or ""), DEFAULT_TIER)
 
 
 def adjustment_for(source: str | None) -> int:
     """How many points this outlet's tier adds to (or removes from) a score."""
-    _, adjustments = _tier_table()
+    _, adjustments, _ = _tier_table()
     return adjustments.get(tier_for(source), 0)
+
+
+def display_name(source: str | None) -> str:
+    """How to write this outlet's name where a person reads it.
+
+    The tier table's own spelling for a masthead it lists, so a document naming
+    an outlet in front of a client says "SZ" and not whichever of "SZ.de" or "sz"
+    a feed happened to deliver first. An outlet the table does not list has no
+    canonical spelling to prefer, and keeps the one that ran.
+    """
+    raw = (source or "").strip()
+    _, _, spellings = _tier_table()
+    return spellings.get(normalize_outlet(raw), raw)
 
 
 def effective_importance(importance: int, source: str | None) -> int:
@@ -111,6 +150,8 @@ def effective_importance(importance: int, source: str | None) -> int:
 __all__ = [
     "DEFAULT_TIER",
     "adjustment_for",
+    "display_name",
+    "distinct_outlets",
     "effective_importance",
     "normalize_outlet",
     "tier_for",

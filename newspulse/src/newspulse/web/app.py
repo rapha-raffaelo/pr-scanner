@@ -328,11 +328,20 @@ def create_app() -> FastAPI:
     # Imported here (not at module top) to avoid a circular import: the route
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
-        advisory, archive, assets_view, assistant, client, contacts, guide_routes,
+        advisory, archive, assets_view, assistant, client, contacts,
+        crisis_view, guide_routes,
         language, login, onboarding as onboarding_routes,
-        profile as profile_routes, report as report_routes, rivals_view,
-        runstatus, settings, today, triage, visibility_view,
+        plan_view, profile as profile_routes, report as report_routes,
+        rivals_view, runstatus, settings, today, triage, visibility_view,
     )
+
+    # The workspace chrome asks per mandate whether a Krise tab exists and
+    # whether DEC-1 has a question outstanding. A global for the same reason
+    # ``nav_clients`` is — the tab strip is shared markup and no route should
+    # have to remember to pass it. Registered here rather than at module level
+    # because the route module cannot be imported up top (it imports from this
+    # one); re-assignment on a second create_app() is idempotent.
+    templates.env.globals["crisis_tab"] = crisis_view.crisis_tab
 
     # First, so the sign-in pages exist before anything that needs a session.
     app.include_router(login.router)
@@ -349,6 +358,9 @@ def create_app() -> FastAPI:
     app.include_router(assistant.router)
     app.include_router(language.router)
     app.include_router(triage.router)
+    # The two buttons DEC-1 locked: a person declares the crisis the tool offered
+    # on Heute, and a person stands it down again.
+    app.include_router(crisis_view.router)
     app.include_router(runstatus.router)
     app.include_router(guide_routes.router)
     app.include_router(contacts.router)
@@ -359,6 +371,9 @@ def create_app() -> FastAPI:
     # The other channel: what an assistant answers when somebody asks about this
     # mandate's market, measured weekly by the sweep (DEC-3).
     app.include_router(visibility_view.router)
+    # The long clock: six months of evidenced hooks, and the document a retainer
+    # conversation is held over (DEC-5).
+    app.include_router(plan_view.router)
     return app
 
 

@@ -19,6 +19,7 @@
     {{ t("Vergleichsunternehmen. Hier steht seine Berichterstattung — Impulse, Berichte und Profil führt RauteOS nur für Mandanten.") }}
   </p>
 {% else %}
+{% set kstate = crisis_tab(request, client) %}
 <nav class="subtabs" aria-label="{{ t('Mandant') }}">
   <div class="subtabs__id">
     {% if client.logo_url %}
@@ -36,6 +37,18 @@
      the consultant keeps or discards, what is left is handed over. The rail on
      the page is where an occasion or a period is chosen. #}
   <a href="/client/{{ client.id }}/advice"{% if active == 'texte' %} class="active" aria-current="page"{% endif %}>{{ t("Texte") }}</a>
+  {# Not on Vorrat: the tab exists only for a mandate that ever had a declared
+     crisis. An empty Krisenreiter in the daily view is a small daily unease
+     with no return — and a dismissed proposal deliberately creates no tab,
+     because nobody declared anything (UHR-03). While one is open the tab is
+     the hot spot of the strip. #}
+  {% if kstate.has_history %}
+    <a href="/client/{{ client.id }}/krise" class="{% if active == 'krise' %}active {% endif %}{% if kstate.open_id %}subtabs__hot{% endif %}"{% if active == 'krise' %} aria-current="page"{% endif %}>{{ t("Krise") }}</a>
+  {% endif %}
+  {# The long clock. Sits right after the texts because it is where the next
+     occasion comes from: six months of dated hooks, each on a stored row
+     (DEC-5). #}
+  <a href="/client/{{ client.id }}/plan"{% if active == 'plan' %} class="active" aria-current="page"{% endif %}>{{ t("Plan") }}</a>
   <a href="/client/{{ client.id }}/wettbewerb"{% if active == 'rivals' %} class="active" aria-current="page"{% endif %}>{{ t("Wettbewerb") }}</a>
   {# The month, read and cut down. Sits after the daily work and before the
      standing material because that is the order it is used in: the report is what
@@ -52,4 +65,30 @@
      asks about this market (DEC-3). #}
   <a href="/client/{{ client.id }}/ki"{% if active == 'visibility' %} class="active" aria-current="page"{% endif %}>{{ t("KI-Sichtbarkeit") }}</a>
 </nav>
+{# DEC-1's offer, on the Mandantenkarte as well as on Heute: the question and
+   its two answers, and nothing else changes until one of them is pressed.
+   Declaring lands on the fresh crisis page; dismissing stays here and the same
+   story stops being offered for this mandate. #}
+{% if kstate.offer %}
+  <div class="koffer">
+    <span class="koffer__badge">{{ t("Krise?") }}</span>
+    <span class="koffer__t">{{ kstate.offer.headline }}</span>
+    <span class="koffer__why">
+      {% if kstate.offer.trigger == 'kategorie' %}{{ t("Als Krise eingestuft") }}
+      {% else %}{{ kstate.offer.outlets }} {{ t("Medien in 24 Stunden") }}{% endif %}
+    </span>
+    <form method="post" action="/crisis/declare">
+      <input type="hidden" name="client_id" value="{{ client.id }}">
+      <input type="hidden" name="article_id" value="{{ kstate.offer.article_id }}">
+      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/krise">
+      <button type="submit" class="triage-btn triage-btn--crisis">{{ t("Krise erklären") }}</button>
+    </form>
+    <form method="post" action="/crisis/dismiss">
+      <input type="hidden" name="client_id" value="{{ client.id }}">
+      <input type="hidden" name="article_id" value="{{ kstate.offer.article_id }}">
+      <input type="hidden" name="redirect_to" value="{{ request.url.path }}">
+      <button type="submit" class="triage-btn">{{ t("Verwerfen") }}</button>
+    </form>
+  </div>
+{% endif %}
 {% endif %}

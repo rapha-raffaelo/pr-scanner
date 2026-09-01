@@ -1,0 +1,158 @@
+{#- Der Redaktionsplan as the document that lies on the table in a retainer
+    meeting. Self-contained like the report and the Pressespiegel: no stylesheet
+    link, no script, no font, every rule in the <style> below. The file is
+    forwarded, and a document that phoned home when a client opened it would tell
+    a third party who is reading it and when. The one outbound reference it may
+    carry is the mandate's own stored logo — the client's own asset on the
+    client's own document.
+
+    It does not extend base.html on purpose, and it is a separate file from
+    client_plan.html rather than the same one with the links stripped: app
+    chrome is not part of a document that leaves the house, and a flag that
+    switched it off could be forgotten. There is no href into this application
+    anywhere below — a recipient has no account to follow one into.
+
+    What replaces the evidence links is the evidence *named*: the table and the
+    id of the stored row, plus the source's own public page where it has one.
+    That is the check a recipient can actually make. -#}
+{%- set t = translator(request) -%}
+<!DOCTYPE html>
+<html lang="{{ request_language(request) }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{#- The <title> names the same span as the header inside the document. A tab
+    reading "2026-08" beside a page headed "August 2026 bis Januar 2027" makes
+    the file look like it covers a single month. -#}
+<title>{{ t("Redaktionsplan") }} · {{ client.name }}{% if months %} · {{ t(months[0].name) }} {{ months[0].year }} {{ t("bis") }} {{ t(months[-1].name) }} {{ months[-1].year }}{% endif %}</title>
+<style>
+  {#- The mandate's own colour from the shared branding module, so the plan
+      wears the same identity as the report and the Pressespiegel. -#}
+  :root { --ink: #16181d; --muted: #6b7280; --line: #e2e5ea; --brand: {{ client.name | brand_colour }};
+          --study: #5856d6; --reg: #b25000; --event: #0071e3; --thema: #0071a4; --archiv: #248a3d; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 15px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); background: #f4f5f7; padding: 28px 18px 64px; }
+  .doc { max-width: 780px; margin: 0 auto; background: #fff; border: 1px solid var(--line);
+         border-radius: 10px; padding: 40px 46px 46px; }
+  .head { display: flex; gap: 16px; align-items: center; border-bottom: 3px solid var(--brand);
+          padding-bottom: 18px; }
+  .brandmark { width: 52px; height: 52px; border-radius: 10px; object-fit: contain; flex: none; }
+  .brandmark--mono { background: var(--brand); color: #fff; display: flex; align-items: center;
+                     justify-content: center; font-size: 20px; font-weight: 700; letter-spacing: 0.02em; }
+  h1 { font-size: 25px; letter-spacing: -0.01em; }
+  .period { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .lead { font-size: 13px; color: var(--muted); margin-top: 18px; }
+  .key { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11.5px; color: var(--muted); margin-top: 14px; }
+  .key span { display: flex; align-items: center; gap: 5px; }
+  .key b { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .k-study { background: var(--study); } .k-reg { background: var(--reg); }
+  .k-event { background: var(--event); } .k-thema { background: var(--thema); }
+  .k-archiv { background: var(--archiv); }
+  .pmonth { margin-top: 26px; }
+  .pmonth__h { font-size: 17px; font-weight: 650; letter-spacing: -0.01em;
+               border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  .pmonth__n { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .phook { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .phook__d { width: 54px; flex: none; text-align: center; }
+  .phook__dd { font-size: 16px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .phook__d--soft .phook__dd { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .phook__dm { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .phook__b { min-width: 0; flex: 1; }
+  .phook__t { font-size: 14px; font-weight: 600; }
+  .ptag { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 9px;
+          padding: 1px 8px; margin-left: 6px; vertical-align: 1px; background: #eceef1; color: #4b5563; }
+  .ptag--study { background: rgba(88,86,214,.10); color: var(--study); }
+  .ptag--reg { background: rgba(178,80,0,.10); color: var(--reg); }
+  .ptag--event { background: rgba(0,113,227,.10); color: var(--event); }
+  .ptag--thema { background: rgba(0,113,164,.10); color: var(--thema); }
+  .ptag--archiv { background: rgba(36,138,61,.10); color: var(--archiv); }
+  .phook__w { font-size: 13px; color: #3a3f4a; margin-top: 4px; }
+  .phook__e { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .phook__e a { color: var(--brand); }
+  .pempty { font-size: 13px; color: var(--muted); padding: 12px 0; font-style: italic; }
+  .foot { margin-top: 34px; padding-top: 12px; border-top: 1px solid var(--line);
+          font-size: 11.5px; color: var(--muted); }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .doc { border: 0; padding: 0; max-width: none; }
+  }
+</style>
+</head>
+<body>
+<article class="doc">
+  <header class="head">
+    {%- set logo = client.logo_url | logo_src %}
+    {%- if logo %}
+    <img class="brandmark" src="{{ logo }}" alt="">
+    {%- else %}
+    <span class="brandmark brandmark--mono">{{ client.name | monogram }}</span>
+    {%- endif %}
+    <div>
+      <h1>{{ t("Redaktionsplan") }}: {{ client.name }}</h1>
+      {%- if months %}
+      <p class="period">{{ t("Zeitraum") }}: {{ t(months[0].name) }} {{ months[0].year }} {{ t("bis") }} {{ t(months[-1].name) }} {{ months[-1].year }}</p>
+      {%- endif %}
+    </div>
+  </header>
+
+  <p class="lead">
+    {{ t("Jeder Termin in diesem Plan stammt aus einer gespeicherten Zeile: einem datierten Marktsignal, einem Thema mit gemessener Resonanz oder einem Monat, den das Archiv im Vorjahr getragen hat. Kein Datum ist geschätzt.") }}
+  </p>
+
+  <div class="key">
+    {%- for klasse in klassen %}
+    <span><b class="k-{{ klasse.key }}"></b>{{ t(klasse.label) }}</span>
+    {%- endfor %}
+  </div>
+
+  {%- for month in months %}
+  <section class="pmonth">
+    <h2 class="pmonth__h">{{ t(month.name) }} {{ month.year }}
+      <span class="pmonth__n">
+        {%- if not month.live %}{{ t("kein Haken") }}
+        {%- elif month.live | length == 1 %}{{ t("1 Haken") }}
+        {%- else %}{{ month.live | length }} {{ t("Haken") }}{% endif -%}
+      </span>
+    </h2>
+    {%- if month.empty %}
+    {#- An empty month is written out here too. In a document handed to a client
+        it is the sentence that stops the reader assuming a page was cut. -#}
+    <p class="pempty">{{ t("Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat.") }}</p>
+    {%- elif month.refused %}
+    {#- The refused hooks themselves stay out of a document a client reads — what
+        the agency looked at and rejected is the agency's business. What it may
+        not do is claim nothing was found: the sentence above is an evidence
+        claim, and in this month it would be false. -#}
+    <p class="pempty">{{ t("Kein Termin in diesem Monat.") }}</p>
+    {%- else %}
+    {%- for view in month.live %}
+    <div class="phook">
+      <div class="phook__d{% if not view.dated %} phook__d--soft{% endif %}">
+        <div class="phook__dd">{{ t(view.day_label) }}</div>
+        <div class="phook__dm">{{ t(view.month_label) }}</div>
+      </div>
+      <div class="phook__b">
+        <p class="phook__t">{{ view.hook.title }}<span class="ptag{% if view.klasse.key %} ptag--{{ view.klasse.key }}{% endif %}">{{ t(view.klasse.label) }}</span></p>
+        {%- if view.hook.reason %}<p class="phook__w">{{ view.hook.reason }}</p>{% endif %}
+        <p class="phook__e">
+          {%- if view.evidence -%}
+          {{ t("Beleg") }}: {{ view.evidence.label }} · {{ view.evidence.ref }}
+          {%- if view.evidence.source_url %} · <a href="{{ view.evidence.source_url | safe_url }}">{{ t("Quelle") }}</a>{% endif -%}
+          {%- else -%}
+          {{ t("Der Beleg zu diesem Haken ist nicht mehr auffindbar.") }}
+          {%- endif -%}
+        </p>
+      </div>
+    </div>
+    {%- endfor %}
+    {%- endif %}
+  </section>
+  {%- endfor %}
+
+  <footer class="foot">
+    {{ t("Erstellt am") }} {{ built_at | de_date }}. {{ t("Der Plan reicht so weit, wie belegte Termine reichen; ein leerer Monat bleibt leer, statt gefüllt zu werden.") }}
+  </footer>
+</article>
+</body>
+</html>

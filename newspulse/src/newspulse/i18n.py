@@ -53,6 +53,75 @@ _EN: dict[str, str] = {
     "Es hält etwas in diesem Text für unbelegt. Wenn Sie widersprechen, geht die Nachricht so hinaus.": "It holds something in this text to be unsupported. Overrule it and the message goes out as it stands.",
     "Das Zweitmodell rät ab.": "The second model advises against it.",
     "Keine Warnungen am": "No alerts on",
+    # --- The crisis rail on Heute (UHR-01, DEC-1) ----------------------------
+    # The offer is worded as a question and the declaration as a statement, in
+    # both languages: the whole point of DEC-1 is that the tool asks and a person
+    # answers, and a label that read as an announcement would be option B.
+    "Krise": "Crisis",
+    "Krise?": "Crisis?",
+    "Krise erklären": "Declare a crisis",
+    "Krise schließen": "Stand down",
+    "Stufe": "Level",
+    # "von", "Medien" and "negativ" are already translated further down — this
+    # rail reuses them rather than restating them.
+    "erklärt von": "declared by",
+    "Grund: warum wird sie geschlossen?": "Reason: why is it being stood down?",
+    "Als Krise eingestuft": "Filed as a crisis",
+    "Medien in 24 Stunden": "outlets in 24 hours",
+    "Vorgeschlagen, nicht erklärt. Bis jemand hier drückt, ändert sich nichts.":
+        "Proposed, not declared. Nothing changes until somebody presses this.",
+    # --- The crisis page (UHR-03, DEC-2 option C) ----------------------------
+    # "Verwerfen", "Frist", "Krisenkontakt", "Sprecher", "Pressekontakt",
+    # "Medien", "negativ", "positiv", "Beiträge", "bis" and the check states are
+    # already translated elsewhere in this table — the page reuses them.
+    "Krise offen seit": "Crisis open for",
+    "Krise geschlossen": "Crisis closed",
+    "offen von": "open from",
+    "Tg": "d",
+    "Std": "h",
+    "Min": "min",
+    "Erklärt von": "Declared by",
+    "um": "at",
+    "Grund der Schließung:": "Reason it was stood down:",
+    "Solange sie offen ist, läuft der Sweep alle %(n)s Minuten.":
+        "While it is open, the sweep runs every %(n)s minutes.",
+    "über uns": "about us",
+    "von uns": "from us",
+    "offen": "open",
+    "Zeitleiste": "Timeline",
+    "Zwei Spalten": "Two columns",
+    "Frühere Krisen dieses Mandats:": "This mandate's earlier crises:",
+    "Was gesagt wird": "What is being said",
+    "Was wir sagen": "What we say",
+    "eine Story": "one story",
+    "Storys": "stories",
+    "Auslöser": "Trigger",
+    "Öffnen": "Open",
+    "Kein gespeicherter Beitrag im Fenster dieser Krise.":
+        "No stored coverage inside this crisis's window.",
+    "im Entwurf": "in draft",
+    "Wird geschrieben…": "Being written…",
+    "Noch kein Text im Format": "No text yet in the format",
+    "Eine Anfrage ist offen": "One request is open",
+    "Anfragen sind offen": "requests are open",
+    "Im Profil fehlt der Krisenkontakt.": "The profile has no crisis contact.",
+    "Im Kickoff nachtragen": "Add it in the kickoff",
+    "Ungeprüft": "Unchecked",
+    "Anfrage": "Request",
+    "keine Frist genannt": "no deadline stated",
+    "Wer erreichbar ist": "Who is reachable",
+    "Nicht im Profil hinterlegt.": "Not on file in the profile.",
+    "Noch kein Text zu dieser Krise.": "No text for this crisis yet.",
+    "Beitrag": "Coverage",
+    "Krise erklärt": "Crisis declared",
+    "Text entworfen": "Text drafted",
+    "Text freigegeben": "Text released",
+    "Die Krise ist der Abstand zwischen den beiden Spalten. Links wächst, was ohne uns läuft, rechts steht, was wir dagegen gesetzt haben, und der Kasten dazwischen sagt, wo nichts steht. Die Zeitleiste liegt einen Klick entfernt und wird beim Schließen zum Nachbericht.":
+        "The crisis is the distance between the two columns. On the left grows "
+        "what runs without us, on the right stands what we have set against it, "
+        "and the box between them says where nothing stands. The timeline sits "
+        "one click away and becomes the after-action record when the crisis "
+        "closes.",
     "Tagen nichts, aber im Archiv liegt ältere Berichterstattung:": "days nothing, but the archive holds older coverage:",
     "In den letzten": "In the last",
     "seit %(days)s Tagen kein Lauf": "no run for %(days)s days",
@@ -428,6 +497,18 @@ _EN: dict[str, str] = {
     "Interview-Briefing": "Interview briefing",
     "Wer fragt, was er zuletzt schrieb, und was gesagt werden soll.":
         "Who is asking, what they wrote lately, and what to get said.",
+    # --- The two crisis formats (newspulse.assets.CRISIS_FORMATS) -------------
+    # Same rule, same guard: the test iterates both registries, so a crisis
+    # format defined without an English card fails the suite. "Holding
+    # Statement" is the same words in both languages and is listed anyway.
+    "Holding Statement": "Holding statement",
+    "Der erste kurze Text nach draußen: was feststeht, was geprüft wird, wer erreichbar ist.":
+        "The first short text to the outside: what is established, what is "
+        "being checked, who can be reached.",
+    "Q&A-Haltung": "Q&A stance",
+    "Was der Sprecher in der Hand hält, wenn das Telefon klingelt; offene Fragen bleiben ausdrücklich offen.":
+        "What the spokesperson holds when the phone rings; open questions stay "
+        "explicitly open.",
     # --- The package on an impulse (DEC-1) -----------------------------------
     # One occasion, one package: the formats are a strip on the impulse, each
     # carrying the state it is in. The four state names are the load-bearing ones
@@ -1334,6 +1415,18 @@ _EN: dict[str, str] = {
         "No finding stands in the report for this period.",
     "Zurück zur Prüfung": "Back to the review",
     "Exportieren": "Export",
+    # --- Der Pressespiegel ----------------------------------------------------
+    "Pressespiegel": "Press clippings",
+    "Zurück zu den Berichten": "Back to the reports",
+    "Aufgriff": "pickup",
+    "Aufgriffe": "pickups",
+    "reichweitenstärkstes Medium": "widest-reaching outlet",
+    "Im Zeitraum liegt keine Berichterstattung über den Mandanten vor. Der Pressespiegel bleibt deshalb leer — das ist eine Aussage über den Zeitraum, kein Fehler im Dokument.":
+        "The period holds no coverage of the client. The clippings therefore stay "
+        "empty — a statement about the period, not a fault in the document.",
+    "Der Pressespiegel führt Überschrift, Medium, Datum, gespeicherte Zusammenfassung und Tonalität. Volltexte werden nicht gespeichert und deshalb nicht wiedergegeben.":
+        "The clippings list headline, outlet, date, the stored summary and the "
+        "tone. Full article text is never stored and therefore never reproduced.",
     "Tabelle anzeigen": "Show table",
     "Segment": "Segment",
     "Jede Zahl in diesem Bericht stammt aus der archivierten Berichterstattung und dem Ansprache-Ledger. Reichweiten, Kontaktchancen und Werbewerte werden nicht geschätzt und deshalb nicht ausgewiesen.":
@@ -1878,6 +1971,145 @@ _EN: dict[str, str] = {
         "What is measured is what the connected assistants answer to the same set of "
         "questions, not what \"AI\" thinks. RauteOS measures and reports; it optimises "
         "nothing and sends nothing.",
+    # --- Der Redaktionsplan (UHR-07) ------------------------------------------
+    # The page a retainer conversation is held over: six months of hooks, each
+    # resolving to a stored row.
+    "Plan": "Plan",
+    "Redaktionsplan": "Editorial plan",
+    "%(n)s Monate voraus, gebaut aus datierten Marktsignalen, geprüften Themen und dem, was das Archiv im selben Monat des Vorjahres getragen hat. Jeder Haken hängt an einer gespeicherten Zeile. Kein Datum wird geraten.":
+        "%(n)s months ahead, built from dated market signals, checked themes and "
+        "what the archive carried in the same month a year ago. Every hook hangs "
+        "on a stored row. No date is guessed.",
+    "Neu berechnen": "Recompute",
+    "Wird berechnet…": "Recomputing…",
+    "Als Dokument": "As a document",
+    "laufender Monat": "current month",
+    "Haken": "hooks",
+    "1 Haken": "1 hook",
+    "kein Haken": "no hook",
+    "verworfen": "discarded",
+    "Leer.": "Empty.",
+    # A month where something was found and a person refused all of it. Distinct
+    # from the empty month's sentence on purpose: that one is a claim about the
+    # evidence, and here the evidence exists.
+    "Alle Haken in diesem Monat wurden verworfen.":
+        "Every hook in this month was dropped.",
+    # What the same month says in the document, which carries no refused rows.
+    "Kein Termin in diesem Monat.": "No date in this month.",
+    "Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat. Ein leerer Monat wird nicht gefüllt, er wird gezeigt: entweder ist hier wirklich nichts, oder dem Mandat fehlt ein Thema.":
+        "No dated signal, no archive pattern, no theme with evidenced resonance "
+        "in this month. An empty month is not filled, it is shown: either there "
+        "genuinely is nothing here, or the client is missing a theme.",
+    "Kein datiertes Signal, kein Archivmuster, kein Thema mit belegter Resonanz in diesem Monat.":
+        "No dated signal, no archive pattern, no theme with evidenced resonance "
+        "in this month.",
+    "Themen prüfen": "Review the themes",
+    "Text schreiben": "Write a text",
+    "In einen anderen Monat verschieben": "Move to another month",
+    "Verschieben": "Move",
+    "Beleg": "Evidence",
+    "Der Beleg zu diesem Haken ist nicht mehr auffindbar.":
+        "The evidence behind this hook can no longer be found.",
+    # The Herkunftsklassen, as ``plan_view.KLASSEN`` names them.
+    "Studie": "Study",
+    "Regulierung": "Regulation",
+    "Veranstaltung": "Event",
+    "Thema": "Theme",
+    "Archivmuster": "Archive pattern",
+    "Marktsignal": "Market signal",
+    # The hook states, as ``plan_view.STATE_LABELS`` names them.
+    "Vorgeschlagen": "Proposed",
+    "Angenommen": "Accepted",
+    "Erledigt": "Done",
+    # The honest half of the date rule: a source that names only a month yields a
+    # hook that names only a month, and the page says so rather than showing the
+    # first of it.
+    "ohne Tag": "no day",
+    "Für diesen Mandanten lässt sich noch kein Plan bauen.":
+        "No plan can be built for this client yet.",
+    "Ein Haken entsteht aus einem datierten Marktsignal, aus einem Thema mit gemessener Resonanz oder aus einem Monat, den das Archiv im Vorjahr getragen hat. Für dieses Mandat liegt keines davon vor — das ist eine Lücke in der Einrichtung und keine Aussage über den Markt.":
+        "A hook comes from a dated market signal, from a theme with measured "
+        "resonance, or from a month the archive carried a year ago. This client "
+        "has none of the three — that is a gap in the setup, not a statement "
+        "about the market.",
+    "Keine geprüften Themen hinterlegt.": "No checked themes on file.",
+    "Kein Marktsignal gefunden.": "No market signal found.",
+    "Jeder Termin in diesem Plan stammt aus einer gespeicherten Zeile: einem datierten Marktsignal, einem Thema mit gemessener Resonanz oder einem Monat, den das Archiv im Vorjahr getragen hat. Kein Datum ist geschätzt.":
+        "Every date in this plan comes from a stored row: a dated market signal, "
+        "a theme with measured resonance, or a month the archive carried a year "
+        "ago. No date is estimated.",
+    "Der Monat ist die Einheit, in der eine Agentur ohnehin arbeitet: der Bericht ist monatlich, das Retainer-Gespräch ist monatlich. Der Plan ist deshalb ein Stapel Monate, und ein leerer Monat ist eine Aussage, keine Lücke im Layout.":
+        "The month is the unit an agency already works in: the report is monthly, "
+        "the retainer meeting is monthly. The plan is therefore a stack of "
+        "months, and an empty month is a statement rather than a gap in the "
+        "layout.",
+    "Der Plan reicht so weit, wie belegte Termine reichen; ein leerer Monat bleibt leer, statt gefüllt zu werden.":
+        "The plan reaches as far as evidenced dates reach; an empty month stays "
+        "empty rather than being filled.",
+    # What a refused click leaves behind, in ``plan_view``.
+    "Der Plan wird gerade neu berechnet. Der Auftrag wurde nicht angenommen: warten Sie, bis der laufende steht, sonst wird derselbe Aufruf zweimal bezahlt.":
+        "The plan is being recomputed right now. The request was not accepted: "
+        "wait for the running one, or the same call is paid for twice.",
+    "Die Neuberechnung ist mit einem Fehler abgebrochen. Der bisherige Plan steht unverändert. Details stehen im Log.":
+        "The recompute stopped with an error. The plan you had stands unchanged. "
+        "Details are in the log.",
+    "Der gewählte Monat liegt nicht im Plan. Verschoben wird nur innerhalb der Monate, die der Plan zeigt.":
+        "The month you picked is not in the plan. A hook can only be moved inside "
+        "the months the plan shows.",
+    # --- The fast lane on Heute (UHR-05, DEC-6 A) ---------------------------
+    # The card's two load-bearing pieces are the remaining time as a number and
+    # the standing's one sentence; the sentence itself is stored data and stays
+    # in the language it was written in. "Std", "Min", "aufgegriffen", "Text
+    # schreiben" and "Verwerfen" are already translated above and reused.
+    "Gelegenheit": "Opportunity",
+    "Gelegenheiten": "Opportunities",
+    "verbleibend": "left",
+    "Zuerst bei": "First at",
+    "Stehen": "Standing",
+    "Verbleibende Zeit im Fenster ab dem Ursprungsbeitrag":
+        "Time left in the window that runs from the origin piece",
+    "Text(e) ansehen": "text(s) to view",
+    # The cap's visible name: never more than the capped number of cards per
+    # mandate, cut by pickup count, and the cut says so instead of happening
+    # silently. Split around the number so the sentence carries the cap the
+    # route actually applies (``today._MAX_OPEN_OPPORTUNITIES``) rather than a
+    # hardcoded "drei" that lies the day the constant changes.
+    "weitere Gelegenheit(en) bei": "more opportunit(y/ies) for",
+    "nach Aufgriffszahl gekürzt; hier stehen die":
+        "trimmed by pickup count; the",
+    "mit den meisten Aufgriffen.": "with the most pickups stand here.",
+    # The mandate's archive: an expired or waved-off opportunity stays readable
+    # there with its outcome, and only there.
+    "Gelegenheiten aus der schnellen Spur": "Opportunities from the fast lane",
+    "Verworfen am": "Waved off on",
+    "Abgelaufen am": "Expired on",
+    "Kein Text entstanden.": "No text came of it.",
+    # The calendar. Spelled out rather than taken from ``locale``, for the reason
+    # ``web.app`` spells them out: a de_DE locale is absent from most containers
+    # and setlocale is process-global.
+    "Januar": "January",
+    "Februar": "February",
+    "März": "March",
+    "April": "April",
+    "Mai": "May",
+    "Juni": "June",
+    "Juli": "July",
+    "August": "August",
+    "September": "September",
+    "Oktober": "October",
+    "November": "November",
+    "Dezember": "December",
+    "Jan": "Jan",
+    "Feb": "Feb",
+    "Mär": "Mar",
+    "Apr": "Apr",
+    "Jun": "Jun",
+    "Jul": "Jul",
+    "Aug": "Aug",
+    "Sep": "Sep",
+    "Okt": "Oct",
+    "Nov": "Nov",
+    "Dez": "Dec",
 }
 
 _TABLES = {"de": {}, "en": _EN}

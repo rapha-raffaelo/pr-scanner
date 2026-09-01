@@ -152,6 +152,44 @@
   </div>
 </section>
 
+{# The fast lane's record (UHR-05): an opportunity that expired or was waved off
+   leaves Heute and stays readable here, with its outcome. Only concluded ones —
+   an open one lives on Heute — and nothing at all when there are none: an empty
+   record is not a section. #}
+{% if opportunities %}
+  <section class="panel">
+    <h2>{{ t("Gelegenheiten aus der schnellen Spur") }}</h2>
+    <div class="njarch">
+      {% for opp in opportunities %}
+        <div class="njarch__row">
+          <div class="njarch__hl"><a href="{{ opp.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ opp.headline }}</a></div>
+          <div class="njarch__meta">
+            {{ t("Zuerst bei") }} {{ opp.source }}
+            <span class="dot">·</span> {{ opp.published_at.strftime('%d.%m.%Y %H:%M') }}
+            <span class="dot">·</span> {{ opp.pickup_count }}× {{ t("aufgegriffen") }}
+          </div>
+          {% if opp.reason %}<div class="njarch__meta"><span class="njack__label">{{ t("Stehen") }}</span> {{ opp.reason }}</div>{% endif %}
+          <div class="njarch__meta njarch__out">
+            {# The outcome, readable: waved off by a person, or the window ran
+               out — and whether a text came of it either way. #}
+            {% if opp.dismissed_at %}
+              {{ t("Verworfen am") }} {{ opp.dismissed_at.strftime('%d.%m.%Y %H:%M') }}
+            {% else %}
+              {{ t("Abgelaufen am") }} {{ opp.window_ends_at.strftime('%d.%m.%Y %H:%M') }}
+            {% endif %}
+            <span class="dot">·</span>
+            {% if opp.angle_id and opp.texts %}
+              <a href="/client/{{ client.id }}/advice?eintrag=anlass-{{ opp.angle_id }}#impulse-{{ opp.angle_id }}">{{ opp.texts }} {{ t("Text(e) ansehen") }} →</a>
+            {% else %}
+              {{ t("Kein Text entstanden.") }}
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
 {# All filters live in one form, so submitting sends every value together and the
    server-side WHERE clauses compose. HTMX swaps only #archive-list (hx-select),
    leaving the form's own values in place; when HTMX is absent the form falls back

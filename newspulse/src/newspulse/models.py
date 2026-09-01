@@ -173,6 +173,12 @@ class AssetKind(StrEnum):
     TALKING_POINTS = "talking_points"
     GASTBEITRAG = "gastbeitrag"
     INTERVIEW_BRIEFING = "interview_briefing"
+    # The two crisis formats (UHR-02). Written off a declared crisis rather than
+    # an impulse, and the only two in the tool where minutes count. They live in
+    # their own registry (:data:`newspulse.assets.CRISIS_FORMATS`) so the
+    # impulse's format strip never offers them.
+    HOLDING_STATEMENT = "holding_statement"
+    KRISEN_QA = "krisen_qa"
 
 
 class CheckState(StrEnum):
@@ -980,6 +986,154 @@ class MarketSignal(Base):
     title_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class HookSource(StrEnum):
+    """The three evidenced sources a plan hook may come from — and the only three.
+
+    DEC-4 option A, as a closed set: a dated market signal, a theme the trade
+    press measurably writes about, or a previous-year month the archive shows
+    carried coverage. There is deliberately no fourth member for "the model knows
+    a recurring date" — a plan with one invented date is a plan nobody checks a
+    second time, so a hook class that cannot resolve to a stored row does not
+    exist here.
+    """
+
+    MARKTSIGNAL = "marktsignal"
+    THEMA = "thema"
+    VORJAHR = "vorjahr"
+
+
+class HookState(StrEnum):
+    """Where one hook stands with the person who reads the plan.
+
+    ``VORGESCHLAGEN`` is the only state a machine may set, and the only state a
+    recompute may replace. The other two are a human decision, and a decision
+    survives every recompute — a "verworfen" that came back the next morning
+    would train the reader to stop deciding at all. A hook moved to another
+    month keeps whatever state it has; the move is recorded on
+    :attr:`PlanHook.moved_at`, and either mark counts as touched.
+    """
+
+    VORGESCHLAGEN = "vorgeschlagen"
+    ANGENOMMEN = "angenommen"
+    VERWORFEN = "verworfen"
+
+
+class PlanHook(Base):
+    """One dated entry in a mandate's editorial plan, resolving to a stored row.
+
+    ``month`` is a ``"YYYY-MM"`` string and ``day`` is nullable, and that split is
+    the date rule of the whole feature: a source that carries a full date (a
+    market signal's effective date or deadline) yields a day, a source that only
+    carries a month (the previous year's archive, a theme's current resonance)
+    yields none — and no code path anywhere guesses the missing day. Lexicographic
+    order on the month string is chronological order, which is what every read of
+    the plan sorts by.
+
+    ``source_kind``/``source_id`` are the evidence: the id of the row in the table
+    the kind names (``market_signals``, ``topic_hits``, ``analyses``). Not a real
+    foreign key, because it points into one of three tables depending on the kind
+    — :func:`newspulse.plan._resolves` is the guard instead, and a hook whose
+    evidence does not resolve is never stored. The UNIQUE below is what makes a
+    recompute unable to file a second hook off a row a person already decided on.
+
+    ``reason`` and ``format`` are the only two fields a model writes, and neither
+    of them is load-bearing: the hook exists because of its evidence, and a
+    recompute whose model call failed stores the hook with empty prose rather
+    than dropping a documented date.
+    """
+
+    __tablename__ = "plan_hooks"
+    __table_args__ = (
+        # One hook per evidence row per mandate, enforced rather than assumed: the
+        # recompute skips sources that already carry a hook, and this is what
+        # keeps a race (or a bug in the skip) from stacking a fresh proposal next
+        # to the "verworfen" a person already recorded against the same row.
+        UniqueConstraint(
+            "client_id", "source_kind", "source_id", name="uq_plan_hooks_source"
+        ),
+        # Every read of the plan asks for one mandate's months in the window.
+        Index("ix_plan_hooks_client_month", "client_id", "month"),
+        # 1-based like a calendar; NULL is the honest "the source only names a
+        # month". The upper bound is the widest month rather than per-month
+        # arithmetic — the day is copied from a stored datetime, which cannot
+        # produce February 30th, so this catches raw-INSERT garbage only.
+        CheckConstraint(
+            "day IS NULL OR (day >= 1 AND day <= 31)", name="ck_plan_hooks_day"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_kind: Mapped[HookSource] = mapped_column(
+        SAEnum(
+            HookSource,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="hook_source",
+        ),
+        nullable=False,
+    )
+    source_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[str] = mapped_column(String(7), nullable=False)
+    day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: What the hook is about, copied from the evidence row (a signal's title, a
+    #: theme's term, the strongest headline of the carried month). Derived by
+    #: code, never by a model.
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: Why this date is an occasion for this mandate — the model's prose, and the
+    #: one thing here a model is allowed to write. Empty when the call failed.
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: The suggested format, one of the keys :data:`newspulse.assets.REGISTRY`
+    #: knows, or empty. A key the registry does not know is dropped at store time
+    #: rather than kept: the plan page pre-selects this in the format picker, and
+    #: an invented key would break exactly that click.
+    format: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="", server_default=""
+    )
+    state: Mapped[HookState] = mapped_column(
+        SAEnum(
+            HookState,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="hook_state",
+        ),
+        nullable=False,
+        default=HookState.VORGESCHLAGEN,
+        server_default=HookState.VORGESCHLAGEN.value,
+    )
+    #: When a person moved it to another month. A move is a touch: a moved hook
+    #: survives every recompute even while its state is still "vorgeschlagen".
+    moved_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: When a person accepted or discarded it. Empty exactly while the state is
+    #: the machine's.
+    decided_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The standards the reason was written under, on the same terms as
+    #: :attr:`Angle.brain_version`: captured when the prompt is composed, and
+    #: NULL only for a row from before there was anything to stamp. The reason
+    #: lands verbatim on a page a client reads, which is exactly the kind of
+    #: text the stamp exists for.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    @property
+    def touched(self) -> bool:
+        """Whether a person has done anything to this hook.
+
+        The recompute's whole contract in one place: only an untouched hook may
+        be replaced. Accepting, discarding and moving are the three touches, and
+        the first two live in ``state`` while the third lives in ``moved_at`` —
+        a hook moved to October is still a proposal, but it is a person's
+        proposal now.
+        """
+        return self.state is not HookState.VORGESCHLAGEN or self.moved_at is not None
+
+
 class Angle(Base):
     """One drafted positioning message for a client, off a market development.
 
@@ -997,6 +1151,35 @@ class Angle(Base):
     """
 
     __tablename__ = "angles"
+    __table_args__ = (
+        # One occasion per plan hook, enforced rather than assumed.
+        # ``plan_view.occasion_for`` reads for an existing one and then inserts,
+        # and FastAPI runs those routes in a threadpool: a double-clicked "Text
+        # schreiben" is two requests that both see nothing and both write, which
+        # leaves the hook with two occasions carrying the same date and the page
+        # linking at whichever one it happened to read. Partial, because
+        # ``plan_hook_id`` is NULL for nearly every impulse on file — the radar
+        # drafts them and there is no hook — and a plain unique index would
+        # allow exactly one of those in the whole table.
+        Index(
+            "ux_angles_plan_hook",
+            "plan_hook_id",
+            unique=True,
+            sqlite_where=text("plan_hook_id IS NOT NULL"),
+            postgresql_where=text("plan_hook_id IS NOT NULL"),
+        ),
+        # One occasion per newsjack opportunity, for the same race the plan
+        # hook's index settles: a double-clicked "Text schreiben" on the fast
+        # lane's card is two threadpool requests that both read nothing and
+        # both insert. Partial, because NULL is the value on nearly every row.
+        Index(
+            "ux_angles_newsjack",
+            "newsjack_id",
+            unique=True,
+            sqlite_where=text("newsjack_id IS NOT NULL"),
+            postgresql_where=text("newsjack_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     client_id: Mapped[int] = mapped_column(
@@ -1039,6 +1222,41 @@ class Angle(Base):
     #: rather than claiming standards that were never recorded.
     brain_version: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
+    )
+    #: The plan hook this occasion was opened from, when it was opened from one.
+    #:
+    #: An impulse normally comes from the radar and belongs to the morning it was
+    #: drafted. A hook is the other way round: a person clicked "Text schreiben"
+    #: on a dated entry in the editorial plan, and the texts written afterwards
+    #: are that hook's texts — which is what makes the plan page able to say
+    #: "Gastbeitrag am 03.09. freigegeben" beside the entry it came from.
+    #: :class:`Asset` keeps hanging on the occasion rather than on the hook, so a
+    #: format needs to know nothing about where its occasion came from.
+    #:
+    #: NULL for every impulse the radar drafted, which is nearly all of them.
+    #: ``SET NULL`` rather than ``CASCADE``: a hook a recompute removed must not
+    #: take a released press release with it.
+    #: Indexed by ``ux_angles_plan_hook`` in ``__table_args__`` rather than here:
+    #: that index is unique and partial, and a second plain one over the same
+    #: column would be dead weight on every write.
+    plan_hook_id: Mapped[int | None] = mapped_column(
+        ForeignKey("plan_hooks.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    #: The newsjack opportunity this occasion was opened from (UHR-05), on the
+    #: same terms as :attr:`plan_hook_id`: a person clicked "Text schreiben" on
+    #: the fast lane's card, and the texts written afterwards are that
+    #: opportunity's texts — which is what lets the card and the mandate's
+    #: archive say "dazu ist ein Text entstanden" and link to it.
+    #: :class:`Asset` keeps hanging on the occasion, so a format needs to know
+    #: nothing about where its occasion came from. NULL everywhere else, and
+    #: ``SET NULL`` so deleting a weighed story cannot take a released text
+    #: down with it. Indexed by ``ux_angles_newsjack`` above.
+    newsjack_id: Mapped[int | None] = mapped_column(
+        ForeignKey("newsjack_opportunities.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
     )
 
 
@@ -1620,14 +1838,42 @@ class Asset(Base):
             sqlite_where=text("released_at IS NULL"),
             postgresql_where=text("released_at IS NULL"),
         ),
+        # The same rule for the crisis texts, which hang on no angle: one
+        # unreleased draft per format per crisis. The ``crisis_id IS NOT NULL``
+        # half keeps the angle-anchored rows out of it, since NULLs would not
+        # collide anyway and the predicate says so out loud.
+        Index(
+            "ux_assets_crisis_kind_unreleased",
+            "crisis_id",
+            "kind",
+            unique=True,
+            sqlite_where=text("released_at IS NULL AND crisis_id IS NOT NULL"),
+            postgresql_where=text("released_at IS NULL AND crisis_id IS NOT NULL"),
+        ),
+        # A text hangs on the impulse it argues or on the crisis it answers,
+        # never on nothing: a stored text nothing can trace back to its occasion
+        # is a text nothing can check.
+        CheckConstraint(
+            "angle_id IS NOT NULL OR crisis_id IS NOT NULL",
+            name="ck_assets_anchor",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     client_id: Mapped[int] = mapped_column(
         ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    angle_id: Mapped[int] = mapped_column(
-        ForeignKey("angles.id", ondelete="CASCADE"), nullable=False, index=True
+    #: The impulse this text argues — NULL exactly for the crisis texts, which
+    #: argue no position and hang on ``crisis_id`` instead. The CHECK above
+    #: guarantees one of the two anchors is always set.
+    angle_id: Mapped[int | None] = mapped_column(
+        ForeignKey("angles.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    #: The declared crisis this text answers (UHR-02). CASCADE like the angle's:
+    #: a crisis text whose crisis is gone cannot be explained, and crises are
+    #: only ever deleted with their whole mandate anyway.
+    crisis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crises.id", ondelete="CASCADE"), nullable=True, index=True
     )
     kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     # Indexed for the same reason as the letter's: a day's texts are asked for
@@ -1693,6 +1939,115 @@ class Asset(Base):
             return CheckState.EINWAND
         return CheckState.GEPRUEFT
 
+
+
+class Standing(StrEnum):
+    """Whether a mandate has something to say on a market story it is not in.
+
+    The question the positioning drafts never ask, and the difference between a
+    contribution and an embarrassment (UHR-04). Answered against profile, guide
+    and archive, and the set is closed at exactly three:
+
+    * ``belegt`` — the mandate can point at something stored: a profile fact, a
+      guide line, its own past coverage of the subject. The only answer that
+      produces an opportunity.
+    * ``duenn`` — plausible, but nothing stored backs it. Spelled without the
+      umlaut the way ``ungeprueft`` and ``veroeffentlicht`` are.
+    * ``keins`` — the mandate has nothing to do with the subject.
+
+    There is deliberately no fourth member and no default: an unreadable verdict
+    stores nothing at all (the next scan asks again), because a misfiled
+    standing either spends a consultant's morning or silences a real opening.
+    """
+
+    BELEGT = "belegt"
+    DUENN = "duenn"
+    KEINS = "keins"
+
+
+class NewsjackOpportunity(Base):
+    """One market story weighed for one mandate: its origin, window and standing.
+
+    A row is written at most once per story per mandate, and it is written for
+    *every* verdict, not only the good one. A ``belegt`` row is the opportunity
+    the Today page shows; a ``duenn`` or ``keins`` row is the rejection, kept
+    with its reason — both because "warum schlägt das Werkzeug hier nichts vor"
+    deserves an answer, and because the stored row is what stops the next scan
+    from paying for the same model call again.
+
+    ``article_id`` is the story's **origin** — its earliest piece, resolved by
+    :func:`newspulse.stories.origin` — and the UNIQUE over (client, article) is
+    what makes "dieselbe Story je Mandat höchstens einmal" a schema guarantee:
+    a second scan re-clusters the same rows to the same origin and cannot file
+    a second row even if its pre-check raced another process.
+
+    ``window_ends_at`` is stored rather than derived at read, so the promise
+    "expired after N hours from the origin, whether or not a run ever happened
+    again" survives a later change to the configured width: the window an
+    opportunity was created under is the window it expires under. Expiry itself
+    is a comparison against the clock, never a job — a row nothing ever touches
+    again still stops being shown on time.
+
+    ``dismissed_at`` is the fast lane's stand-down (UHR-05): a person waving a
+    story off for this mandate. Stamped, not deleted, for the same reason a
+    rejection is stored — the row is what keeps the story from coming back.
+    """
+
+    __tablename__ = "newsjack_opportunities"
+    __table_args__ = (
+        UniqueConstraint(
+            "client_id", "article_id", name="uq_newsjack_client_article"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The origin article: the story's earliest piece. CASCADE like the crisis
+    #: trigger's, and required for the same reason — an opportunity without its
+    #: origin cannot say who had the story first or when its window ends.
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    standing: Mapped[Standing] = mapped_column(
+        SAEnum(
+            Standing,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="newsjack_standing",
+        ),
+        nullable=False,
+    )
+    #: The model's one sentence: what the standing rests on (``belegt``), or why
+    #: there is none (``duenn``/``keins``). The one thing here a model writes.
+    reason: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: Distinct outlets carrying the story when the verdict was made — the
+    #: number the card shows beside "wer hatte es zuerst".
+    pickup_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: When the window closes: origin ``published_at`` plus the configured
+    #: hours, fixed at creation. Read against the clock, never against a run.
+    window_ends_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: When a person waved the story off for this mandate. NULL while it stands.
+    dismissed_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+    #: The standards the standing check was composed under, on the same terms as
+    #: :attr:`Angle.brain_version`: captured with the prompt, NULL only for a
+    #: row from before there was anything to stamp.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    client: Mapped["Client"] = relationship(lazy="selectin")
+    article: Mapped["Article"] = relationship(lazy="selectin")
 
 
 class ReportState(StrEnum):
@@ -2113,7 +2468,213 @@ class VisibilityAnswer(Base):
     question: Mapped["VisibilityQuestion"] = relationship(lazy="selectin")
 
 
+#: The bounds of a crisis level. Five steps, because a consultant grades a
+#: morning on a hand and not on a percentage, and because the arithmetic behind
+#: it (:mod:`newspulse.crisis`) tops out at exactly five distinct outcomes.
+CRISIS_LEVEL_MIN = 1
+CRISIS_LEVEL_MAX = 5
+
+#: How much of a declarer's name the row keeps. Eighty characters is the same
+#: width :attr:`ClientFact.filled_by` uses, and it is a ceiling rather than a
+#: validation rule: :func:`newspulse.crisis.declare` truncates to it, because a
+#: long sign-in name must cost the tail of a name and never the declaration.
+CRISIS_DECLARED_BY_MAX = 80
+
+
+class Crisis(Base):
+    """One declared crisis: when it began, how bad it is, who said so, when it ended.
+
+    A crisis used to be a red card on Today — an ``Analysis`` with
+    ``category = krise`` and nothing else. That is a *story*, not a state, and no
+    state meant nothing in the tool could behave differently while one lasted.
+    This row is the state, and it is the only condition under which the sweep
+    changes its cadence.
+
+    Three properties are load-bearing and each is a schema guarantee rather than
+    something a caller has to remember:
+
+    * **At most one open crisis per mandate.** A partial UNIQUE index over the
+      rows with no ``closed_at`` — a second declaration therefore cannot create a
+      second row even if two browser tabs press the button at the same second.
+      :func:`newspulse.crisis.declare` hands the standing one back so the caller
+      never has to see the ``IntegrityError``.
+    * **A closed crisis always carries a reason.** That is what the CHECK
+      enforces — one direction, not both: it cannot be closed without a reason,
+      because "why did we stand this down" is the first question the review asks
+      and an empty string answers it with silence. The other direction is a
+      convention of :func:`newspulse.crisis.close`, which is the only writer of
+      the pair, and not something a reader may infer from the column: a
+      non-empty ``close_reason`` does not by itself mean a crisis is closed.
+      ``closed_at IS NULL`` is what open means.
+    * **The level is arithmetic, and the arithmetic is on the row.** The four
+      counts it was computed from are stored beside it, so the number is
+      checkable months later against coverage that has since grown. A level
+      nobody can re-derive is a level nobody will trust in the hour they need to.
+
+    ``last_swept_at`` is the tighter cadence's entire memory. It lives here and
+    not in the scheduler thread, so a restart mid-crisis neither loses the crisis
+    nor runs its sweep twice.
+    """
+
+    __tablename__ = "crises"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The piece of coverage the crisis was declared off. Required: a crisis
+    #: without a trigger cannot be graded and cannot be explained.
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Who declared it. A user name where the tool has one, otherwise the
+    #: ``"mensch"`` token :attr:`ClientFact.filled_by` already uses — never a
+    #: name nobody typed. DEC-1 turns on a *person* having decided, so the row
+    #: has to be able to say that a person did.
+    declared_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    declared_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: NULL exactly while the crisis is open. It is what the partial unique index
+    #: below is built on, and what the tighter cadence reads.
+    closed_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    close_reason: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+
+    # --- The level, and the four counts behind it ------------------------------
+    #
+    # Computed by :func:`newspulse.crisis.severity` and stored together, because
+    # the counts are what make the level checkable. A model that estimates a
+    # crisis level returns a number nobody can re-derive, in exactly the hour
+    # somebody wants to.
+    level: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=CRISIS_LEVEL_MIN, server_default=text("1")
+    )
+    #: How many distinct outlets carry the story.
+    outlet_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: How many stored pieces the story has at all — the denominator of the
+    #: negative share, kept as an integer beside its numerator so no rounded
+    #: percentage has to be trusted.
+    article_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: How many of them read negative *for this mandate* (see :class:`Tonality`).
+    negative_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: Whether any of the outlets is a national one (outlet tier 1).
+    national: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    #: Whether the mandate is named in the feed-provided text of any of them.
+    named: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+
+    #: When the tighter cadence last read this mandate's sources. NULL means it
+    #: never has, which is due immediately — a crisis declared at nine should not
+    #: wait an hour for its first reading.
+    last_swept_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+
+    client: Mapped["Client"] = relationship(lazy="selectin")
+    article: Mapped["Article"] = relationship(lazy="selectin")
+
+    __table_args__ = (
+        CheckConstraint(
+            f"level >= {CRISIS_LEVEL_MIN} AND level <= {CRISIS_LEVEL_MAX}",
+            name="ck_crises_level_range",
+        ),
+        # Open means no reason, closed means a reason. Written with the bare
+        # column rather than "closed_at IS NOT NULL AND ..." so both halves read
+        # in the same direction as the sentence above them.
+        CheckConstraint(
+            "closed_at IS NULL OR close_reason <> ''", name="ck_crises_close_reason"
+        ),
+        # One open crisis per mandate, as a partial index: closed rows are
+        # excluded, so a mandate may have had ten crises and be in none.
+        #
+        # Both dialect spellings, like the partial index on ``assets``. The
+        # predicate is a dialect keyword rather than a portable argument, and the
+        # one that is not recognised is silently dropped — which on a backend
+        # this file did not name would leave a plain UNIQUE(client_id) behind and
+        # forbid a mandate a second crisis for ever.
+        Index(
+            "uq_crises_one_open_per_client",
+            "client_id",
+            unique=True,
+            sqlite_where=text("closed_at IS NULL"),
+            postgresql_where=text("closed_at IS NULL"),
+        ),
+    )
+
+
+class CrisisDismissal(Base):
+    """One proposal a person stood down without declaring anything (UHR-03).
+
+    Its own table rather than an instantly-closed :class:`Crisis` row, because
+    the two are opposite statements. A crisis row says a person decided the
+    mandate *was* in one; a dismissal says a person looked at the same offer and
+    decided it was not. Writing the second as the first would put a phantom
+    crisis into the mandate's record — the Krise tab would appear, the
+    chronology would show a crisis nobody declared — and every reader of
+    ``crises`` would have to know a secret marker to tell them apart.
+
+    What it silences is the *story*, not the row: :func:`newspulse.crisis.propose`
+    reads these triggers through the same clustering the closed crises use, so
+    the pickups of a dismissed wave stop re-offering it under a different
+    headline. DEC-1's whole rationale — a false alarm costs one click — is this
+    row.
+
+    ``(client_id, article_id)`` is UNIQUE so a double click, a second tab and a
+    replayed POST all land on the same dismissal rather than growing copies.
+    """
+
+    __tablename__ = "crisis_dismissals"
+    __table_args__ = (
+        UniqueConstraint(
+            "client_id", "article_id", name="uq_crisis_dismissals_once"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The proposal's trigger article. CASCADE like the crisis's own trigger: a
+    #: dismissal of coverage that no longer exists silences nothing and explains
+    #: nothing, so it does not outlive it.
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Who pressed "Verwerfen" — the same discipline as ``Crisis.declared_by``:
+    #: a user name where the tool has one, the ``"mensch"`` token otherwise,
+    #: never a name nobody typed.
+    dismissed_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    dismissed_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    article: Mapped["Article"] = relationship(lazy="selectin")
+
+
 __all__ = [
+    "Crisis",
+    "NewsjackOpportunity",
+    "Standing",
+
+    "CrisisDismissal",
+    "CRISIS_DECLARED_BY_MAX",
+    "CRISIS_LEVEL_MIN",
+    "CRISIS_LEVEL_MAX",
     "VisibilityBand",
     "VisibilityQuestion",
     "VisibilityRun",
@@ -2151,6 +2712,9 @@ __all__ = [
     "SILENT_AFTER_DAYS",
     "TopicHit",
     "MarketSignal",
+    "PlanHook",
+    "HookSource",
+    "HookState",
     "SignalKind",
     "SignalOrigin",
     "GuideSource",

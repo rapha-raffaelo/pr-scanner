@@ -1,0 +1,50 @@
+{# One open opportunity from the fast lane (UHR-05, DEC-6 A), rendered above the
+   day's coverage. Expects ``opp`` (an OpportunityView), ``t`` and ``request``.
+
+   The card is a ten-second decision, and its two load-bearing pieces are the
+   ones the acceptance names: the remaining time as a number, not a colour —
+   a colour says "hurry", a number says whether a Gastbeitrag still fits — and
+   the standing's one sentence, so "lohnt sich das" is answered on the card
+   rather than behind a click. #}
+<article class="njack" id="gelegenheit-{{ opp.id }}">
+  <div class="njack__head">
+    <span class="njack__badge">{{ t("Gelegenheit") }}</span>
+    <span class="njack__left" title="{{ t('Verbleibende Zeit im Fenster ab dem Ursprungsbeitrag') }}">
+      {%- if opp.hours_left > 0 -%}
+        {{ opp.hours_left }} {{ t("Std") }} {{ t("verbleibend") }}
+      {%- else -%}
+        {{ opp.minutes_left }} {{ t("Min") }} {{ t("verbleibend") }}
+      {%- endif -%}
+    </span>
+    <span class="clichip">{{ opp.client_name }}</span>
+  </div>
+  <div class="hl"><a href="{{ opp.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ opp.headline }}</a></div>
+  <div class="meta">
+    {{ t("Zuerst bei") }} {{ opp.source }}
+    <span class="dot">·</span> {{ opp.published_at.strftime('%d.%m. %H:%M') }}
+    <span class="dot">·</span> {{ opp.pickup_count }}× {{ t("aufgegriffen") }}
+  </div>
+  {# The model's one sentence on what the standing rests on. Data, not chrome:
+     it stays in the language it was written in, like every stored summary. #}
+  <p class="njack__standing"><span class="njack__label">{{ t("Stehen") }}</span> {{ opp.reason }}</p>
+  <div class="njack__acts">
+    {# Opens the format picker with this opportunity as the occasion; nothing
+       is written by the click itself. #}
+    <form method="post" action="/client/{{ opp.client_id }}/gelegenheit/{{ opp.id }}/text">
+      <button type="submit" class="triage-btn triage-btn--write">{{ t("Text schreiben") }}</button>
+    </form>
+    {# No reason asked (UHR-05): a dismissal costs nothing, and the stored
+       verdict keeps the same story from coming back for this mandate. #}
+    <form method="post" action="/gelegenheit/{{ opp.id }}/verwerfen">
+      <input type="hidden" name="redirect_to" value="{{ request.url.path }}?{{ request.url.query }}">
+      <button type="submit" class="triage-btn">{{ t("Verwerfen") }}</button>
+    </form>
+    {% if opp.angle_id and opp.texts %}
+      {# What makes a written text findable *from* the opportunity: the link to
+         the package hanging on the occasion this card was opened as. #}
+      <a class="njack__texts" href="/client/{{ opp.client_id }}/advice?eintrag=anlass-{{ opp.angle_id }}#impulse-{{ opp.angle_id }}">
+        {{ opp.texts }} {{ t("Text(e) ansehen") }} →
+      </a>
+    {% endif %}
+  </div>
+</article>

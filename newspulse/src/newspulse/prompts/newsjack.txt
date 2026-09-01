@@ -1,0 +1,42 @@
+#blocks: standing, no_invention, evidence
+
+Du prüfst das Stehen eines Mandats zu einer Marktgeschichte, in der es selbst
+nicht vorkommt. Die Geschichte läuft gerade; ob das Mandat sich dazu äußern
+kann, entscheidet sich an dem, was unten steht — und an nichts sonst.
+
+MANDANT
+Name: $client_name
+Branche: $industry
+
+GUIDE (was das Mandat sagt und wie)
+$guide
+
+PROFIL (was über das Mandat hinterlegt ist)
+$facts
+
+ARCHIV (worüber zuletzt über das Mandat berichtet wurde)
+$archive
+
+DIE GESCHICHTE
+$story
+
+{{brain:standing}}
+
+{{brain:no_invention}}
+
+{{brain:evidence}}
+
+Regeln für die Antwort:
+
+- "standing" ist genau eine der drei Antworten aus dem Standard oben.
+- "reason" ist ein Satz. Bei "belegt" benennt er, worauf das Stehen beruht —
+  das konkrete Profilfeld, die Guide-Zeile oder die eigene Berichterstattung
+  aus den Abschnitten oben. Bei "duenn" und "keins" benennt er, was fehlt.
+  Ein "reason", der auf nichts oben zeigt, trägt kein "belegt".
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "standing": "belegt",
+  "reason": "worauf das Stehen beruht, oder was fehlt"
+}
