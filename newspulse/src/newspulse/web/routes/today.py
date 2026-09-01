@@ -195,8 +195,14 @@ class OpportunityView:
 
 @dataclass(frozen=True, slots=True)
 class OpportunityCut:
-    """The visible name of the cap: which mandate lost how many cards."""
+    """The visible name of the cap: which mandate lost how many cards.
 
+    Carries the id as well as the name because the client filter matches on it:
+    ``Client.name`` is not unique, and filtering the notice by name showed one
+    mandate's cut on its namesake's page.
+    """
+
+    client_id: int
     client_name: str
     hidden: int
 
@@ -264,6 +270,7 @@ def _fetch_opportunities(
         if len(kept) > _MAX_OPEN_OPPORTUNITIES:
             cuts.append(
                 OpportunityCut(
+                    client_id=mandate.id,
                     client_name=mandate.name,
                     hidden=len(kept) - _MAX_OPEN_OPPORTUNITIES,
                 )
@@ -864,11 +871,10 @@ def today_view(
         opportunities = [
             o for o in opportunities if o.client_id == selected_client
         ]
-        selected_name = next(
-            (m.name for m in mandates if m.id == selected_client), ""
-        )
+        # By id, never by name: two mandates may share a name, and a notice
+        # about one of them must not stand on the other's filtered page.
         opportunity_cuts = [
-            c for c in opportunity_cuts if c.client_name == selected_name
+            c for c in opportunity_cuts if c.client_id == selected_client
         ]
 
     return templates.TemplateResponse(
