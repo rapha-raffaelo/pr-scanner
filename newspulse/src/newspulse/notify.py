@@ -169,6 +169,25 @@ class ProposedCrisis:
 
 
 @dataclass(frozen=True, slots=True)
+class FoundOpportunity:
+    """One fresh fast-lane opportunity, as its notification renders it (UHR-05).
+
+    Unlike the crisis proposal this is *not* a ride-along: the light run exists
+    to put an opening on the screen within hours (DEC-6 A), and its findings
+    would otherwise wait for the next morning's alert mail — which is exactly
+    the twenty-hour delay the fast lane was built against. The plain
+    projection, like :class:`FiredAlert`: no ORM object reaches the formatting.
+    """
+
+    client_name: str
+    headline: str
+    outlets: int
+    #: Whole hours left in the window when the run found it — the same number
+    #: the card on Heute leads with.
+    hours_left: int
+
+
+@dataclass(frozen=True, slots=True)
 class ClientAlertGroup:
     """One client's alerts collapsed to a count and its single most important headline."""
 
@@ -656,6 +675,103 @@ def notify_alerts(
     )
 
 
+def _opportunity_summary(found: Sequence[FoundOpportunity]) -> AlertSummary:
+    """Render fresh opportunities for delivery. Same wording on every channel,
+    like :func:`build_summary`; the caller guarantees ``found`` is non-empty."""
+    clients = sorted({item.client_name for item in found})
+    word = "opportunity" if len(found) == 1 else "opportunities"
+    subject = (
+        f"NewsPulse: {len(found)} newsjack {word} for {', '.join(clients)}"
+    )
+    bullets = [
+        f"• {item.client_name}: {item.headline} "
+        f"({item.outlets} outlet(s), ~{item.hours_left}h left)"
+        for item in found
+    ]
+    body = "\n".join(
+        [
+            "The fast lane found an opening. The window is already running:",
+            "",
+            *bullets,
+            "",
+            "Open NewsPulse — the card on Heute carries the remaining time and "
+            "what the standing rests on.",
+        ]
+    )
+    lead = found[0]
+    message = f"{lead.client_name}: {lead.headline} (~{lead.hours_left}h left)"
+    if len(found) > 1:
+        message = f"{message} +{len(found) - 1} more"
+    return AlertSummary(
+        total=len(found),
+        client_count=len(clients),
+        groups=[],
+        subject=subject,
+        body=body,
+        desktop_message=_one_line(message),
+    )
+
+
+def notify_opportunities(
+    found: Sequence[FoundOpportunity],
+    config: NotifyConfig | None = None,
+    *,
+    send_desktop: DesktopSender | None = None,
+    send_email: EmailSender | None = None,
+) -> NotifyResult:
+    """Announce the light run's fresh opportunities; never raises.
+
+    The guards mirror :func:`notify_alerts`, and the first one carries the
+    fast lane's own promise: **no finding, no noise.** A run over a quiet radar
+    — the great majority of them, eight a day — sends nothing at all, so the
+    channel stays trusted for the runs that do. Only *fresh* rows belong here
+    (what :func:`newspulse.job.run_newsjack` just stored), never the standing
+    stock, or every three-hour tick would re-announce the same opening.
+    """
+    resolved = config or NotifyConfig.from_env()
+    desktop = send_desktop or _send_desktop
+    email = send_email or _send_email
+    if not found:
+        return NotifyResult(
+            sent=False, channel=resolved.channel, reason="no-opportunities"
+        )
+    if resolved.channel is Channel.OFF:
+        return NotifyResult(
+            sent=False,
+            channel=Channel.OFF,
+            reason="channel-off",
+            alert_count=len(found),
+        )
+    summary = _opportunity_summary(found)
+    try:
+        _dispatch(summary, resolved, desktop, email)
+    except Exception as exc:  # noqa: BLE001 — notification must never fail the run
+        _log.error(
+            "opportunity notification via %s failed: %s; "
+            "run data already persisted, not rolled back",
+            resolved.channel.value,
+            exc,
+        )
+        return NotifyResult(
+            sent=False,
+            channel=resolved.channel,
+            reason="delivery-error",
+            alert_count=len(found),
+            error=str(exc),
+        )
+    _log.info(
+        "delivered %d-opportunity notification via %s",
+        len(found),
+        resolved.channel.value,
+    )
+    return NotifyResult(
+        sent=True,
+        channel=resolved.channel,
+        reason="delivered",
+        alert_count=len(found),
+    )
+
+
 def collect_proposals(session: Session) -> list[ProposedCrisis]:
     """The crises the tool is offering right now, one per mandate at most.
 
@@ -723,6 +839,8 @@ __all__ = [
     "Channel",
     "NotifyConfigError",
     "FiredAlert",
+    "FoundOpportunity",
+    "notify_opportunities",
     "ProposedCrisis",
     "ClientAlertGroup",
     "AlertSummary",

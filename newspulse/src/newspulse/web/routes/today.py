@@ -11,16 +11,29 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import angles, config, crisis
-from ...models import Analysis, Article, Client, Crisis, Run, TopicHit, visible_coverage
+from ... import angles, config, crisis, newsjack
+from ...models import (
+    Analysis,
+    Angle,
+    Article,
+    Asset,
+    Client,
+    Crisis,
+    NewsjackOpportunity,
+    Run,
+    Standing,
+    TopicHit,
+    visible_coverage,
+)
 from ...outlets import tier_for
 from ...stories import cluster
 from ..app import get_db, templates
+from ..redirects import local_target
 
 router = APIRouter()
 
@@ -32,6 +45,13 @@ _DATE_FORMAT = "%Y-%m-%d"
 # is faster to hit while you can still take it in at a glance, and unusable once
 # it wraps to three lines.
 _CLIENT_CARD_LIMIT = 10
+
+# The fast lane's deliberate cap: at most this many open opportunities per
+# mandate stand on Heute. Three is a selection a consultant weighs in ten
+# seconds; ten is the noise this tool was built against. Cut by pickup count —
+# the wave that travels widest is the one worth catching — and the cut is
+# named on the page rather than happening silently.
+_MAX_OPEN_OPPORTUNITIES = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +159,168 @@ class OpenCrisisView:
     outlet_count: int
     negative_count: int
     article_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class OpportunityView:
+    """One open newsjack opportunity, as the fast lane's card renders it.
+
+    The card is the ten-second decision (UHR-05): is this worth it, and is
+    there still time. So it carries the remaining time as a number rather than
+    a colour, and the standing's one sentence rather than a verdict badge.
+    """
+
+    id: int
+    client_id: int
+    client_name: str
+    #: The origin piece: who had the story first, and where.
+    headline: str
+    url: str
+    source: str
+    published_at: dt.datetime
+    #: Distinct outlets carrying the story when it was weighed.
+    pickup_count: int
+    #: The model's one sentence: what the mandate's standing rests on.
+    reason: str
+    window_ends_at: dt.datetime
+    #: The remaining time, as the two numbers the card can show. ``hours_left``
+    #: is whole hours; when it is zero, ``minutes_left`` carries the rest.
+    hours_left: int
+    minutes_left: int
+    #: The occasion this opportunity was opened as, once "Text schreiben" was
+    #: pressed — what makes the texts findable from the card.
+    angle_id: int | None
+    #: How many texts hang on that occasion.
+    texts: int
+
+
+@dataclass(frozen=True, slots=True)
+class OpportunityCut:
+    """The visible name of the cap: which mandate lost how many cards.
+
+    Carries the id as well as the name because the client filter matches on it:
+    ``Client.name`` is not unique, and filtering the notice by name showed one
+    mandate's cut on its namesake's page.
+    """
+
+    client_id: int
+    client_name: str
+    hidden: int
+
+
+def _remaining(window_ends_at: dt.datetime, now: dt.datetime) -> tuple[int, int]:
+    """Hours and minutes until the window closes, floored, never negative.
+
+    Floored rather than rounded because the number is a promise: a card saying
+    "noch 2 Std." with 1:59 left has already broken it once.
+    """
+    left = max(dt.timedelta(0), window_ends_at - now)
+    return int(left.total_seconds() // 3600), int((left.total_seconds() // 60) % 60)
+
+
+def _standing_sentence(row: NewsjackOpportunity) -> str:
+    """The card's one sentence, never blank.
+
+    ``newsjack._parse`` can legitimately return an empty reason, and the card
+    then rendered a bare "Stehen" label — while the acceptance promises the
+    grounds in one sentence. The stored reason is data and shown as written;
+    when the model gave none, the story's shape stands in, the same posture as
+    ``assets_view._opportunity_fallback`` takes for the occasion.
+    """
+    reason = row.reason.strip()
+    if reason:
+        return reason
+    return (
+        f"{row.pickup_count} Medien tragen die Story, "
+        f"zuerst bei {row.article.source}."
+    )
+
+
+def _opportunity_texts(
+    session: Session, opportunity_ids: list[int]
+) -> tuple[dict[int, int], dict[int, int]]:
+    """The occasion each opportunity was opened as, and how many texts hang on
+    it — ``(angle_by_opportunity, text_count_by_angle)`` in two bounded reads."""
+    if not opportunity_ids:
+        return {}, {}
+    angle_by_opp = {
+        row.newsjack_id: row.id
+        for row in session.execute(
+            select(Angle.id, Angle.newsjack_id).where(
+                Angle.newsjack_id.in_(opportunity_ids)
+            )
+        ).all()
+    }
+    if not angle_by_opp:
+        return {}, {}
+    counts = dict(
+        session.execute(
+            select(Asset.angle_id, func.count())
+            .where(Asset.angle_id.in_(list(angle_by_opp.values())))
+            .group_by(Asset.angle_id)
+        ).all()
+    )
+    return angle_by_opp, counts
+
+
+def _fetch_opportunities(
+    session: Session, mandates: list[Client], *, now: dt.datetime
+) -> tuple[list[OpportunityView], list[OpportunityCut]]:
+    """The open opportunities the fast lane puts above the day, and the cuts.
+
+    Read per mandate off :func:`newspulse.newsjack.open_opportunities`, which
+    already applies the whole gate — ``belegt`` only, not waved off, window not
+    yet passed against the clock. Capped at :data:`_MAX_OPEN_OPPORTUNITIES` per
+    mandate by pickup count (ties keep the sooner-to-expire card, because the
+    stored order is soonest-first and the sort is stable); whatever the cap
+    removed is returned as a named cut rather than vanishing.
+
+    Across mandates the cards are ordered soonest-to-expire first — the order a
+    consultant has to look at them in.
+    """
+    tz = _local_tz()
+    views: list[OpportunityView] = []
+    cuts: list[OpportunityCut] = []
+    for mandate in mandates:
+        rows = newsjack.open_opportunities(session, mandate, now=now)
+        if not rows:
+            continue
+        kept = sorted(rows, key=lambda row: -row.pickup_count)
+        if len(kept) > _MAX_OPEN_OPPORTUNITIES:
+            cuts.append(
+                OpportunityCut(
+                    client_id=mandate.id,
+                    client_name=mandate.name,
+                    hidden=len(kept) - _MAX_OPEN_OPPORTUNITIES,
+                )
+            )
+            kept = kept[:_MAX_OPEN_OPPORTUNITIES]
+        angle_by_opp, text_counts = _opportunity_texts(
+            session, [row.id for row in kept]
+        )
+        for row in kept:
+            hours, minutes = _remaining(row.window_ends_at, now)
+            angle_id = angle_by_opp.get(row.id)
+            views.append(
+                OpportunityView(
+                    id=row.id,
+                    client_id=mandate.id,
+                    client_name=mandate.name,
+                    headline=row.article.title,
+                    url=row.article.url,
+                    source=row.article.source,
+                    published_at=row.article.published_at.astimezone(tz),
+                    pickup_count=row.pickup_count,
+                    reason=_standing_sentence(row),
+                    window_ends_at=row.window_ends_at,
+                    hours_left=hours,
+                    minutes_left=minutes,
+                    angle_id=angle_id,
+                    texts=text_counts.get(angle_id, 0) if angle_id else 0,
+                )
+            )
+    views.sort(key=lambda view: view.window_ends_at)
+    return views, cuts
 
 
 @dataclass(frozen=True, slots=True)
@@ -557,6 +739,41 @@ def client_day(client_id: int) -> RedirectResponse:
     return RedirectResponse(f"/today?client={client_id}", status_code=303)
 
 
+@router.post("/gelegenheit/{opportunity_id}/verwerfen")
+def dismiss_opportunity(
+    opportunity_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Wave a fast-lane opportunity off. No reason asked, none stored.
+
+    Deliberately cheaper than every other stand-down in the tool: a dismissed
+    opportunity costs nothing and proves nothing, so demanding a justification
+    would only teach people not to press the button. The stamp is the whole
+    act — ``open_opportunities`` stops returning the row, and the stored
+    verdict (which the stamp never touches) is what keeps the same story from
+    being weighed again for this mandate.
+
+    A stale or double click is a no-op rather than an error: the first stamp
+    stands, and an unknown id redirects back the same way — the card the click
+    aimed at is gone either way, and there is nothing a 404 page would let the
+    reader do about it.
+
+    Only a ``belegt`` row can be waved off, the same gate ``write_from_opportunity``
+    keeps: a rejection is an audit record and never a card, so a POST naming one
+    is mis-aimed or forged and must not stamp the record it aims at.
+    """
+    row = session.get(NewsjackOpportunity, opportunity_id)
+    if (
+        row is not None
+        and row.standing is Standing.BELEGT
+        and row.dismissed_at is None
+    ):
+        row.dismissed_at = dt.datetime.now(dt.UTC)
+        session.commit()
+    return RedirectResponse(local_target(redirect_to), status_code=303)
+
+
 @router.get("/today", response_class=HTMLResponse)
 def today_view(
     request: Request,
@@ -661,6 +878,14 @@ def today_view(
     # the same mandate roster the filter strip uses, and filtered with it below.
     open_crises, crisis_offers = _fetch_crises(session, mandates)
 
+    # The fast lane (UHR-05): open opportunities above the day's coverage,
+    # because an opening is worthless the moment it has to be searched for.
+    # Read against the clock on every render — expiry is a comparison, not a
+    # job, so a card disappears on time with no run having happened.
+    opportunities, opportunity_cuts = _fetch_opportunities(
+        session, mandates, now=dt.datetime.now(dt.UTC)
+    )
+
     # Follows the client filter, like the rest of the page: looking at one mandate
     # means looking at one mandate, including what to send them.
     drafts = _fetch_angles(session, day)
@@ -670,6 +895,14 @@ def today_view(
         quiet = [q for q in quiet if q.client_id == selected_client]
         open_crises = [c for c in open_crises if c.client_id == selected_client]
         crisis_offers = [o for o in crisis_offers if o.client_id == selected_client]
+        opportunities = [
+            o for o in opportunities if o.client_id == selected_client
+        ]
+        # By id, never by name: two mandates may share a name, and a notice
+        # about one of them must not stand on the other's filtered page.
+        opportunity_cuts = [
+            c for c in opportunity_cuts if c.client_id == selected_client
+        ]
 
     return templates.TemplateResponse(
         request,
@@ -717,6 +950,14 @@ def today_view(
             # offer has to be where the alerting already is.
             "open_crises": open_crises,
             "crisis_offers": crisis_offers,
+            # The fast lane's cards, above the day (UHR-05). Empty means the
+            # section is simply not rendered — no placeholder, per acceptance:
+            # without an open opportunity, Heute looks exactly as it does today.
+            "opportunities": opportunities,
+            "opportunity_cuts": opportunity_cuts,
+            # The cap itself, so the cut's sentence names the number the route
+            # actually applied rather than hardcoding "drei" in the template.
+            "opportunity_cap": _MAX_OPEN_OPPORTUNITIES,
             "angles": drafts,
             "quiet_clients": quiet,
             "angle_days": angles.COLUMN_DAYS,

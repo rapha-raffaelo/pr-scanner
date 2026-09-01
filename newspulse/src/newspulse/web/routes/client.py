@@ -32,11 +32,14 @@ from ...models import (
     Analysis,
     Angle,
     Article,
+    Asset,
     Category,
     Client,
     MarketSignal,
+    NewsjackOpportunity,
     SignalKind,
     SignalOrigin,
+    Standing,
     TopicHit,
     visible_coverage,
 )
@@ -535,6 +538,99 @@ def clients_index(
     )
 
 
+# --- The fast lane's record: concluded opportunities (UHR-05) -------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ConcludedOpportunity:
+    """One opportunity that no longer stands, with its outcome readable.
+
+    An expired window vanishes from Heute — that is the whole point of a
+    window — but the record of what stood, for how long, and what came of it
+    belongs to the mandate's archive. ``dismissed_at`` set means a person waved
+    it off; otherwise the window simply ran out.
+    """
+
+    headline: str
+    url: str
+    source: str
+    published_at: dt.datetime
+    pickup_count: int
+    reason: str
+    window_ends_at: dt.datetime
+    dismissed_at: dt.datetime | None
+    #: The occasion it was opened as, if "Text schreiben" was ever pressed.
+    angle_id: int | None
+    #: How many texts hang on that occasion — the outcome's other half.
+    texts: int
+
+
+def _concluded_opportunities(
+    session: Session, client_id: int, *, now: dt.datetime | None = None
+) -> list[ConcludedOpportunity]:
+    """The mandate's ``belegt`` opportunities that no longer stand, newest
+    first. Rejections (``duenn``/``keins``) are audit rows, not opportunities,
+    and stay out; open ones live on Heute and stay out too — this list is the
+    record, not a second inbox."""
+    reference = now or dt.datetime.now(dt.UTC)
+    rows = list(
+        session.scalars(
+            select(NewsjackOpportunity)
+            .where(
+                NewsjackOpportunity.client_id == client_id,
+                NewsjackOpportunity.standing == Standing.BELEGT,
+                or_(
+                    NewsjackOpportunity.dismissed_at.is_not(None),
+                    NewsjackOpportunity.window_ends_at <= reference,
+                ),
+            )
+            .order_by(NewsjackOpportunity.created_at.desc())
+        ).all()
+    )
+    if not rows:
+        return []
+    angle_by_opp = {
+        row.newsjack_id: row.id
+        for row in session.execute(
+            select(Angle.id, Angle.newsjack_id).where(
+                Angle.newsjack_id.in_([row.id for row in rows])
+            )
+        ).all()
+    }
+    counts = (
+        dict(
+            session.execute(
+                select(Asset.angle_id, func.count())
+                .where(Asset.angle_id.in_(list(angle_by_opp.values())))
+                .group_by(Asset.angle_id)
+            ).all()
+        )
+        if angle_by_opp
+        else {}
+    )
+    tz = _local_tz()
+    views: list[ConcludedOpportunity] = []
+    for row in rows:
+        angle_id = angle_by_opp.get(row.id)
+        views.append(
+            ConcludedOpportunity(
+                headline=row.article.title,
+                url=row.article.url,
+                source=row.article.source,
+                published_at=row.article.published_at.astimezone(tz),
+                pickup_count=row.pickup_count,
+                reason=row.reason,
+                window_ends_at=row.window_ends_at.astimezone(tz),
+                dismissed_at=(
+                    row.dismissed_at.astimezone(tz) if row.dismissed_at else None
+                ),
+                angle_id=angle_id,
+                texts=counts.get(angle_id, 0) if angle_id else 0,
+            )
+        )
+    return views
+
+
 def _render_detail(
     request: Request,
     session: Session,
@@ -596,6 +692,10 @@ def _render_detail(
             # because both happen to be monitored.
             "candidates": _competitor_candidates(session, client),
             "competitors": list(client.competitors),
+            # The fast lane's record (UHR-05): opportunities that expired or
+            # were waved off stay readable here with their outcome, after they
+            # have left Heute. Empty renders nothing — no placeholder.
+            "opportunities": _concluded_opportunities(session, client_id),
             "last_run": _fetch_last_run(session),
             # The shared header dates every page; the archive view spans many
             # days, so it shows today.

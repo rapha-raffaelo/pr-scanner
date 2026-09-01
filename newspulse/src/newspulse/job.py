@@ -2306,6 +2306,7 @@ def run_newsjack(
     fetch: FetchFeed = fetch_feed,
     invoke=None,
     now: Callable[[], dt.datetime] | None = None,
+    notify_config: notify.NotifyConfig | None = None,
 ) -> NewsjackRun:
     """One pass of the fast lane: refresh each active mandate's topic radar and
     weigh what it holds. Deliberately poor, and the poverty is the point.
@@ -2332,6 +2333,7 @@ def run_newsjack(
     opportunities = 0
     rejected = 0
     mandates = 0
+    found: list[notify.FoundOpportunity] = []
     for client in list_clients(session):
         # A yardstick is tracked to compare its share of the conversation;
         # nobody writes a contribution on its behalf, so weighing openings for
@@ -2350,9 +2352,31 @@ def run_newsjack(
             _log.warning("newsjack pass for %r failed: %s; skipping", name, exc)
             errors.append(f"newsjack {name!r}: {exc}")
             continue
-        fresh_openings = sum(1 for row in stored if row.standing is Standing.BELEGT)
-        opportunities += fresh_openings
-        rejected += len(stored) - fresh_openings
+        fresh = [row for row in stored if row.standing is Standing.BELEGT]
+        opportunities += len(fresh)
+        rejected += len(stored) - len(fresh)
+        # Collected for the notification below: only what THIS run stored, so
+        # a standing opportunity is announced once and not on every tick.
+        found.extend(
+            notify.FoundOpportunity(
+                client_name=name,
+                headline=row.article.title,
+                outlets=row.pickup_count,
+                hours_left=max(
+                    0,
+                    int(
+                        (row.window_ends_at - now_fn()).total_seconds() // 3600
+                    ),
+                ),
+            )
+            for row in fresh
+        )
+    # After everything is committed, like the daily sweep's _notify: read-only
+    # from here on, never raising, so a broken channel cannot cost stored rows.
+    # A run that found nothing sends nothing (UHR-05); the card on Heute is the
+    # surface either way, this is only the tap on the shoulder DEC-6's ninety
+    # minutes are about.
+    notify.notify_opportunities(found, notify_config)
     _log.info(
         "newsjack run done: %d mandate(s), %d opportunit(y/ies), "
         "%d rejection(s), %d error(s)",

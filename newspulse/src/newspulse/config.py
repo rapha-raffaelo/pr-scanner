@@ -543,6 +543,39 @@ def newsjack_window_hours() -> int:
     return value
 
 
+# How often the fast lane's light run happens (DEC-6 A: "ein zweiter, leichter
+# Lauf alle drei Stunden"). Three hours is the locked cadence — an opportunity is
+# on the screen after ninety minutes on average instead of twenty hours — and a
+# pass over a quiet radar costs no model call, which is what makes it affordable.
+ENV_NEWSJACK_EVERY_HOURS = "NEWSPULSE_NEWSJACK_EVERY_HOURS"
+_DEFAULT_NEWSJACK_EVERY_HOURS = 3
+
+# The floor a configured cadence is clamped to. Below an hour the pass would
+# re-fetch the same radar feeds for material that has not changed — the same
+# reason the crisis cadence has a floor, so a typo cannot buy that either.
+_MIN_NEWSJACK_EVERY_HOURS = 1
+
+
+def newsjack_every_hours() -> int:
+    """How many hours pass between two light runs of the fast lane.
+
+    Read per call rather than at import, like :func:`crisis_sweep_minutes` and
+    for the same reason: a platform variable set after start-up is still seen,
+    and the value the running cadence uses is the one currently configured.
+    """
+    value = _env_int(ENV_NEWSJACK_EVERY_HOURS, _DEFAULT_NEWSJACK_EVERY_HOURS)
+    if value < _MIN_NEWSJACK_EVERY_HOURS:
+        _log.warning(
+            "%s=%d is below the %d-hour floor; using %d",
+            ENV_NEWSJACK_EVERY_HOURS,
+            value,
+            _MIN_NEWSJACK_EVERY_HOURS,
+            _MIN_NEWSJACK_EVERY_HOURS,
+        )
+        return _MIN_NEWSJACK_EVERY_HOURS
+    return value
+
+
 def gemini_configured() -> bool:
     """Whether the fallback provider can be used at all.
 

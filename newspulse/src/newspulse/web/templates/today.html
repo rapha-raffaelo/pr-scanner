@@ -201,6 +201,26 @@
     <a href="/today?date={{ shown_instead_of.isoformat() }}">{{ t("Trotzdem heute ansehen") }} →</a>
   </div>
 {% endif %}
+{# The fast lane (UHR-05): open opportunities above the day's coverage, because
+   an opening is worthless the moment it has to be searched for. No section and
+   no placeholder when there is none — a quiet fast lane must leave this page
+   exactly as it was. The cap's cut is named below the cards rather than
+   happening silently. #}
+{% if opportunities %}
+  <section class="njacks" aria-label="{{ t('Gelegenheiten') }}">
+    <div class="njacks__row">
+      {% for opp in opportunities %}
+        {% include "partials/newsjack_card.html" %}
+      {% endfor %}
+    </div>
+    {% for cut in opportunity_cuts %}
+      <p class="njacks__cut">
+        {{ cut.hidden }} {{ t("weitere Gelegenheit(en) bei") }} {{ cut.client_name }}
+        {{ t("nach Aufgriffszahl gekürzt; hier stehen die") }} {{ opportunity_cap }} {{ t("mit den meisten Aufgriffen.") }}
+      </p>
+    {% endfor %}
+  </section>
+{% endif %}
 <div class="cols">
   <aside class="alertcol" aria-label="{{ t('Warnungen') }}">
     <div class="colhead">{{ t("Warnungen") }} <span class="n">{{ alerts | length }}</span></div>

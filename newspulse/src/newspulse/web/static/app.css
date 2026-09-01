@@ -2238,3 +2238,64 @@ button:disabled { opacity: .55; cursor: default; }
 
 /* The offer card on Heute grew a second button (Verwerfen). */
 .crisis__acts { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
+
+/* --- The fast lane on Heute (UHR-05, DEC-6 A) ----------------------------
+   Open opportunities as a strip of cards above the day's coverage. Drawn
+   with the accent rather than the alert palette on purpose: an opportunity
+   is an opening, not an emergency, and a strip that shouted red would spend
+   the crisis colour on good news. The remaining time is a number in the
+   card's head — the ten-second decision is "is it worth it, and is there
+   still time", and a colour answers neither. */
+.njacks { margin-bottom: var(--s4); }
+.njacks__row {
+  display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.njack {
+  background: var(--card); border: 1px solid var(--accent);
+  border-radius: var(--radius); padding: var(--s4);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.njack__head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+}
+.njack__badge {
+  background: var(--accent); color: #fff; border-radius: 5px;
+  padding: 1px 7px; font-size: var(--t-caption2); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.njack__left {
+  font-size: var(--t-caption); font-weight: 700; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.njack__head .clichip { margin-left: auto; }
+.njack .hl { font-size: var(--t-subhead); font-weight: 600; }
+.njack .meta {
+  font-size: var(--t-caption2); color: var(--muted);
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+}
+.njack__standing { font-size: var(--t-caption); color: var(--ink-2); margin: 0; }
+.njack__label {
+  font-weight: 700; color: var(--muted); text-transform: uppercase;
+  font-size: var(--t-caption2); letter-spacing: 0.03em; margin-right: 4px;
+}
+.njack__acts {
+  display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap;
+  margin-top: auto;
+}
+.njack__texts { font-size: var(--t-caption); font-weight: 600; }
+.triage-btn--write { color: var(--accent); font-weight: 700; }
+/* The cap's visible name, under the cards it thinned. */
+.njacks__cut { font-size: var(--t-caption); color: var(--muted); margin: var(--s2) 0 0; }
+
+/* The mandate's archive of concluded opportunities, on the Archiv tab. */
+.njarch { background: var(--card); border-radius: var(--radius); margin-bottom: var(--s5); }
+.njarch__row {
+  padding: var(--s3) var(--s4); border-top: 1px solid var(--line);
+  font-size: var(--t-caption);
+}
+.njarch__row:first-child { border-top: 0; }
+.njarch__hl { font-weight: 600; font-size: var(--t-subhead); }
+.njarch__meta { color: var(--muted); font-size: var(--t-caption2);
+                display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.njarch__out { color: var(--ink-2); }
