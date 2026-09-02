@@ -2139,6 +2139,13 @@ _EN: dict[str, str] = {
     "überregional": "national reach",
     "namentlich genannt": "named",
     "keine Berichterstattung im Fenster": "no coverage in the window",
+    # The why-line of a tile the crisis floor raised over a quiet reading:
+    # coverage lay in the window and none of it was negative, so the counts the
+    # other tiles carry ("N Medien · x/y negativ") have nothing to count. Said
+    # as a sentence rather than as zeroes, because "0 Medien · 0/12 negativ"
+    # beside a declared Krise is a broken line in both languages.
+    "keine negative Berichterstattung im Fenster":
+        "no negative coverage in the window",
     # The thirty is ``newspulse.reputation.BASELINE_READINGS``, spelled out here
     # in both languages because a sentence that says "its own median" without
     # saying over what is a claim the reader cannot check. Nothing in this file

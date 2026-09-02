@@ -632,6 +632,39 @@ def test_the_counts_on_the_tile_stay_the_ones_the_sweep_stored(factory, client):
     assert "1/4 negativ" in body
 
 
+def test_a_crisis_over_a_quiet_reading_does_not_count_zero_outlets(factory, client):
+    """The floored tile over friendly coverage says so, instead of "0 Medien".
+
+    Twelve articles in the window and none of them negative: the arithmetic left
+    the reading on ruhig, and the tile exists only because somebody declared a
+    crisis. The counts line the other tiles carry has nothing to count here —
+    "0 Medien · 0/12 negativ" beside a declared Krise is a broken sentence in
+    both languages — so the tile says the honest thing: no negative coverage
+    lay in the window.
+    """
+    with factory() as s:
+        mandate = _mandate(s, "Alpha AG")
+        _reading(s, mandate, state=ReputationState.RUHIG, articles=12, negative=0)
+        article = _seed_article(s)
+        s.add(
+            Crisis(
+                client_id=mandate.id,
+                article_id=article.id,
+                declared_by="lucas",
+                declared_at=dt.datetime.now(dt.UTC),
+                level=3,
+            )
+        )
+        s.commit()
+
+    body = _band_of(client.get("/today").text)
+
+    assert "band__tile--krise" in body
+    assert "keine negative Berichterstattung im Fenster" in body
+    assert "0 Medien" not in body
+    assert "0/12 negativ" not in body
+
+
 def test_a_closed_crisis_does_not_raise_the_band(factory, client):
     """A stood-down crisis is a finished document, not a standing state."""
     with factory() as s:

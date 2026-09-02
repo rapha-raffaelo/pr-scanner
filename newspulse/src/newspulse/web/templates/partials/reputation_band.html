@@ -29,12 +29,19 @@
              consultant asked "why is this Risiko" gets the numbers in the hour
              they ask, which is the whole of DEC-2 option A. #}
           <div class="band__why">
-            {% if entry.articles %}
+            {% if entry.negative %}
               {% if entry.outlets == 1 %}{{ t("1 Medium") }}{% else %}{{ entry.outlets }} {{ t("Medien") }}{% endif %}
               <span class="dot">·</span>
               {{ entry.negative }}/{{ entry.articles }} {{ t("negativ") }}
               {% if entry.national %}<span class="dot">·</span> {{ t("überregional") }}{% endif %}
               {% if entry.named %}<span class="dot">·</span> {{ t("namentlich genannt") }}{% endif %}
+            {% elif entry.articles %}
+              {# Coverage, none of it negative. Only the crisis floor can put
+                 this tile on the band - the arithmetic leaves such a reading on
+                 ruhig - and "0 Medien · 0/12 negativ" beside a declared Krise
+                 would be a broken sentence pretending to be a count. The honest
+                 count is that nothing negative lay in the window. #}
+              {{ t("keine negative Berichterstattung im Fenster") }}
             {% elif entry.day %}
               {{ t("keine Berichterstattung im Fenster") }}
             {% else %}
