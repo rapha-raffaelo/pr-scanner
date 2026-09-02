@@ -462,6 +462,76 @@ def test_a_krise_analysis_below_the_importance_does_not_lift_it(session, mandate
     assert reading.braked is True
 
 
+def test_a_positive_krise_analysis_does_not_corroborate(session, mandate):
+    """The second corroboration is about the report the brake is holding.
+
+    One hostile FAZ piece, and beside it a friendly one the analyzer filed under
+    ``krise`` at eight — "die Krise gemeistert" is a crisis story and reads
+    positiv. Counted over every row, that lifts the mandate to Risiko off one
+    negative report, one outlet and no second day, which is the exact false
+    alarm the brake exists to refuse. Counted over the negative rows, as every
+    other input on the reading is, nothing corroborates and the brake holds.
+    """
+    _cover(session, mandate, source="FAZ")
+    _cover(
+        session, mandate, source="Handelsblatt", title=_MARKET,
+        tonality=Tonality.POSITIV, category=Category.KRISE,
+        importance=reputation.CORROBORATION_IMPORTANCE,
+    )
+
+    reading = reputation.measure(session, mandate, now=_NOW)
+
+    assert reading.inputs.outlets == 1
+    assert reading.state is ReputationState.BEOBACHTUNG
+    assert reading.braked is True
+
+
+def test_one_report_cannot_be_its_own_repetition(session, mandate):
+    """Two readings whose windows overlap have seen the same article.
+
+    The window is a rolling stretch of hours ending at the reading's moment, so
+    a run at 20:00 and a run at 06:00 the next morning both count a story filed
+    the previous morning — and it is filed under two different local days. That
+    is the dashboard's "jetzt lesen" followed by the scheduled run, and without
+    the disjointness guard the second reading reads the first as "it was there
+    yesterday too" and reaches Risiko off one report in one outlet.
+    """
+    story = _NOW - dt.timedelta(days=1, hours=2)
+    _cover(session, mandate, source="FAZ", published=story)
+
+    first = reputation.record(session, mandate, now=story + dt.timedelta(hours=12))
+    second = reputation.record(session, mandate, now=story + dt.timedelta(hours=22))
+
+    # Two days, one article: the windows overlap and both saw it.
+    assert first.day != second.day
+    assert second.negative == 1
+    assert second.state is ReputationState.BEOBACHTUNG
+
+
+def test_a_day_whose_rung_came_only_from_the_crisis_floor_is_not_a_repetition(
+    session, mandate
+):
+    """A person's declaration may not do duty as media corroboration.
+
+    Monday's row reads ``krise`` and carries zero points: the arithmetic put the
+    mandate on ruhig and an open crisis floored it there, which is a statement a
+    person made rather than a count of coverage. Today has one hostile report.
+    Reading Monday's *state* would call that a repetition and lift today to
+    Risiko; reading its ``points`` asks what the arithmetic said, and the
+    arithmetic said nothing.
+    """
+    _reading_on(
+        session, mandate, _local_today() - dt.timedelta(days=2),
+        negative=1, points=0, state=ReputationState.KRISE,
+    )
+    _cover(session, mandate, source="FAZ")
+
+    reading = reputation.measure(session, mandate, now=_NOW)
+
+    assert reading.state is ReputationState.BEOBACHTUNG
+    assert reading.braked is True
+
+
 def test_a_repetition_on_a_second_day_lifts_a_single_report(session, mandate):
     """The brake's third corroboration, read off yesterday's stored reading.
 

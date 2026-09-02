@@ -172,6 +172,12 @@ REPETITION_DAYS = 7
 #: shortest stretch in which a German news cycle both starts and finishes.
 DIRECTION_READINGS = 7
 
+#: The fewest points an earlier day must have counted for it to be a repetition:
+#: the Beobachtung floor, read off :data:`_STATE_POINTS` rather than written out
+#: a second time. A day the arithmetic itself left on the bottom rung is not a
+#: repetition of anything — see :func:`_repeated`.
+_REPETITION_POINTS = min(floor for floor, _ in _STATE_POINTS)
+
 #: How many readings the mandate's own baseline is taken over. Thirty, per the
 #: acceptance: a mandate is measured against its own median rather than against
 #: a threshold that would mean the same thing for a municipal utility and for a
@@ -391,16 +397,28 @@ def _rung(points: int) -> ReputationState:
 
 
 def _flagged(rows: list[_Row]) -> bool:
-    """Whether the analyzer itself filed one of these as a crisis, high enough."""
+    """Whether the analyzer filed one of the *negative* rows as a crisis, high enough.
+
+    Read over the negative coverage only, like every other input on the reading.
+    The brake is holding one hostile report and this asks whether anything
+    corroborates *that* report — but a piece the analyzer filed under ``krise``
+    can as easily be "Solaris AG meistert die Krise", a friendly story about the
+    same subject. Counting it would let good news corroborate bad, which is not
+    a second source: it is one report with a second headline written over it,
+    and it would carry the mandate to Risiko off a single outlet.
+    """
     return any(
-        row.category is Category.KRISE
+        row.tonality is Tonality.NEGATIV
+        and row.category is Category.KRISE
         and row.importance >= CORROBORATION_IMPORTANCE
         for row in rows
     )
 
 
-def _repeated(session: Session, client: Client, *, day: dt.date) -> bool:
-    """Whether an *earlier* day this week already stood above ruhig on negative coverage.
+def _repeated(
+    session: Session, client: Client, *, day: dt.date, before: dt.datetime
+) -> bool:
+    """Whether an earlier, *separately counted* day already stood above ruhig.
 
     Two things are read off this one answer: the brake's third corroboration,
     and the :attr:`~newspulse.models.ReputationState.ISSUE` rung, which is the
@@ -411,15 +429,30 @@ def _repeated(session: Session, client: Client, *, day: dt.date) -> bool:
     the series is what this module writes every morning, and it is the only place
     the tool knows that something was already the matter yesterday.
 
-    Both halves of the condition are load-bearing. ``negative > 0`` alone would
-    let a single hostile piece inside a friendly week — a day the arithmetic
-    itself called ruhig — stand as a repetition, and two small unrelated matters
-    on two days are not one matter on two days. The stored ``state`` is the
-    earlier day's own answer to exactly that question, so it is the one asked.
+    Three guards on the rows it will count, and each one is a way a row would
+    otherwise say something it does not know:
 
     ``day`` is excluded so a second run of the same morning cannot corroborate
     itself off the row it is about to overwrite — which would turn the brake off
     for every mandate on the second run of any day.
+
+    ``computed_at <= before`` — ``before`` being the moment the window now being
+    counted opens — is that same guard across a day boundary. The window is a
+    rolling stretch of hours ending at the reading's own moment, so two runs at
+    different hours on two days *overlap*: one story filed once is counted in
+    both readings, and the earlier row then stands as the repetition of itself.
+    That is not a hypothetical — a "jetzt lesen" from the dashboard at 18:00 and
+    the scheduled 06:10 run next morning are exactly it, and one report would
+    reach Risiko off one outlet and no second day. Only a row whose own window
+    had closed before this one opened is a second day.
+
+    ``points`` is asked rather than ``state``, because the question is what the
+    *arithmetic* said about that day. A row whose ``krise`` came from the open
+    crisis floor carries zero points: a person declared it, no count reached it,
+    and letting a declaration stand in as media corroboration is precisely the
+    borrowed authority the brake exists to refuse. ``negative > 0`` stays beside
+    it as the plainer half — there was hostile coverage at all — and together
+    they are the earlier day's own answer to the question being asked of it.
 
     What it cannot yet say is that it was *the same* theme. That is the issue
     register's job (RIS-02), and until it exists this is honest about what a
@@ -433,8 +466,9 @@ def _repeated(session: Session, client: Client, *, day: dt.date) -> bool:
                 ReputationReading.client_id == client.id,
                 ReputationReading.day < day,
                 ReputationReading.day >= floor,
+                ReputationReading.computed_at <= before,
                 ReputationReading.negative > 0,
-                ReputationReading.state != ReputationState.RUHIG,
+                ReputationReading.points >= _REPETITION_POINTS,
             )
             .limit(1)
         ).first()
@@ -491,7 +525,8 @@ def measure(
     """
     reference = now or dt.datetime.now(dt.UTC)
     window = dt.timedelta(hours=config.reputation_window_hours())
-    rows = _rows(session, client, since=reference - window, until=reference)
+    since = reference - window
+    rows = _rows(session, client, since=since, until=reference)
     inputs = _inputs(client, rows)
     points = score(inputs)
     computed = _rung(points)
@@ -499,9 +534,8 @@ def measure(
     # Asked once, and only where it can change the answer: a mandate the
     # arithmetic put on ruhig is neither braked nor carrying anything, and this
     # is the one round trip the reading costs beyond reading the coverage.
-    repeated = (
-        computed is not ReputationState.RUHIG
-        and _repeated(session, client, day=_local_day(reference))
+    repeated = computed is not ReputationState.RUHIG and _repeated(
+        session, client, day=_local_day(reference), before=since
     )
 
     braked = False
