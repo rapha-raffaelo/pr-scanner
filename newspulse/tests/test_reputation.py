@@ -157,6 +157,7 @@ def _cover(
 def _reading_on(
     session, client: Client, day: dt.date, *, negative: int = 1, points: int = 2,
     state: ReputationState = ReputationState.BEOBACHTUNG, articles: int | None = None,
+    computed_at: dt.datetime | None = None,
 ) -> ReputationReading:
     """A stored reading for a past day, seeded rather than computed.
 
@@ -175,7 +176,8 @@ def _reading_on(
         negative=negative,
         named=bool(negative),
         points=points,
-        computed_at=dt.datetime.combine(day, dt.time(6, 10), tzinfo=dt.UTC),
+        computed_at=computed_at
+        or dt.datetime.combine(day, dt.time(6, 10), tzinfo=dt.UTC),
     )
     session.add(row)
     session.commit()
@@ -544,6 +546,31 @@ def test_a_repetition_on_a_second_day_lifts_a_single_report(session, mandate):
     _cover(session, mandate, source="FAZ")
 
     reading = reputation.measure(session, mandate, now=_NOW)
+
+    assert reading.state is ReputationState.RISIKO
+    assert reading.braked is False
+
+
+def test_sweep_duration_jitter_does_not_cost_the_repetition(session, mandate):
+    """Two scheduled mornings a day apart are two days, whichever run was slower.
+
+    The reading is taken at the *end* of the sweep, so its moment drifts with
+    sweep duration: yesterday's run finished at 06:18, today's at 06:15, and the
+    two 24-hour windows overlap by those three minutes. Strict window
+    disjointness would throw yesterday out for exactly that overlap — the
+    repetition would then fire only on the mornings today's sweep happened to be
+    the slower one, which is a coin flip nobody could re-derive from the stored
+    rows. The tolerance exists for this case, and this is the test that holds it.
+    """
+    yesterday = _local_today() - dt.timedelta(days=1)
+    _reading_on(
+        session, mandate, yesterday,
+        computed_at=dt.datetime.combine(yesterday, dt.time(6, 18), tzinfo=dt.UTC),
+    )
+    _cover(session, mandate, source="FAZ")
+
+    now = dt.datetime.combine(_local_today(), dt.time(6, 15), tzinfo=dt.UTC)
+    reading = reputation.measure(session, mandate, now=now)
 
     assert reading.state is ReputationState.RISIKO
     assert reading.braked is False

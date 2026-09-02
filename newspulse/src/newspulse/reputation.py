@@ -178,6 +178,18 @@ DIRECTION_READINGS = 7
 #: repetition of anything — see :func:`_repeated`.
 _REPETITION_POINTS = min(floor for floor, _ in _STATE_POINTS)
 
+#: How much two readings' windows may overlap and still count as separate days.
+#: Two scheduled runs land 24 hours apart only on paper: the reading is taken at
+#: the *end* of the sweep, so its moment drifts with sweep duration, and on any
+#: morning the sweep finishes a few minutes faster than the day before, the two
+#: windows overlap by exactly those minutes. A guard that demanded strict
+#: disjointness would then drop yesterday's genuinely separate day — and the
+#: Issue rung with it — whenever today's run was the quicker one, which is a
+#: coin flip. An hour is far above sweep jitter and far below the half-day
+#: overlap of the manual evening run the guard exists to refuse — see
+#: :func:`_repeated`.
+_REPETITION_OVERLAP_TOLERANCE = dt.timedelta(hours=1)
+
 #: How many readings the mandate's own baseline is taken over. Thirty, per the
 #: acceptance: a mandate is measured against its own median rather than against
 #: a threshold that would mean the same thing for a municipal utility and for a
@@ -450,15 +462,18 @@ def _repeated(
     itself off the row it is about to overwrite — which would turn the brake off
     for every mandate on the second run of any day.
 
-    ``computed_at <= before`` — ``before`` being the moment the window now being
-    counted opens — is that same guard across a day boundary. The window is a
-    rolling stretch of hours ending at the reading's own moment, so two runs at
-    different hours on two days *overlap*: one story filed once is counted in
-    both readings, and the earlier row then stands as the repetition of itself.
-    That is not a hypothetical — a "jetzt lesen" from the dashboard at 18:00 and
-    the scheduled 06:10 run next morning are exactly it, and one report would
-    reach Risiko off one outlet and no second day. Only a row whose own window
-    had closed before this one opened is a second day.
+    ``computed_at <= before + tolerance`` — ``before`` being the moment the
+    window now being counted opens — is that same guard across a day boundary.
+    The window is a rolling stretch of hours ending at the reading's own moment,
+    so two runs at different hours on two days *overlap*: one story filed once
+    is counted in both readings, and the earlier row then stands as the
+    repetition of itself. That is not a hypothetical — a "jetzt lesen" from the
+    dashboard at 18:00 and the scheduled 06:10 run next morning are exactly it,
+    and one report would reach Risiko off one outlet and no second day. Only a
+    row whose own window had closed by the time this one opened is a second day
+    — up to :data:`_REPETITION_OVERLAP_TOLERANCE`, because two scheduled runs a
+    day apart end minutes apart in either order, and strict disjointness would
+    make yesterday count only on the mornings today's sweep was the slower one.
 
     ``points`` is asked rather than ``state``, because the question is what the
     *arithmetic* said about that day. A row whose ``krise`` came from the open
@@ -480,7 +495,8 @@ def _repeated(
                 ReputationReading.client_id == client.id,
                 ReputationReading.day < day,
                 ReputationReading.day >= floor,
-                ReputationReading.computed_at <= before,
+                ReputationReading.computed_at
+                <= before + _REPETITION_OVERLAP_TOLERANCE,
                 ReputationReading.negative > 0,
                 ReputationReading.points >= _REPETITION_POINTS,
             )
