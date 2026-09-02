@@ -2132,6 +2132,12 @@ _EN: dict[str, str] = {
     "überregional": "national reach",
     "namentlich genannt": "named",
     "keine Berichterstattung im Fenster": "no coverage in the window",
+    # The thirty is ``newspulse.reputation.BASELINE_READINGS``, spelled out here
+    # in both languages because a sentence that says "its own median" without
+    # saying over what is a claim the reader cannot check. Nothing in this file
+    # can see that constant move, so ``test_reputation_band`` holds the pair
+    # together — see
+    # ``test_the_deviation_sentence_names_the_baseline_it_is_counted_over``.
     "über dem eigenen Median der letzten 30 Ablesungen":
         "above its own median of the last 30 readings",
     "Mandant ruhig": "client quiet",

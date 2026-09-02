@@ -46,6 +46,15 @@
               <span class="band__dev">{{ t("über dem eigenen Median der letzten 30 Ablesungen") }}</span>
             {% endif %}
           </div>
+          {# A tile whose reading is older than the band's own stamp says so on
+             itself. The sweep skips a mandate it cannot count and carries on, so
+             this tile can be the last reading that succeeded — and its four
+             counts are that day's coverage, not today's. Undated, it would be
+             read under the date in the foot and re-derived against the wrong
+             morning. #}
+          {% if entry.day < band.day %}
+            <div class="band__stale">{{ t("Ablesung vom") }} {{ entry.day.strftime("%d.%m.%Y") }}</div>
+          {% endif %}
         </article>
       {% endfor %}
     </div>

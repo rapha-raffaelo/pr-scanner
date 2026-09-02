@@ -28,7 +28,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse import config, i18n
+from newspulse import i18n
 from newspulse.models import (
     Article,
     Base,
@@ -39,11 +39,12 @@ from newspulse.models import (
 )
 from newspulse.web.app import create_app, get_db
 
-#: The band reads each mandate's newest stored reading, so the fixtures date
-#: themselves off the local day rather than off a hardcoded one — the stamp the
-#: band renders is the reading's day, and a fixed date would drift out of the
-#: window the page is looked at through.
-_TODAY = dt.datetime.now(config.local_zone()).date()
+#: Fixed rather than read off the clock. The band renders each mandate's newest
+#: *stored* reading and stamps it with that reading's own day — nothing on this
+#: path asks what today is — so a real date buys the fixtures nothing and costs
+#: them hermeticity: a run that crossed local midnight between this import and
+#: an assertion would seed one day and assert against another.
+_TODAY = dt.date(2026, 9, 2)
 
 
 @pytest.fixture
@@ -378,6 +379,39 @@ def test_a_mandate_with_no_coverage_says_so_on_its_tile(factory, client):
     assert "0/0 negativ" not in body
 
 
+def test_a_tile_older_than_the_band_carries_its_own_date(factory, client):
+    """A tile can be days old, and then the stamp in the foot is not its date.
+
+    The sweep has a fault boundary per mandate: it logs what it could not count
+    and carries on, so a mandate can keep its last successful reading for
+    several mornings. Beta was read today; Alpha's last reading is three days
+    old. Both stand under one stamp, and the four counts on Alpha's tile are
+    that day's coverage — undated, a consultant would re-derive them against the
+    wrong morning and find the band wrong rather than stale.
+    """
+    stale = _TODAY - dt.timedelta(days=3)
+    with factory() as s:
+        _reading(
+            s, _mandate(s, "Alpha AG"), day=stale,
+            state=ReputationState.RISIKO, points=4,
+            outlets=2, articles=3, negative=2, named=True,
+        )
+        _reading(
+            s, _mandate(s, "Beta AG"),
+            state=ReputationState.BEOBACHTUNG, points=2,
+            outlets=1, articles=2, negative=1,
+        )
+        s.commit()
+
+    body = _band_of(client.get("/today").text)
+
+    # One tile of the two, and it is the old one: the tile whose day *is* the
+    # stamp's day would be repeating it.
+    assert body.count('class="band__stale"') == 1
+    assert stale.strftime("%d.%m.%Y") in body
+    assert _TODAY.strftime("%d.%m.%Y") in body
+
+
 def test_the_tiles_are_ordered_worst_first(factory, client):
     """The band is read top-left first, so the worst mandate is there."""
     with factory() as s:
@@ -506,6 +540,26 @@ def test_every_rung_and_every_direction_has_an_english_word(factory, client):
         direction.value for direction in reputation.Direction
     ]:
         assert value in i18n._EN, value
+
+
+def test_the_deviation_sentence_names_the_baseline_it_is_counted_over(factory):
+    """The one number that lives in a visible sentence *and* in a constant.
+
+    ``reputation.BASELINE_READINGS`` decides how many readings the median is
+    taken over, and both languages spell that number out in the line the reader
+    sees. Neither file can notice the other moving, so this is what notices:
+    raise the baseline to sixty and a sentence still saying thirty is the page
+    telling the reader something the code did not do — in two languages.
+    """
+    from newspulse import reputation
+
+    count = str(reputation.BASELINE_READINGS)
+    sentence = next(
+        key for key in i18n._EN if key.startswith("über dem eigenen Median")
+    )
+
+    assert count in sentence, sentence
+    assert count in i18n._EN[sentence], i18n._EN[sentence]
 
 
 # --- The one thing the band does not read off the stored reading -----------------

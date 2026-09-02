@@ -176,6 +176,11 @@ DIRECTION_READINGS = 7
 #: acceptance: a mandate is measured against its own median rather than against
 #: a threshold that would mean the same thing for a municipal utility and for a
 #: listed group.
+#:
+#: This number is also *said*, in both languages, by the deviation line on the
+#: tile — see the entry in :mod:`newspulse.i18n`. Moving it here means moving it
+#: there, and ``test_the_deviation_sentence_names_the_baseline_it_is_counted_over``
+#: is what fails if only one of the two moves.
 BASELINE_READINGS = 30
 
 #: The fewest prior readings a baseline may be claimed from. Below this there is

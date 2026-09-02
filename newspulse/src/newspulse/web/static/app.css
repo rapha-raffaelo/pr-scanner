@@ -2344,6 +2344,8 @@ button:disabled { opacity: .55; cursor: default; }
    "Ungewöhnlich für dieses Mandat" is the one thing on the tile that a threshold
    shared across the portfolio could not have said. */
 .band__dev { color: var(--ink-2); }
+/* Only rendered on a tile whose reading is older than the band's stamp. */
+.band__stale { font-size: var(--t-caption2); color: var(--faint); margin-top: var(--s1); }
 .band__foot {
   font-size: var(--t-caption); color: var(--muted);
   display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap;
