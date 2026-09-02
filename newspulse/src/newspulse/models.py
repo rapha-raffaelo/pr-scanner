@@ -21,6 +21,7 @@ from enum import StrEnum
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -2666,8 +2667,137 @@ class CrisisDismissal(Base):
     article: Mapped["Article"] = relationship(lazy="selectin")
 
 
+#: The rungs of the ladder, as the arithmetic and the interface both name them.
+class ReputationState(StrEnum):
+    """How a mandate stands, counted from stored rows and never estimated.
+
+    Five rungs, and the order they are declared in *is* the ladder —
+    :func:`newspulse.reputation.rank` reads this class, so a rung inserted in
+    the wrong place would silently reorder the comparison the open-crisis floor
+    relies on.
+
+    ``ISSUE`` is declared here and deliberately never produced by RIS-01's
+    arithmetic: the rung belongs to the issue register (RIS-02), which is the
+    only thing that can say a repeated theme is being carried as an issue. It
+    exists in the enum from the start so the register can occupy it without a
+    migration, and so the ladder the interface names is the whole ladder from
+    the first day.
+    """
+
+    RUHIG = "ruhig"
+    BEOBACHTUNG = "beobachtung"
+    ISSUE = "issue"
+    RISIKO = "risiko"
+    KRISE = "krise"
+
+
+class ReputationReading(Base):
+    """One mandate's state on one day: the rung, the four inputs, and when.
+
+    The row exists so the state has a *history*, which is the whole difference
+    between this and the red card on Today that expires at midnight. Two things
+    fall out of a stored series without any further work:
+
+    * the direction, because there is a run of previous days to compare against;
+    * the deviation, because a mandate can be measured against its own median
+      instead of against a threshold that would mean the same thing for a
+      municipal utility and for a listed group.
+
+    **One reading per mandate and day** — the UNIQUE below, not a convention.
+    The sweep runs once a morning today, but a manual run, a redeploy or a
+    second scheduler tick would otherwise leave two rows for the same day, and
+    every median and every trend read over that series would double-weight
+    whichever day happened to be swept twice.
+    :func:`newspulse.reputation.record` updates the standing row instead.
+
+    **The four inputs sit beside the rung**, exactly as they do on
+    :class:`Crisis` and for exactly the same reason: a rung nobody can re-derive
+    is a rung nobody will defend in front of a client. ``articles`` and
+    ``negative`` are kept as two integers rather than as a rounded share, so the
+    fraction is checkable rather than merely plausible.
+
+    ``articles = 0`` is a *reading*, not a missing one: a mandate nobody wrote
+    about is quiet, and the row is what says so.
+    """
+
+    __tablename__ = "reputation_readings"
+    __table_args__ = (
+        UniqueConstraint("client_id", "day", name="uq_reputation_reading_per_day"),
+        CheckConstraint(
+            "negative >= 0 AND articles >= negative",
+            name="ck_reputation_reading_share",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The *local* day the reading is for — the same day the Heute page is keyed
+    #: on. A UTC day would file a reading taken at 01:00 Berlin time under the
+    #: previous day, and the band and the coverage under it would then disagree
+    #: about what day it is.
+    day: Mapped[dt.date] = mapped_column(Date(), nullable=False, index=True)
+    state: Mapped[ReputationState] = mapped_column(
+        SAEnum(
+            ReputationState,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="reputation_state",
+        ),
+        nullable=False,
+        default=ReputationState.RUHIG,
+        server_default=ReputationState.RUHIG.value,
+    )
+
+    # --- The four inputs, and the sum they produced ---------------------------
+    #: How many independent outlets carry the strongest negative story of the
+    #: window. Story-scoped on purpose: two outlets on *the same* thing is what
+    #: corroboration means, and two outlets on two unrelated stories is not.
+    outlets: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: The reach class, as the one bit the ranking in ``outlet_tiers.toml``
+    #: actually decides: whether any of the negative coverage ran nationally.
+    national: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    #: The denominator of the negative share: everything visible about this
+    #: mandate in the window. Zero means nothing was written, which is a
+    #: statement and not a gap.
+    articles: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: Its numerator: how many of those read negative for the mandate.
+    negative: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: Whether the mandate is named in the feed-provided text of any negative
+    #: piece. No body is ever fetched, here or anywhere else.
+    named: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    #: The sum the rung was read off. Stored rather than recomputed on render,
+    #: because it is what the direction and the median are counted over — a
+    #: series recomputed from today's coverage would silently rewrite its own
+    #: history as articles age out of the window.
+    points: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: When the reading was taken. The acceptance asks for it by name, and it is
+    #: the one thing ``day`` cannot say: a reading updated at 18:00 by a second
+    #: run is a different statement from the one taken at 06:10.
+    computed_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    client: Mapped["Client"] = relationship(lazy="selectin")
+
+
 __all__ = [
     "Crisis",
+    "ReputationReading",
+    "ReputationState",
     "NewsjackOpportunity",
     "Standing",
 
