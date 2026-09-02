@@ -8,8 +8,10 @@ as three cards on three days rather than as one thing getting three weeks old.
 
 This module is the missing reading, and it is deliberately small:
 
-* :func:`measure` — the arithmetic. Four inputs that are already in stored rows,
-  a sum, and a rung. It writes nothing and calls nothing.
+* :func:`measure` — the rung. Four inputs that are already in stored rows, a
+  sum, and then the three things a sum alone must not decide: the brake, the
+  Issue rung that a single day cannot see, and a declared crisis. It writes
+  nothing.
 * :func:`record` / :func:`sweep` — the two writes, and the only two. One row per
   mandate and day; a second run the same day updates it.
 * :func:`direction` and :func:`deviates` — what a *series* of readings says that
@@ -130,14 +132,16 @@ _NEGATIVE_POINTS: tuple[tuple[float, int], ...] = ((0.8, 2), (0.5, 1))
 #: in is worse than coverage it is not, but naming alone is a mention.
 _NAMED_POINTS = 1
 
-#: Points to rung, richest first. Eight points is every input at its maximum —
-#: five outlets on one story, national, four fifths negative, named — so the top
-#: rung is the full house and nothing less.
+#: Points to rung, richest first. Eight is every input at its maximum — five
+#: outlets on one story, national, four fifths negative, named — and the top
+#: rung starts one below it, at seven. Deliberately: at eight the last point
+#: decides the rung, and "three outlets, national, named, wholly against us" is
+#: the same morning whether the fourth outlet has filed by six or not.
 #:
-#: :attr:`~newspulse.models.ReputationState.ISSUE` is deliberately absent. The
-#: rung belongs to the issue register (RIS-02): only an open issue can say a
-#: repeated theme is being *carried* as one, and no count of today's coverage
-#: can. Until the register fills it, the arithmetic steps over it.
+#: :attr:`~newspulse.models.ReputationState.ISSUE` is reached by no sum at all,
+#: and that is the point of it: no count of *today's* coverage can say a matter
+#: is being carried across days. It is the one rung a single day cannot see, so
+#: it is read off the stored series instead — see :func:`measure`.
 _STATE_POINTS: tuple[tuple[int, ReputationState], ...] = (
     (7, ReputationState.KRISE),
     (4, ReputationState.RISIKO),
@@ -212,9 +216,13 @@ class Reading:
     """One computed reading: the rung, the inputs, and why it is not higher.
 
     ``braked`` says the arithmetic reached above Beobachtung and was held there
-    because nothing corroborated a single negative report. It travels with the
-    reading rather than being recovered afterwards, because it is the answer to
-    the only question a consultant asks about a rung that looks too low.
+    because nothing corroborated a single negative report. It is the *caller's*
+    answer at the moment of measuring and is deliberately not a column: the
+    acceptance fixes the stored row at the state, the four inputs and the
+    timestamp, and the four inputs beside a Beobachtung already say it — a rung
+    below the sum they add up to is a rung that was held. Its consumers are the
+    brake's tests, which assert it alongside ``points`` so that a brake achieved
+    by quietly lowering the sum instead fails them.
     """
 
     inputs: Inputs
@@ -387,12 +395,22 @@ def _flagged(rows: list[_Row]) -> bool:
 
 
 def _repeated(session: Session, client: Client, *, day: dt.date) -> bool:
-    """Whether a stored reading from an *earlier* day already saw negative coverage.
+    """Whether an *earlier* day this week already stood above ruhig on negative coverage.
 
-    The second of the brake's three corroborations. Read off the stored series
-    rather than by re-clustering a week of coverage: the series is what this
-    module writes every morning, and it is the only place the tool knows that
-    something was already the matter yesterday.
+    Two things are read off this one answer: the brake's third corroboration,
+    and the :attr:`~newspulse.models.ReputationState.ISSUE` rung, which is the
+    same statement one rung lower — a matter that was there on a second day is
+    not today's news.
+
+    Read off the stored series rather than by re-clustering a week of coverage:
+    the series is what this module writes every morning, and it is the only place
+    the tool knows that something was already the matter yesterday.
+
+    Both halves of the condition are load-bearing. ``negative > 0`` alone would
+    let a single hostile piece inside a friendly week — a day the arithmetic
+    itself called ruhig — stand as a repetition, and two small unrelated matters
+    on two days are not one matter on two days. The stored ``state`` is the
+    earlier day's own answer to exactly that question, so it is the one asked.
 
     ``day`` is excluded so a second run of the same morning cannot corroborate
     itself off the row it is about to overwrite — which would turn the brake off
@@ -400,7 +418,7 @@ def _repeated(session: Session, client: Client, *, day: dt.date) -> bool:
 
     What it cannot yet say is that it was *the same* theme. That is the issue
     register's job (RIS-02), and until it exists this is honest about what a
-    stored reading knows: there was negative coverage on another day this week.
+    stored reading knows: this mandate stood above ruhig on another day this week.
     """
     floor = day - dt.timedelta(days=REPETITION_DAYS)
     return bool(
@@ -411,16 +429,14 @@ def _repeated(session: Session, client: Client, *, day: dt.date) -> bool:
                 ReputationReading.day < day,
                 ReputationReading.day >= floor,
                 ReputationReading.negative > 0,
+                ReputationReading.state != ReputationState.RUHIG,
             )
             .limit(1)
         ).first()
     )
 
 
-def _corroborated(
-    session: Session, client: Client, inputs: Inputs, rows: list[_Row], *,
-    day: dt.date,
-) -> bool:
+def _corroborated(inputs: Inputs, rows: list[_Row], *, repeated: bool) -> bool:
     """Whether anything lifts this above a single negative report.
 
     Three conditions, and any one of them is enough:
@@ -428,16 +444,17 @@ def _corroborated(
     * two independent outlets on the same story;
     * an analysis the analyzer filed as ``krise`` at
       :data:`CORROBORATION_IMPORTANCE` or above;
-    * negative coverage on another day inside :data:`REPETITION_DAYS`.
+    * a second day above ruhig inside :data:`REPETITION_DAYS` — ``repeated``,
+      which the caller has already asked :func:`_repeated` for, because the rung
+      one floor down needs the same answer and one query is enough for both.
 
-    The cheap two are asked first: both are already in memory, and only the
-    third costs a query.
+    Exactly three, and the list is closed on purpose: the acceptance names these
+    and no others, so a fourth route past the brake is a change to the rule and
+    not an implementation detail.
     """
-    if inputs.outlets >= CORROBORATING_OUTLETS:
-        return True
-    if _flagged(rows):
-        return True
-    return _repeated(session, client, day=day)
+    return (
+        inputs.outlets >= CORROBORATING_OUTLETS or _flagged(rows) or repeated
+    )
 
 
 def measure(
@@ -445,13 +462,20 @@ def measure(
 ) -> Reading:
     """This mandate's rung right now, counted from stored rows. Writes nothing.
 
-    Four inputs, a sum, a rung, and then the two things the sum alone must not
+    Four inputs, a sum, a rung, and then the three things the sum alone must not
     decide:
 
     * **the brake.** A single negative report never lifts a mandate above
       Beobachtung, however large the outlet — see :func:`_corroborated`. This is
       the rule the whole feature stands or falls on: without it the band is red
       every morning and therefore read on none of them.
+    * **the second day.** A mandate the arithmetic put on Beobachtung, which
+      already stood above ruhig on another day this week, is on
+      :attr:`~newspulse.models.ReputationState.ISSUE`: not a bad morning but a
+      matter being carried. No sum over one day can reach that rung — a day
+      cannot see a second day — so it is read off the stored series. RIS-02's
+      register will say *which* matter; the series can already say that there
+      is one.
     * **the open crisis.** A declared crisis sets the rung to Krise and the
       arithmetic may not lower it. The tool cannot be showing "ruhig" for a
       mandate whose crisis page is open in the next tab, and the crisis is the
@@ -467,15 +491,27 @@ def measure(
     points = score(inputs)
     computed = _rung(points)
 
+    # Asked once, and only where it can change the answer: a mandate the
+    # arithmetic put on ruhig is neither braked nor carrying anything, and this
+    # is the one round trip the reading costs beyond reading the coverage.
+    repeated = (
+        computed is not ReputationState.RUHIG
+        and _repeated(session, client, day=_local_day(reference))
+    )
+
     braked = False
-    # Only asked where it can change the answer. A rung at or below Beobachtung
-    # is already where the brake would put it, and the corroboration query is a
-    # round trip per mandate on a page that renders ten of them.
     if rank(computed) > rank(ReputationState.BEOBACHTUNG) and not _corroborated(
-        session, client, inputs, rows, day=_local_day(reference)
+        inputs, rows, repeated=repeated
     ):
         computed = ReputationState.BEOBACHTUNG
         braked = True
+    elif computed is ReputationState.BEOBACHTUNG and repeated:
+        # Only from Beobachtung upwards, never from ruhig: a mandate today's
+        # coverage says nothing about does not acquire a rung from an older row.
+        # A braked reading cannot arrive here at all — the brake fires only when
+        # nothing corroborated, and a repetition is one of the three things that
+        # does — so the two branches cannot both be right about one reading.
+        computed = ReputationState.ISSUE
 
     if crisis.open_crisis(session, client) is not None:
         computed = ReputationState.KRISE

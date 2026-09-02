@@ -300,12 +300,14 @@ def test_a_contested_story_the_mandate_is_not_named_in_reads_lower(session, mand
     assert reading.state is ReputationState.BEOBACHTUNG
 
 
-def test_the_issue_rung_is_never_produced_by_the_arithmetic(session, mandate):
-    """It belongs to the register in RIS-02, and until then it stays empty.
+def test_no_sum_of_points_reaches_the_issue_rung(session, mandate):
+    """Issue is the series' answer and never the sum's, by construction.
 
     Every reachable sum is walked rather than a sample of them: the rung is
-    skipped by a table, and a table is exactly the thing that gets an entry added
-    to it by somebody who has not read this.
+    decided by a table, and a table is exactly the thing that gets an entry added
+    to it by somebody who has not read this. What a day *cannot* see is a second
+    day, so that is the one thing the rung is reached by — see
+    ``test_a_beobachtung_that_was_already_there_yesterday_is_an_issue``.
     """
     reached = {reputation._rung(points) for points in range(0, 9)}
 
@@ -528,6 +530,97 @@ def test_a_second_run_the_same_day_cannot_corroborate_off_its_own_row(
 
     assert again.state is ReputationState.BEOBACHTUNG
     assert again.braked is True
+
+
+# --- The fifth rung: a matter that was already there on a second day -------------
+
+
+def test_a_beobachtung_that_was_already_there_yesterday_is_an_issue(session, mandate):
+    """The rung between a bad morning and a risk, and the one a day cannot see.
+
+    Counted by hand:
+
+    * one outlet on the negative story -> 0 points (below the "≥2" bucket)
+    * Badische Zeitung is not tier 1 -> 0
+    * one of one reads negative, a share of 1.0 -> 2 points
+    * the headline names "Solaris AG" -> 1 point
+
+    Three points: Beobachtung, exactly as it would be on its own. The sum is what
+    the coverage was and does not move. What moves the rung is yesterday's stored
+    reading, which already stood above ruhig: the same matter on a second day is
+    a matter being carried, and that is Issue.
+    """
+    _reading_on(session, mandate, _local_today() - dt.timedelta(days=1))
+    _cover(session, mandate, source="Badische Zeitung")
+
+    reading = reputation.measure(session, mandate, now=_NOW)
+
+    assert reading.points == 3
+    assert reading.state is ReputationState.ISSUE
+    # Nothing was held down: the brake is about a rung the sum reached and could
+    # not keep, and this is a rung the sum never reached at all.
+    assert reading.braked is False
+
+
+def test_the_same_coverage_on_its_own_first_day_is_only_beobachtung(session, mandate):
+    """The pair to the test above, and the reason it is about a *second* day.
+
+    The identical fixture with no history behind it. Three points either way, so
+    a mandate does not reach Issue by having a bad Tuesday — it reaches it by
+    still being there on Wednesday.
+    """
+    _cover(session, mandate, source="Badische Zeitung")
+
+    reading = reputation.measure(session, mandate, now=_NOW)
+
+    assert reading.points == 3
+    assert reading.state is ReputationState.BEOBACHTUNG
+
+
+def test_an_earlier_day_the_reading_itself_called_ruhig_is_not_a_repetition(
+    session, mandate
+):
+    """A repetition is a repetition *of something*, so the earlier day has to be one.
+
+    Yesterday's row saw a negative piece and its own arithmetic still put the
+    mandate on ruhig — one hostile article inside twenty friendly ones is not a
+    matter. Counting that as the second day would let two unrelated small pieces
+    a week apart clear the brake, which is the false alarm the brake exists to
+    refuse. The stored ``state`` is that day's own answer to exactly this
+    question, so it is the one asked.
+    """
+    _reading_on(
+        session, mandate, _local_today() - dt.timedelta(days=1),
+        negative=1, articles=20, points=0, state=ReputationState.RUHIG,
+    )
+    _cover(session, mandate, source="FAZ")
+
+    reading = reputation.measure(session, mandate, now=_NOW)
+
+    assert reading.state is ReputationState.BEOBACHTUNG
+    assert reading.braked is True
+
+
+def test_a_mandate_with_nothing_today_stays_ruhig_however_loud_yesterday_was(
+    session, mandate
+):
+    """Issue is reached from Beobachtung upwards and never from ruhig.
+
+    Yesterday was a Risiko and today nobody wrote about the mandate at all. The
+    reading is about a day: a mandate today's coverage says nothing about does
+    not acquire a rung from an older row, and the quiet line on the band counts
+    it — which is the difference between a band that empties out when a story
+    passes and one that stays red for a week after it has.
+    """
+    _reading_on(
+        session, mandate, _local_today() - dt.timedelta(days=1),
+        points=4, state=ReputationState.RISIKO,
+    )
+
+    reading = reputation.measure(session, mandate, now=_NOW)
+
+    assert reading.inputs.articles == 0
+    assert reading.state is ReputationState.RUHIG
 
 
 # --- The open crisis is a floor the arithmetic cannot lower ----------------------
