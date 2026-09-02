@@ -178,18 +178,6 @@ DIRECTION_READINGS = 7
 #: repetition of anything — see :func:`_repeated`.
 _REPETITION_POINTS = min(floor for floor, _ in _STATE_POINTS)
 
-#: How much two readings' windows may overlap and still count as separate days.
-#: Two scheduled runs land 24 hours apart only on paper: the reading is taken at
-#: the *end* of the sweep, so its moment drifts with sweep duration, and on any
-#: morning the sweep finishes a few minutes faster than the day before, the two
-#: windows overlap by exactly those minutes. A guard that demanded strict
-#: disjointness would then drop yesterday's genuinely separate day — and the
-#: Issue rung with it — whenever today's run was the quicker one, which is a
-#: coin flip. An hour is far above sweep jitter and far below the half-day
-#: overlap of the manual evening run the guard exists to refuse — see
-#: :func:`_repeated`.
-_REPETITION_OVERLAP_TOLERANCE = dt.timedelta(hours=1)
-
 #: How many readings the mandate's own baseline is taken over. Thirty, per the
 #: acceptance: a mandate is measured against its own median rather than against
 #: a threshold that would mean the same thing for a municipal utility and for a
@@ -442,7 +430,7 @@ def _flagged(rows: list[_Row]) -> bool:
 
 
 def _repeated(
-    session: Session, client: Client, *, day: dt.date, before: dt.datetime
+    session: Session, client: Client, *, day: dt.date, rows: list[_Row]
 ) -> bool:
     """Whether an earlier, *separately counted* day already stood above ruhig.
 
@@ -462,18 +450,22 @@ def _repeated(
     itself off the row it is about to overwrite — which would turn the brake off
     for every mandate on the second run of any day.
 
-    ``computed_at <= before + tolerance`` — ``before`` being the moment the
-    window now being counted opens — is that same guard across a day boundary.
+    ``computed_at < newest`` — ``newest`` being the latest *negative* piece in
+    the window now being counted — is that same guard across a day boundary.
     The window is a rolling stretch of hours ending at the reading's own moment,
-    so two runs at different hours on two days *overlap*: one story filed once
-    is counted in both readings, and the earlier row then stands as the
-    repetition of itself. That is not a hypothetical — a "jetzt lesen" from the
-    dashboard at 18:00 and the scheduled 06:10 run next morning are exactly it,
-    and one report would reach Risiko off one outlet and no second day. Only a
-    row whose own window had closed by the time this one opened is a second day
-    — up to :data:`_REPETITION_OVERLAP_TOLERANCE`, because two scheduled runs a
-    day apart end minutes apart in either order, and strict disjointness would
-    make yesterday count only on the mornings today's sweep was the slower one.
+    so two runs on two days *overlap*: one story filed once is counted in both
+    readings, and the earlier row would then stand as the repetition of itself
+    — a "jetzt lesen" at 18:00 and the scheduled run next morning, or two
+    scheduled mornings where today's sweep finished a few minutes faster than
+    yesterday's, are exactly it, and one report would reach Risiko off one
+    outlet and no second day. So an earlier row counts as a second day only
+    when today's window holds negative coverage published *after* that row was
+    computed — coverage the earlier reading structurally could not have seen.
+    One article can never clear that bar against the reading it produced (it
+    was published inside that reading's own window, so never after it), and no
+    tolerance on run timing is needed: whether yesterday's sweep was slower or
+    faster, and whether someone re-read the day at 18:00, the question stays
+    "did anything new arrive since", which is what a repetition is.
 
     ``points`` is asked rather than ``state``, because the question is what the
     *arithmetic* said about that day. A row whose ``krise`` came from the open
@@ -487,6 +479,19 @@ def _repeated(
     register's job (RIS-02), and until it exists this is honest about what a
     stored reading knows: this mandate stood above ruhig on another day this week.
     """
+    newest = max(
+        (
+            row.article.published_at
+            for row in rows
+            if row.tonality is Tonality.NEGATIV
+        ),
+        default=None,
+    )
+    if newest is None:
+        # No negative coverage today means nothing a repetition could repeat.
+        # Unreachable from measure() — a rung above ruhig needs a negative row —
+        # but the honest answer if anything else ever asks.
+        return False
     floor = day - dt.timedelta(days=REPETITION_DAYS)
     return bool(
         session.execute(
@@ -495,8 +500,7 @@ def _repeated(
                 ReputationReading.client_id == client.id,
                 ReputationReading.day < day,
                 ReputationReading.day >= floor,
-                ReputationReading.computed_at
-                <= before + _REPETITION_OVERLAP_TOLERANCE,
+                ReputationReading.computed_at < newest,
                 ReputationReading.negative > 0,
                 ReputationReading.points >= _REPETITION_POINTS,
             )
@@ -565,7 +569,7 @@ def measure(
     # arithmetic put on ruhig is neither braked nor carrying anything, and this
     # is the one round trip the reading costs beyond reading the coverage.
     repeated = computed is not ReputationState.RUHIG and _repeated(
-        session, client, day=_local_day(reference), before=since
+        session, client, day=_local_day(reference), rows=rows
     )
 
     braked = False

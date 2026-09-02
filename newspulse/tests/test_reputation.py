@@ -495,8 +495,11 @@ def test_one_report_cannot_be_its_own_repetition(session, mandate):
     a run at 20:00 and a run at 06:00 the next morning both count a story filed
     the previous morning — and it is filed under two different local days. That
     is the dashboard's "jetzt lesen" followed by the scheduled run, and without
-    the disjointness guard the second reading reads the first as "it was there
-    yesterday too" and reaches Risiko off one report in one outlet.
+    the published-after guard the second reading reads the first as "it was
+    there yesterday too" and reaches Risiko off one report in one outlet. The
+    one article was published inside the first reading's own window, so it can
+    never be the coverage that arrived *after* it — which is what a second day
+    has to bring.
     """
     story = _NOW - dt.timedelta(days=1, hours=2)
     _cover(session, mandate, source="FAZ", published=story)
@@ -560,7 +563,9 @@ def test_sweep_duration_jitter_does_not_cost_the_repetition(session, mandate):
     disjointness would throw yesterday out for exactly that overlap — the
     repetition would then fire only on the mornings today's sweep happened to be
     the slower one, which is a coin flip nobody could re-derive from the stored
-    rows. The tolerance exists for this case, and this is the test that holds it.
+    rows. The published-after guard is indifferent to run timing: today's
+    article arrived after yesterday's reading was taken, and that — not the
+    order the two sweeps finished in — is what makes today a second day.
     """
     yesterday = _local_today() - dt.timedelta(days=1)
     _reading_on(
@@ -570,6 +575,79 @@ def test_sweep_duration_jitter_does_not_cost_the_repetition(session, mandate):
     _cover(session, mandate, source="FAZ")
 
     now = dt.datetime.combine(_local_today(), dt.time(6, 15), tzinfo=dt.UTC)
+    reading = reputation.measure(session, mandate, now=now)
+
+    assert reading.state is ReputationState.RISIKO
+    assert reading.braked is False
+
+
+def test_a_faster_morning_does_not_let_one_report_corroborate_itself(
+    session, mandate
+):
+    """The jitter can also run the other way, and then it must not corroborate.
+
+    One article, published minutes before yesterday's sweep read it — exactly
+    the freshest coverage a morning sweep fetches. Today's sweep finishes an
+    hour *earlier* than yesterday's, so today's window still contains that same
+    article: it scores again, files under a second local day, and yesterday's
+    row sits there saying "negative coverage stood here". Any guard built on
+    run timing alone calls that a repetition; the published-after guard sees
+    that nothing was published since yesterday's reading was taken, so the one
+    report stays what it is — a single negative report, braked at Beobachtung
+    on both mornings.
+    """
+    yesterday = _local_today() - dt.timedelta(days=1)
+    story = dt.datetime.combine(yesterday, dt.time(6, 0), tzinfo=dt.UTC)
+    _cover(session, mandate, source="FAZ", published=story)
+
+    first = reputation.record(
+        session, mandate,
+        now=dt.datetime.combine(yesterday, dt.time(6, 18), tzinfo=dt.UTC),
+    )
+    second = reputation.record(
+        session, mandate,
+        now=dt.datetime.combine(_local_today(), dt.time(5, 20), tzinfo=dt.UTC),
+    )
+
+    assert first.day != second.day
+    assert second.negative == 1
+    assert first.state is ReputationState.BEOBACHTUNG
+    assert second.state is ReputationState.BEOBACHTUNG
+
+
+def test_an_evening_reread_does_not_cost_the_next_morning_its_repetition(
+    session, mandate
+):
+    """A pressed "jetzt lesen" button must not decide whether Issue is reachable.
+
+    Negative coverage on two genuine days, with a manual re-read at 18:00 in
+    between. The re-read overwrites the standing row's ``computed_at``, and a
+    guard keyed on run timing would then throw yesterday out — the repetition
+    would depend on whether anyone pressed the button the evening before.
+    The published-after guard asks only whether today's window holds coverage
+    yesterday's reading had not seen, and this morning's fresh article is
+    exactly that, whenever the row was last written.
+    """
+    yesterday = _local_today() - dt.timedelta(days=1)
+    _cover(
+        session, mandate, source="FAZ",
+        published=dt.datetime.combine(yesterday, dt.time(6, 0), tzinfo=dt.UTC),
+    )
+    reputation.record(
+        session, mandate,
+        now=dt.datetime.combine(yesterday, dt.time(6, 10), tzinfo=dt.UTC),
+    )
+    reread = reputation.record(
+        session, mandate,
+        now=dt.datetime.combine(yesterday, dt.time(18, 0), tzinfo=dt.UTC),
+    )
+    assert reread.day == yesterday
+
+    _cover(
+        session, mandate, source="Handelsblatt",
+        published=dt.datetime.combine(_local_today(), dt.time(6, 0), tzinfo=dt.UTC),
+    )
+    now = dt.datetime.combine(_local_today(), dt.time(6, 10), tzinfo=dt.UTC)
     reading = reputation.measure(session, mandate, now=now)
 
     assert reading.state is ReputationState.RISIKO
