@@ -575,6 +575,7 @@ def newsjack_every_hours() -> int:
         return _MIN_NEWSJACK_EVERY_HOURS
     return value
 
+
 # How far back a reputation reading looks (RIS-01). Twenty-four hours, because
 # the reading is a *daily* one and the day is what the band is read on: a wider
 # window would carry Monday's wave into Thursday's reading and leave the band red

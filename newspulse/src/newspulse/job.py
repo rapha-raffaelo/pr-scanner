@@ -1838,7 +1838,6 @@ def _settle_industries(session: Session, clients: Sequence[Client], fetch: Fetch
     return settled
 
 
-
 def _read_reputation(
     session: Session, clients: Sequence[Client], *, now: dt.datetime
 ) -> int:
