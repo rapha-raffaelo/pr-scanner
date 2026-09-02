@@ -896,6 +896,15 @@ def today_view(
     # filtered to one mandate carries that mandate's line and not the
     # portfolio's: a "neun Mandanten ruhig" beside one mandate's coverage counts
     # eight mandates that are not on the page.
+    #
+    # Deliberately not keyed on the day being viewed. The band is the *current*
+    # standing - the acceptance pins it to Heute, and on Heute it stands - and
+    # it stays up while the reader pages into history for the same reason the
+    # crisis cards do: a declared crisis is true while the reader is looking at
+    # last Tuesday, and a band that vanished there would hide it. The band
+    # cannot be mistaken for the viewed day's standing either way: it carries
+    # its own "Ablesung vom" stamp, and a tile older than that stamp dates
+    # itself again on the tile.
     band = reputation.band(
         session,
         [m for m in mandates if selected_client in (None, m.id)],
