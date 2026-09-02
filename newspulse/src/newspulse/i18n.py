@@ -2118,6 +2118,13 @@ _EN: dict[str, str] = {
     # colour on its own: a band that says only "red" makes the reader supply the
     # sentence, and the sentence they supply is the one they already expected.
     "Reputationslage": "Reputation standing",
+    # The singular to the "Medien" above: a braked single-outlet Beobachtung is
+    # a common tile, and "1 Medien" / "1 outlets" is wrong in both languages —
+    # the same branch the quiet line's Mandant/Mandanten already takes. Keyed
+    # as the whole phrase because "Medium" is already the contacts form's
+    # capitalised field label, and this one sits lowercase inside a line; the
+    # count is part of the key, since one is the only count the singular has.
+    "1 Medium": "1 outlet",
     # models.ReputationState members, keyed on the stored German value the same
     # way the categories above are. Capitalised at render, so the table holds
     # them exactly as the database does.

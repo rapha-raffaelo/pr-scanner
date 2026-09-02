@@ -30,7 +30,7 @@
              they ask, which is the whole of DEC-2 option A. #}
           <div class="band__why">
             {% if entry.articles %}
-              {{ entry.outlets }} {{ t("Medien") }}
+              {% if entry.outlets == 1 %}{{ t("1 Medium") }}{% else %}{{ entry.outlets }} {{ t("Medien") }}{% endif %}
               <span class="dot">·</span>
               {{ entry.negative }}/{{ entry.articles }} {{ t("negativ") }}
               {% if entry.national %}<span class="dot">·</span> {{ t("überregional") }}{% endif %}

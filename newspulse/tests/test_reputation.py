@@ -683,8 +683,11 @@ def test_an_earlier_day_the_reading_itself_called_ruhig_is_not_a_repetition(
     mandate on ruhig — one hostile article inside twenty friendly ones is not a
     matter. Counting that as the second day would let two unrelated small pieces
     a week apart clear the brake, which is the false alarm the brake exists to
-    refuse. The stored ``state`` is that day's own answer to exactly this
-    question, so it is the one asked.
+    refuse. The stored ``points`` — the arithmetic's own answer for that day —
+    is what ``_repeated`` asks, and deliberately not ``state``: a crisis-floored
+    row wears ``krise`` off a person's declaration while its points say ruhig,
+    and ``test_a_day_whose_rung_came_only_from_the_crisis_floor_is_not_a_repetition``
+    holds that distinction from the other side.
     """
     _reading_on(
         session, mandate, _local_today() - dt.timedelta(days=1),

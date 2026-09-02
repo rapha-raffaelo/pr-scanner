@@ -628,7 +628,7 @@ def test_the_counts_on_the_tile_stay_the_ones_the_sweep_stored(factory, client):
     body = _band_of(client.get("/today").text)
 
     assert "band__tile--krise" in body
-    assert "1 Medien" in body
+    assert "1 Medium" in body
     assert "1/4 negativ" in body
 
 
