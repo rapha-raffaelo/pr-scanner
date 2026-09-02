@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ... import angles, config, crisis, newsjack
+from ... import angles, config, crisis, newsjack, reputation
 from ...models import (
     Analysis,
     Angle,
@@ -886,6 +886,21 @@ def today_view(
         session, mandates, now=dt.datetime.now(dt.UTC)
     )
 
+    # The band (RIS-01, DEC-1 option B): how each mandate stands, above the
+    # day's coverage. Read off the readings the sweep stored and never recomputed
+    # here — a band that re-counted on every page load would move under the
+    # reader during the morning with no run having happened, and would disagree
+    # with the row a consultant is about to re-derive it from.
+    #
+    # Built over the roster the reader is actually looking through, so a page
+    # filtered to one mandate carries that mandate's line and not the
+    # portfolio's: a "neun Mandanten ruhig" beside one mandate's coverage counts
+    # eight mandates that are not on the page.
+    band = reputation.band(
+        session,
+        [m for m in mandates if selected_client in (None, m.id)],
+    )
+
     # Follows the client filter, like the rest of the page: looking at one mandate
     # means looking at one mandate, including what to send them.
     drafts = _fetch_angles(session, day)
@@ -950,6 +965,11 @@ def today_view(
             # offer has to be where the alerting already is.
             "open_crises": open_crises,
             "crisis_offers": crisis_offers,
+            # The reputation band, above everything else on the page. Empty
+            # when no mandate has a reading at all — the sweep has never run,
+            # and the partial renders nothing rather than claiming a calm it
+            # never measured.
+            "band": band,
             # The fast lane's cards, above the day (UHR-05). Empty means the
             # section is simply not rendered — no placeholder, per acceptance:
             # without an open opportunity, Heute looks exactly as it does today.

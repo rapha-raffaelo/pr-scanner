@@ -2110,6 +2110,36 @@ _EN: dict[str, str] = {
     "Okt": "Oct",
     "Nov": "Nov",
     "Dez": "Dec",
+    # --- The reputation band on Heute (RIS-01, DEC-1 option B) ---------------
+    # "Medien", "negativ", "krise" and "Mandanten" are already translated above
+    # — the band reuses them rather than restating them.
+    #
+    # Every state and every direction is a *word* in both languages, never a
+    # colour on its own: a band that says only "red" makes the reader supply the
+    # sentence, and the sentence they supply is the one they already expected.
+    "Reputationslage": "Standing",
+    # models.ReputationState members, keyed on the stored German value the same
+    # way the categories above are. Capitalised at render, so the table holds
+    # them exactly as the database does.
+    "ruhig": "quiet",
+    "beobachtung": "watch",
+    "issue": "issue",
+    "risiko": "risk",
+    "steigend": "rising",
+    "stabil": "stable",
+    "fallend": "falling",
+    "Richtung": "Trend",
+    "überregional": "national reach",
+    "namentlich genannt": "named",
+    "keine Berichterstattung im Fenster": "no coverage in the window",
+    "über dem eigenen Median der letzten 30 Ablesungen":
+        "above its own median of the last 30 readings",
+    "Mandant ruhig": "client quiet",
+    "Mandanten ruhig": "clients quiet",
+    "davon ohne Berichterstattung": "of them with no coverage",
+    "Stand": "As of",
+    "Gerechnet aus gespeicherten Zeilen, nicht geschätzt.":
+        "Counted from stored rows, never estimated.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

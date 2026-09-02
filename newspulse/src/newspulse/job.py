@@ -63,6 +63,7 @@ from . import (
     plan,
     profile_refresh,
     report,
+    reputation,
     themes,
     visibility,
 )
@@ -1761,6 +1762,10 @@ class _PostRun:
     #: Editorial plans recomputed this sweep. Weekly per mandate, like the
     #: measurement above, and zero most mornings for the same reason.
     plans: int = 0
+    #: Reputation readings written this sweep (RIS-01). Unlike the two above it
+    #: this is daily and should equal the mandate count on a healthy morning —
+    #: a number below it says a mandate's coverage could not be counted.
+    readings: int = 0
 
 
 def _settle_themes(session: Session, clients: Sequence[Client], fetch: FetchFeed) -> int:
@@ -1831,6 +1836,36 @@ def _settle_industries(session: Session, clients: Sequence[Client], fetch: Fetch
             # the run was already recorded ok.
             session.rollback()
     return settled
+
+
+
+def _read_reputation(
+    session: Session, clients: Sequence[Client], *, now: dt.datetime
+) -> int:
+    """One reading per mandate, for today. Never fails the sweep (RIS-01).
+
+    Daily rather than windowed, unlike the measurement and the plan above it:
+    the reading *is* the day, and a morning without one leaves a hole in the
+    series that the direction and the mandate's own median both read over.
+
+    Cheap enough to be unconditional. Every input is already in stored rows —
+    DEC-2 locked "gerechnet aus gespeicherten Zeilen" — so a reading is a
+    handful of queries and no model call, which is what lets it run for every
+    mandate every morning rather than for a few of them on a rota.
+
+    The per-mandate fault boundary lives in :func:`newspulse.reputation.sweep`;
+    this second one is for the failure *outside* that loop, so an exception here
+    cannot end a sweep whose ``runs`` row is already written as ok.
+    """
+    try:
+        written = reputation.sweep(session, list(clients), now=now)
+    except Exception:  # noqa: BLE001 — a reading is never worth a failed sweep
+        session.rollback()
+        _log.exception("the reputation readings failed; the sweep stands")
+        return 0
+    if written:
+        _log.info("wrote %d reputation reading(s)", written)
+    return written
 
 
 def _post_run(
@@ -1904,6 +1939,11 @@ def _post_run(
     # than next week's. Weekly per mandate, capped per sweep, and never touching
     # a hook a person has decided on — see _recompute_plans.
     outcome.plans = _recompute_plans(session, clients, now=now_fn())
+    # After everything that could still add coverage or an analysis to today, so
+    # the reading counts the morning the sweep actually brought in rather than
+    # the one it started with. Daily, for every mandate, and cheap: no model call
+    # and no fetch, only stored rows.
+    outcome.readings = _read_reputation(session, clients, now=now_fn())
     # Last, and outside everything above: the monthly report reads a period that
     # has already ended, so it needs nothing this sweep fetched, and putting it
     # here means a failure in it cannot cost the sweep any of the work that came
@@ -2012,7 +2052,7 @@ def _run_real(
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
         "%d market signal(s), %d profile(s), %d visibility measurement(s), "
-        "%d plan(s), %d repl(y/ies), %d error(s)",
+        "%d plan(s), %d repl(y/ies), %d reputation reading(s), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
@@ -2026,6 +2066,9 @@ def _run_real(
         post.visibility,
         post.plans,
         post.replies,
+        # Daily, unlike the two above it: a number below the mandate count is
+        # the only place a mandate whose coverage could not be counted shows up.
+        post.readings,
         len(errors),
     )
     # The run's data is committed; deliver any fired-alert notification now. This is

@@ -1,0 +1,67 @@
+{# The reputation band (RIS-01, DEC-1 option B).
+
+   A mandate appears only once it has left the lowest rung; everything else is
+   one sentence at the end. On an ordinary morning that makes the whole band a
+   single line, and on the morning something is wrong it is the first thing on
+   the page — which is the entire argument for option B over a row per mandate.
+
+   Every statement here is a word. The rung is a word, the direction is a word,
+   and the deviation is a sentence: colour is decoration on this band and never
+   the thing that carries the meaning, because a reader who has to infer the
+   sentence from a hue infers the one they were already expecting.
+
+   Nothing here is computed at render. The tiles are the readings the sweep
+   wrote, so the band says what a consultant can re-derive from the stored row
+   and does not move under them during the morning. #}
+{% if not band.is_empty %}
+<section class="band" aria-label="{{ t('Reputationslage') }}">
+  {% if band.entries %}
+    <div class="band__row">
+      {% for entry in band.entries %}
+        <article class="band__tile band__tile--{{ entry.state }}">
+          <div class="band__head">
+            <span class="band__state">{{ t(entry.state) | capitalize }}</span>
+            <span class="band__name">{{ entry.client_name }}</span>
+          </div>
+          {# The four inputs the rung was counted from, beside the rung. A
+             consultant asked "why is this Risiko" gets the numbers in the hour
+             they ask, which is the whole of DEC-2 option A. #}
+          <div class="band__why">
+            {% if entry.articles %}
+              {{ entry.outlets }} {{ t("Medien") }}
+              <span class="dot">·</span>
+              {{ entry.negative }}/{{ entry.articles }} {{ t("negativ") }}
+              {% if entry.national %}<span class="dot">·</span> {{ t("überregional") }}{% endif %}
+              {% if entry.named %}<span class="dot">·</span> {{ t("namentlich genannt") }}{% endif %}
+            {% else %}
+              {{ t("keine Berichterstattung im Fenster") }}
+            {% endif %}
+          </div>
+          <div class="band__trend">
+            {{ t("Richtung") }}: <strong>{{ t(entry.direction) }}</strong>
+            {% if entry.deviates %}
+              <span class="dot">·</span>
+              <span class="band__dev">{{ t("über dem eigenen Median der letzten 30 Ablesungen") }}</span>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {# The count line. It is the *whole* band on a quiet morning — no empty tiles,
+     no placeholder — and the absence of a tile is the statement option B asks
+     the reader to be able to read, so the line says how many mandates it stands
+     for and how many of those nobody wrote about at all. #}
+  <p class="band__foot">
+    {% if band.quiet %}
+      {# The count and its noun on one line on purpose: Jinja keeps the
+         newlines it is written with, and "3\n  Mandanten ruhig" is a sentence
+         broken in the middle wherever the band is read as text rather than as
+         a rendered box. #}
+      <span class="band__quiet">{{ band.quiet }} {% if band.quiet == 1 %}{{ t("Mandant ruhig") }}{% else %}{{ t("Mandanten ruhig") }}{% endif %}{% if band.without_coverage %}, {{ band.without_coverage }} {{ t("davon ohne Berichterstattung") }}{% endif %}.</span>
+    {% endif %}
+    <span class="band__stamp"
+          title="{{ t('Gerechnet aus gespeicherten Zeilen, nicht geschätzt.') }}">{{ t("Stand") }}: {{ band.day.strftime("%d.%m.%Y") }}</span>
+  </p>
+</section>
+{% endif %}
