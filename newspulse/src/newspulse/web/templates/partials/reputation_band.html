@@ -10,9 +10,11 @@
    the thing that carries the meaning, because a reader who has to infer the
    sentence from a hue infers the one they were already expecting.
 
-   Nothing here is computed at render. The tiles are the readings the sweep
-   wrote, so the band says what a consultant can re-derive from the stored row
-   and does not move under them during the morning. #}
+   No arithmetic is done at render. The tiles are the readings the sweep wrote,
+   so the band says what a consultant can re-derive from the stored row and does
+   not move under them during the morning. The one thing read live is the
+   open-crisis floor, which is a person's statement rather than a count and is
+   true the second it is made — see newspulse.reputation._in_crisis. #}
 {% if not band.is_empty %}
 <section class="band" aria-label="{{ t('Reputationslage') }}">
   {% if band.entries %}
