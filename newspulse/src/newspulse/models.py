@@ -2676,12 +2676,12 @@ class ReputationState(StrEnum):
     the wrong place would silently reorder the comparison the open-crisis floor
     relies on.
 
-    ``ISSUE`` is declared here and deliberately never produced by RIS-01's
-    arithmetic: the rung belongs to the issue register (RIS-02), which is the
-    only thing that can say a repeated theme is being carried as an issue. It
-    exists in the enum from the start so the register can occupy it without a
-    migration, and so the ladder the interface names is the whole ladder from
-    the first day.
+    ``ISSUE`` is the one rung no sum over a single day can reach, and it is not
+    reached by one: :func:`newspulse.reputation.measure` sets it where the
+    arithmetic says Beobachtung and the stored series says this mandate already
+    stood above ruhig on another day this week — a matter being carried rather
+    than a bad morning. What the series cannot yet say is *which* matter; the
+    issue register (RIS-02) will name it, and it will name it on this rung.
     """
 
     RUHIG = "ruhig"
