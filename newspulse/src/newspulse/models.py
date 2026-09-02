@@ -2791,7 +2791,13 @@ class ReputationReading(Base):
         UTCDateTime(), nullable=False, default=_utcnow
     )
 
-    client: Mapped["Client"] = relationship(lazy="selectin")
+    #: Lazy, unlike the eager relationships on :class:`Crisis` and the rest.
+    #: Those are loaded because the page renders them; nothing renders a
+    #: reading's mandate — the band already holds the :class:`Client` it asked
+    #: for the reading about — so eager-loading it would buy a second query per
+    #: statement on the busiest page in the tool and hand back an object the
+    #: caller has.
+    client: Mapped["Client"] = relationship()
 
 
 __all__ = [

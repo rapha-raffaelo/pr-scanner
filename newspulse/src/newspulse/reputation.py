@@ -55,7 +55,7 @@ from enum import StrEnum
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from . import config, crisis, outlets
 from .matching import mentions_client, name_matcher
@@ -256,7 +256,10 @@ class BandEntry:
     articles: int
     negative: int
     named: bool
-    day: dt.date
+    #: The day the counts on this tile were counted for, or ``None`` when there
+    #: are no counts: a mandate in a declared crisis that has never been swept
+    #: still gets a tile — see :func:`_unmeasured`.
+    day: dt.date | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,8 +272,19 @@ class Band:
     """
 
     entries: tuple[BandEntry, ...]
+    #: How many mandates stand on the lowest rung and therefore have no tile.
     quiet: int
+    #: How many of :attr:`quiet` had nothing written about them at all.
     without_coverage: int
+    #: How many of :attr:`quiet` were last read on a day earlier than
+    #: :attr:`day`. Said out loud for the same reason a stale tile carries its
+    #: own date: the sweep logs a mandate it cannot count and carries on, so
+    #: without this the reassuring half of the band is the half that degrades in
+    #: silence — a mandate whose reading has been failing for three weeks folded
+    #: into "N Mandanten ruhig" under this morning's stamp.
+    quiet_stale: int
+    #: The newest day any of these mandates was read on, and the date the band
+    #: is stamped with. ``None`` when nothing has been read at all.
     day: dt.date | None
 
     @property
@@ -737,17 +751,94 @@ def deviates(newest: ReputationReading, baseline: list[ReputationReading]) -> bo
 # --- The band ---------------------------------------------------------------------
 
 
+#: How many readings one tile is counted from: the mandate's newest, plus the
+#: thirty behind it the baseline median is taken over. The direction's seven are
+#: the first seven of that same run, so one fetch answers both questions.
+_TILE_READINGS = BASELINE_READINGS + 1
+
+
+def _series(
+    session: Session, clients: list[Client]
+) -> dict[int, list[ReputationReading]]:
+    """Each mandate's last :data:`_TILE_READINGS` readings, newest first, by id.
+
+    One query for the whole band rather than two per tile. The band renders on
+    every load of the busiest page in the tool, and ten escalated mandates cost
+    forty round trips the moment the direction and the baseline are each asked
+    for on their own.
+
+    Ranked in the database rather than by reading every mandate's whole history
+    and keeping the head of each: a year of daily readings per mandate is a year
+    of rows fetched for two numbers.
+    """
+    ids = [client.id for client in clients]
+    if not ids:
+        return {}
+    ranked = (
+        select(
+            ReputationReading,
+            func.row_number()
+            .over(
+                partition_by=ReputationReading.client_id,
+                order_by=ReputationReading.day.desc(),
+            )
+            .label("place"),
+        )
+        .where(ReputationReading.client_id.in_(ids))
+        .subquery()
+    )
+    reading = aliased(ReputationReading, ranked)
+    series: dict[int, list[ReputationReading]] = {client_id: [] for client_id in ids}
+    for row in session.scalars(
+        select(reading)
+        .where(ranked.c.place <= _TILE_READINGS)
+        .order_by(reading.client_id, reading.day.desc())
+    ):
+        series[row.client_id].append(row)
+    return series
+
+
+def _unmeasured(client: Client) -> BandEntry:
+    """The tile of a mandate in a declared crisis that has no reading at all.
+
+    A mandate onboarded after this morning's sweep, or one the sweep's
+    per-mandate fault boundary skipped, has no stored row — and a crisis is true
+    the second a person declares it, whether or not anything has been counted
+    since. Without this the mandate would be missing from the band altogether,
+    in no tile and in no count, while its own crisis card sat on the same screen.
+
+    Zeroed counts and no day, and both are the honest answer: the tile says the
+    crisis, and about the coverage it says that nothing has been counted.
+    """
+    return BandEntry(
+        client_id=client.id,
+        client_name=client.name,
+        state=ReputationState.KRISE,
+        direction=Direction.STABIL,
+        deviates=False,
+        outlets=0,
+        national=False,
+        articles=0,
+        negative=0,
+        named=False,
+        day=None,
+    )
+
+
 def _entry(
-    session: Session, client: Client, newest: ReputationReading,
-    *, state: ReputationState,
+    client: Client, newest: ReputationReading,
+    *, state: ReputationState, series: list[ReputationReading],
 ) -> BandEntry:
     """One tile, with the two things a single reading cannot say on its own.
 
     ``state`` is passed rather than read off ``newest`` because the crisis floor
-    is applied by the caller — see :func:`_in_crisis`.
+    is applied by the caller — see :func:`_in_crisis`. ``series`` is this
+    mandate's recent readings, newest first, fetched for the whole band in one
+    query — see :func:`_series`; :func:`direction` and :func:`deviates` each
+    take the stretch of it they are counted over, so the slicing stays in the
+    two functions that own the numbers.
     """
-    series = history(session, client, limit=DIRECTION_READINGS)
-    baseline = history(session, client, limit=BASELINE_READINGS, before=newest.day)
+    baseline = [reading for reading in series if reading.day < newest.day]
     return BandEntry(
         client_id=client.id,
         client_name=client.name,
@@ -835,32 +926,51 @@ def band(session: Session, clients: list[Client]) -> Band:
     line claiming calm it never measured would be worse than no line.
 
     The single exception to "never recomputed" is the crisis floor, and it is not
-    a recomputation: see :func:`_in_crisis`.
+    a recomputation: see :func:`_in_crisis`. It is asked *before* a missing
+    reading is given up on, because a crisis outranks a count in both senses —
+    it can raise a mandate that has a row, and it can put one on the band that
+    has none at all.
     """
     latest = _latest(session, clients)
     in_crisis = _in_crisis(session, clients)
-    entries: list[BandEntry] = []
+    day = max((reading.day for reading in latest.values()), default=None)
+
+    standing: list[tuple[Client, ReputationReading | None, ReputationState]] = []
     quiet = 0
     without_coverage = 0
+    quiet_stale = 0
     for client in clients:
         newest = latest.get(client.id)
-        if newest is None:
+        floored = client.id in in_crisis
+        if newest is None and not floored:
+            # Neither counted nor declared. Not quiet either: "ruhig" is a
+            # reading, and this mandate has not had one.
             continue
-        state = newest.state
-        if client.id in in_crisis:
-            state = ReputationState.KRISE
-        if state is ReputationState.RUHIG:
-            quiet += 1
-            if not newest.articles:
-                without_coverage += 1
+        state = ReputationState.KRISE if floored else newest.state
+        if state is not ReputationState.RUHIG:
+            standing.append((client, newest, state))
             continue
-        entries.append(_entry(session, client, newest, state=state))
+        # Only an unfloored mandate reaches here, so it has a row: the floor
+        # never lands on the lowest rung.
+        quiet += 1
+        if not newest.articles:
+            without_coverage += 1
+        if day is not None and newest.day < day:
+            quiet_stale += 1
+
+    series = _series(session, [client for client, _, _ in standing])
+    entries = [
+        _unmeasured(client)
+        if newest is None
+        else _entry(client, newest, state=state, series=series[client.id])
+        for client, newest, state in standing
+    ]
     entries.sort(key=lambda entry: (-rank(entry.state), entry.client_name))
-    day = max((reading.day for reading in latest.values()), default=None)
     return Band(
         entries=tuple(entries),
         quiet=quiet,
         without_coverage=without_coverage,
+        quiet_stale=quiet_stale,
         day=day,
     )
 

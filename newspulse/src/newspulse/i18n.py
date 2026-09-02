@@ -2143,6 +2143,14 @@ _EN: dict[str, str] = {
     "Mandant ruhig": "client quiet",
     "Mandanten ruhig": "clients quiet",
     "davon ohne Berichterstattung": "of them with no coverage",
+    # The quiet count's third number. A mandate the sweep has been failing on
+    # keeps its last successful reading, and the count line says so rather than
+    # folding it into today's calm — the tiles already carry their own date, and
+    # this is the same honesty for the mandates that have no tile.
+    "davon zuletzt gelesen vor dem": "of them last read before",
+    # Only a mandate whose crisis was declared before it was ever swept: it has
+    # a tile, and about the coverage it has nothing to say yet.
+    "noch nicht abgelesen": "not read yet",
     # "Stand" is already the name of a KI-Sichtbarkeit band further up, and a
     # dictionary has one entry per key: this stamp needs its own noun anyway, and
     # "Ablesung vom" is the more exact one — it dates the reading rather than the

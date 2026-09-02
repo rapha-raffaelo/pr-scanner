@@ -35,8 +35,14 @@
               {{ entry.negative }}/{{ entry.articles }} {{ t("negativ") }}
               {% if entry.national %}<span class="dot">·</span> {{ t("überregional") }}{% endif %}
               {% if entry.named %}<span class="dot">·</span> {{ t("namentlich genannt") }}{% endif %}
-            {% else %}
+            {% elif entry.day %}
               {{ t("keine Berichterstattung im Fenster") }}
+            {% else %}
+              {# No row at all, which only a mandate whose crisis was declared
+                 before its first sweep can be. The tile says the crisis and
+                 says plainly that nothing has been counted — zeroes would be a
+                 count, and there has not been one. #}
+              {{ t("noch nicht abgelesen") }}
             {% endif %}
           </div>
           <div class="band__trend">
@@ -52,7 +58,7 @@
              counts are that day's coverage, not today's. Undated, it would be
              read under the date in the foot and re-derived against the wrong
              morning. #}
-          {% if entry.day < band.day %}
+          {% if entry.day and band.day and entry.day < band.day %}
             <div class="band__stale">{{ t("Ablesung vom") }} {{ entry.day.strftime("%d.%m.%Y") }}</div>
           {% endif %}
         </article>
@@ -62,17 +68,28 @@
   {# The count line. It is the *whole* band on a quiet morning — no empty tiles,
      no placeholder — and the absence of a tile is the statement option B asks
      the reader to be able to read, so the line says how many mandates it stands
-     for and how many of those nobody wrote about at all. #}
+     for, how many of those nobody wrote about at all, and how many of them were
+     last read before this morning. That last number is the honesty the tiles
+     already have: the sweep logs a mandate it cannot count and carries on, and
+     a reading three weeks stale folded silently into "N Mandanten ruhig" would
+     make the reassuring half of the band the half that degrades in silence. #}
+  {# Skipped whole when it would be empty, which only a band of nothing but a
+     freshly declared crisis can be: no mandate is quiet and none has been read,
+     so there is neither a count nor a date to stamp. #}
+  {% if band.quiet or band.day %}
   <p class="band__foot">
     {% if band.quiet %}
       {# The count and its noun on one line on purpose: Jinja keeps the
          newlines it is written with, and "3\n  Mandanten ruhig" is a sentence
          broken in the middle wherever the band is read as text rather than as
          a rendered box. #}
-      <span class="band__quiet">{{ band.quiet }} {% if band.quiet == 1 %}{{ t("Mandant ruhig") }}{% else %}{{ t("Mandanten ruhig") }}{% endif %}{% if band.without_coverage %}, {{ band.without_coverage }} {{ t("davon ohne Berichterstattung") }}{% endif %}.</span>
+      <span class="band__quiet">{{ band.quiet }} {% if band.quiet == 1 %}{{ t("Mandant ruhig") }}{% else %}{{ t("Mandanten ruhig") }}{% endif %}{% if band.without_coverage %}, {{ band.without_coverage }} {{ t("davon ohne Berichterstattung") }}{% endif %}{% if band.quiet_stale and band.day %}, {{ band.quiet_stale }} {{ t("davon zuletzt gelesen vor dem") }} {{ band.day.strftime("%d.%m.%Y") }}{% endif %}.</span>
     {% endif %}
-    <span class="band__stamp"
-          title="{{ t('Gerechnet aus gespeicherten Zeilen, nicht geschätzt.') }}">{{ t("Ablesung vom") }} {{ band.day.strftime("%d.%m.%Y") }}</span>
+    {% if band.day %}
+      <span class="band__stamp"
+            title="{{ t('Gerechnet aus gespeicherten Zeilen, nicht geschätzt.') }}">{{ t("Ablesung vom") }} {{ band.day.strftime("%d.%m.%Y") }}</span>
+    {% endif %}
   </p>
+  {% endif %}
 </section>
 {% endif %}
