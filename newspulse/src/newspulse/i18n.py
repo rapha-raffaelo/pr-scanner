@@ -2117,7 +2117,7 @@ _EN: dict[str, str] = {
     # Every state and every direction is a *word* in both languages, never a
     # colour on its own: a band that says only "red" makes the reader supply the
     # sentence, and the sentence they supply is the one they already expected.
-    "Reputationslage": "Standing",
+    "Reputationslage": "Reputation standing",
     # models.ReputationState members, keyed on the stored German value the same
     # way the categories above are. Capitalised at render, so the table holds
     # them exactly as the database does.
@@ -2137,7 +2137,11 @@ _EN: dict[str, str] = {
     "Mandant ruhig": "client quiet",
     "Mandanten ruhig": "clients quiet",
     "davon ohne Berichterstattung": "of them with no coverage",
-    "Stand": "As of",
+    # "Stand" is already the name of a KI-Sichtbarkeit band further up, and a
+    # dictionary has one entry per key: this stamp needs its own noun anyway, and
+    # "Ablesung vom" is the more exact one — it dates the reading rather than the
+    # page it is rendered on.
+    "Ablesung vom": "Reading of",
     "Gerechnet aus gespeicherten Zeilen, nicht geschätzt.":
         "Counted from stored rows, never estimated.",
 }

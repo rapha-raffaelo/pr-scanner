@@ -61,7 +61,7 @@
       <span class="band__quiet">{{ band.quiet }} {% if band.quiet == 1 %}{{ t("Mandant ruhig") }}{% else %}{{ t("Mandanten ruhig") }}{% endif %}{% if band.without_coverage %}, {{ band.without_coverage }} {{ t("davon ohne Berichterstattung") }}{% endif %}.</span>
     {% endif %}
     <span class="band__stamp"
-          title="{{ t('Gerechnet aus gespeicherten Zeilen, nicht geschätzt.') }}">{{ t("Stand") }}: {{ band.day.strftime("%d.%m.%Y") }}</span>
+          title="{{ t('Gerechnet aus gespeicherten Zeilen, nicht geschätzt.') }}">{{ t("Ablesung vom") }} {{ band.day.strftime("%d.%m.%Y") }}</span>
   </p>
 </section>
 {% endif %}

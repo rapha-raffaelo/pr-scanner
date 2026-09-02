@@ -62,6 +62,7 @@ from .models import (
     Article,
     Category,
     Client,
+    Crisis,
     ReputationReading,
     ReputationState,
     Tonality,
@@ -662,15 +663,20 @@ def deviates(newest: ReputationReading, baseline: list[ReputationReading]) -> bo
 
 
 def _entry(
-    session: Session, client: Client, newest: ReputationReading
+    session: Session, client: Client, newest: ReputationReading,
+    *, state: ReputationState,
 ) -> BandEntry:
-    """One tile, with the two things a single reading cannot say on its own."""
+    """One tile, with the two things a single reading cannot say on its own.
+
+    ``state`` is passed rather than read off ``newest`` because the crisis floor
+    is applied by the caller — see :func:`_in_crisis`.
+    """
     series = history(session, client, limit=DIRECTION_READINGS)
     baseline = history(session, client, limit=BASELINE_READINGS, before=newest.day)
     return BandEntry(
         client_id=client.id,
         client_name=client.name,
-        state=newest.state,
+        state=state,
         direction=direction(series),
         deviates=deviates(newest, baseline),
         outlets=newest.outlets,
@@ -679,6 +685,32 @@ def _entry(
         negative=newest.negative,
         named=newest.named,
         day=newest.day,
+    )
+
+
+def _in_crisis(session: Session, clients: list[Client]) -> set[int]:
+    """Which of these mandates are in a declared crisis right now.
+
+    The same floor :func:`measure` applies, applied a second time at read.
+    Not belt and braces: the reading was taken at 06:10 and a crisis declared at
+    two in the afternoon is not in it, so without this the band would sit on the
+    same screen as that mandate's own crisis card and call it ruhig until the
+    next morning. The floor is the one part of the rung that is a *person's*
+    statement rather than a count, and it is true the second it is made.
+
+    Nothing else is recomputed here. The counts on the tile stay the ones the
+    sweep stored, so the number a consultant re-derives is still the number that
+    was counted.
+    """
+    ids = [client.id for client in clients]
+    if not ids:
+        return set()
+    return set(
+        session.scalars(
+            select(Crisis.client_id).where(
+                Crisis.client_id.in_(ids), Crisis.closed_at.is_(None)
+            )
+        ).all()
     )
 
 
@@ -726,8 +758,12 @@ def band(session: Session, clients: list[Client]) -> Band:
     and the rest are a count. A mandate with no reading at all is in neither, and
     when *no* mandate has one there is no band — the sweep has never run, and a
     line claiming calm it never measured would be worse than no line.
+
+    The single exception to "never recomputed" is the crisis floor, and it is not
+    a recomputation: see :func:`_in_crisis`.
     """
     latest = _latest(session, clients)
+    in_crisis = _in_crisis(session, clients)
     entries: list[BandEntry] = []
     quiet = 0
     without_coverage = 0
@@ -735,12 +771,15 @@ def band(session: Session, clients: list[Client]) -> Band:
         newest = latest.get(client.id)
         if newest is None:
             continue
-        if newest.state is ReputationState.RUHIG:
+        state = newest.state
+        if client.id in in_crisis:
+            state = ReputationState.KRISE
+        if state is ReputationState.RUHIG:
             quiet += 1
             if not newest.articles:
                 without_coverage += 1
             continue
-        entries.append(_entry(session, client, newest))
+        entries.append(_entry(session, client, newest, state=state))
     entries.sort(key=lambda entry: (-rank(entry.state), entry.client_name))
     day = max((reading.day for reading in latest.values()), default=None)
     return Band(

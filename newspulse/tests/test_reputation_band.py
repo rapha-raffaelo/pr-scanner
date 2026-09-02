@@ -30,8 +30,10 @@ from sqlalchemy.pool import StaticPool
 
 from newspulse import config, i18n
 from newspulse.models import (
+    Article,
     Base,
     Client,
+    Crisis,
     ReputationReading,
     ReputationState,
 )
@@ -102,6 +104,23 @@ def _reading(
     )
     session.add(row)
     return row
+
+
+def _seed_article(session) -> Article:
+    """A trigger article for a crisis. Its content is irrelevant here — the band
+    reads the crisis row's existence and never the coverage behind it."""
+    when = dt.datetime.now(dt.UTC)
+    article = Article(
+        title="Verbraucherzentrale mahnt ab",
+        url=f"https://faz.example.de/{session.info.get('n', 0)}-a1",
+        source="FAZ",
+        published_at=when,
+        fetched_at=when,
+        title_hash="h1",
+    )
+    session.add(article)
+    session.flush()
+    return article
 
 
 def _series(session, mandate: Client, points: list[int]) -> None:
@@ -452,7 +471,7 @@ def test_every_visible_string_on_the_band_exists_in_english(factory, client):
         "1 client quiet",
         "of them with no coverage",
         "above its own median of the last 30 readings",
-        "As of",
+        "Reading of",
     ):
         assert english in body, english
     for german in (
@@ -462,6 +481,123 @@ def test_every_visible_string_on_the_band_exists_in_english(factory, client):
         "namentlich genannt",
         "Mandant ruhig",
         "davon ohne Berichterstattung",
-        "Stand:",
+        "Ablesung vom",
     ):
         assert german not in body, german
+
+
+def test_every_rung_and_every_direction_has_an_english_word(factory, client):
+    """The exhaustive guard behind the test above it.
+
+    That one renders one rung and one direction; this one walks both value sets,
+    because the way this criterion actually breaks is a rung added in a later
+    story whose translation nobody remembered — and the page it breaks on would
+    then be half English and half German, which reads as a defect rather than as
+    a missing string.
+
+    Presence in the table, not "the English differs": ``issue`` is the same word
+    in both languages and is nonetheless translated, while an untranslated key
+    silently degrades to German and would pass any test written the other way.
+    """
+    from newspulse import reputation
+    from newspulse.models import ReputationState as State
+
+    for value in [state.value for state in State] + [
+        direction.value for direction in reputation.Direction
+    ]:
+        assert value in i18n._EN, value
+
+
+# --- The one thing the band does not read off the stored reading -----------------
+
+
+def test_a_crisis_declared_after_the_sweep_shows_on_the_band_at_once(
+    factory, client
+):
+    """The floor is a person's statement, and it is true the second it is made.
+
+    The reading was taken at 06:10 and says ruhig; somebody declares a crisis at
+    two in the afternoon. Without the floor being applied at read as well, the
+    band would sit on the same screen as that mandate's own crisis card and call
+    it quiet until the next morning — the most visible way this feature could
+    look broken, and the one a reader would be right to distrust it for.
+    """
+    with factory() as s:
+        mandate = _mandate(s, "Alpha AG")
+        _reading(s, mandate, state=ReputationState.RUHIG, articles=1)
+        article = _seed_article(s)
+        s.add(
+            Crisis(
+                client_id=mandate.id,
+                article_id=article.id,
+                declared_by="lucas",
+                declared_at=dt.datetime.now(dt.UTC),
+                level=3,
+            )
+        )
+        s.commit()
+
+    body = _band_of(client.get("/today").text)
+
+    assert "band__tile--krise" in body
+    assert ">Krise<" in body
+    assert "ruhig" not in body
+
+
+def test_the_counts_on_the_tile_stay_the_ones_the_sweep_stored(factory, client):
+    """The floor raises the rung and recomputes nothing else.
+
+    A band that re-counted on render would move under the reader during the
+    morning with no run having happened, and would disagree with the row a
+    consultant is about to re-derive it from. So the tile of a mandate the floor
+    just raised still carries yesterday's — this morning's — numbers.
+    """
+    with factory() as s:
+        mandate = _mandate(s, "Alpha AG")
+        _reading(
+            s, mandate,
+            state=ReputationState.BEOBACHTUNG, points=2,
+            outlets=1, articles=4, negative=1,
+        )
+        article = _seed_article(s)
+        s.add(
+            Crisis(
+                client_id=mandate.id,
+                article_id=article.id,
+                declared_by="lucas",
+                declared_at=dt.datetime.now(dt.UTC),
+                level=3,
+            )
+        )
+        s.commit()
+
+    body = _band_of(client.get("/today").text)
+
+    assert "band__tile--krise" in body
+    assert "1 Medien" in body
+    assert "1/4 negativ" in body
+
+
+def test_a_closed_crisis_does_not_raise_the_band(factory, client):
+    """A stood-down crisis is a finished document, not a standing state."""
+    with factory() as s:
+        mandate = _mandate(s, "Alpha AG")
+        _reading(s, mandate, state=ReputationState.RUHIG, articles=1)
+        article = _seed_article(s)
+        s.add(
+            Crisis(
+                client_id=mandate.id,
+                article_id=article.id,
+                declared_by="lucas",
+                declared_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=2),
+                closed_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
+                close_reason="vorbei",
+                level=3,
+            )
+        )
+        s.commit()
+
+    body = _band_of(client.get("/today").text)
+
+    assert "1 Mandant ruhig" in body
+    assert "band__tile" not in body
