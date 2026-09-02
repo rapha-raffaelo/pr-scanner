@@ -2110,6 +2110,68 @@ _EN: dict[str, str] = {
     "Okt": "Oct",
     "Nov": "Nov",
     "Dez": "Dec",
+    # --- The reputation band on Heute (RIS-01, DEC-1 option B) ---------------
+    # "Medien", "negativ", "krise" and "Mandanten" are already translated above
+    # — the band reuses them rather than restating them.
+    #
+    # Every state and every direction is a *word* in both languages, never a
+    # colour on its own: a band that says only "red" makes the reader supply the
+    # sentence, and the sentence they supply is the one they already expected.
+    "Reputationslage": "Reputation standing",
+    # The singular to the "Medien" above: a braked single-outlet Beobachtung is
+    # a common tile, and "1 Medien" / "1 outlets" is wrong in both languages —
+    # the same branch the quiet line's Mandant/Mandanten already takes. Keyed
+    # as the whole phrase because "Medium" is already the contacts form's
+    # capitalised field label, and this one sits lowercase inside a line; the
+    # count is part of the key, since one is the only count the singular has.
+    "1 Medium": "1 outlet",
+    # models.ReputationState members, keyed on the stored German value the same
+    # way the categories above are. Capitalised at render, so the table holds
+    # them exactly as the database does.
+    "ruhig": "quiet",
+    "beobachtung": "watch",
+    "issue": "issue",
+    "risiko": "risk",
+    "steigend": "rising",
+    "stabil": "stable",
+    "fallend": "falling",
+    "Richtung": "Trend",
+    "überregional": "national reach",
+    "namentlich genannt": "named",
+    "keine Berichterstattung im Fenster": "no coverage in the window",
+    # The why-line of a tile the crisis floor raised over a quiet reading:
+    # coverage lay in the window and none of it was negative, so the counts the
+    # other tiles carry ("N Medien · x/y negativ") have nothing to count. Said
+    # as a sentence rather than as zeroes, because "0 Medien · 0/12 negativ"
+    # beside a declared Krise is a broken line in both languages.
+    "keine negative Berichterstattung im Fenster":
+        "no negative coverage in the window",
+    # The thirty is ``newspulse.reputation.BASELINE_READINGS``, spelled out here
+    # in both languages because a sentence that says "its own median" without
+    # saying over what is a claim the reader cannot check. Nothing in this file
+    # can see that constant move, so ``test_reputation_band`` holds the pair
+    # together — see
+    # ``test_the_deviation_sentence_names_the_baseline_it_is_counted_over``.
+    "über dem eigenen Median der letzten 30 Ablesungen":
+        "above its own median of the last 30 readings",
+    "Mandant ruhig": "client quiet",
+    "Mandanten ruhig": "clients quiet",
+    "davon ohne Berichterstattung": "of them with no coverage",
+    # The quiet count's third number. A mandate the sweep has been failing on
+    # keeps its last successful reading, and the count line says so rather than
+    # folding it into today's calm — the tiles already carry their own date, and
+    # this is the same honesty for the mandates that have no tile.
+    "davon zuletzt gelesen vor dem": "of them last read before",
+    # Only a mandate whose crisis was declared before it was ever swept: it has
+    # a tile, and about the coverage it has nothing to say yet.
+    "noch nicht abgelesen": "not read yet",
+    # "Stand" is already the name of a KI-Sichtbarkeit band further up, and a
+    # dictionary has one entry per key: this stamp needs its own noun anyway, and
+    # "Ablesung vom" is the more exact one — it dates the reading rather than the
+    # page it is rendered on.
+    "Ablesung vom": "Reading of",
+    "Gerechnet aus gespeicherten Zeilen, nicht geschätzt.":
+        "Counted from stored rows, never estimated.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

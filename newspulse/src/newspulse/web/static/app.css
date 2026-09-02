@@ -2299,3 +2299,57 @@ button:disabled { opacity: .55; cursor: default; }
 .njarch__meta { color: var(--muted); font-size: var(--t-caption2);
                 display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
 .njarch__out { color: var(--ink-2); }
+
+/* --- The reputation band on Heute (RIS-01, DEC-1 option B) ----------------
+   A mandate gets a tile only once it has left the lowest rung; the rest are the
+   sentence at the foot. On an ordinary morning the whole band is that one line,
+   which is what makes it worth reading on the morning it is not.
+
+   Colour is decoration here and carries nothing on its own: every tile states
+   its rung, its direction and its deviation as words, so the band reads the same
+   to somebody who cannot tell the border colours apart. The left border is the
+   only place the rung is coloured at all — a filled red card would shout the
+   same volume for Beobachtung as for Krise, and the two are the difference
+   between "keep an eye on it" and "everything else waits". */
+.band { margin-bottom: var(--s4); }
+.band__row {
+  display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.band__tile {
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 3px solid var(--neutral);
+  border-radius: var(--radius); padding: var(--s3) var(--s4);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.band__tile--beobachtung { border-left-color: var(--warn); }
+.band__tile--issue { border-left-color: var(--purple); }
+.band__tile--risiko { border-left-color: var(--pink); }
+.band__tile--krise { border-left-color: var(--alert); }
+.band__head {
+  display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap;
+}
+.band__state {
+  font-size: var(--t-caption2); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink);
+}
+.band__name { font-size: var(--t-subhead); font-weight: 600; min-width: 0; }
+.band__why, .band__trend {
+  font-size: var(--t-caption); color: var(--muted);
+  display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.band__trend strong { color: var(--ink-2); font-weight: 600; }
+/* The mandate measured against its own median, spelled out rather than marked.
+   "Ungewöhnlich für dieses Mandat" is the one thing on the tile that a threshold
+   shared across the portfolio could not have said. */
+.band__dev { color: var(--ink-2); }
+/* Only rendered on a tile whose reading is older than the band's stamp. */
+.band__stale { font-size: var(--t-caption2); color: var(--faint); margin-top: var(--s1); }
+.band__foot {
+  font-size: var(--t-caption); color: var(--muted);
+  display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap;
+  margin: var(--s2) 0 0;
+}
+.band__row + .band__foot { margin-top: var(--s3); }
+.band__stamp { color: var(--faint); margin-left: auto; }

@@ -188,6 +188,11 @@
   </div>
 {% endif %}
 
+{# The reputation band (RIS-01), above the day's coverage and above the fast
+   lane: "wie steht es um dieses Mandat" is the question in front of "was ist
+   heute passiert", and on the morning something is wrong this has to be the
+   first thing on the page. One line on an ordinary morning — see the partial. #}
+{% include "partials/reputation_band.html" %}
 {% if shown_instead_of %}
   {# The sweep runs at 06:10 and brings in what was published overnight, which
      carries yesterday's date. Filtering by publication day therefore empties this
