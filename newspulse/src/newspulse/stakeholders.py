@@ -52,6 +52,7 @@ from . import crisis as crisis_mod
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
 from .models import (
     CRISIS_DECLARED_BY_MAX,
+    STAKEHOLDER_TEXT_MAX,
     Client,
     Crisis,
     Issue,
@@ -181,9 +182,13 @@ def save_row(
 
     ``row_id`` edits the standing row; without one, a new group is added — or,
     where the name already stands, the standing row is updated instead of a
-    duplicate being refused at the schema. Either way ``set_by`` becomes the
-    person's name: a proposed row a person has touched is the person's row,
-    and no later proposal overwrites it.
+    duplicate being refused at the schema. A rename onto a name another row
+    already carries returns ``None`` and writes nothing, whichever way it
+    arrived: ``_norm`` is this module's idea of one group, and the page says
+    the name is taken rather than filing a second row nothing can select.
+    Either way ``set_by`` becomes the person's name (and ``brain_version``
+    goes back to NULL): a proposed row a person has touched is the person's
+    row, its prose their own, and no later proposal overwrites it.
 
     An empty group name returns ``None`` and writes nothing. An out-of-set
     Einfluss raises: the form only offers the three levels, so anything else
@@ -194,26 +199,41 @@ def save_row(
     if not name:
         return None
     level = einfluss if isinstance(einfluss, StakeholderLevel) else StakeholderLevel(einfluss)
+    standing = session.scalars(
+        select(Stakeholder).where(Stakeholder.client_id == client.id)
+    ).all()
+    same_name = next((r for r in standing if _norm(r.group_name) == _norm(name)), None)
     row: Stakeholder | None = None
     if row_id is not None:
         row = session.get(Stakeholder, row_id)
         if row is None or row.client_id != client.id:
             return None
-    if row is None:
-        standing = session.scalars(
-            select(Stakeholder).where(Stakeholder.client_id == client.id)
-        ).all()
-        row = next((r for r in standing if _norm(r.group_name) == _norm(name)), None)
+        if same_name is not None and same_name.id != row.id:
+            # A rename onto a name that already stands — in any casing. The
+            # schema's UNIQUE compares the stored spelling, so "anwohner"
+            # beside "Anwohner" passes it; ``_norm`` is what this module means
+            # by one group, and two rows it calls the same collapse in
+            # ``select_for``'s by-name lookup, where the loser becomes
+            # permanently unselectable without a word on the page. The standing
+            # row is the answer, and merging two rows a person told apart is
+            # not this function's decision to make.
+            return None
+    else:
+        row = same_name
     if row is None:
         row = Stakeholder(client_id=client.id, group_name=name)
         session.add(row)
     row.group_name = name
     row.betroffenheit = (betroffenheit or "").strip()
     row.einfluss = level
-    row.contact = (contact or "").strip()[:200]
-    row.channel = (channel or "").strip()[:200]
+    row.contact = (contact or "").strip()[:STAKEHOLDER_TEXT_MAX]
+    row.channel = (channel or "").strip()[:STAKEHOLDER_TEXT_MAX]
     row.set_by = _named(by)
     row.set_at = now or dt.datetime.now(dt.UTC)
+    # The row is the person's from here on, and a stamp on their own prose
+    # would claim a model call that never happened. ``set_by`` already says
+    # who; the version has to stop saying what.
+    row.brain_version = None
     try:
         session.commit()
     except IntegrityError:
@@ -246,6 +266,49 @@ def delete_row(session: Session, client: Client, row_id: int) -> bool:
     session.delete(row)
     session.commit()
     return True
+
+
+def _proposed_row(
+    group: GroupProposal,
+    client: Client,
+    *,
+    taken: set[str],
+    reference: dt.datetime,
+    written_under: int | None,
+) -> Stakeholder | None:
+    """One proposed group as it is filed, or ``None`` where it is dropped.
+
+    Three rules decide, and each is a drop rather than a guess: a nameless
+    group, a group the map already holds (hand-set or proposed — a proposal
+    only ever adds), and a level outside the closed set. The row carries no
+    contact whatever the model volunteered: a guessed name would be called on
+    the one evening it matters.
+    """
+    name = " ".join(group.gruppe.split())
+    if not name or _norm(name) in taken:
+        return None
+    try:
+        level = StakeholderLevel(group.einfluss.strip().lower())
+    except ValueError:
+        _log.warning(
+            "stakeholder proposal for %r named an unknown level %r; "
+            "the group %r is dropped rather than filed under a guess",
+            client.name,
+            group.einfluss,
+            name,
+        )
+        return None
+    return Stakeholder(
+        client_id=client.id,
+        group_name=name,
+        betroffenheit=prose.plain(group.betroffenheit.strip()),
+        einfluss=level,
+        contact="",
+        channel=prose.plain(group.kanal.strip())[:STAKEHOLDER_TEXT_MAX],
+        set_by=PROPOSED_BY_MODEL,
+        set_at=reference,
+        brain_version=brain.stamp(written_under, what="a stakeholder proposal"),
+    )
 
 
 def propose_card(
@@ -295,33 +358,17 @@ def propose_card(
     reference = now or dt.datetime.now(dt.UTC)
     added: list[Stakeholder] = []
     for group in proposal.gruppen:
-        name = " ".join(group.gruppe.split())
-        if not name or _norm(name) in taken:
-            continue
-        try:
-            level = StakeholderLevel(group.einfluss.strip().lower())
-        except ValueError:
-            _log.warning(
-                "stakeholder proposal for %r named an unknown level %r; "
-                "the group %r is dropped rather than filed under a guess",
-                client.name,
-                group.einfluss,
-                name,
-            )
-            continue
-        row = Stakeholder(
-            client_id=client.id,
-            group_name=name,
-            betroffenheit=prose.plain(group.betroffenheit.strip()),
-            einfluss=level,
-            contact="",
-            channel=prose.plain(group.kanal.strip())[:200],
-            set_by=PROPOSED_BY_MODEL,
-            set_at=reference,
-            brain_version=brain.stamp(written_under, what="a stakeholder proposal"),
+        row = _proposed_row(
+            group,
+            client,
+            taken=taken,
+            reference=reference,
+            written_under=written_under,
         )
+        if row is None:
+            continue
         session.add(row)
-        taken.add(_norm(name))
+        taken.add(_norm(row.group_name))
         added.append(row)
     session.commit()
     _log.info(
@@ -412,6 +459,53 @@ def _card_lines(rows: list[Stakeholder]) -> str:
     return "\n".join(lines)
 
 
+def _selection_row(
+    chosen: SelectedGroup,
+    by_name: dict[str, Stakeholder],
+    *,
+    issue: Issue | None,
+    crisis: Crisis | None,
+    position: int,
+    reference: dt.datetime,
+    written_under: int | None,
+) -> StakeholderSelection | None:
+    """One selected group as it is stored, or ``None`` where it is dropped.
+
+    Two rules decide: a group the standing map does not hold (the selection is
+    *from* the card, never an invention beside it), and a group without a
+    reason (the same price of admission ``issue_signals.reason`` charges).
+    ``info_need`` is kept as it came, empty allowed — where the stored lines
+    support no sentence, no sentence is the honest row.
+    """
+    target = by_name.get(_norm(chosen.gruppe))
+    if target is None:
+        _log.warning(
+            "the selection named %r, which the standing map does not hold; "
+            "a selection is from the card, so it is dropped",
+            chosen.gruppe,
+        )
+        return None
+    reason = prose.plain(chosen.begruendung.strip())
+    if not reason:
+        _log.warning(
+            "the selection offered %r without a reason; a group nobody "
+            "can say is affected is not stored",
+            target.group_name,
+        )
+        return None
+    return StakeholderSelection(
+        issue_id=issue.id if issue is not None else None,
+        crisis_id=crisis.id if crisis is not None else None,
+        stakeholder_id=target.id,
+        reason=reason,
+        info_need=prose.plain(chosen.informationsbedarf.strip()),
+        position=position,
+        position_set_by=PROPOSED_BY_MODEL,
+        created_at=reference,
+        brain_version=brain.stamp(written_under, what="a stakeholder selection"),
+    )
+
+
 def select_for(
     session: Session,
     *,
@@ -467,40 +561,21 @@ def select_for(
     stored: list[StakeholderSelection] = []
     seen: set[int] = set()
     for chosen in proposal.auswahl:
-        target = by_name.get(_norm(chosen.gruppe))
-        if target is None:
-            _log.warning(
-                "the selection named %r, which the map of %r does not hold; "
-                "a selection is from the standing card, so it is dropped",
-                chosen.gruppe,
-                client.name,
-            )
-            continue
-        if target.id in seen:
-            continue
-        reason = prose.plain(chosen.begruendung.strip())
-        if not reason:
-            _log.warning(
-                "the selection offered %r without a reason; a group nobody "
-                "can say is affected is not stored",
-                target.group_name,
-            )
-            continue
-        row = StakeholderSelection(
-            issue_id=issue.id if issue is not None else None,
-            crisis_id=crisis.id if crisis is not None else None,
-            stakeholder_id=target.id,
-            reason=reason,
-            info_need=prose.plain(chosen.informationsbedarf.strip()),
+        row = _selection_row(
+            chosen,
+            by_name,
+            issue=issue,
+            crisis=crisis,
+            # 1..n in the model's recommended order, counted over what is
+            # actually kept: a dropped group leaves no gap in the call order.
             position=len(stored) + 1,
-            position_set_by=PROPOSED_BY_MODEL,
-            created_at=reference,
-            brain_version=brain.stamp(
-                written_under, what="a stakeholder selection"
-            ),
+            reference=reference,
+            written_under=written_under,
         )
+        if row is None or row.stakeholder_id in seen:
+            continue
         session.add(row)
-        seen.add(target.id)
+        seen.add(row.stakeholder_id)
         stored.append(row)
     session.commit()
     return stored

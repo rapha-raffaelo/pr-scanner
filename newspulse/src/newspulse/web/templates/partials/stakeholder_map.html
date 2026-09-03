@@ -12,13 +12,15 @@
    without profile entries gets the sentence about what is missing, with the
    link there — never an invented map.
 
-   Expects in context: client, smap, has_profile, stakeholder_note, t. #}
+   Expects in context: client, smap, has_profile, stakeholder_note, smap_max
+   (the stored cap, so the form cannot promise a width the column truncates),
+   back_to (where a button returns), and t. #}
 <section class="smap" aria-label="{{ t('Stakeholder-Karte') }}">
   <div class="kcol__h">
     <span class="kcol__t">{{ t("Stakeholder-Karte") }}</span>
     <span class="kcol__s">{{ smap | length }}</span>
     <form method="post" action="/client/{{ client.id }}/stakeholder/vorschlagen" class="smap__propose">
-      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+      <input type="hidden" name="redirect_to" value="{{ back_to }}">
       <button type="submit" class="btn btn--sm">{{ t("Aus dem Profil vorschlagen") }}</button>
     </form>
   </div>
@@ -52,10 +54,10 @@
         <details class="smap__edit">
           <summary>{{ t("Bearbeiten") }}</summary>
           <form method="post" action="/client/{{ client.id }}/stakeholder/save" class="smap__form">
-            <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+            <input type="hidden" name="redirect_to" value="{{ back_to }}">
             <input type="hidden" name="row_id" value="{{ row.id }}">
             <label>{{ t("Gruppe") }}
-              <input type="text" name="group" required maxlength="200" value="{{ row.group_name }}"></label>
+              <input type="text" name="group" required maxlength="{{ smap_max }}" value="{{ row.group_name }}"></label>
             <label>{{ t("Betroffenheit") }}
               <textarea name="betroffenheit" rows="2">{{ row.betroffenheit }}</textarea></label>
             <label>{{ t("Einfluss") }}
@@ -65,13 +67,13 @@
                 {% endfor %}
               </select></label>
             <label>{{ t("Ansprechpartner") }}
-              <input type="text" name="contact" maxlength="200" value="{{ row.contact }}"></label>
+              <input type="text" name="contact" maxlength="{{ smap_max }}" value="{{ row.contact }}"></label>
             <label>{{ t("Kanal") }}
-              <input type="text" name="channel" maxlength="200" value="{{ row.channel }}"></label>
+              <input type="text" name="channel" maxlength="{{ smap_max }}" value="{{ row.channel }}"></label>
             <button type="submit" class="btn btn--sm">{{ t("Speichern") }}</button>
           </form>
           <form method="post" action="/client/{{ client.id }}/stakeholder/{{ row.id }}/delete">
-            <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+            <input type="hidden" name="redirect_to" value="{{ back_to }}">
             <button type="submit" class="btn btn--sm btn--ghost">{{ t("Zeile entfernen") }}</button>
           </form>
         </details>
@@ -91,9 +93,9 @@
   <details class="smap__edit smap__add">
     <summary>{{ t("Gruppe hinzufügen") }}</summary>
     <form method="post" action="/client/{{ client.id }}/stakeholder/save" class="smap__form">
-      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+      <input type="hidden" name="redirect_to" value="{{ back_to }}">
       <label>{{ t("Gruppe") }}
-        <input type="text" name="group" required maxlength="200"></label>
+        <input type="text" name="group" required maxlength="{{ smap_max }}"></label>
       <label>{{ t("Betroffenheit") }}
         <textarea name="betroffenheit" rows="2"></textarea></label>
       <label>{{ t("Einfluss") }}
@@ -103,9 +105,9 @@
           {% endfor %}
         </select></label>
       <label>{{ t("Ansprechpartner") }}
-        <input type="text" name="contact" maxlength="200"></label>
+        <input type="text" name="contact" maxlength="{{ smap_max }}"></label>
       <label>{{ t("Kanal") }}
-        <input type="text" name="channel" maxlength="200"></label>
+        <input type="text" name="channel" maxlength="{{ smap_max }}"></label>
       <button type="submit" class="btn btn--sm">{{ t("Speichern") }}</button>
     </form>
   </details>

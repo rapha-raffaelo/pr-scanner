@@ -2309,6 +2309,12 @@ _EN: dict[str, str] = {
     "Die Reihenfolge wurde nicht gespeichert: sie nennt nicht genau die Zeilen der Auswahl.":
         "The order was not saved: it does not name exactly the rows of the "
         "selection.",
+    "Die Reihenfolge wurde nicht gespeichert: zwei Zeilen tragen dieselbe Nummer.":
+        "The order was not saved: two rows carry the same number.",
+    "Die Auswahl ist fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The selection failed. The details are in the log.",
+    "Der Vorschlag ist fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The proposal failed. The details are in the log.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

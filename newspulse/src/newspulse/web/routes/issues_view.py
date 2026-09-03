@@ -35,11 +35,13 @@ from ... import profile as profiles
 from ...models import (
     ISSUE_SCALE_MAX,
     ISSUE_SCALE_MIN,
+    STAKEHOLDER_TEXT_MAX,
     Analysis,
     Article,
     Client,
     Issue,
     IssueStatus,
+    StakeholderSelection,
 )
 from ..app import get_db, templates
 from ..mandates import mandate_or_404
@@ -153,6 +155,30 @@ def _views(open_rows: list[Issue], *, today: dt.date) -> list[IssueView]:
     ]
 
 
+def _selections_by_issue(
+    session: Session, rows: list[Issue]
+) -> dict[int, list[StakeholderSelection]]:
+    """Every issue on the page with its stakeholder selection, in one query.
+
+    Per-issue reads would cost the register two statements per row, and the
+    history half of the page is unbounded — the whole record of a mandate that
+    has been carried for years. One ``IN`` answers all of them, and the
+    ``selectin`` on :attr:`StakeholderSelection.stakeholder` loads the groups
+    themselves in one more.
+    """
+    grouped: dict[int, list[StakeholderSelection]] = {row.id: [] for row in rows}
+    if not grouped:
+        return grouped
+    stored = session.scalars(
+        select(StakeholderSelection)
+        .where(StakeholderSelection.issue_id.in_(list(grouped)))
+        .order_by(StakeholderSelection.issue_id, StakeholderSelection.position)
+    ).all()
+    for row in stored:
+        grouped[row.issue_id].append(row)
+    return grouped
+
+
 @router.get("/client/{client_id}/issues", response_class=HTMLResponse)
 def issues_page(
     request: Request, client_id: int, session: Session = Depends(get_db)
@@ -176,10 +202,7 @@ def issues_page(
     # past ones too: a closed or escalated issue stays readable with its
     # selection, the same rule its signals already keep.
     smap = stakeholders.card(session, client)
-    selections = {
-        row.id: stakeholders.selection_for(session, issue=row)
-        for row in open_rows + past
-    }
+    selections = _selections_by_issue(session, open_rows + past)
     return templates.TemplateResponse(
         request,
         "client_issues.html",
@@ -202,6 +225,10 @@ def issues_page(
                 profiles.as_prompt_lines(profiles.stored(session, client.id))
             ),
             "stakeholder_note": pop_stakeholder_note(client.id),
+            # The stored cap, so the form cannot promise a width the column
+            # truncates, and where the map's buttons return to.
+            "smap_max": STAKEHOLDER_TEXT_MAX,
+            "back_to": f"/client/{client.id}/issues",
             # Compared against, never printed: the page says "Vorschlag" /
             # "Empfehlung" where the column says "modell".
             "by_model": stakeholders.PROPOSED_BY_MODEL,
@@ -288,8 +315,18 @@ def dismiss_proposal(
 
 
 def _issue_for(session: Session, issue_id: int) -> Issue | None:
-    """The issue, or ``None`` for a stale id — never a 500 on a button."""
-    return session.get(Issue, issue_id)
+    """The issue, or ``None`` for a stale id — never a 500 on a button.
+
+    A benchmark's issue is ``None`` as well. :func:`mandate_or_404` keeps the
+    workspace *pages* off a company nobody reports to; the buttons have to
+    hold the same line, or a hand-typed POST still spends a model call writing
+    for a company that will never receive one — which is the harm
+    ``web/mandates.py`` was written to end.
+    """
+    row = session.get(Issue, issue_id)
+    if row is None or row.client.is_competitor:
+        return None
+    return row
 
 
 @router.post("/issues/{issue_id}/grade")
@@ -405,6 +442,44 @@ def escalate_issue(
 
 # --- The stakeholder selection at an issue (RIS-03) --------------------------------
 
+# The three sentences the selection's buttons can answer with. Held as
+# constants because each is a key in the i18n table, and a sentence built with
+# an f-string is a sentence that renders German on an English page.
+_SELECTION_FAILED = "Die Auswahl ist fehlgeschlagen. Die Einzelheiten stehen im Log."
+_ORDER_INCOMPLETE = (
+    "Die Reihenfolge wurde nicht gespeichert: das Formular war unvollständig."
+)
+_ORDER_DUPLICATE = (
+    "Die Reihenfolge wurde nicht gespeichert: zwei Zeilen tragen dieselbe Nummer."
+)
+_ORDER_WRONG_ROWS = (
+    "Die Reihenfolge wurde nicht gespeichert: sie nennt nicht genau die Zeilen "
+    "der Auswahl."
+)
+
+
+def _ordered_ids(sid: list[int], pos: list[str]) -> tuple[list[int], str]:
+    """The row ids in the person's order, or the sentence saying why not.
+
+    The numbers arrive as text on purpose: a cleared position field posts an
+    empty string, and FastAPI's 422 page is not an answer a person who pressed
+    "Reihenfolge speichern" can do anything with.
+
+    Two rows carrying the same number are refused rather than tie-broken. A
+    tie-break would be the tool guessing half the call order and the page then
+    presenting the result as "Reihenfolge gesetzt von <name>" — the one claim
+    this feature exists not to make.
+    """
+    if not sid or len(sid) != len(pos):
+        return [], _ORDER_INCOMPLETE
+    try:
+        numbers = [int(value) for value in pos]
+    except ValueError:
+        return [], _ORDER_INCOMPLETE
+    if len(set(numbers)) != len(numbers):
+        return [], _ORDER_DUPLICATE
+    return [row_id for _number, row_id in sorted(zip(numbers, sid, strict=True))], ""
+
 
 @router.post("/issues/{issue_id}/stakeholder/auswahl")
 def select_stakeholders(
@@ -422,11 +497,13 @@ def select_stakeholders(
     if standing is not None:
         try:
             selected = stakeholders.select_for(session, issue=standing)
-        except Exception as exc:  # noqa: BLE001 — a button must answer, not 500
+        except Exception:  # noqa: BLE001 — a button must answer, not 500
+            # The sentence is a fixed one and the cause goes to the log: an
+            # interpolated exception cannot stand in the i18n table (so the
+            # page would be half English), and a ParseError's text is the
+            # model's malformed answer, which is nothing a reader can act on.
             _log.exception("stakeholder selection for issue %d failed", issue_id)
-            _last_note[standing.client_id] = (
-                f"Die Auswahl ist fehlgeschlagen: {exc}"
-            )
+            _last_note[standing.client_id] = _SELECTION_FAILED
         else:
             if not selected:
                 _last_note[standing.client_id] = (
@@ -441,7 +518,10 @@ def reorder_stakeholders(
     request: Request,
     issue_id: int,
     sid: list[int] = Form(default_factory=list),
-    pos: list[int] = Form(default_factory=list),
+    # Text, not int: a cleared number field posts "" and FastAPI would answer
+    # a person pressing a button with raw validation JSON. The coercion — and
+    # the sentence when it fails — belongs to :func:`_ordered_ids`.
+    pos: list[str] = Form(default_factory=list),
     redirect_to: str = Form("/"),
     session: Session = Depends(get_db),
 ) -> Response:
@@ -454,20 +534,14 @@ def reorder_stakeholders(
     """
     standing = _issue_for(session, issue_id)
     if standing is not None:
-        if len(sid) != len(pos):
-            _last_note[standing.client_id] = (
-                "Die Reihenfolge wurde nicht gespeichert: das Formular war "
-                "unvollständig."
-            )
+        ordered, refusal = _ordered_ids(sid, pos)
+        if refusal:
+            _last_note[standing.client_id] = refusal
         else:
-            ordered = [row_id for _p, row_id in sorted(zip(pos, sid, strict=True))]
             try:
                 stakeholders.reorder(
                     session, issue=standing, ordered_ids=ordered, by=_who(request)
                 )
             except ValueError:
-                _last_note[standing.client_id] = (
-                    "Die Reihenfolge wurde nicht gespeichert: sie nennt nicht "
-                    "genau die Zeilen der Auswahl."
-                )
+                _last_note[standing.client_id] = _ORDER_WRONG_ROWS
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)

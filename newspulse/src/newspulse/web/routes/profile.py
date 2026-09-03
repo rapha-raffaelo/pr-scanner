@@ -6,7 +6,7 @@ import datetime as dt
 import logging
 import threading
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
@@ -462,6 +462,10 @@ def forget_superseded(
 # because that is where it is worked with: beside the issues its selections
 # hang on.
 
+#: What the page says when the proposal did not come back. A constant because
+#: it is a key in the i18n table; the cause goes to the log, never to the page.
+_PROPOSAL_FAILED = "Der Vorschlag ist fehlgeschlagen. Die Einzelheiten stehen im Log."
+
 # Why the last stakeholder-card click produced what it produced, per mandate.
 # In memory and not a schema change, the same posture as the register's own
 # note: it describes one click, and going stale on a restart is correct.
@@ -499,9 +503,13 @@ def propose_stakeholders(
     client = mandate_or_404(session, client_id)
     try:
         added = stakeholders.propose_card(session, client)
-    except Exception as exc:  # noqa: BLE001 — a button must answer, not 500
+    except Exception:  # noqa: BLE001 — a button must answer, not 500
+        # A fixed sentence, and the cause in the log: an interpolated exception
+        # cannot stand in the i18n table, so it would render German on an
+        # English page — and a ParseError's text is the model's malformed
+        # answer, which is nothing a reader can act on.
         _log.exception("stakeholder proposal for client %s failed", client_id)
-        _stakeholder_notes[client_id] = f"Der Vorschlag ist fehlgeschlagen: {exc}"
+        _stakeholder_notes[client_id] = _PROPOSAL_FAILED
     else:
         if added is None:
             _stakeholder_notes[client_id] = (

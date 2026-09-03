@@ -3062,6 +3062,14 @@ class StakeholderLevel(StrEnum):
     NIEDRIG = "niedrig"
 
 
+#: How much of a contact name or a channel a map row keeps. A ceiling rather
+#: than a validation rule, the same trade :data:`CRISIS_DECLARED_BY_MAX` makes:
+#: an over-long line costs its tail, never the row. Named because the truncation
+#: in :mod:`newspulse.stakeholders` and the form's ``maxlength`` have to agree —
+#: five copies of a literal drift the first time one of them is raised.
+STAKEHOLDER_TEXT_MAX = 200
+
+
 class Stakeholder(Base):
     """One group on a mandate's standing stakeholder map (RIS-03).
 
@@ -3118,11 +3126,11 @@ class Stakeholder(Base):
     #: on the page, never invented: a proposal writes no contact at all —
     #: a guessed name would be called on the one evening it matters.
     contact: Mapped[str] = mapped_column(
-        String(200), nullable=False, default="", server_default=""
+        String(STAKEHOLDER_TEXT_MAX), nullable=False, default="", server_default=""
     )
     #: How the group is reached: a channel, not an address book entry.
     channel: Mapped[str] = mapped_column(
-        String(200), nullable=False, default="", server_default=""
+        String(STAKEHOLDER_TEXT_MAX), nullable=False, default="", server_default=""
     )
     #: Who set this row: the ``"modell"`` token for a proposal, a person's name
     #: after any human edit. The map shows it on every line.
@@ -3235,6 +3243,7 @@ __all__ = [
     "ISSUE_SCALE_MAX",
     "ISSUE_SCALE_MIN",
     "Issue",
+    "STAKEHOLDER_TEXT_MAX",
     "Stakeholder",
     "StakeholderLevel",
     "StakeholderSelection",
