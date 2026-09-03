@@ -3132,6 +3132,13 @@ class Stakeholder(Base):
     set_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
     )
+    #: The standards a *proposed* row's prose was written under, on the same
+    #: terms as :attr:`Angle.brain_version`: captured when the prompt is
+    #: composed. NULL for a row a person wrote — their Betroffenheit is their
+    #: own text, and stamping it would claim a model call that never happened.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
 
     @property
     def has_contact(self) -> bool:
@@ -3192,6 +3199,13 @@ class StakeholderSelection(Base):
     )
     created_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The standards the reason and the information need were written under —
+    #: model prose a consultant telephones by, which is exactly the kind of
+    #: text the stamp exists for. NULL never happens through
+    #: :func:`newspulse.stakeholders.select_for`, the only writer.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
     )
 
     stakeholder: Mapped["Stakeholder"] = relationship(lazy="selectin")

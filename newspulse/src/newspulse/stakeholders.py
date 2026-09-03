@@ -226,11 +226,23 @@ def save_row(
 
 
 def delete_row(session: Session, client: Client, row_id: int) -> bool:
-    """Remove one row of the map. Its selections go with it (the FK cascades):
-    a selection of a group that no longer exists explains nothing."""
+    """Remove one row of the map. Its selections go with it: a selection of a
+    group that no longer exists explains nothing.
+
+    The selections are deleted here as well as by the FK's CASCADE, because
+    the cascade only bites where the SQLite pragma is on (``db.make_engine``
+    turns it on; a bare engine does not), and an orphaned selection row would
+    render a group nobody can look up.
+    """
     row = session.get(Stakeholder, row_id)
     if row is None or row.client_id != client.id:
         return False
+    for selection in session.scalars(
+        select(StakeholderSelection).where(
+            StakeholderSelection.stakeholder_id == row.id
+        )
+    ).all():
+        session.delete(selection)
     session.delete(row)
     session.commit()
     return True
@@ -266,6 +278,10 @@ def propose_card(
     standing = card(session, client)
     taken = {_norm(row.group_name) for row in standing}
     existing = "\n".join(f"- {row.group_name}" for row in standing) or "Noch keine."
+    # Captured when the prompt is composed, not when the rows are saved: an
+    # edit landing while the model writes changes the next proposal, not this
+    # one — the same terms as Angle.brain_version.
+    written_under = brain.version(session)
     prompt = _template(_CARD_PROMPT).substitute(
         client_name=client.name,
         industry=(client.industry or "unbekannt"),
@@ -302,6 +318,7 @@ def propose_card(
             channel=prose.plain(group.kanal.strip())[:200],
             set_by=PROPOSED_BY_MODEL,
             set_at=reference,
+            brain_version=brain.stamp(written_under, what="a stakeholder proposal"),
         )
         session.add(row)
         taken.add(_norm(name))
@@ -433,6 +450,8 @@ def select_for(
     if not rows:
         return []
     title, matter = _matter_lines(issue, crisis)
+    # Captured with the prompt, the same terms as the proposal's stamp above.
+    written_under = brain.version(session)
     prompt = _template(_SELECT_PROMPT).substitute(
         client_name=client.name,
         matter_title=title,
@@ -476,6 +495,9 @@ def select_for(
             position=len(stored) + 1,
             position_set_by=PROPOSED_BY_MODEL,
             created_at=reference,
+            brain_version=brain.stamp(
+                written_under, what="a stakeholder selection"
+            ),
         )
         session.add(row)
         seen.add(target.id)

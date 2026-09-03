@@ -72,6 +72,7 @@ def upgrade() -> None:
         sa.Column("channel", sa.String(200), nullable=False, server_default=""),
         sa.Column("set_by", sa.String(80), nullable=False),
         sa.Column("set_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("brain_version", sa.Integer(), nullable=True),
         sa.UniqueConstraint("client_id", "group_name", name="uq_stakeholders_group"),
     )
     op.create_index("ix_stakeholders_client_id", "stakeholders", ["client_id"])
@@ -102,6 +103,7 @@ def upgrade() -> None:
         sa.Column("position", sa.Integer(), nullable=False),
         sa.Column("position_set_by", sa.String(80), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("brain_version", sa.Integer(), nullable=True),
         sa.CheckConstraint(_ONE_ANCHOR, name="ck_stakeholder_selections_one_anchor"),
         sa.CheckConstraint("reason <> ''", name="ck_stakeholder_selections_reason"),
         sa.CheckConstraint("position >= 1", name="ck_stakeholder_selections_position"),
