@@ -85,6 +85,21 @@
         {{ t("eröffnet von") }} {{ issue.opened_by }} &middot;
         {{ t("Owner") }}: {% if issue.owner %}{{ issue.owner }}{% else %}<em>{{ t("niemand benannt") }}</em>{% endif %}
       </p>
+      {# Der Vermerk am Issue (RIS-04): a condition a scenario was watching for
+         now holds. It says which condition and what actually matched, because
+         a red mark that cannot say what it saw is one nobody can act on. It is
+         reported once, and the mark stands afterwards. #}
+      {% set marks = fired.get(issue.id, []) %}
+      {% if marks %}
+        <p class="icard__d">
+          <b>{{ t("Ausgelöst") }}:</b>
+          {% for mark in marks %}
+            <span class="kpill kpill--neg">{{ t(condition_labels[mark.condition]) }}</span>
+            {{ mark.fired_note }}
+            <span class="isig__who">({{ mark.fired_at | de_date }})</span>{% if not loop.last %} &middot; {% endif %}
+          {% endfor %}
+        </p>
+      {% endif %}
       {% if issue.description %}<p class="icard__d">{{ issue.description }}</p>{% endif %}
       {% if issue.early_indicators %}
         <p class="icard__d"><b>{{ t("Frühindikatoren") }}:</b> {{ issue.early_indicators }}</p>
@@ -164,6 +179,13 @@
               map_link = "",
               stakeholder_note = "" %}
         {% include 'partials/stakeholder_selection.html' %}
+      {% endwith %}
+
+      {# Szenarien, Auslöser und Reaktionsoptionen (RIS-04). #}
+      {% with courses_here = courses.get(issue.id, []),
+              options_here = options.get(issue.id, []),
+              editable = true %}
+        {% include 'partials/scenarios.html' %}
       {% endwith %}
 
       <details class="iedit">
@@ -281,6 +303,14 @@
             {% endfor %}
           </details>
         {% endif %}
+        {# A past issue keeps its courses and its options readable, the same
+           rule its signals and its selection keep. Read-only: the matter
+           ended, and re-asking would rewrite what was thought at the time. #}
+        {% with courses_here = courses.get(issue.id, []),
+                options_here = options.get(issue.id, []),
+                editable = false %}
+          {% include 'partials/scenarios.html' %}
+        {% endwith %}
         <details class="isig">
           <summary>{{ issue.signals | length }}
             {% if issue.signals | length == 1 %}{{ t("Signal") }}{% else %}{{ t("Signale") }}{% endif %}</summary>

@@ -3238,7 +3238,359 @@ class StakeholderSelection(Base):
     )
 
 
+# --- Szenarien, Auslöser und Reaktionsoptionen (RIS-04) ----------------------------
+
+
+class ScenarioKind(StrEnum):
+    """The three courses an issue can take, and there are exactly three.
+
+    Not a free label: a page that can hold four scenarios holds four essays,
+    and the value of "bester, wahrscheinlicher, schlechtester" is that the
+    reader knows what each column is for before reading a word of it. The
+    UNIQUE on :class:`Scenario` holds one row per kind per issue.
+    """
+
+    BESTER = "bester"
+    WAHRSCHEINLICHER = "wahrscheinlicher"
+    SCHLECHTESTER = "schlechtester"
+
+
+class ScenarioLikelihood(StrEnum):
+    """How likely a course is, **as a word and never as a percentage**.
+
+    A percentage out of a model claims an accuracy that does not exist, and it
+    is precisely that number which gets quoted back in the meeting four weeks
+    later. A closed set of four words cannot be quoted as a measurement, and a
+    value outside it is dropped in :mod:`newspulse.scenarios` rather than
+    filed under a guess.
+    """
+
+    UNWAHRSCHEINLICH = "unwahrscheinlich"
+    MOEGLICH = "möglich"
+    WAHRSCHEINLICH = "wahrscheinlich"
+    SEHR_WAHRSCHEINLICH = "sehr wahrscheinlich"
+
+
+class TriggerCondition(StrEnum):
+    """The closed set of conditions a scenario trigger may be built from (DEC-5).
+
+    DEC-5 locked option A: "nur maschinell prüfbare Bedingungen". Every member
+    here resolves to stored rows the sweep can actually read —
+
+    * ``ZWEITES_MEDIUM`` — a second independent outlet carries the matter;
+    * ``LEITMEDIUM`` — an outlet of the top reach tier carries it;
+    * ``MANDAT_IN_UEBERSCHRIFT`` — the mandate is named in a headline;
+    * ``MEDIENANFRAGE`` — a journalist wrote into the connected mailbox;
+    * ``MANAGEMENT_GENANNT`` — a person named in the profile's management line
+      appears in the coverage.
+
+    A trigger that is only well phrased is never fired and is therefore not a
+    trigger, which is why free text is not a member of this enum and a
+    scenario whose triggers all fall outside it is not stored at all.
+    """
+
+    ZWEITES_MEDIUM = "zweites_medium"
+    LEITMEDIUM = "leitmedium"
+    MANDAT_IN_UEBERSCHRIFT = "mandat_in_ueberschrift"
+    MEDIENANFRAGE = "medienanfrage"
+    MANAGEMENT_GENANNT = "management_genannt"
+
+
+class ResponseSpeed(StrEnum):
+    """How fast the recommendation says to move, from a fixed set.
+
+    "Schnell" and "sofort" are the same word to a model and four hours apart to
+    an agency, so the recommendation names one of six and nothing else.
+    ``KEINE`` is a member like any other: the most expensive mistake in this
+    trade is the statement that gives a matter the publicity it did not yet
+    have.
+    """
+
+    SOFORT = "sofort"
+    EINE_STUNDE = "innerhalb einer Stunde"
+    HEUTE = "heute"
+    VIERUNDZWANZIG_STUNDEN = "innerhalb von 24 Stunden"
+    VORBEREITEN = "vorbereiten und beobachten"
+    KEINE = "keine Reaktion"
+
+
+class EscalationPotential(StrEnum):
+    """How much a response option could grow the matter. Three words, no number.
+
+    Its own set rather than :class:`StakeholderLevel`'s: the two answer
+    different questions and share only their spelling, and a scenario table
+    reaching into the stakeholder map's enum would tie one feature's closed set
+    to another's the first time either grows a fourth step.
+    """
+
+    HOCH = "hoch"
+    MITTEL = "mittel"
+    NIEDRIG = "niedrig"
+
+
+#: How much of a response option's one-line label is kept. The same ceiling
+#: trade :data:`STAKEHOLDER_TEXT_MAX` makes: an over-long line costs its tail,
+#: never the row. The *model* writes this column, so the cap cannot live only
+#: in a form's ``maxlength``.
+RESPONSE_LABEL_MAX = 200
+
+#: How many response options an issue must carry for the set to be stored at
+#: all, per the acceptance. Three, and one of them is always "nicht reagieren"
+#: — a tool that can only propose acting proposes acting.
+RESPONSE_OPTIONS_MIN = 3
+
+
+class Scenario(Base):
+    """One of an issue's three courses: what could happen next (RIS-04).
+
+    A scenario and never a forecast, and the difference is carried in three
+    places rather than in a caption: ``likelihood`` is a word from a closed set
+    and can never be a percentage; the narrative has to read as a scenario or
+    :mod:`newspulse.scenarios` refuses it; and every row carries at least one
+    machine-checkable trigger, without which it is not stored — an essay about
+    the future is not a scenario.
+
+    ``groups`` is the selection of affected stakeholders, pointing into the
+    mandate's standing map (:class:`Stakeholder`) exactly as
+    :class:`StakeholderSelection` does: the map is maintained in one place, and
+    a group invented beside it would be a second map half wrong per incident.
+    """
+
+    __tablename__ = "scenarios"
+    __table_args__ = (
+        # Three courses, one row each. A second "schlechtester" is not a
+        # fourth scenario, it is the same question answered twice.
+        UniqueConstraint("issue_id", "kind", name="uq_scenarios_kind"),
+        CheckConstraint("narrative <> ''", name="ck_scenarios_narrative"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issue_id: Mapped[int] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[ScenarioKind] = mapped_column(
+        SAEnum(
+            ScenarioKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="scenario_kind",
+        ),
+        nullable=False,
+    )
+    #: How the course would run, in prose that says of itself that it is a
+    #: scenario. Never empty; see the CHECK.
+    narrative: Mapped[str] = mapped_column(Text, nullable=False)
+    likelihood: Mapped[ScenarioLikelihood] = mapped_column(
+        SAEnum(
+            ScenarioLikelihood,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="scenario_likelihood",
+        ),
+        nullable=False,
+    )
+    #: What would have to be communicated, and to whom, if this course ran.
+    #: May be empty where the stored lines support no sentence — an omission,
+    #: never an invented Kommunikationsbedarf.
+    communication_need: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The standards this prose was written under, captured when the prompt was
+    #: composed — the same terms as :attr:`StakeholderSelection.brain_version`.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    triggers: Mapped[list["ScenarioTrigger"]] = relationship(
+        back_populates="scenario", lazy="selectin", cascade="all, delete-orphan"
+    )
+    groups: Mapped[list["ScenarioStakeholder"]] = relationship(
+        back_populates="scenario", lazy="selectin", cascade="all, delete-orphan"
+    )
+
+
+class ScenarioStakeholder(Base):
+    """One group of the standing map this scenario would touch.
+
+    A pointer into :class:`Stakeholder`, never a copy: a contact corrected on
+    the map is corrected under every scenario at once, and a group the map does
+    not hold is dropped in :mod:`newspulse.scenarios` rather than invented
+    beside it.
+    """
+
+    __tablename__ = "scenario_stakeholders"
+    __table_args__ = (
+        UniqueConstraint(
+            "scenario_id", "stakeholder_id", name="uq_scenario_stakeholders_once"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scenario_id: Mapped[int] = mapped_column(
+        ForeignKey("scenarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    stakeholder_id: Mapped[int] = mapped_column(
+        ForeignKey("stakeholders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    scenario: Mapped["Scenario"] = relationship(back_populates="groups")
+    stakeholder: Mapped["Stakeholder"] = relationship(lazy="selectin")
+
+
+class ScenarioTrigger(Base):
+    """One machine-checkable condition under which a scenario starts (DEC-5).
+
+    ``fired_at`` is the whole latch, and it is a stored column rather than a
+    set in memory for one reason the acceptance states outright: a trigger that
+    has fired must not fire again, *not even after a restart*. Anything held in
+    the process would re-announce every standing trigger on the next boot, and
+    a channel that re-announces is a channel that stops being read.
+
+    ``fired_note`` is what actually matched, and *only* that — the outlet, the
+    headline, the journalist, the name. Which condition held is the
+    ``condition`` column, and the page and the mail put its sentence beside the
+    note, so the note carries no prose of this tool's own: a German sentence
+    written into a stored value would stand untranslated on the English page,
+    beside chrome that switched. The CHECK ties note and firing together: a
+    firing that cannot say what it saw is a red mark on an issue nobody can
+    act on.
+    """
+
+    __tablename__ = "scenario_triggers"
+    __table_args__ = (
+        # The same condition stands once per scenario: a second copy would fire
+        # twice for one event, which is the one thing this table must not do.
+        UniqueConstraint("scenario_id", "condition", name="uq_scenario_triggers_once"),
+        CheckConstraint(
+            "fired_at IS NULL OR fired_note <> ''", name="ck_scenario_triggers_note"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scenario_id: Mapped[int] = mapped_column(
+        ForeignKey("scenarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    condition: Mapped[TriggerCondition] = mapped_column(
+        SAEnum(
+            TriggerCondition,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="trigger_condition",
+        ),
+        nullable=False,
+    )
+    #: When the condition was first found to hold. NULL means it has not, and
+    #: it is written exactly once — the restart-proof half of "einmal gemeldet".
+    fired_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: What matched, in one line. Never empty once fired; see the CHECK.
+    fired_note: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+
+    scenario: Mapped["Scenario"] = relationship(back_populates="triggers")
+
+    @property
+    def has_fired(self) -> bool:
+        """Whether this condition has already been found to hold."""
+        return self.fired_at is not None
+
+
+class ResponseOption(Base):
+    """One way of answering an issue, with what it buys and what it costs.
+
+    ``no_response`` marks the option that is always on the list: "nicht
+    reagieren", graded like every other. A tool that can only propose acting
+    proposes acting, and the most expensive mistake in this trade is the
+    statement that gives a matter the publicity it did not yet have.
+
+    ``recommended`` marks the one option the answer puts forward, and the
+    CHECK ties the speed to it: a recommendation that does not say how fast
+    lets "schnell" and "sofort" mean the same thing, which is what the closed
+    :class:`ResponseSpeed` set exists to prevent.
+    """
+
+    __tablename__ = "response_options"
+    __table_args__ = (
+        CheckConstraint("label <> ''", name="ck_response_options_label"),
+        CheckConstraint("position >= 1", name="ck_response_options_position"),
+        # The recommendation names a speed. Held here rather than only in
+        # :mod:`newspulse.scenarios` so it survives every future writer.
+        CheckConstraint(
+            "recommended = 0 OR speed IS NOT NULL", name="ck_response_options_speed"
+        ),
+        UniqueConstraint("issue_id", "position", name="uq_response_options_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issue_id: Mapped[int] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The option in one line. Never empty; see the CHECK.
+    label: Mapped[str] = mapped_column(String(RESPONSE_LABEL_MAX), nullable=False)
+    #: What it buys, what it costs, and how far it could carry the matter. The
+    #: three the acceptance names, and the reason "nicht reagieren" is a real
+    #: option here rather than a caption: it is graded on the same three.
+    benefit: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    risk: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    escalation: Mapped[EscalationPotential] = mapped_column(
+        SAEnum(
+            EscalationPotential,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="escalation_potential",
+        ),
+        nullable=False,
+        default=EscalationPotential.MITTEL,
+        server_default=EscalationPotential.MITTEL.value,
+    )
+    #: Whether this is the "nicht reagieren" row. Exactly one per issue: no set
+    #: is stored without it, and a second one is collapsed back to an ordinary
+    #: option — both in :mod:`newspulse.scenarios`, where the answer is read.
+    no_response: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    recommended: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    #: How fast to move, from the closed set. NULL on every option but the
+    #: recommended one; see the CHECK.
+    speed: Mapped[ResponseSpeed | None] = mapped_column(
+        SAEnum(
+            ResponseSpeed,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="response_speed",
+        ),
+        nullable=True,
+    )
+    #: 1-based rank in the order the options are read.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
 __all__ = [
+    "Scenario",
+    "ScenarioKind",
+    "ScenarioLikelihood",
+    "ScenarioStakeholder",
+    "ScenarioTrigger",
+    "TriggerCondition",
+    "ResponseOption",
+    "ResponseSpeed",
+    "EscalationPotential",
+    "RESPONSE_LABEL_MAX",
+    "RESPONSE_OPTIONS_MIN",
     "Crisis",
     "ISSUE_SCALE_MAX",
     "ISSUE_SCALE_MIN",

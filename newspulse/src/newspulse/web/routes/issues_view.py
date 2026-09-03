@@ -30,7 +30,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ... import crisis, issues, stakeholders
+from ... import crisis, issues, scenarios, stakeholders
 from ... import profile as profiles
 from ...models import (
     ISSUE_SCALE_MAX,
@@ -41,6 +41,8 @@ from ...models import (
     Client,
     Issue,
     IssueStatus,
+    ResponseOption,
+    Scenario,
     StakeholderSelection,
 )
 from ..app import get_db, templates
@@ -179,6 +181,101 @@ def _selections_by_issue(
     return grouped
 
 
+# --- Szenarien und Reaktionsoptionen (RIS-04) --------------------------------------
+#
+# The sentences are constants because every one of them is a key in the i18n
+# table: a sentence built with an f-string cannot be looked up, and would render
+# German on an English page.
+
+#: Nothing survived the disciplines. Said rather than swallowed: a button that
+#: answers with an unchanged page reads as broken, and the reader presses again.
+NO_SCENARIOS = (
+    "Keine Szenarien gespeichert: ohne prüfbaren Auslöser, mit einer Zahl ohne "
+    "Zeile oder als Tatsache formuliert wird ein Verlauf nicht gespeichert."
+)
+SCENARIOS_FAILED = "Die Szenarien sind fehlgeschlagen. Die Einzelheiten stehen im Log."
+#: A set of options that cannot say "nicht reagieren" is a set that can only
+#: propose acting, and it is refused rather than shown.
+NO_OPTIONS = (
+    "Keine Reaktionsoptionen gespeichert: es braucht mindestens drei, darunter "
+    "„nicht reagieren“."
+)
+OPTIONS_FAILED = (
+    "Die Reaktionsoptionen sind fehlgeschlagen. Die Einzelheiten stehen im Log."
+)
+#: The options rest on the courses, so the courses come first.
+SCENARIOS_FIRST = (
+    "Erst die Szenarien: die Reaktionsoptionen werden gegen sie entwickelt."
+)
+
+#: Every sentence this feature can put on a page. The i18n suite walks it, so a
+#: note added without its English pair fails there rather than on the evening a
+#: reader has the page in English.
+SCENARIO_NOTES = (
+    NO_SCENARIOS,
+    SCENARIOS_FAILED,
+    NO_OPTIONS,
+    OPTIONS_FAILED,
+    SCENARIOS_FIRST,
+)
+
+
+def _scenarios_by_issue(
+    session: Session, rows: list[Issue]
+) -> dict[int, list[Scenario]]:
+    """Every issue on the page with its three courses, in one query.
+
+    Per-issue reads would cost the register two statements per row, and the
+    history half of the page is unbounded. The ``selectin`` on
+    :attr:`Scenario.triggers` and :attr:`Scenario.groups` loads those in one
+    more each, rather than one per scenario.
+    """
+    grouped: dict[int, list[Scenario]] = {row.id: [] for row in rows}
+    if not grouped:
+        return grouped
+    order = {kind: rank for rank, kind in enumerate(scenarios.ScenarioKind)}
+    stored = session.scalars(
+        select(Scenario).where(Scenario.issue_id.in_(list(grouped)))
+    ).all()
+    for row in stored:
+        grouped[row.issue_id].append(row)
+    for issue_id, courses in grouped.items():
+        grouped[issue_id] = sorted(courses, key=lambda row: order[row.kind])
+    return grouped
+
+
+def _options_by_issue(
+    session: Session, rows: list[Issue]
+) -> dict[int, list[ResponseOption]]:
+    """Every issue on the page with its response options, in one query."""
+    grouped: dict[int, list[ResponseOption]] = {row.id: [] for row in rows}
+    if not grouped:
+        return grouped
+    stored = session.scalars(
+        select(ResponseOption)
+        .where(ResponseOption.issue_id.in_(list(grouped)))
+        .order_by(ResponseOption.issue_id, ResponseOption.position)
+    ).all()
+    for row in stored:
+        grouped[row.issue_id].append(row)
+    return grouped
+
+
+def _fired_by_issue(courses: dict[int, list[Scenario]]) -> dict[int, list]:
+    """The conditions that have already fired, per issue, newest firing first.
+
+    Read off the scenarios already loaded rather than with a query of its own:
+    the marks *are* the trigger rows, and a second read would be the same rows
+    under a different name. One mark per condition, which is
+    :func:`newspulse.scenarios.fired_marks`'s doing and not this page's: a
+    condition standing on two courses is one event, and the mark belongs to the
+    issue.
+    """
+    return {
+        issue_id: scenarios.fired_marks(rows) for issue_id, rows in courses.items()
+    }
+
+
 @router.get("/client/{client_id}/issues", response_class=HTMLResponse)
 def issues_page(
     request: Request, client_id: int, session: Session = Depends(get_db)
@@ -203,6 +300,7 @@ def issues_page(
     # selection, the same rule its signals already keep.
     smap = stakeholders.card(session, client)
     selections = _selections_by_issue(session, open_rows + past)
+    courses = _scenarios_by_issue(session, open_rows + past)
     return templates.TemplateResponse(
         request,
         "client_issues.html",
@@ -219,6 +317,18 @@ def issues_page(
             "note": _last_note.pop(client.id, ""),
             "smap": smap,
             "selections": selections,
+            # The three courses, the options, and the marks a fired condition
+            # left on the row. Past issues too: a closed or escalated issue
+            # stays readable with what was thought about it at the time.
+            "courses": courses,
+            "options": _options_by_issue(session, open_rows + past),
+            "fired": _fired_by_issue(courses),
+            # The two label maps: the stored values are keys ("bester",
+            # "zweites_medium"), and what a reader acts on is a sentence. In
+            # Python rather than in Jinja because each label is an i18n key,
+            # and a label assembled in a template cannot be looked up.
+            "kind_labels": scenarios.KIND_LABELS,
+            "condition_labels": scenarios.CONDITION_LABELS,
             # Whether the profile has anything a proposal could rest on: the
             # empty map's sentence says what is missing, with the link there.
             "has_profile": bool(
@@ -585,4 +695,114 @@ def reorder_stakeholders(
                 stakeholder_ui.note(
                     standing.client_id, stakeholder_ui.ORDER_WRONG_ROWS
                 )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+# --- Szenarien und Reaktionsoptionen: the four buttons (RIS-04) --------------------
+#
+# The lock and the note channel are ``stakeholder_ui``'s. Deliberately, and not
+# out of thrift: these buttons sit on the same page as the card's, they spend
+# the same three-minute call, and one lock across all of them is what stops a
+# reader who presses two of them in a row from paying for both. The answer
+# appears where the card's answers appear, which is the one place a reader of
+# this page already looks.
+
+
+@router.post("/issues/{issue_id}/szenarien")
+def build_scenarios(
+    issue_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Develop the issue's three courses, with their checkable triggers.
+
+    Idempotent by construction: an issue that already carries a set keeps it,
+    marks and all. Re-asking would replace narratives a consultant has read
+    into a meeting and would re-arm triggers that have already fired, which is
+    the one thing "einmal gemeldet" forbids — the way to ask again is the
+    Verwerfen button beside it, pressed by a person.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+    def _build(worker: Session) -> str:
+        issue = _issue_for(worker, issue_id)
+        if issue is None:
+            return ""
+        return "" if scenarios.generate_scenarios(worker, issue) else NO_SCENARIOS
+
+    stakeholder_ui.spend(
+        _build,
+        client_id=standing.client_id,
+        name=f"newspulse-scenarios-issue-{issue_id}",
+        failed=SCENARIOS_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/issues/{issue_id}/szenarien/verwerfen")
+def drop_scenarios(
+    issue_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Take the courses off so a person can ask again. No model call.
+
+    The options go with them: they were developed *against* these courses, and
+    a list of answers to a question that is no longer on the page is worse than
+    no list. Re-arming the triggers is the price, and it is why this is a
+    person's button and never a side effect of anything.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is not None:
+        scenarios.clear_options(session, standing)
+        scenarios.clear_scenarios(session, standing)
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/issues/{issue_id}/optionen")
+def build_options(
+    issue_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Develop the response options, "nicht reagieren" among them.
+
+    The courses come first: the options are developed against them, and a set
+    written without them would be advice about a matter nobody has described a
+    course for. Said on the page rather than silently generated anyway.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+    if not scenarios.stored_scenarios(session, standing):
+        stakeholder_ui.note(standing.client_id, SCENARIOS_FIRST)
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+    def _build(worker: Session) -> str:
+        issue = _issue_for(worker, issue_id)
+        if issue is None:
+            return ""
+        return "" if scenarios.generate_options(worker, issue) else NO_OPTIONS
+
+    stakeholder_ui.spend(
+        _build,
+        client_id=standing.client_id,
+        name=f"newspulse-options-issue-{issue_id}",
+        failed=OPTIONS_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/issues/{issue_id}/optionen/verwerfen")
+def drop_options(
+    issue_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Take the options off so a person can ask again. No model call."""
+    standing = _issue_for(session, issue_id)
+    if standing is not None:
+        scenarios.clear_options(session, standing)
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)

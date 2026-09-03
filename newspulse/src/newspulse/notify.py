@@ -188,6 +188,32 @@ class FoundOpportunity:
 
 
 @dataclass(frozen=True, slots=True)
+class FiredTrigger:
+    """One scenario trigger that just fired, as its notification renders it (RIS-04).
+
+    Like the fast lane's opportunity and unlike the crisis offer, this is *not*
+    a ride-along: "trifft eine Bedingung zu, wird das am Issue vermerkt und
+    einmal benachrichtigt" is the acceptance, and an offer that waits for a
+    morning with alerts is not a notification. It goes out on its own, once,
+    and never again — the latch is the ``fired_at`` column, not this object.
+
+    The plain projection, like :class:`FiredAlert`: no ORM row reaches the
+    formatting, so a summary can be rendered without a session.
+    """
+
+    client_name: str
+    issue_title: str
+    #: The course this condition would start, in the register's own word:
+    #: "bester", "wahrscheinlicher", "schlechtester".
+    scenario: str
+    #: The condition's own key, from the closed set DEC-5 locked.
+    condition: str
+    #: What actually matched — the outlet, the headline, the journalist. A red
+    #: mark that cannot say what it saw is one nobody can act on.
+    note: str
+
+
+@dataclass(frozen=True, slots=True)
 class ClientAlertGroup:
     """One client's alerts collapsed to a count and its single most important headline."""
 
@@ -772,6 +798,96 @@ def notify_opportunities(
     )
 
 
+def _trigger_summary(fired: Sequence[FiredTrigger]) -> AlertSummary:
+    """Render fired triggers for delivery. Same wording on every channel, like
+    :func:`build_summary`; the caller guarantees ``fired`` is non-empty."""
+    clients = sorted({item.client_name for item in fired})
+    word = "trigger" if len(fired) == 1 else "triggers"
+    subject = (
+        f"NewsPulse: {len(fired)} scenario {word} fired for {', '.join(clients)}"
+    )
+    bullets = [
+        f"• {item.client_name}, {item.issue_title} "
+        f"({item.scenario} case, {item.condition}): {item.note}"
+        for item in fired
+    ]
+    body = "\n".join(
+        [
+            "A condition a scenario was watching for now holds:",
+            "",
+            *bullets,
+            "",
+            "Open NewsPulse: the issue carries the mark and what matched. "
+            "This is reported once; a trigger that has fired does not fire again.",
+        ]
+    )
+    lead = fired[0]
+    message = f"{lead.client_name}: {lead.issue_title} ({lead.condition})"
+    if len(fired) > 1:
+        message = f"{message} +{len(fired) - 1} more"
+    return AlertSummary(
+        total=len(fired),
+        client_count=len(clients),
+        groups=[],
+        subject=subject,
+        body=body,
+        desktop_message=_one_line(message),
+    )
+
+
+def notify_triggers(
+    fired: Sequence[FiredTrigger],
+    config: NotifyConfig | None = None,
+    *,
+    send_desktop: DesktopSender | None = None,
+    send_email: EmailSender | None = None,
+) -> NotifyResult:
+    """Announce the scenario triggers that just fired; never raises.
+
+    The guards mirror :func:`notify_opportunities`, and the first one carries
+    this feature's own promise: **nothing fired, no noise.** Only triggers that
+    fired on *this* pass belong here — what
+    :func:`newspulse.scenarios.check_triggers` just latched — never the
+    standing set, or every morning would re-announce the same condition and the
+    channel would stop being read inside a fortnight.
+    """
+    resolved = config or NotifyConfig.from_env()
+    desktop = send_desktop or _send_desktop
+    email = send_email or _send_email
+    if not fired:
+        return NotifyResult(sent=False, channel=resolved.channel, reason="no-triggers")
+    if resolved.channel is Channel.OFF:
+        return NotifyResult(
+            sent=False,
+            channel=Channel.OFF,
+            reason="channel-off",
+            alert_count=len(fired),
+        )
+    summary = _trigger_summary(fired)
+    try:
+        _dispatch(summary, resolved, desktop, email)
+    except Exception as exc:  # noqa: BLE001 — notification must never fail the run
+        _log.error(
+            "trigger notification via %s failed: %s; "
+            "run data already persisted, not rolled back",
+            resolved.channel.value,
+            exc,
+        )
+        return NotifyResult(
+            sent=False,
+            channel=resolved.channel,
+            reason="delivery-error",
+            alert_count=len(fired),
+            error=str(exc),
+        )
+    _log.info(
+        "delivered %d-trigger notification via %s", len(fired), resolved.channel.value
+    )
+    return NotifyResult(
+        sent=True, channel=resolved.channel, reason="delivered", alert_count=len(fired)
+    )
+
+
 def collect_proposals(session: Session) -> list[ProposedCrisis]:
     """The crises the tool is offering right now, one per mandate at most.
 
@@ -841,6 +957,8 @@ __all__ = [
     "FiredAlert",
     "FoundOpportunity",
     "notify_opportunities",
+    "FiredTrigger",
+    "notify_triggers",
     "ProposedCrisis",
     "ClientAlertGroup",
     "AlertSummary",

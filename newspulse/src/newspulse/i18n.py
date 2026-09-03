@@ -2334,6 +2334,76 @@ _EN: dict[str, str] = {
         "The selection was not added to: no further group on the map is "
         "affected in a way that can be stated.",
     "Aus der Auswahl nehmen": "Remove from the selection",
+    # --- Szenarien, Auslöser und Reaktionsoptionen (RIS-04) -------------------
+    # "Wahrscheinlichkeit" and the three level words are already translated
+    # above; this feature reuses them. The scenario words below are *stored
+    # enum values* rendered as words: the whole point of the closed set is that
+    # a likelihood is a word and never a percentage, so it has to be a word in
+    # both languages too.
+    "Szenarien": "Scenarios",
+    "Empfehlung": "Recommendation",
+    "Szenario": "Scenario",
+    "Bester Verlauf": "Best case",
+    "Wahrscheinlicher Verlauf": "Likely case",
+    "Schlechtester Verlauf": "Worst case",
+    "unwahrscheinlich": "unlikely",
+    "möglich": "possible",
+    "wahrscheinlich": "likely",
+    "sehr wahrscheinlich": "very likely",
+    "Kommunikationsbedarf:": "Communication needed:",
+    "Betroffene Stakeholder": "Affected stakeholders",
+    "keine Gruppe der Karte": "no group from the map",
+    # The five conditions of the closed set DEC-5 locked. The stored value is a
+    # key; these are the sentences a reader acts on. The heading is its own
+    # sentence and not "Auslöser": that key is already in this table, held by
+    # the crisis page's per-article pill, and a second entry under it would not
+    # add a translation — it would silently re-translate that one.
+    "Auslöser des Szenarios": "The scenario's triggers",
+    "Ausgelöst": "Fired",
+    "ausgelöst": "fired",
+    "ein zweites unabhängiges Medium": "a second independent outlet",
+    "ein Medium der obersten Reichweitenklasse": "an outlet of the top reach class",
+    "das Mandat in einer Überschrift": "the mandate in a headline",
+    "eine Medienanfrage im verbundenen Postfach":
+        "a press enquiry in the connected mailbox",
+    "eine namentlich genannte Person des Managements":
+        "a named member of the management",
+    "Szenarien entwickeln": "Develop scenarios",
+    "Szenarien verwerfen": "Discard the scenarios",
+    # The options, with the one that is always on the list.
+    "Reaktionsoptionen": "Response options",
+    "Reaktionsoptionen entwickeln": "Develop response options",
+    "Optionen verwerfen": "Discard the options",
+    "nicht reagieren": "no response",
+    "Nutzen:": "Upside:",
+    "Risiko:": "Downside:",
+    "Eskalationspotenzial": "Escalation potential",
+    "Die Antwort nannte keine Empfehlung.": "The answer named no recommendation.",
+    # The six speeds, so that "schnell" and "sofort" cannot come to mean the
+    # same thing in either language.
+    "Geschwindigkeit": "Speed",
+    "sofort": "immediately",
+    "innerhalb einer Stunde": "within the hour",
+    # "heute" is not repeated here: it stands above, in the chrome, and a second
+    # entry would be a dead line the next edit to either one would not reach.
+    "innerhalb von 24 Stunden": "within 24 hours",
+    "vorbereiten und beobachten": "prepare and watch",
+    "keine Reaktion": "no response",
+    # The register's scenario notes, written in Python and rendered as ``note``
+    # — nothing that reads the templates for German strings can see them.
+    "Keine Szenarien gespeichert: ohne prüfbaren Auslöser, mit einer Zahl ohne Zeile oder als Tatsache formuliert wird ein Verlauf nicht gespeichert.":
+        "No scenarios were stored: a course is not stored without a checkable "
+        "trigger, with a figure that stands in no line, or written as a fact.",
+    "Die Szenarien sind fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The scenarios failed. The details are in the log.",
+    "Keine Reaktionsoptionen gespeichert: es braucht mindestens drei, darunter „nicht reagieren“.":
+        "No response options were stored: at least three are needed, one of "
+        "them \"no response\".",
+    "Die Reaktionsoptionen sind fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The response options failed. The details are in the log.",
+    "Erst die Szenarien: die Reaktionsoptionen werden gegen sie entwickelt.":
+        "The scenarios come first: the response options are developed against "
+        "them.",
 }
 
 _TABLES = {"de": {}, "en": _EN}
