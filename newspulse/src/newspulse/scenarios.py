@@ -53,7 +53,7 @@ from sqlalchemy.orm import Session
 
 from . import brain, config, outlets, profile, prose, stakeholders
 from .analyzer import ParseError, invoke_with_fallback, strip_code_fence
-from .matching import name_matcher
+from .matching import name_matcher, terms_matcher
 from .models import (
     RESPONSE_LABEL_MAX,
     RESPONSE_OPTIONS_MIN,
@@ -585,17 +585,31 @@ def _management_named(session: Session, client: Client, issue: Issue) -> str:
     The names come from the stored profile and from nowhere else: a person this
     tool inferred to be an executive would put a stranger's name on a red mark
     at an issue, which is the failure ``no_invention`` exists for.
+
+    Matched with the ingest's own matcher rather than with ``in``, and for the
+    same reason :func:`_named_in_headline` uses it: the lookarounds are what
+    stop "Berger" being found inside "Bergerhoff". A substring hit here is
+    worse than elsewhere, because ``fired_at`` is a latch — a wrong firing
+    reports the wrong thing *and* spends the trigger the real event was armed
+    for.
     """
     people = _management_names(session, client)
     if not people:
         return ""
+    # One matcher per name, so the mark can say which person was found; the
+    # list is a line of a profile, not a corpus.
+    matchers = [(person, terms_matcher([person])) for person in people]
     for row in issue.signals:
         if row.article is None:
             continue
-        haystack = f"{row.article.title or ''} {row.article.summary_text or ''}".lower()
-        for person in people:
-            if person.lower() in haystack:
-                return f"Management namentlich genannt: {person}"
+        # Case-folded like the matcher's own alternation, which shares the
+        # ß→ss fold with the ingest.
+        haystack = (
+            f"{row.article.title or ''} {row.article.summary_text or ''}".casefold()
+        )
+        for person, matcher in matchers:
+            if matcher is not None and matcher.search(haystack):
+                return person
     return ""
 
 
@@ -608,15 +622,32 @@ _MANAGEMENT_FIELDS = ("ceo", "sprecher")
 #: is not worth a substring hit.
 _MIN_NAME_CHARS = 4
 
+#: The fewest words a part must have to be read as a person. Two, because the
+#: leadership line is written as a first name and a surname, while a part of a
+#: single word is a role — "Vorstand", "Geschäftsführung", "Pressestelle" —
+#: and a role word stands in a large share of German business coverage. Firing
+#: on one would report a role rather than a person and spend a latch that only
+#: fires once, ever. A single-word name is the accepted cost: the condition
+#: does not fire, rather than firing on the wrong thing.
+_MIN_NAME_WORDS = 2
+
+#: What separates one name from the next on a management line: the punctuation
+#: a person actually types, plus "und". The brackets and the colon are in here
+#: because that is how a *role* arrives — "Anna Berger (CEO)",
+#: "Geschäftsführung: Anna Berger" — and a role left inside the part makes the
+#: part a string no headline can contain.
+_NAME_SEPARATORS = re.compile(r"[,;/()\n:]|\bund\b")
+
 
 def _management_names(session: Session, client: Client) -> list[str]:
-    """The names the profile's management lines carry, one per comma-part.
+    """The names the profile's management lines carry, one per part.
 
-    Stored prose split on the separators a person actually types, with the
-    role words left in: "Anna Berger (CEO)" matches "Anna Berger" in a headline
-    only if the whole part matches, so the split is what makes the check work
-    at all. Parts too short to be a name are dropped — see
-    :data:`_MIN_NAME_CHARS`.
+    The ``ceo`` field is "Namen **und Rollen** der Geschäftsführung" and
+    ``sprecher`` is free prose, so both arrive as a person and their function
+    in one line. Splitting on :data:`_NAME_SEPARATORS` puts the two on either
+    side of the cut, and the parts that survive :data:`_MIN_NAME_CHARS` and
+    :data:`_MIN_NAME_WORDS` are the ones that can be a person at all. A part is
+    matched whole, so "Anna Berger" is found and "Anna Berger CEO" never is.
     """
     facts = profile.stored(session, client.id)
     names: list[str] = []
@@ -624,10 +655,13 @@ def _management_names(session: Session, client: Client) -> list[str]:
         row = facts.get(key)
         if row is None:
             continue
-        for part in re.split(r"[,;/\n]|\bund\b", row.value or ""):
-            cleaned = " ".join(part.replace("(", " ").replace(")", " ").split())
-            if len(cleaned) >= _MIN_NAME_CHARS:
-                names.append(cleaned)
+        for part in _NAME_SEPARATORS.split(row.value or ""):
+            cleaned = " ".join(part.split())
+            if len(cleaned) < _MIN_NAME_CHARS:
+                continue
+            if len(cleaned.split()) < _MIN_NAME_WORDS:
+                continue
+            names.append(cleaned)
     return names
 
 

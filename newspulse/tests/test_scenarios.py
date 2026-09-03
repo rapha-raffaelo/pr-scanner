@@ -567,6 +567,81 @@ def test_a_management_name_is_never_guessed_where_the_profile_is_empty(
     assert scenarios.check_triggers(session, mandate, issue, now=_NOW) == []
 
 
+def test_a_management_name_beside_its_role_still_fires(session, mandate):
+    """The field is "Namen *und Rollen* der Geschäftsführung", so a name and
+    its function in one line is the expected input. The role goes on the other
+    side of the split; a part carrying it would be a string no headline can
+    contain, and the condition would look like a trigger and never fire."""
+    session.add(
+        ClientFact(
+            client_id=mandate.id,
+            key="ceo",
+            value="Geschäftsführung: Anna Berger (CEO) und Tom Klein",
+        )
+    )
+    session.commit()
+    issue = _with_trigger(
+        session,
+        mandate,
+        TriggerCondition.MANAGEMENT_GENANNT,
+        articles=[
+            _article(
+                session,
+                "Vorwurf im Werk",
+                summary="Tom Klein bestätigt die Prüfung.",
+            )
+        ],
+    )
+    fired = scenarios.check_triggers(session, mandate, issue, now=_NOW)
+    assert [row.condition for row in fired] == [TriggerCondition.MANAGEMENT_GENANNT]
+    assert fired[0].fired_note == "Tom Klein"
+
+
+def test_a_role_word_alone_never_fires_the_management_condition(session, mandate):
+    """"Vorstand" stands in a large share of German business coverage, and the
+    latch only fires once: a firing on a role word would report a word and
+    spend the trigger the real event was armed for."""
+    session.add(
+        ClientFact(client_id=mandate.id, key="ceo", value="Vorstand, Pressestelle")
+    )
+    session.commit()
+    issue = _with_trigger(
+        session,
+        mandate,
+        TriggerCondition.MANAGEMENT_GENANNT,
+        articles=[
+            _article(
+                session,
+                "Vorwurf im Werk",
+                summary="Der Vorstand äußert sich nicht zu den Vorwürfen.",
+            )
+        ],
+    )
+    assert scenarios.check_triggers(session, mandate, issue, now=_NOW) == []
+
+
+def test_a_name_inside_a_longer_word_is_not_a_naming(session, mandate):
+    """The ingest's matcher, not ``in``: the lookarounds are what stop "Berger"
+    being found inside "Bergerhoff"."""
+    session.add(
+        ClientFact(client_id=mandate.id, key="ceo", value="Anna Berger, Vorstand")
+    )
+    session.commit()
+    issue = _with_trigger(
+        session,
+        mandate,
+        TriggerCondition.MANAGEMENT_GENANNT,
+        articles=[
+            _article(
+                session,
+                "Vorwurf im Werk",
+                summary="Die Kanzlei Annabergerhoff prüft die Vorwürfe.",
+            )
+        ],
+    )
+    assert scenarios.check_triggers(session, mandate, issue, now=_NOW) == []
+
+
 def test_a_fired_trigger_does_not_fire_a_second_time(session, mandate):
     issue = _with_trigger(
         session,
