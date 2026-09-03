@@ -643,19 +643,20 @@ def test_the_reorder_route_saves_the_persons_order(web, session, mandate):
     assert "Reihenfolge gesetzt von" in page.text
 
 
-def test_the_selection_route_is_a_noop_without_a_map(web, session, mandate):
-    """The button answers with the note rather than inventing a selection —
-    and no model is reached, because there is nothing to select from."""
-    issue = _issue(session, mandate)
-    response = web.post(
-        f"/issues/{issue.id}/stakeholder/auswahl",
-        data={"redirect_to": f"/client/{mandate.id}/issues"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    assert session.scalars(select(StakeholderSelection)).all() == []
+def test_the_selection_note_reaches_the_register(web, session, mandate):
+    """Whichever of the card's buttons produced it, the answer appears in one
+    place on the page. The selection itself is spent on a worker thread, so
+    the route cannot be the thing that carries the sentence."""
+    from newspulse.web.routes import stakeholder_ui
+
+    _issue(session, mandate)
+    stakeholder_ui.note(mandate.id, stakeholder_ui.NO_SELECTION)
     page = web.get(f"/client/{mandate.id}/issues")
     assert "Keine Auswahl entstanden" in page.text
+    # Popped, not read: a note describes one click.
+    assert "Keine Auswahl entstanden" not in web.get(
+        f"/client/{mandate.id}/issues"
+    ).text
 
 
 def test_the_empty_information_need_renders_as_a_named_absence(
@@ -691,6 +692,10 @@ def test_every_python_written_note_and_label_is_translated():
         "hoch",
         "mittel",
         "niedrig",
+        # The buttons the human-editing half of the feature is worked with.
+        "Um neue Gruppen ergänzen",
+        "Aus der Auswahl nehmen",
+        "Die Anfrage läuft — die Karte aktualisiert sich, sobald sie steht.",
     )
     known = set(i18n.known_keys())
     for sentence in (*stakeholder_ui.NOTES, *labels):

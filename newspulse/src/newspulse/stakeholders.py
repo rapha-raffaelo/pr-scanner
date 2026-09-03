@@ -452,7 +452,23 @@ def propose_card(
         session.add(row)
         taken.add(_norm(row.group_name))
         added.append(row)
-    session.commit()
+    if added:
+        # Only where there is something of ours to write. An unconditional
+        # commit would flush whatever the caller's session happens to be
+        # holding on a proposal that added nothing.
+        try:
+            session.commit()
+        except IntegrityError:
+            # A concurrent proposal read the same standing card and filed the
+            # same group first. Its rows are on the page and say the same
+            # thing; this call adds nothing rather than half of something.
+            session.rollback()
+            _log.warning(
+                "a concurrent stakeholder proposal for %r filed the same "
+                "group first; the rows that stand are kept",
+                client.name,
+            )
+            return []
     _log.info(
         "stakeholder proposal for %r added %d group(s)", client.name, len(added)
     )
@@ -491,6 +507,11 @@ def order_is_recommendation(rows: list[StakeholderSelection]) -> bool:
     One human resort renames every row, so any row still carrying the token
     means no person has sorted this list — which is what the page's
     "Empfehlung" marker states.
+
+    An empty list answers ``False``, which reads as "a person set this order"
+    and is only safe because there is no order to mark: every caller draws the
+    marker inside its own ``if sel`` guard, and a caller that does not must
+    check the list itself first.
     """
     return any(row.position_set_by == PROPOSED_BY_MODEL for row in rows)
 
@@ -581,6 +602,94 @@ def _selection_row(
     )
 
 
+def _ask_selection(
+    session: Session,
+    *,
+    issue: Issue | None,
+    crisis: Crisis | None,
+    candidates: list[Stakeholder],
+    invoke,
+    now: dt.datetime | None,
+    start_at: int,
+) -> list[StakeholderSelection]:
+    """One model call over ``candidates``, and the rows worth storing from it.
+
+    The engine both entry points share. It hands the model only stored lines —
+    the candidate rows of the map and the occasion's signals — and three rules
+    decide what is stored back:
+
+    * a group the map does not hold is dropped: the selection is *from* the
+      standing card, never an invention beside it;
+    * a group without a reason is dropped, and said in the log — the same
+      rule the issue register holds for an unjustifiable assignment;
+    * ``info_need`` is kept as it came (dash-flattened), empty allowed: where
+      the stored lines support no sentence, no sentence is the honest row.
+
+    Positions run ``start_at``.. over what is actually kept, so a dropped group
+    leaves no gap in the call order.
+    """
+    client_id = issue.client_id if issue is not None else crisis.client_id
+    client = session.get(Client, client_id)
+    title, matter = _matter_lines(issue, crisis)
+    # Captured with the prompt, the same terms as the proposal's stamp above.
+    written_under = brain.version(session)
+    prompt = _template(_SELECT_PROMPT).substitute(
+        client_name=client.name,
+        matter_title=title,
+        matter=matter,
+        map=_card_lines(candidates),
+    )
+    resolved_invoke = invoke if invoke is not None else invoke_with_fallback
+    proposal = _parse(
+        resolved_invoke(prompt, timeout=config.ANALYZER_TIMEOUT), SelectionProposal
+    )
+    by_name = {_norm(row.group_name): row for row in candidates}
+    reference = now or dt.datetime.now(dt.UTC)
+    stored: list[StakeholderSelection] = []
+    seen: set[int] = set()
+    for chosen in proposal.auswahl:
+        row = _selection_row(
+            chosen,
+            by_name,
+            issue=issue,
+            crisis=crisis,
+            position=start_at + len(stored),
+            reference=reference,
+            written_under=written_under,
+        )
+        if row is None or row.stakeholder_id in seen:
+            continue
+        session.add(row)
+        seen.add(row.stakeholder_id)
+        stored.append(row)
+    dropped = len(proposal.auswahl) - len(stored)
+    if dropped:
+        # Said as a count as well as per row, so a suspiciously thin selection
+        # is diagnosable from one line rather than by pairing up warnings.
+        _log.info(
+            "the selection for %r kept %d of %d offered group(s); %d were "
+            "dropped as unknown to the map, unreasoned, or named twice",
+            client.name,
+            len(stored),
+            len(proposal.auswahl),
+            dropped,
+        )
+    try:
+        session.commit()
+    except IntegrityError:
+        # Two clicks landed at once and the other one stored this group first.
+        # Its rows are the answer — they say the same thing this call would
+        # have — and the caller re-reads what stands.
+        session.rollback()
+        _log.warning(
+            "a concurrent selection for %r stored the same group first; "
+            "the rows that stand are kept",
+            client.name,
+        )
+        return []
+    return stored
+
+
 def select_for(
     session: Session,
     *,
@@ -593,17 +702,8 @@ def select_for(
 
     Idempotent: an occasion that already carries a selection hands it back
     unchanged — re-asking would clobber the order a person may have set, which
-    is the one stored thing here the tool must not touch.
-
-    The mechanics hand the model only stored lines — the map's own rows and
-    the occasion's signals — and three rules decide what is stored back:
-
-    * a group the map does not hold is dropped: the selection is *from* the
-      standing card, never an invention beside it;
-    * a group without a reason is dropped, and said in the log — the same
-      rule the issue register holds for an unjustifiable assignment;
-    * ``info_need`` is kept as it came (dash-flattened), empty allowed: where
-      the stored lines support no sentence, no sentence is the honest row.
+    is the one stored thing here the tool must not touch. A map that has grown
+    since is reached through :func:`add_to_selection`, which only appends.
 
     Positions are written 1..n in the model's recommended order, under the
     ``"modell"`` token — an Empfehlung until :func:`reorder` writes a person's.
@@ -613,47 +713,103 @@ def select_for(
     standing = selection_for(session, issue=issue, crisis=crisis)
     if standing:
         return standing
-    client_id = issue.client_id if issue is not None else crisis.client_id
-    client = session.get(Client, client_id)
+    client = session.get(
+        Client, issue.client_id if issue is not None else crisis.client_id
+    )
     rows = card(session, client)
     if not rows:
         return []
-    title, matter = _matter_lines(issue, crisis)
-    # Captured with the prompt, the same terms as the proposal's stamp above.
-    written_under = brain.version(session)
-    prompt = _template(_SELECT_PROMPT).substitute(
-        client_name=client.name,
-        matter_title=title,
-        matter=matter,
-        map=_card_lines(rows),
+    stored = _ask_selection(
+        session,
+        issue=issue,
+        crisis=crisis,
+        candidates=rows,
+        invoke=invoke,
+        now=now,
+        start_at=1,
     )
-    resolved_invoke = invoke if invoke is not None else invoke_with_fallback
-    proposal = _parse(
-        resolved_invoke(prompt, timeout=config.ANALYZER_TIMEOUT), SelectionProposal
-    )
-    by_name = {_norm(row.group_name): row for row in rows}
-    reference = now or dt.datetime.now(dt.UTC)
-    stored: list[StakeholderSelection] = []
-    seen: set[int] = set()
-    for chosen in proposal.auswahl:
-        row = _selection_row(
-            chosen,
-            by_name,
-            issue=issue,
-            crisis=crisis,
-            # 1..n in the model's recommended order, counted over what is
-            # actually kept: a dropped group leaves no gap in the call order.
-            position=len(stored) + 1,
-            reference=reference,
-            written_under=written_under,
+    # Empty where nothing was worth storing, and the other request's rows where
+    # a concurrent click won the race: either way, what stands is the answer.
+    return stored or selection_for(session, issue=issue, crisis=crisis)
+
+
+def add_to_selection(
+    session: Session,
+    *,
+    issue: Issue | None = None,
+    crisis: Crisis | None = None,
+    invoke=None,
+    now: dt.datetime | None = None,
+) -> list[StakeholderSelection]:
+    """Ask whether groups added to the map since also belong here. Appends only.
+
+    :func:`select_for` is idempotent, which is right — re-asking would clobber
+    a person's order — but on its own it freezes the selection against the very
+    card it is drawn from: a group put on the map on Tuesday could never reach
+    Monday's issue. This is the way back in, and it is deliberately narrow:
+
+    * only groups the occasion does not already carry are even offered to the
+      model, so a stored reason is never rewritten and no call is spent on a
+      question already answered;
+    * the new rows land at ``n+1``.., under the ``"modell"`` token, *after*
+      whatever stands — a person's order survives an append, which it would not
+      survive a re-ask;
+    * ``position_set_by`` on the standing rows is left exactly as it is.
+
+    Returns the rows this call added — empty when the map holds nothing new,
+    or when nothing new is reasonably touched by the occasion.
+    """
+    issue, crisis = _anchor(issue, crisis)
+    standing = selection_for(session, issue=issue, crisis=crisis)
+    if not standing:
+        # An empty selection has nothing to append to; the first question is
+        # the whole question, and asking it twice would spend a second call.
+        return select_for(
+            session, issue=issue, crisis=crisis, invoke=invoke, now=now
         )
-        if row is None or row.stakeholder_id in seen:
-            continue
-        session.add(row)
-        seen.add(row.stakeholder_id)
-        stored.append(row)
+    client = session.get(
+        Client, issue.client_id if issue is not None else crisis.client_id
+    )
+    chosen_ids = {row.stakeholder_id for row in standing}
+    candidates = [row for row in card(session, client) if row.id not in chosen_ids]
+    if not candidates:
+        return []
+    return _ask_selection(
+        session,
+        issue=issue,
+        crisis=crisis,
+        candidates=candidates,
+        invoke=invoke,
+        now=now,
+        start_at=max(row.position for row in standing) + 1,
+    )
+
+
+def drop_from_selection(
+    session: Session,
+    *,
+    issue: Issue | None = None,
+    crisis: Crisis | None = None,
+    selection_id: int,
+) -> bool:
+    """A person takes one group off this occasion's list, map untouched.
+
+    The counterpart to :func:`add_to_selection`, and the reason the standing
+    map is not the place to do this: removing the row there would take the
+    group off *every* occasion and destroy the card. The occasion's remaining
+    rows are renumbered 1..n, and ``position_set_by`` is left alone — closing
+    a gap is not a person sorting the list.
+    """
+    issue, crisis = _anchor(issue, crisis)
+    rows = selection_for(session, issue=issue, crisis=crisis)
+    doomed = next((row for row in rows if row.id == selection_id), None)
+    if doomed is None:
+        return False
+    session.delete(doomed)
+    session.flush()
+    _renumber([row for row in rows if row.id != selection_id])
     session.commit()
-    return stored
+    return True
 
 
 def reorder(
@@ -690,8 +846,10 @@ __all__ = [
     "GroupProposal",
     "SelectedGroup",
     "SelectionProposal",
+    "add_to_selection",
     "card",
     "delete_row",
+    "drop_from_selection",
     "order_is_recommendation",
     "propose_card",
     "reorder",

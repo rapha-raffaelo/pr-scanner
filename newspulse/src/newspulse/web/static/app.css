@@ -2481,7 +2481,11 @@ button:disabled { opacity: .55; cursor: default; }
 .ssel__row { display: flex; gap: var(--s3); align-items: flex-start; }
 .ssel__row--gap { border-left: 3px solid var(--warn); padding-left: var(--s2); }
 .ssel__pos { width: 3.2em; }
-.ssel__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ssel__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+/* The per-row remove sits at the end of the row and stays quiet: taking a group
+   off the list is a real decision, but it is not the row's headline. */
+.ssel__drop { margin-left: auto; flex: none; align-self: flex-start; }
+.ssel__acts { display: flex; gap: var(--s2); flex-wrap: wrap; }
 .ssel__g { font-weight: 600; }
 .ssel__why, .ssel__need, .ssel__c { font-size: var(--t-caption); color: var(--muted); }
 .ssel__c b { color: var(--warn); }

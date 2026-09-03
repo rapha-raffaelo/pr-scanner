@@ -16,7 +16,9 @@
    (where the standing map is maintained, where it is not on this page),
    stakeholder_note (the card's one-click note, where this page has no map
    partial to carry it — the register passes an empty one, or the same sentence
-   would stand twice), t. #}
+   would stand twice), stakeholder_running (whether one of the card's model
+   calls is in flight for this mandate, so a spent button is not offered
+   twice), t. #}
 {% import "partials/brain_stamp.html" as provenance %}
 <div class="ssel">
   {% if stakeholder_note %}
@@ -61,14 +63,28 @@
               {% endif %}
             </span>
           </div>
+          {# ``formaction`` rather than a form of its own: this row sits inside
+             the order form, and a nested form is not HTML. ``formnovalidate``
+             because removing a row must not be blocked by the number field of
+             some *other* row a person happens to have emptied. #}
+          <button type="submit" class="ssel__drop btn btn--sm btn--ghost" formnovalidate
+                  formaction="{{ sel_anchor }}/{{ srow.id }}/entfernen">{{ t("Aus der Auswahl nehmen") }}</button>
         </div>
       {% endfor %}
-      <button type="submit" class="btn btn--sm">{{ t("Reihenfolge speichern") }}</button>
+      <div class="ssel__acts">
+        <button type="submit" class="btn btn--sm">{{ t("Reihenfolge speichern") }}</button>
+        {# The way back into a list that already stands: the selection is drawn
+           from the standing card, so a group added to the card afterwards has
+           to be able to reach it. Appends only — the rows above keep their
+           reasons and the order a person set. #}
+        <button type="submit" class="btn btn--sm btn--ghost" formnovalidate
+                formaction="{{ sel_anchor }}/ergaenzen"{% if stakeholder_running %} disabled{% endif %}>{{ t("Um neue Gruppen ergänzen") }}</button>
+      </div>
     </form>
   {% elif has_map %}
     <form method="post" action="{{ sel_anchor }}/auswahl">
       <input type="hidden" name="redirect_to" value="{{ back_to }}">
-      <button type="submit" class="btn btn--sm">{{ t("Stakeholder auswählen") }}</button>
+      <button type="submit" class="btn btn--sm"{% if stakeholder_running %} disabled{% endif %}>{{ t("Stakeholder auswählen") }}</button>
     </form>
   {% elif map_link %}
     {# No map, no selection — and the named absence rather than a mute block:

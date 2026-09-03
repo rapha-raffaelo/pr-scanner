@@ -2320,6 +2320,20 @@ _EN: dict[str, str] = {
     "Noch keine Stakeholder-Karte für dieses Mandat.":
         "No stakeholder map for this mandate yet.",
     "Zur Stakeholder-Karte": "To the stakeholder map",
+    # The card's model calls run on a worker thread behind one lock, so both
+    # the refused second click and the run in flight have to be sayable.
+    "Es läuft schon eine Anfrage für dieses Mandat. Ein zweiter Klick würde eine zweite kosten.":
+        "A request for this mandate is already running. A second click would "
+        "spend a second one.",
+    "Die Anfrage läuft — die Karte aktualisiert sich, sobald sie steht.":
+        "The request is running — the map refreshes as soon as it stands.",
+    # The way back into a selection that already stands: it appends only, so
+    # its empty answer is not the same sentence as "no selection at all".
+    "Um neue Gruppen ergänzen": "Add newly mapped groups",
+    "Die Auswahl wurde nicht ergänzt: keine weitere Gruppe der Karte ist begründbar betroffen.":
+        "The selection was not added to: no further group on the map is "
+        "affected in a way that can be stated.",
+    "Aus der Auswahl nehmen": "Remove from the selection",
 }
 
 _TABLES = {"de": {}, "en": _EN}

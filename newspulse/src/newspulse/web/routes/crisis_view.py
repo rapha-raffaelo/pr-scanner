@@ -608,6 +608,9 @@ def _stakeholder_block(
         "back_to": f"/client/{client.id}/krise?krise={standing.id}",
         "map_link": f"/client/{client.id}/issues",
         "stakeholder_note": stakeholder_ui.pop_note(client.id),
+        # The card's model calls run on a worker thread, so the page has to
+        # say a call is in flight — otherwise the button looks unpressed.
+        "stakeholder_running": stakeholder_ui.busy(client.id),
     }
 
 
@@ -728,19 +731,76 @@ def select_crisis_stakeholders(
     person set in the hour it mattered.
     """
     standing = _crisis_for(session, crisis_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+    def _select(worker: Session) -> str:
+        subject = _crisis_for(worker, crisis_id)
+        if subject is None:
+            return ""
+        selected = stakeholders.select_for(worker, crisis=subject)
+        return "" if selected else stakeholder_ui.NO_SELECTION
+
+    stakeholder_ui.spend(
+        _select,
+        client_id=standing.client_id,
+        name=f"newspulse-stakeholder-crisis-{crisis_id}",
+        failed=stakeholder_ui.SELECTION_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/crisis/{crisis_id}/stakeholder/ergaenzen")
+def top_up_crisis_stakeholders(
+    crisis_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Ask whether groups added to the map since also belong on this crisis.
+
+    Appends only. On a crisis morning the map does grow — somebody remembers
+    the works council — and without this the list would be frozen against the
+    card it is drawn from. The standing rows keep their reasons and their
+    order, because that order is the call order somebody is working down.
+    """
+    standing = _crisis_for(session, crisis_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+    def _top_up(worker: Session) -> str:
+        subject = _crisis_for(worker, crisis_id)
+        if subject is None:
+            return ""
+        added = stakeholders.add_to_selection(worker, crisis=subject)
+        return "" if added else stakeholder_ui.NO_NEW_SELECTED
+
+    stakeholder_ui.spend(
+        _top_up,
+        client_id=standing.client_id,
+        name=f"newspulse-stakeholder-topup-crisis-{crisis_id}",
+        failed=stakeholder_ui.SELECTION_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/crisis/{crisis_id}/stakeholder/{selection_id}/entfernen")
+def drop_crisis_stakeholder(
+    crisis_id: int,
+    selection_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Take one group off this crisis's list, the standing map untouched.
+
+    Here and not on the map: removing the map row would take the group off
+    every occasion at once, and the map outlives the incident. No model call —
+    a person removing a group is a decision, not a question.
+    """
+    standing = _crisis_for(session, crisis_id)
     if standing is not None:
-        try:
-            selected = stakeholders.select_for(session, crisis=standing)
-        except Exception:  # noqa: BLE001 — a button must answer, not 500
-            _log.exception("stakeholder selection for crisis %d failed", crisis_id)
-            stakeholder_ui.note(
-                standing.client_id, stakeholder_ui.SELECTION_FAILED
-            )
-        else:
-            if not selected:
-                stakeholder_ui.note(
-                    standing.client_id, stakeholder_ui.NO_SELECTION
-                )
+        stakeholders.drop_from_selection(
+            session, crisis=standing, selection_id=selection_id
+        )
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
 
@@ -748,9 +808,10 @@ def select_crisis_stakeholders(
 def reorder_crisis_stakeholders(
     request: Request,
     crisis_id: int,
-    sid: list[int] = Form(default_factory=list),
-    # Text, not int: a cleared number field posts "" and FastAPI would answer a
-    # person pressing a button with raw validation JSON.
+    # Both text, not int: a cleared number field posts "" and so does an emptied
+    # hidden id, and FastAPI would answer a person pressing a button with raw
+    # validation JSON rather than the sentence the page has for it.
+    sid: list[str] = Form(default_factory=list),
     pos: list[str] = Form(default_factory=list),
     redirect_to: str = Form("/"),
     session: Session = Depends(get_db),

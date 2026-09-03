@@ -12,7 +12,9 @@
    without profile entries gets the sentence about what is missing, with the
    link there — never an invented map.
 
-   Expects in context: client, smap, has_profile, stakeholder_note, smap_max
+   Expects in context: client, smap, has_profile, stakeholder_note,
+   stakeholder_running (whether one of the card's model calls is in flight for
+   this mandate — the calls run on a worker thread), smap_max
    (the stored cap, so the form cannot promise a width the column truncates),
    back_to (where a button returns), and t. #}
 {% import "partials/brain_stamp.html" as provenance %}
@@ -22,11 +24,20 @@
     <span class="kcol__s">{{ smap | length }}</span>
     <form method="post" action="/client/{{ client.id }}/stakeholder/vorschlagen" class="smap__propose">
       <input type="hidden" name="redirect_to" value="{{ back_to }}">
-      <button type="submit" class="btn btn--sm">{{ t("Aus dem Profil vorschlagen") }}</button>
+      <button type="submit" class="btn btn--sm"{% if stakeholder_running %} disabled{% endif %}>{{ t("Aus dem Profil vorschlagen") }}</button>
     </form>
   </div>
   <p class="smap__hint">{{ t("Die Karte steht am Mandat, nicht am Anlass. Vorgeschlagen wird aus dem Profil, bearbeitet von einem Menschen, und jede Zeile zeigt, wer sie gesetzt hat.") }}</p>
-  {% if stakeholder_note %}
+  {% if stakeholder_running %}
+    {# The call runs on a worker thread, so the page has to say so and fetch
+       itself back: without this the redirect lands on an unchanged card and
+       the button reads as broken. #}
+    <p class="notice notice--ok"
+       hx-get="{{ back_to }}" hx-trigger="every 4s"
+       hx-select=".smap" hx-target=".smap" hx-swap="outerHTML">
+      <span class="spinner" aria-hidden="true"></span>{{ t("Die Anfrage läuft — die Karte aktualisiert sich, sobald sie steht.") }}
+    </p>
+  {% elif stakeholder_note %}
     <p class="notice">{{ t(stakeholder_note) }}</p>
   {% endif %}
 

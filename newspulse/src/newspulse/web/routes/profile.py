@@ -484,22 +484,29 @@ def propose_stakeholders(
 
     A mandate without profile entries gets no invented map: the note says what
     is missing, and the page carries the link to where it is filled in.
+
+    The call itself runs on a worker thread behind ``stakeholder_ui``'s lock,
+    the same posture as every other model-call button here: it is a three-
+    minute timeout, and a second click while one is running would spend a
+    second call for the same answer.
     """
-    client = mandate_or_404(session, client_id)
-    try:
-        added = stakeholders.propose_card(session, client)
-    except Exception:  # noqa: BLE001 — a button must answer, not 500
-        # A fixed sentence, and the cause in the log: an interpolated exception
-        # cannot stand in the i18n table, so it would render German on an
-        # English page — and a ParseError's text is the model's malformed
-        # answer, which is nothing a reader can act on.
-        _log.exception("stakeholder proposal for client %s failed", client_id)
-        stakeholder_ui.note(client_id, stakeholder_ui.PROPOSAL_FAILED)
-    else:
+    mandate_or_404(session, client_id)
+
+    def _propose(worker: Session) -> str:
+        client = worker.get(Client, client_id)
+        if client is None:
+            return ""
+        added = stakeholders.propose_card(worker, client)
         if added is None:
-            stakeholder_ui.note(client_id, stakeholder_ui.NO_PROFILE)
-        elif not added:
-            stakeholder_ui.note(client_id, stakeholder_ui.NO_NEW_GROUPS)
+            return stakeholder_ui.NO_PROFILE
+        return "" if added else stakeholder_ui.NO_NEW_GROUPS
+
+    stakeholder_ui.spend(
+        _propose,
+        client_id=client_id,
+        name=f"newspulse-stakeholder-map-{client_id}",
+        failed=stakeholder_ui.PROPOSAL_FAILED,
+    )
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
 

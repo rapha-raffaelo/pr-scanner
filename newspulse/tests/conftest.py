@@ -88,13 +88,29 @@ def _stub(module, lock_name: str):
 
 
 @pytest.fixture(autouse=True)
+def no_background_stakeholder_call(monkeypatch):
+    """Stop the stakeholder card's three model-call buttons from spending one.
+
+    Same two reasons as the impulse button, plus one of its own: the worker
+    opens its *own* session against the process engine, which is not the
+    in-memory database a web test overrides ``get_db`` with. The disciplines
+    those buttons carry are exercised against
+    :mod:`newspulse.stakeholders` directly in ``test_stakeholders.py``.
+    """
+    from newspulse.web.routes import stakeholder_ui
+
+    monkeypatch.setattr(stakeholder_ui, "_run", _stub(stakeholder_ui, "_calling"))
+
+
+@pytest.fixture(autouse=True)
 def background_locks_are_free():
     """Fail the test that leaked one, rather than the innocent test that waits."""
-    from newspulse.web.routes import advisory
+    from newspulse.web.routes import advisory, stakeholder_ui
 
     yield
     for name in ("_drafting", "_writing"):
         assert not getattr(advisory, name).locked(), f"a test left {name} held"
+    assert not stakeholder_ui._calling.locked(), "a test left _calling held"
 
 
 @pytest.fixture(autouse=True)

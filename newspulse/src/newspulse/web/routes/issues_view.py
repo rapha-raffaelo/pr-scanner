@@ -225,6 +225,11 @@ def issues_page(
                 profiles.as_prompt_lines(profiles.stored(session, client.id))
             ),
             "stakeholder_note": stakeholder_ui.pop_note(client.id),
+            # Whether one of the card's model calls is running for *this*
+            # mandate: the buttons spend a call on a worker thread, so without
+            # this the page after the redirect looks like a button that did
+            # nothing, and the reader presses it again.
+            "stakeholder_running": stakeholder_ui.busy(client.id),
             # The stored cap, so the form cannot promise a width the column
             # truncates, and where the map's buttons return to.
             "smap_max": STAKEHOLDER_TEXT_MAX,
@@ -463,26 +468,86 @@ def select_stakeholders(
 
     Idempotent by construction — an issue that already carries a selection
     keeps it, order and all. An empty map selects nothing and says so: the
-    selection is *from* the card, so the card comes first.
+    selection is *from* the card, so the card comes first. A map that has
+    grown since is reached through the Ergänzen button, which only appends.
+
+    The call runs on a worker thread behind ``stakeholder_ui``'s lock: it is a
+    three-minute timeout, and a second click would spend a second call.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+    def _select(worker: Session) -> str:
+        issue = _issue_for(worker, issue_id)
+        if issue is None:
+            return ""
+        selected = stakeholders.select_for(worker, issue=issue)
+        return "" if selected else stakeholder_ui.NO_SELECTION
+
+    stakeholder_ui.spend(
+        _select,
+        client_id=standing.client_id,
+        name=f"newspulse-stakeholder-issue-{issue_id}",
+        failed=stakeholder_ui.SELECTION_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/issues/{issue_id}/stakeholder/ergaenzen")
+def top_up_stakeholders(
+    issue_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Ask whether groups added to the map since also belong on this issue.
+
+    The way back into a selection that already stands. Without it the list is
+    frozen against the very card it is drawn from: a group put on the map on
+    Tuesday could never reach Monday's issue, and the only escape would be
+    deleting map rows until the selection empties — which destroys the map.
+
+    It appends and nothing else. The standing rows keep their reasons, their
+    positions and their ``position_set_by``, so a person's order survives.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+    def _top_up(worker: Session) -> str:
+        issue = _issue_for(worker, issue_id)
+        if issue is None:
+            return ""
+        added = stakeholders.add_to_selection(worker, issue=issue)
+        return "" if added else stakeholder_ui.NO_NEW_SELECTED
+
+    stakeholder_ui.spend(
+        _top_up,
+        client_id=standing.client_id,
+        name=f"newspulse-stakeholder-topup-issue-{issue_id}",
+        failed=stakeholder_ui.SELECTION_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/issues/{issue_id}/stakeholder/{selection_id}/entfernen")
+def drop_stakeholder(
+    issue_id: int,
+    selection_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Take one group off this issue's list, the standing map untouched.
+
+    Here and not on the map, because removing the map row would take the group
+    off every occasion at once. No model call: a person removing a group is a
+    decision, not a question.
     """
     standing = _issue_for(session, issue_id)
     if standing is not None:
-        try:
-            selected = stakeholders.select_for(session, issue=standing)
-        except Exception:  # noqa: BLE001 — a button must answer, not 500
-            # The sentence is a fixed one and the cause goes to the log: an
-            # interpolated exception cannot stand in the i18n table (so the
-            # page would be half English), and a ParseError's text is the
-            # model's malformed answer, which is nothing a reader can act on.
-            _log.exception("stakeholder selection for issue %d failed", issue_id)
-            stakeholder_ui.note(
-                standing.client_id, stakeholder_ui.SELECTION_FAILED
-            )
-        else:
-            if not selected:
-                stakeholder_ui.note(
-                    standing.client_id, stakeholder_ui.NO_SELECTION
-                )
+        stakeholders.drop_from_selection(
+            session, issue=standing, selection_id=selection_id
+        )
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
 
@@ -490,10 +555,11 @@ def select_stakeholders(
 def reorder_stakeholders(
     request: Request,
     issue_id: int,
-    sid: list[int] = Form(default_factory=list),
-    # Text, not int: a cleared number field posts "" and FastAPI would answer
-    # a person pressing a button with raw validation JSON. The coercion — and
-    # the sentence when it fails — belongs to :func:`stakeholder_ui.ordered_ids`.
+    # Both text, not int: a cleared number field posts "" and so does an
+    # emptied hidden id, and FastAPI would answer a person pressing a button
+    # with raw validation JSON. The coercion — and the sentence when it fails —
+    # belongs to :func:`stakeholder_ui.ordered_ids`.
+    sid: list[str] = Form(default_factory=list),
     pos: list[str] = Form(default_factory=list),
     redirect_to: str = Form("/"),
     session: Session = Depends(get_db),
