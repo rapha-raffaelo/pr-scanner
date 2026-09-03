@@ -503,10 +503,17 @@ def _timeline(
     coverage: list[CoverageRow],
     texts: list[TextView],
     requests: list[RequestView],
+    prehistory=None,
 ) -> list[TimelineEvent]:
     """The whole crisis in time order — the after-action record once it closes.
 
     Every entry is a stored fact with its own timestamp; nothing is summarised.
+
+    ``prehistory`` is the issue this crisis escalated out of (RIS-02), when
+    there is one: its opening and its signals are prepended, so the chronology
+    begins on the day the first signal arrived rather than on the day of the
+    declaration. The signals stay the issue's rows — each line here resolves to
+    one of them.
     """
     events = [
         TimelineEvent(
@@ -515,6 +522,27 @@ def _timeline(
             detail=standing.declared_by,
         )
     ]
+    if prehistory is not None:
+        events.append(
+            TimelineEvent(
+                at=prehistory.opened_at,
+                label="Issue eröffnet",
+                detail=prehistory.title,
+            )
+        )
+        shown = {row.article_id for row in coverage}
+        events += [
+            TimelineEvent(
+                at=row.happened_at,
+                label="Signal",
+                detail=row.article.title if row.article else row.market_signal.title,
+                source=row.article.source if row.article else row.market_signal.publisher,
+            )
+            for row in prehistory.signals
+            # The coverage column already lists what falls inside the crisis's
+            # own window; a signal repeated there would count one event twice.
+            if row.article_id is None or row.article_id not in shown
+        ]
     events += [
         TimelineEvent(
             at=row.published_at,
@@ -611,7 +639,15 @@ def crisis_page(
             "requests": requests,
             "contacts": contacts,
             "gaps": _gaps(texts, requests, contacts),
-            "timeline": _timeline(selected, coverage, texts, requests) if zeitleiste else [],
+            "timeline": _timeline(
+                selected,
+                coverage,
+                texts,
+                requests,
+                prehistory=crisis.prehistory(session, selected),
+            )
+            if zeitleiste
+            else [],
             "zeitleiste": zeitleiste,
             "previous": [row for row in past if row.id != selected.id],
             "busy": _writing.locked() and _writing_for == client.id,

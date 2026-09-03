@@ -56,6 +56,7 @@ from .models import (
     Client,
     Crisis,
     CrisisDismissal,
+    Issue,
     Tonality,
     visible_coverage,
 )
@@ -814,6 +815,36 @@ def history(session: Session, client: Client) -> list[Crisis]:
     )
 
 
+def prehistory(session: Session, crisis: Crisis) -> Issue | None:
+    """The issue this crisis escalated out of, or ``None`` for one declared cold.
+
+    The read side of the RIS-02 handover: an issue that escalates hands the
+    crisis its signals and its opening, so the crisis's chronology begins on
+    the day the first signal arrived rather than on the day of the declaration.
+    ``Issue.crisis_id`` is the link and this is its one reader; the issue row
+    stays the owner of the signals — nothing is copied, because a copy could
+    drift from the record it claims to be.
+    """
+    return session.scalars(
+        select(Issue).where(Issue.crisis_id == crisis.id)
+    ).first()
+
+
+def began_at(session: Session, crisis: Crisis) -> dt.datetime:
+    """When this crisis's chronology begins.
+
+    The escalated issue's opening where there is one — that is the day the
+    first signal arrived, per :func:`newspulse.issues.attach`'s bookkeeping —
+    and the declaration otherwise. Never later than the declaration: an issue
+    opened *after* the crisis it points at would be a data error, and the
+    honest floor is the moment a person declared.
+    """
+    issue = prehistory(session, crisis)
+    if issue is None:
+        return crisis.declared_at
+    return min(issue.opened_at, crisis.declared_at)
+
+
 def close(
     session: Session, crisis: Crisis, *, reason: str, now: dt.datetime | None = None
 ) -> Crisis:
@@ -932,6 +963,7 @@ __all__ = [
     "STORY_WINDOW",
     "Severity",
     "Trigger",
+    "began_at",
     "close",
     "declare",
     "dismiss",
@@ -941,6 +973,7 @@ __all__ = [
     "mark_swept",
     "open_crises",
     "open_crisis",
+    "prehistory",
     "propose",
     "regrade",
     "severity",

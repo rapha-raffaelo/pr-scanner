@@ -65,6 +65,8 @@ from .models import (
     Category,
     Client,
     Crisis,
+    Issue,
+    IssueStatus,
     ReputationReading,
     ReputationState,
     Tonality,
@@ -586,6 +588,17 @@ def measure(
         # does — so the two branches cannot both be right about one reading.
         computed = ReputationState.ISSUE
 
+    if rank(computed) < rank(ReputationState.ISSUE) and _has_open_issue(
+        session, client
+    ):
+        # The register's floor (RIS-02): an open issue is a person's statement
+        # that a matter is being carried, and the rung it names is Issue. Like
+        # the crisis floor below, it outranks the count — a register row open
+        # in the next tab beside a band saying "ruhig" would be the tool
+        # disagreeing with itself. Only ever a floor: a day the arithmetic put
+        # higher stays where it was counted.
+        computed = ReputationState.ISSUE
+        braked = False
     if crisis.open_crisis(session, client) is not None:
         computed = ReputationState.KRISE
         # Not a brake: the arithmetic did not reach and was not held back, a
@@ -874,6 +887,44 @@ def _entry(
     )
 
 
+def _has_open_issue(session: Session, client: Client) -> bool:
+    """Whether the register holds an open issue for this mandate.
+
+    Asked of the table directly rather than through :mod:`newspulse.issues`,
+    which imports :mod:`newspulse.crisis` the way this module does — the
+    reading needs one EXISTS, not a second module in its import chain.
+    """
+    return (
+        session.execute(
+            select(Issue.id)
+            .where(Issue.client_id == client.id, Issue.status == IssueStatus.OFFEN)
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
+def _with_open_issue(session: Session, clients: list[Client]) -> set[int]:
+    """Which of these mandates have an open issue right now.
+
+    The same second application at read that the crisis floor gets, for the
+    same reason: the reading was taken at 06:10, and an issue accepted at two
+    in the afternoon is a person's statement that is true the second it is
+    made. Without this the band would call a mandate ruhig while its own
+    register row sat one tab over until the next morning's sweep.
+    """
+    ids = [client.id for client in clients]
+    if not ids:
+        return set()
+    return set(
+        session.scalars(
+            select(Issue.client_id).where(
+                Issue.client_id.in_(ids), Issue.status == IssueStatus.OFFEN
+            )
+        ).all()
+    )
+
+
 def _in_crisis(session: Session, clients: list[Client]) -> set[int]:
     """Which of these mandates are in a declared crisis right now.
 
@@ -953,6 +1004,7 @@ def band(session: Session, clients: list[Client]) -> Band:
     """
     latest = _latest(session, clients)
     in_crisis = _in_crisis(session, clients)
+    with_issue = _with_open_issue(session, clients)
     day = max((reading.day for reading in latest.values()), default=None)
 
     standing: list[tuple[Client, ReputationReading | None, ReputationState]] = []
@@ -964,9 +1016,17 @@ def band(session: Session, clients: list[Client]) -> Band:
         floored = client.id in in_crisis
         if newest is None and not floored:
             # Neither counted nor declared. Not quiet either: "ruhig" is a
-            # reading, and this mandate has not had one.
+            # reading, and this mandate has not had one. An open issue alone
+            # does not conjure a tile out of no reading — unlike a crisis it
+            # has its own page in the register, and a tile with no counts
+            # would claim a measurement that never happened.
             continue
         state = ReputationState.KRISE if floored else newest.state
+        if client.id in with_issue and rank(state) < rank(ReputationState.ISSUE):
+            # The register's floor, applied at read like the crisis's own: an
+            # issue accepted this afternoon lifts the morning's stored rung
+            # without recomputing any of its counts.
+            state = ReputationState.ISSUE
         if state is not ReputationState.RUHIG:
             standing.append((client, newest, state))
             continue
