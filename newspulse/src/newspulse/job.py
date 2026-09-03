@@ -56,6 +56,7 @@ from . import (
     crisis,
     gnews,
     industry,
+    issues,
     mailsync,
     market_sources,
     newsjack,
@@ -1766,6 +1767,10 @@ class _PostRun:
     #: this is daily and should equal the mandate count on a healthy morning —
     #: a number below it says a mandate's coverage could not be counted.
     readings: int = 0
+    #: Signals the model attached to open issues this sweep (RIS-02, DEC-4).
+    #: Zero on most mornings, because most mornings no mandate has an open
+    #: issue with fresh coverage clustering into it.
+    issue_links: int = 0
 
 
 def _settle_themes(session: Session, clients: Sequence[Client], fetch: FetchFeed) -> int:
@@ -1867,6 +1872,37 @@ def _read_reputation(
     return written
 
 
+def _link_issue_signals(
+    session: Session, clients: Sequence[Client], *, now: dt.datetime
+) -> int:
+    """Attach the day's new signals to open issues (RIS-02, DEC-4). Never fails
+    the sweep.
+
+    One fault boundary per mandate: a broken verdict for one issue must not
+    cost the other mandates their attachments, and never the sweep its morning.
+    A mandate with no open issue costs one query and no model call — see
+    :func:`newspulse.issues.link_signals` — which is what makes running it
+    unconditionally affordable.
+
+    Yardsticks are skipped for the same reason the reputation sweep skips them:
+    a competitor is tracked to compare coverage, and no register is kept on it.
+    """
+    attached = 0
+    for client in clients:
+        if client.is_competitor:
+            continue
+        name = client.name
+        try:
+            attached += issues.link_signals(session, client, now=now)
+        except Exception:  # noqa: BLE001 — a linking pass is never worth a failed sweep
+            session.rollback()
+            _log.exception("issue linking for %r failed; skipping", name)
+            continue
+    if attached:
+        _log.info("attached %d signal(s) to open issues", attached)
+    return attached
+
+
 def _post_run(
     session: Session,
     run: Run,
@@ -1938,6 +1974,11 @@ def _post_run(
     # than next week's. Weekly per mandate, capped per sweep, and never touching
     # a hook a person has decided on — see _recompute_plans.
     outcome.plans = _recompute_plans(session, clients, now=now_fn())
+    # After the market sweep and the archive linking, so a signal that arrived
+    # this morning is a candidate this morning; before the reading, so the
+    # register the reading's Issue floor looks at is today's. Costs a model call
+    # only for a mandate with an open issue and fresh clustering coverage.
+    outcome.issue_links = _link_issue_signals(session, clients, now=now_fn())
     # After everything that could still add coverage or an analysis to today, so
     # the reading counts the morning the sweep actually brought in rather than
     # the one it started with. Daily, for every mandate, and cheap: no model call
@@ -2051,7 +2092,8 @@ def _run_real(
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
         "%d market signal(s), %d profile(s), %d visibility measurement(s), "
-        "%d plan(s), %d repl(y/ies), %d reputation reading(s), %d error(s)",
+        "%d plan(s), %d repl(y/ies), %d reputation reading(s), "
+        "%d issue signal(s), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
@@ -2068,6 +2110,7 @@ def _run_real(
         # Daily, unlike the two above it: a number below the mandate count is
         # the only place a mandate whose coverage could not be counted shows up.
         post.readings,
+        post.issue_links,
         len(errors),
     )
     # The run's data is committed; deliver any fired-alert notification now. This is

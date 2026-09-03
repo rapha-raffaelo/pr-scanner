@@ -275,6 +275,33 @@ def no_plan_recompute(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_issue_linking(monkeypatch):
+    """Keep the sweep's issue linking out of the tests that are not about it.
+
+    ``job.run`` now offers the day's new pieces to every open issue (RIS-02,
+    DEC-4), and each mechanical match is a model call. Most fixtures here have
+    no issues at all, so the pass would usually cost nothing — but "usually"
+    is exactly the kind of guarantee this file exists to replace: one fixture
+    that happens to seed an issue and similar headlines would shell out to
+    `claude` from a test about something else entirely.
+
+    Yields the real function, so the tests that are about the wiring can put
+    it back and prove the sweep genuinely reaches it.
+    """
+    from newspulse import job
+
+    original = job._link_issue_signals
+
+    def _stub(session, clients, *, now) -> int:
+        """The real signature, so a change to it breaks the suite rather than
+        production: ``lambda *a, **k`` would have accepted anything."""
+        return 0
+
+    monkeypatch.setattr(job, "_link_issue_signals", _stub)
+    return original
+
+
+@pytest.fixture(autouse=True)
 def no_theme_settling(monkeypatch):
     """Stop the sweep from proposing themes in a test run.
 

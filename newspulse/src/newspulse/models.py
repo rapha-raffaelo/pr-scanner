@@ -2800,8 +2800,261 @@ class ReputationReading(Base):
     client: Mapped["Client"] = relationship()
 
 
+#: The scale Wahrscheinlichkeit and Wirkung are set on. Five steps, the same
+#: hand a crisis level is graded on (:data:`CRISIS_LEVEL_MIN`), because the two
+#: numbers meet on one heatmap and a 1-5 next to a 1-10 would make the field
+#: unreadable. NULL is a value of its own — "noch nicht gesetzt" — and the
+#: heatmap gives it a named column rather than a corner of the field.
+ISSUE_SCALE_MIN = 1
+ISSUE_SCALE_MAX = 5
+
+
+class IssueStatus(StrEnum):
+    """Where one issue stands with the person who owns it.
+
+    ``ESKALIERT`` is not a second kind of closed: the matter did not end, it
+    became a crisis, and the row stays readable with all its signals because it
+    is the crisis's prehistory. ``GESCHLOSSEN`` always carries a reason — the
+    CHECK on :class:`Issue` holds that the way it does on :class:`Crisis`.
+    """
+
+    OFFEN = "offen"
+    ESKALIERT = "eskaliert"
+    GESCHLOSSEN = "geschlossen"
+
+
+class Issue(Base):
+    """The thing that gets three weeks old: one repeated matter, as one row.
+
+    Until now the same accusation on Monday and on Friday was two cards on two
+    days. This row is the object between the daily card and the declared
+    crisis: it has an age, a last movement and a growing count of attached
+    signals, and that is what "something is growing" is made of.
+
+    Three disciplines are carried on the row rather than remembered by callers:
+
+    * **A person opened it and a person grades it.** DEC-3 locked "das Werkzeug
+      schlägt vor, ein Mensch eröffnet", so ``opened_by`` names the person who
+      accepted the proposal. ``probability`` and ``impact`` are suggested by
+      arithmetic and *set* by a person, and ``probability_set_by`` /
+      ``impact_set_by`` say who — a model-set Eintrittswahrscheinlichkeit looks
+      like a measurement and is an opinion. NULL means nobody has set the value
+      yet, and the heatmap shows that as a named column, never as the origin of
+      the field.
+    * **A closed issue carries its reason**, the same CHECK the crisis has: an
+      empty answer to "why did we stop watching this" is silence three months
+      later. The row and its signals stay readable after.
+    * **Escalation is a handover, not an end.** ``crisis_id`` points at the
+      crisis this issue became, so the crisis's chronology can begin where the
+      issue began rather than on the day somebody pressed the button.
+
+    ``opened_at`` is the day the *matter* began — the earliest attached
+    signal's own date, not the moment of the click — because the age on the
+    register row and the start of an escalated crisis's chronology are both
+    statements about the matter, and the click is a statement about the person.
+    ``last_moved_at`` moves with the signals for the same reason.
+    """
+
+    __tablename__ = "issues"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The matter in one line — the lead headline of the repetition it was
+    #: opened from, editable by the person who owns it.
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: Frühindikatoren, one per line. Free text a person maintains: what to
+    #: watch for before the matter grows, not something a model fills.
+    early_indicators: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    owner: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False, default="", server_default=""
+    )
+    status: Mapped[IssueStatus] = mapped_column(
+        SAEnum(
+            IssueStatus,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="issue_status",
+        ),
+        nullable=False,
+        default=IssueStatus.OFFEN,
+        server_default=IssueStatus.OFFEN.value,
+    )
+    #: When the matter began: the earliest attached signal's own date.
+    opened_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The person who accepted the proposal — the same discipline as
+    #: ``Crisis.declared_by``: a user name where the tool has one, the
+    #: ``"mensch"`` token otherwise, never a name nobody typed.
+    opened_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    #: When the matter last moved: the newest attached signal's own date.
+    last_moved_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    # --- The two graded values, each with the person who set it ---------------
+    probability: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    probability_set_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False, default="", server_default=""
+    )
+    impact: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    impact_set_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False, default="", server_default=""
+    )
+
+    closed_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    close_reason: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    closed_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False, default="", server_default=""
+    )
+    #: The crisis this issue became, once it escalated. SET NULL rather than
+    #: CASCADE: an issue outlives the crisis row the way its signals do — the
+    #: prehistory does not vanish because the crisis record was deleted.
+    crisis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crises.id", ondelete="SET NULL"), nullable=True
+    )
+
+    signals: Mapped[list["IssueSignal"]] = relationship(
+        back_populates="issue", lazy="selectin", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            f"probability IS NULL OR (probability >= {ISSUE_SCALE_MIN} "
+            f"AND probability <= {ISSUE_SCALE_MAX})",
+            name="ck_issues_probability_range",
+        ),
+        CheckConstraint(
+            f"impact IS NULL OR (impact >= {ISSUE_SCALE_MIN} "
+            f"AND impact <= {ISSUE_SCALE_MAX})",
+            name="ck_issues_impact_range",
+        ),
+        # The same one-direction CHECK the crisis carries: it cannot be closed
+        # without a reason. The other direction is a convention of
+        # :func:`newspulse.issues.close`, the only writer of the pair.
+        CheckConstraint(
+            "closed_at IS NULL OR close_reason <> ''", name="ck_issues_close_reason"
+        ),
+    )
+
+
+class IssueSignal(Base):
+    """One signal hanging on one issue, with the reason it hangs there.
+
+    A signal is either a stored article or a stored market signal — exactly one,
+    and the CHECK holds that. Never free text: a signal that does not resolve to
+    a stored row is not evidence of anything.
+
+    ``reason`` is the load-bearing column. DEC-4 locked "mechanisch gefundene
+    Kandidaten, das Modell entscheidet" — and the rule that came with it is that
+    an assignment nobody can justify is not stored. The CHECK refuses an empty
+    reason at the schema, so the rule survives every future writer of this
+    table, not only the one that was reviewed.
+
+    ``attached_by`` distinguishes the model's assignments (the ``"modell"``
+    token) from a person's, the way ``ClientFact.filled_by`` does: the register
+    shows who hung a signal on the row, because a model's one-sentence reason
+    reads differently from a consultant's.
+    """
+
+    __tablename__ = "issue_signals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issue_id: Mapped[int] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    article_id: Mapped[int | None] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=True
+    )
+    signal_id: Mapped[int | None] = mapped_column(
+        ForeignKey("market_signals.id", ondelete="CASCADE"), nullable=True
+    )
+    #: Why this belongs to this issue — stored, so every assignment is readable
+    #: afterwards. Never empty; see the CHECK.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    #: ``"modell"`` for a DEC-4 assignment, a person's name otherwise.
+    attached_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    attached_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The signal's own date — the article's publication, or the market
+    #: signal's stated date. What the issue's age and last movement are read
+    #: from, because they are statements about the matter and not about when
+    #: the tool noticed it.
+    happened_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+    issue: Mapped["Issue"] = relationship(back_populates="signals")
+    article: Mapped["Article | None"] = relationship(lazy="selectin")
+    market_signal: Mapped["MarketSignal | None"] = relationship(lazy="selectin")
+
+    __table_args__ = (
+        # Exactly one of the two targets, spelled as the boolean it is.
+        CheckConstraint(
+            "(article_id IS NULL) <> (signal_id IS NULL)",
+            name="ck_issue_signals_one_target",
+        ),
+        CheckConstraint("reason <> ''", name="ck_issue_signals_reason"),
+        # The same piece hangs on the same issue once. NULLs do not collide in
+        # a UNIQUE, so the two constraints stay out of each other's way.
+        UniqueConstraint("issue_id", "article_id", name="uq_issue_signals_article"),
+        UniqueConstraint("issue_id", "signal_id", name="uq_issue_signals_signal"),
+    )
+
+
+class IssueDismissal(Base):
+    """One issue proposal a person waved off (DEC-3's one-click false positive).
+
+    The same posture as :class:`CrisisDismissal` and for the same reason:
+    "verwerfen lässt dieselbe Wiederholung nicht erneut vorschlagen". Keyed on
+    the proposal's lead article; :func:`newspulse.issues.propose` reads these
+    through the same clustering the proposals come from, so the whole repeated
+    story stops being offered, not merely the one headline that led it.
+
+    ``(client_id, article_id)`` is UNIQUE so a double click, a second tab and a
+    replayed POST all land on the same dismissal.
+    """
+
+    __tablename__ = "issue_dismissals"
+    __table_args__ = (
+        UniqueConstraint("client_id", "article_id", name="uq_issue_dismissals_once"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    dismissed_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    dismissed_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+
 __all__ = [
     "Crisis",
+    "ISSUE_SCALE_MAX",
+    "ISSUE_SCALE_MIN",
+    "Issue",
+    "IssueDismissal",
+    "IssueSignal",
+    "IssueStatus",
     "ReputationReading",
     "ReputationState",
     "NewsjackOpportunity",
