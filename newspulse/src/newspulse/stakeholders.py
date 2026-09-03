@@ -24,11 +24,18 @@ Four disciplines govern this module, and each has one owner here:
   ``issue_signals.reason`` holds. The one-sentence ``info_need`` rests on the
   stored lines the prompt was shown and may come back empty — an omission,
   never an invented Betroffenheit.
+* **The selection stays open to the card it is drawn from.**
+  :func:`select_for` is idempotent, or a second click would clobber a person's
+  order; on its own that would freeze the list against a map that keeps
+  growing. :func:`add_to_selection` is the way back in and only ever appends,
+  and :func:`drop_from_selection` takes one group off *this* occasion without
+  touching the map every other occasion shares.
 * **The order that is kept is the person's.** The proposal writes positions
   under the ``"modell"`` token, which is what renders them as an Empfehlung;
   :func:`reorder` writes a person's order under their name, and from then on
   the stored order hangs on law, contract and relationship — of which the
-  tool sees only part.
+  tool sees only part. Whenever the row set changes, :func:`_renumber` closes
+  the gap 1..n in one place, so no consumer has to tolerate a hole.
 
 The two model calls here are injectable, and no test exercises them against a
 real backend.
@@ -704,6 +711,9 @@ def select_for(
     unchanged — re-asking would clobber the order a person may have set, which
     is the one stored thing here the tool must not touch. A map that has grown
     since is reached through :func:`add_to_selection`, which only appends.
+
+    What is stored back, and what is dropped, is :func:`_ask_selection`'s —
+    the same three rules both entry points hold.
 
     Positions are written 1..n in the model's recommended order, under the
     ``"modell"`` token — an Empfehlung until :func:`reorder` writes a person's.

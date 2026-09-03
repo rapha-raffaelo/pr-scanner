@@ -935,3 +935,164 @@ def test_a_proposed_row_shows_its_standards_and_a_persons_row_does_not(
     assert page.text.count('href="/settings/brain/version/') == 1
     # Not "unbekannt": a row nobody generated makes no claim about standards.
     assert "vor der Aufzeichnung der Maßstäbe entstanden" not in page.text
+
+
+# --- What QA found -------------------------------------------------------------------
+
+
+def test_a_deleted_group_leaves_no_gap_in_the_call_order(web, session, mandate):
+    """A removed map row used to leave the survivors at ``[2, 3]``, and the
+    order form prefilled numbers its own ``max`` rejects — so "Reihenfolge
+    speichern" was unpressable for that issue after a routine map edit."""
+    import re
+
+    rows = _seed_card(session, mandate)
+    issue = _issue(session, mandate)
+    stakeholders.select_for(
+        session,
+        issue=issue,
+        now=_NOW,
+        invoke=lambda prompt, timeout=None: _selection_answer(
+            *[{"gruppe": row.group_name, "begruendung": "Betroffen."} for row in rows]
+        ),
+    )
+
+    assert stakeholders.delete_row(session, mandate, rows[0].id) is True
+
+    session.expire_all()
+    left = stakeholders.selection_for(session, issue=issue)
+    assert [row.position for row in left] == [1, 2]
+    fields = re.findall(r'<input class="ssel__pos"[^>]*>', web.get(
+        f"/client/{mandate.id}/issues"
+    ).text)
+    assert fields
+    for field in fields:
+        assert int(re.search(r'value="(\d+)"', field).group(1)) <= int(
+            re.search(r'max="(\d+)"', field).group(1)
+        )
+
+
+def test_a_group_added_to_the_map_can_still_reach_a_standing_selection(
+    session, mandate
+):
+    """``select_for`` is idempotent, which froze the selection against the very
+    card it is drawn from. The top-up appends, and leaves the standing rows —
+    reasons, positions and who set them — exactly as they are."""
+    _seed_card(session, mandate)
+    issue = _issue(session, mandate)
+    first = stakeholders.select_for(
+        session,
+        issue=issue,
+        now=_NOW,
+        invoke=lambda prompt, timeout=None: _selection_answer(
+            {"gruppe": "Belegschaft", "begruendung": "Eigene Verträge betroffen."}
+        ),
+    )
+    stakeholders.reorder(
+        session, issue=issue, ordered_ids=[first[0].id], by="lucas@agentur.de"
+    )
+    behoerde = stakeholders.save_row(
+        session, mandate, group="Aufsichtsbehörde", by="mensch"
+    )
+
+    added = stakeholders.add_to_selection(
+        session,
+        issue=issue,
+        now=_NOW,
+        invoke=lambda prompt, timeout=None: _selection_answer(
+            {"gruppe": "Aufsichtsbehörde", "begruendung": "Prüft die Vorwürfe."}
+        ),
+    )
+
+    assert [row.stakeholder_id for row in added] == [behoerde.id]
+    session.expire_all()
+    fresh = stakeholders.selection_for(session, issue=issue)
+    assert [row.position for row in fresh] == [1, 2]
+    # The append lands behind what stands, and the person's order survives it.
+    assert fresh[0].id == first[0].id
+    assert fresh[0].position_set_by == "lucas@agentur.de"
+
+
+def test_the_top_up_only_offers_groups_the_occasion_does_not_carry(session, mandate):
+    """No call is spent re-asking a question already answered, and a stored
+    reason is never rewritten by a second opinion of the same group."""
+    _seed_card(session, mandate)
+    issue = _issue(session, mandate)
+    stakeholders.select_for(
+        session,
+        issue=issue,
+        now=_NOW,
+        invoke=lambda prompt, timeout=None: _selection_answer(
+            {"gruppe": "Belegschaft", "begruendung": "Eigene Verträge betroffen."}
+        ),
+    )
+    seen: dict[str, str] = {}
+
+    def _capture(prompt, timeout=None):
+        seen["prompt"] = prompt
+        return _selection_answer()
+
+    stakeholders.add_to_selection(session, issue=issue, invoke=_capture)
+
+    assert "Belegschaft" not in seen["prompt"]
+    assert "Branchenverband" in seen["prompt"]
+
+
+def test_dropping_a_group_from_the_selection_leaves_the_map_and_the_order_whole(
+    session, mandate
+):
+    """The counterpart to the top-up: the standing map is not the place to take
+    a group off *one* occasion, because that would take it off every one."""
+    rows = _seed_card(session, mandate)
+    issue = _issue(session, mandate)
+    stored = stakeholders.select_for(
+        session,
+        issue=issue,
+        now=_NOW,
+        invoke=lambda prompt, timeout=None: _selection_answer(
+            *[{"gruppe": row.group_name, "begruendung": "Betroffen."} for row in rows]
+        ),
+    )
+
+    assert (
+        stakeholders.drop_from_selection(
+            session, issue=issue, selection_id=stored[0].id
+        )
+        is True
+    )
+
+    session.expire_all()
+    fresh = stakeholders.selection_for(session, issue=issue)
+    assert [row.position for row in fresh] == [1, 2]
+    assert len(stakeholders.card(session, mandate)) == 3
+
+
+def test_a_second_click_while_a_call_runs_is_said_and_spends_nothing(
+    web, session, mandate, monkeypatch
+):
+    """Three of the card's buttons shell out to a model with a three-minute
+    timeout. A second click while one runs would spend another, so it is
+    refused — and *said*, because an unanswered button reads as a broken one."""
+    from newspulse.web.routes import stakeholder_ui
+
+    _fact(session, mandate, "sitz", "Leipzig")
+    started: list[str] = []
+    monkeypatch.setattr(
+        stakeholder_ui.spawn,
+        "start_or_release",
+        lambda target, *, args, name, release: started.append(name),
+    )
+
+    for _ in range(2):
+        assert (
+            web.post(
+                f"/client/{mandate.id}/stakeholder/vorschlagen",
+                data={"redirect_to": f"/client/{mandate.id}/issues"},
+                follow_redirects=False,
+            ).status_code
+            == 303
+        )
+
+    assert len(started) == 1, "the second click spent a second call"
+    assert stakeholder_ui.pop_note(mandate.id) == stakeholder_ui.ALREADY_RUNNING
+    stakeholder_ui._calling.release()
