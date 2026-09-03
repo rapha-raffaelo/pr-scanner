@@ -12,12 +12,13 @@ from sqlalchemy.orm import Session
 
 from ... import onboarding
 from ... import profile as profiles
-from ... import profile_refresh
+from ... import profile_refresh, stakeholders
 from ...db import get_session
 from ...models import Client, ClientFact, OnboardingAnswer, ProfileProposal
 from .. import spawn
 from ..mandates import mandate_or_404
 from ..app import get_db, templates
+from ..redirects import local_target
 from ..runlock import guard as _run_guard
 from .today import _fetch_last_run, _local_tz
 
@@ -451,6 +452,123 @@ def forget_superseded(
     mandate_or_404(session, client_id)
     profiles.forget_superseded(session, client_id, key)
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
+
+
+# --- The standing stakeholder map (RIS-03) -----------------------------------------
+#
+# The map's *routes* live here because the map is part of the mandate's file —
+# it hangs on the client the way the profile does, and it is proposed from the
+# profile's own lines. The map *renders* on the register page (the partial),
+# because that is where it is worked with: beside the issues its selections
+# hang on.
+
+# Why the last stakeholder-card click produced what it produced, per mandate.
+# In memory and not a schema change, the same posture as the register's own
+# note: it describes one click, and going stale on a restart is correct.
+_stakeholder_notes: dict[int, str] = {}
+
+
+def pop_stakeholder_note(client_id: int) -> str:
+    """Hand the register page the one-click note, clearing it — the register
+    renders the map, so its route is the reader of this."""
+    return _stakeholder_notes.pop(client_id, "")
+
+
+def _person(request: Request) -> str:
+    """The signed-in person, or the token that says a person pressed the button.
+
+    Every map row carries who set it; where sign-in is not configured the tool
+    still knows a human submitted the form, so it writes the ``"mensch"`` token
+    rather than inventing a name nobody typed.
+    """
+    return str(request.scope.get("user_email") or profiles.BY_HAND)
+
+
+@router.post("/client/{client_id}/stakeholder/vorschlagen")
+def propose_stakeholders(
+    client_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Propose the map from the profile. Adds under the model's token, never
+    overwrites a standing row, and never invents a contact.
+
+    A mandate without profile entries gets no invented map: the note says what
+    is missing, and the page carries the link to where it is filled in.
+    """
+    client = mandate_or_404(session, client_id)
+    try:
+        added = stakeholders.propose_card(session, client)
+    except Exception as exc:  # noqa: BLE001 — a button must answer, not 500
+        _log.exception("stakeholder proposal for client %s failed", client_id)
+        _stakeholder_notes[client_id] = f"Der Vorschlag ist fehlgeschlagen: {exc}"
+    else:
+        if added is None:
+            _stakeholder_notes[client_id] = (
+                "Ohne Profilangaben wird keine Karte erfunden. Erst das Profil "
+                "füllen, dann trägt der Vorschlag."
+            )
+        elif not added:
+            _stakeholder_notes[client_id] = (
+                "Der Vorschlag hat keine neuen Gruppen ergeben."
+            )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/client/{client_id}/stakeholder/save")
+def save_stakeholder(
+    request: Request,
+    client_id: int,
+    group: str = Form(""),
+    betroffenheit: str = Form(""),
+    einfluss: str = Form("mittel"),
+    contact: str = Form(""),
+    channel: str = Form(""),
+    row_id: int | None = Form(None),
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """A person writes one row of the map; the row records who.
+
+    An out-of-set Einfluss is refused without a trace of a write: the form
+    only offers the three levels, so anything else was submitted around it,
+    and a defaulted level would store a value nobody chose, under a name.
+    """
+    client = mandate_or_404(session, client_id)
+    try:
+        row = stakeholders.save_row(
+            session,
+            client,
+            group=group,
+            betroffenheit=betroffenheit,
+            einfluss=einfluss,
+            contact=contact,
+            channel=channel,
+            by=_person(request),
+            row_id=row_id,
+        )
+    except ValueError:
+        _log.info("out-of-set stakeholder level for client %s refused", client_id)
+        row = None
+    if row is None:
+        _stakeholder_notes[client_id] = (
+            "Die Zeile wurde nicht gespeichert: es fehlt die Gruppe, oder der "
+            "Name steht schon auf der Karte."
+        )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/client/{client_id}/stakeholder/{row_id}/delete")
+def delete_stakeholder(
+    client_id: int,
+    row_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Remove one row of the map. A stale id costs nothing rather than a 500."""
+    client = mandate_or_404(session, client_id)
+    stakeholders.delete_row(session, client, row_id)
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
 
 @router.post("/client/{client_id}/profil/discard")

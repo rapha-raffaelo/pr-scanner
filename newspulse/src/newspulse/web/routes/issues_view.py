@@ -30,7 +30,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ... import crisis, issues
+from ... import crisis, issues, stakeholders
+from ... import profile as profiles
 from ...models import (
     ISSUE_SCALE_MAX,
     ISSUE_SCALE_MIN,
@@ -43,6 +44,7 @@ from ...models import (
 from ..app import get_db, templates
 from ..mandates import mandate_or_404
 from ..redirects import local_target
+from .profile import pop_stakeholder_note
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -170,6 +172,14 @@ def issues_page(
         for row in issues.history(session, client)
         if row.status is not IssueStatus.OFFEN
     ]
+    # The standing map, and the selections hanging on every issue on the page —
+    # past ones too: a closed or escalated issue stays readable with its
+    # selection, the same rule its signals already keep.
+    smap = stakeholders.card(session, client)
+    selections = {
+        row.id: stakeholders.selection_for(session, issue=row)
+        for row in open_rows + past
+    }
     return templates.TemplateResponse(
         request,
         "client_issues.html",
@@ -184,6 +194,21 @@ def issues_page(
             "scale_min": ISSUE_SCALE_MIN,
             "scale_max": ISSUE_SCALE_MAX,
             "note": _last_note.pop(client.id, ""),
+            "smap": smap,
+            "selections": selections,
+            # Whether the profile has anything a proposal could rest on: the
+            # empty map's sentence says what is missing, with the link there.
+            "has_profile": bool(
+                profiles.as_prompt_lines(profiles.stored(session, client.id))
+            ),
+            "stakeholder_note": pop_stakeholder_note(client.id),
+            # Compared against, never printed: the page says "Vorschlag" /
+            # "Empfehlung" where the column says "modell".
+            "by_model": stakeholders.PROPOSED_BY_MODEL,
+            "recommended": {
+                issue_id: stakeholders.order_is_recommendation(rows)
+                for issue_id, rows in selections.items()
+            },
         },
     )
 
@@ -376,3 +401,73 @@ def escalate_issue(
     return RedirectResponse(
         f"/client/{standing.client_id}/krise", status_code=_SEE_OTHER
     )
+
+
+# --- The stakeholder selection at an issue (RIS-03) --------------------------------
+
+
+@router.post("/issues/{issue_id}/stakeholder/auswahl")
+def select_stakeholders(
+    issue_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Build the issue's selection from the standing map, reasons included.
+
+    Idempotent by construction — an issue that already carries a selection
+    keeps it, order and all. An empty map selects nothing and says so: the
+    selection is *from* the card, so the card comes first.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is not None:
+        try:
+            selected = stakeholders.select_for(session, issue=standing)
+        except Exception as exc:  # noqa: BLE001 — a button must answer, not 500
+            _log.exception("stakeholder selection for issue %d failed", issue_id)
+            _last_note[standing.client_id] = (
+                f"Die Auswahl ist fehlgeschlagen: {exc}"
+            )
+        else:
+            if not selected:
+                _last_note[standing.client_id] = (
+                    "Keine Auswahl entstanden: ohne Karte oder ohne begründbar "
+                    "betroffene Gruppe wird nichts gespeichert."
+                )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/issues/{issue_id}/stakeholder/reihenfolge")
+def reorder_stakeholders(
+    request: Request,
+    issue_id: int,
+    sid: list[int] = Form(default_factory=list),
+    pos: list[int] = Form(default_factory=list),
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """A person sorts the selection, and the person's order is what is kept.
+
+    The form posts one (row id, position) pair per line; the handler sorts by
+    the numbers and stores 1..n under the person's name — from then on the
+    order is no Empfehlung any more. A form naming the wrong rows (a second
+    tab rebuilt the selection underneath it) changes nothing and says so.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is not None:
+        if len(sid) != len(pos):
+            _last_note[standing.client_id] = (
+                "Die Reihenfolge wurde nicht gespeichert: das Formular war "
+                "unvollständig."
+            )
+        else:
+            ordered = [row_id for _p, row_id in sorted(zip(pos, sid, strict=True))]
+            try:
+                stakeholders.reorder(
+                    session, issue=standing, ordered_ids=ordered, by=_who(request)
+                )
+            except ValueError:
+                _last_note[standing.client_id] = (
+                    "Die Reihenfolge wurde nicht gespeichert: sie nennt nicht "
+                    "genau die Zeilen der Auswahl."
+                )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)

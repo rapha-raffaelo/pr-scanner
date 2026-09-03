@@ -152,6 +152,54 @@
         {% endfor %}
       </details>
 
+      {# Die Stakeholder-Auswahl (RIS-03): which groups this occasion touches,
+         with the stored reason per group, the one-sentence information need,
+         and the order — an Empfehlung until a person sorts it, and from then
+         on the person's order is what is kept. #}
+      {% set sel = selections.get(issue.id, []) %}
+      <div class="ssel">
+        {% if sel %}
+          <div class="ssel__h">
+            <span class="ssel__t">{{ t("Stakeholder-Auswahl") }}</span>
+            {% if recommended.get(issue.id) %}
+              <span class="kpill kpill--wait">{{ t("Reihenfolge: Empfehlung") }}</span>
+            {% else %}
+              <span class="kpill kpill--ok">{{ t("Reihenfolge gesetzt von") }} {{ sel[0].position_set_by }}</span>
+            {% endif %}
+          </div>
+          <form method="post" action="/issues/{{ issue.id }}/stakeholder/reihenfolge" class="ssel__form">
+            <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+            {% for srow in sel %}
+              <div class="ssel__row{% if not srow.stakeholder.has_contact %} ssel__row--gap{% endif %}">
+                <input class="ssel__pos" type="number" name="pos" min="1" max="{{ sel | length }}" value="{{ srow.position }}" aria-label="{{ t('Reihenfolge') }}">
+                <input type="hidden" name="sid" value="{{ srow.id }}">
+                <div class="ssel__body">
+                  <span class="ssel__g">{{ srow.stakeholder.group_name }}</span>
+                  <span class="ssel__why">{{ srow.reason }}</span>
+                  <span class="ssel__need">{{ t("Will wissen:") }}
+                    {% if srow.info_need %}{{ srow.info_need }}{% else %}<em>{{ t("keine gespeicherte Angabe, aus der sich das ergibt") }}</em>{% endif %}
+                  </span>
+                  <span class="ssel__c">
+                    {% if srow.stakeholder.has_contact %}
+                      {{ t("Ansprechpartner") }}: {{ srow.stakeholder.contact }}{% if srow.stakeholder.channel %} &middot; {{ srow.stakeholder.channel }}{% endif %}
+                    {% else %}
+                      <b>{{ t("Kein Ansprechpartner benannt.") }}</b>
+                      <a href="/client/{{ client.id }}/profil">{{ t("Im Profil nachtragen") }} →</a>
+                    {% endif %}
+                  </span>
+                </div>
+              </div>
+            {% endfor %}
+            <button type="submit" class="btn btn--sm">{{ t("Reihenfolge speichern") }}</button>
+          </form>
+        {% elif smap %}
+          <form method="post" action="/issues/{{ issue.id }}/stakeholder/auswahl">
+            <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+            <button type="submit" class="btn btn--sm">{{ t("Stakeholder auswählen") }}</button>
+          </form>
+        {% endif %}
+      </div>
+
       <details class="iedit">
         <summary>{{ t("Bearbeiten") }}</summary>
         <form method="post" action="/issues/{{ issue.id }}/edit" class="iedit__form">
@@ -221,6 +269,9 @@
 
 </div>
 
+{# The standing map, below the register: what the selections above draw from. #}
+{% include 'partials/stakeholder_map.html' %}
+
 {% if past %}
   {# A closed issue stays readable with all its signals: the register is the
      memory this feature exists to be, and hiding a closed row would delete it. #}
@@ -244,6 +295,22 @@
         </div>
         {% if issue.close_reason %}
           <p class="icard__m">{{ t("Grund der Schließung:") }} {{ issue.close_reason }}</p>
+        {% endif %}
+        {# A past issue keeps its selection readable, the same rule its
+           signals keep — the register is the memory. Read-only: the matter
+           ended, and resorting a closed list would rewrite what was decided. #}
+        {% set sel = selections.get(issue.id, []) %}
+        {% if sel %}
+          <details class="isig">
+            <summary>{{ t("Stakeholder-Auswahl") }} ({{ sel | length }})</summary>
+            {% for srow in sel %}
+              <div class="isig__row">
+                <span class="isig__at">{{ srow.position }}.</span>
+                <span class="isig__what">{{ srow.stakeholder.group_name }}</span>
+                <span class="isig__why">{{ srow.reason }}</span>
+              </div>
+            {% endfor %}
+          </details>
         {% endif %}
         <details class="isig">
           <summary>{{ issue.signals | length }}
