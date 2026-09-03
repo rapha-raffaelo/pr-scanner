@@ -501,6 +501,13 @@ def clear_scenarios(session: Session, issue: Issue) -> int:
 
 
 # --- The triggers the run checks ---------------------------------------------------
+#
+# Every reader answers the same way: the empty string where its condition does
+# not hold, and *what matched* where it does — the outlet, the headline, the
+# journalist, the name, and nothing else. No reader writes a sentence: which
+# condition held is the stored ``condition``, and :data:`CONDITION_LABELS`
+# renders it in the reader's language beside the note. A sentence composed into
+# the note would be German in the database and German on the English page.
 
 
 def _outlet_sources(issue: Issue) -> list[str]:
@@ -523,15 +530,14 @@ def _second_outlet(session: Session, client: Client, issue: Issue) -> str:
     distinct = outlets.distinct_outlets(_outlet_sources(issue))
     if len(distinct) < _SECOND_OUTLET:
         return ""
-    named = ", ".join(outlets.display_name(source) for source in distinct)
-    return f"{len(distinct)} unabhängige Medien: {named}"
+    return ", ".join(outlets.display_name(source) for source in distinct)
 
 
 def _top_tier(session: Session, client: Client, issue: Issue) -> str:
     """An outlet of the top reach class on the matter, or the empty string."""
     for source in _outlet_sources(issue):
         if outlets.tier_for(source) == _TOP_TIER:
-            return f"Leitmedium: {outlets.display_name(source)}"
+            return outlets.display_name(source)
     return ""
 
 
@@ -553,7 +559,7 @@ def _named_in_headline(session: Session, client: Client, issue: Issue) -> str:
         # folded variants, so a headline handed to it as written matches
         # nothing and the condition would silently never fire.
         if matcher.search((row.article.title or "").casefold()):
-            return f"Mandat in der Überschrift: {row.article.title}"
+            return row.article.title
     return ""
 
 
@@ -576,7 +582,10 @@ def _media_enquiry(session: Session, client: Client, issue: Issue) -> str:
     ).first()
     if row is None:
         return ""
-    return f"Medienanfrage im Postfach von {row.sender or 'unbekannt'}"
+    # Who wrote, as the header carried them; the letter's own journalist or
+    # outlet where it carried no name. Mailsync files a reply only when its
+    # From address matches a stored contact, so one of the three stands.
+    return row.sender or row.letter.journalist or row.letter.outlet
 
 
 def _management_named(session: Session, client: Client, issue: Issue) -> str:

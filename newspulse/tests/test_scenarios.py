@@ -952,7 +952,10 @@ def test_the_register_carries_the_mark_a_fired_condition_left(session, mandate, 
     _seeded_issue(session, mandate)
     body = web.get(f"/client/{mandate.id}/issues").text
     assert "Ausgelöst" in body
-    assert "Leitmedium: FAZ" in body
+    # The condition as its translated sentence, and beside it what matched —
+    # the note carries the outlet alone, so nothing German is stored into it.
+    assert "ein Medium der obersten Reichweitenklasse" in body
+    assert "FAZ" in body
     # The condition that has not fired is still named, and not as a mark.
     assert "eine Medienanfrage im verbundenen Postfach" in body
 
@@ -1024,7 +1027,7 @@ def test_a_firing_is_delivered_with_what_matched():
             issue_title="Vorwurf Vertragsklauseln",
             scenario="wahrscheinlicher",
             condition="leitmedium",
-            note="Leitmedium: FAZ",
+            note="FAZ",
         )
     ]
     result = notify.notify_triggers(
@@ -1034,7 +1037,7 @@ def test_a_firing_is_delivered_with_what_matched():
     )
     assert result.sent
     assert len(sent) == 1
-    assert "Leitmedium: FAZ" in sent[0].body
+    assert "FAZ" in sent[0].body
     assert "Solaris AG" in sent[0].subject
 
 
@@ -1051,7 +1054,7 @@ def test_a_delivery_error_never_raises():
                 issue_title="Vorwurf",
                 scenario="bester",
                 condition="leitmedium",
-                note="Leitmedium: FAZ",
+                note="FAZ",
             )
         ],
         notify.NotifyConfig(channel=notify.Channel.DESKTOP),

@@ -3449,9 +3449,14 @@ class ScenarioTrigger(Base):
     the process would re-announce every standing trigger on the next boot, and
     a channel that re-announces is a channel that stops being read.
 
-    ``fired_note`` is what actually matched — the outlet, the headline, the
-    journalist. The CHECK ties the two together: a firing that cannot say what
-    it saw is a red mark on an issue nobody can act on.
+    ``fired_note`` is what actually matched, and *only* that — the outlet, the
+    headline, the journalist, the name. Which condition held is the
+    ``condition`` column, and the page and the mail put its sentence beside the
+    note, so the note carries no prose of this tool's own: a German sentence
+    written into a stored value would stand untranslated on the English page,
+    beside chrome that switched. The CHECK ties note and firing together: a
+    firing that cannot say what it saw is a red mark on an issue nobody can
+    act on.
     """
 
     __tablename__ = "scenario_triggers"
