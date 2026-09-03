@@ -1044,10 +1044,17 @@ def close(
     string is silence three months later. Idempotent — closing a closed issue
     keeps the first reason and the first timestamp, because those are what
     happened.
+
+    An escalated issue refuses: its matter lives on as the crisis, and closing
+    the row directly would swap the ``eskaliert`` record (and the register's
+    link to the crisis) for a ``geschlossen`` pill while the crisis still runs.
+    The crisis's own close is the end of that matter.
     """
     cleaned = (reason or "").strip()
     if not cleaned:
         raise ValueError("Ein Issue wird nur mit Begründung geschlossen.")
+    if issue.status is IssueStatus.ESKALIERT:
+        raise ValueError("Ein eskaliertes Issue wird über seine Krise geschlossen.")
     if issue.closed_at is not None:
         return issue
     issue.closed_at = now or dt.datetime.now(dt.UTC)

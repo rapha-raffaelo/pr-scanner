@@ -332,12 +332,16 @@ def close_issue(
     An empty reason returns to the page without closing anything — the field is
     ``required`` in the form, so an empty one means the form was submitted
     around the browser, and the page says why the row is still open rather
-    than answering with a 500.
+    than answering with a 500. An escalated issue refuses the same way: the UI
+    shows no close form on one, so the request was submitted around it too.
     """
     standing = _issue_for(session, issue_id)
     if standing is not None:
         if reason.strip():
-            issues.close(session, standing, reason=reason, by=_who(request))
+            try:
+                issues.close(session, standing, reason=reason, by=_who(request))
+            except ValueError as exc:
+                _last_note[standing.client_id] = str(exc)
         else:
             _last_note[standing.client_id] = (
                 "Das Issue wurde nicht geschlossen: es fehlt die Begründung."

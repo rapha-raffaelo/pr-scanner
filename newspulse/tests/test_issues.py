@@ -501,6 +501,17 @@ def test_a_closed_issue_does_not_escalate(session, mandate):
         issues.escalate(session, opened, by="lucas", now=_NOW)
 
 
+def test_an_escalated_issue_is_closed_through_its_crisis_not_directly(session, mandate):
+    """Closing an escalated row directly would swap the ``eskaliert`` record
+    for a ``geschlossen`` pill while the crisis still runs — refused."""
+    opened = _opened(session, mandate)
+    issues.escalate(session, opened, by="lucas", now=_NOW)
+    with pytest.raises(ValueError):
+        issues.close(session, opened, reason="Erledigt.", by="lucas", now=_NOW)
+    assert opened.status is IssueStatus.ESKALIERT
+    assert opened.closed_at is None
+
+
 def test_closing_requires_a_reason(session, mandate):
     opened = _opened(session, mandate)
     with pytest.raises(ValueError):
