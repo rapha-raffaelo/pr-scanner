@@ -681,6 +681,11 @@ def _ask_selection(
             len(proposal.auswahl),
             dropped,
         )
+    if not stored:
+        # Nothing of ours to write, so nothing is committed: an unconditional
+        # commit here would flush whatever the caller's session happens to be
+        # holding, on a call that decided to store none of the answer.
+        return []
     try:
         session.commit()
     except IntegrityError:
