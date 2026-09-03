@@ -48,7 +48,7 @@
           {# The triggers: the closed set is what separates a scenario from an
              essay, so each one is named, and a fired one carries what matched
              and never fires again. #}
-          <span class="ssel__c">{{ t("Auslöser") }}:
+          <span class="ssel__c">{{ t("Auslöser des Szenarios") }}:
             {% for trigger in course.triggers %}
               {% if trigger.has_fired %}
                 <span class="kpill kpill--neg">{{ t(condition_labels[trigger.condition]) }}

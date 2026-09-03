@@ -2354,8 +2354,11 @@ _EN: dict[str, str] = {
     "Betroffene Stakeholder": "Affected stakeholders",
     "keine Gruppe der Karte": "no group from the map",
     # The five conditions of the closed set DEC-5 locked. The stored value is a
-    # key; these are the sentences a reader acts on.
-    "Auslöser": "Triggers",
+    # key; these are the sentences a reader acts on. The heading is its own
+    # sentence and not "Auslöser": that key is already in this table, held by
+    # the crisis page's per-article pill, and a second entry under it would not
+    # add a translation — it would silently re-translate that one.
+    "Auslöser des Szenarios": "The scenario's triggers",
     "Ausgelöst": "Fired",
     "ausgelöst": "fired",
     "ein zweites unabhängiges Medium": "a second independent outlet",
@@ -2380,7 +2383,8 @@ _EN: dict[str, str] = {
     "Geschwindigkeit": "Speed",
     "sofort": "immediately",
     "innerhalb einer Stunde": "within the hour",
-    "heute": "today",
+    # "heute" is not repeated here: it stands above, in the chrome, and a second
+    # entry would be a dead line the next edit to either one would not reach.
     "innerhalb von 24 Stunden": "within 24 hours",
     "vorbereiten und beobachten": "prepare and watch",
     "keine Reaktion": "no response",
