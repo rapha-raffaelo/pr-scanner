@@ -15,6 +15,7 @@
    Expects in context: client, smap, has_profile, stakeholder_note, smap_max
    (the stored cap, so the form cannot promise a width the column truncates),
    back_to (where a button returns), and t. #}
+{% import "partials/brain_stamp.html" as provenance %}
 <section class="smap" aria-label="{{ t('Stakeholder-Karte') }}">
   <div class="kcol__h">
     <span class="kcol__t">{{ t("Stakeholder-Karte") }}</span>
@@ -39,6 +40,13 @@
         </div>
         {% if row.betroffenheit %}
           <p class="smap__b">{{ t("Betroffenheit") }}: {{ row.betroffenheit }}</p>
+        {% endif %}
+        {# Only a proposed row carries a version, and only a proposed row shows
+           one: a person's Betroffenheit is their own text, and a stamp on it
+           would claim a model call that never happened. The number links,
+           because one the reader cannot open is not provenance. #}
+        {% if row.brain_version is not none %}
+          {{ provenance.brain_stamp(row.brain_version, t) }}
         {% endif %}
         <p class="smap__c">
           {% if row.has_contact %}

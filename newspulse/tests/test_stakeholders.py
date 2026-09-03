@@ -882,3 +882,28 @@ def test_a_benchmarks_issue_button_spends_no_model_call(web, session, mandate):
 
     assert response.status_code == 303
     assert session.scalars(select(StakeholderSelection)).all() == []
+
+
+def test_a_proposed_row_shows_its_standards_and_a_persons_row_does_not(
+    web, session, mandate
+):
+    """The stamp is the link every other generated text carries: a number the
+    reader cannot open is not provenance. A person's row shows none, because
+    their Betroffenheit is their own text."""
+    _fact(session, mandate, "sitz", "Leipzig, Deutschland")
+    stakeholders.propose_card(
+        session,
+        mandate,
+        invoke=lambda prompt, timeout=None: _card_answer(
+            {"gruppe": "Anwohner", "betroffenheit": "Wohnen am Werk.", "einfluss": "mittel"}
+        ),
+    )
+    stakeholders.save_row(
+        session, mandate, group="Belegschaft", betroffenheit="Eigene Verträge.", by="mensch"
+    )
+
+    page = web.get(f"/client/{mandate.id}/issues")
+
+    assert page.text.count('href="/settings/brain/version/') == 1
+    # Not "unbekannt": a row nobody generated makes no claim about standards.
+    assert "vor der Aufzeichnung der Maßstäbe entstanden" not in page.text
