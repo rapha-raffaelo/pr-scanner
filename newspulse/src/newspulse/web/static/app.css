@@ -2353,3 +2353,94 @@ button:disabled { opacity: .55; cursor: default; }
 }
 .band__row + .band__foot { margin-top: var(--s3); }
 .band__stamp { color: var(--faint); margin-left: auto; }
+
+/* --- Das Issue-Register (RIS-02, DEC-6 option A) ---------------------------
+   The list first, the heatmap beside it. The list is what is worked with —
+   age, last movement and signal count on every row — so it holds the wide
+   column; the map is a small block that grows (reg__map--full) once there are
+   enough graded issues for a picture. The named "Ohne Bewertung" column sits
+   under the field and never inside it: an ungraded issue at the origin would
+   claim a grading nobody made. */
+.reg { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: var(--s5); }
+.reg__map--full { width: auto; }
+@media (max-width: 900px) { .reg { grid-template-columns: 1fr; } }
+.koffer__badge--issue { background: var(--purple); color: #fff; }
+.koffer__note { font-size: var(--t-caption2); color: var(--faint); flex-basis: 100%; }
+
+.icard {
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 3px solid var(--purple);
+  border-radius: var(--radius); padding: var(--s3) var(--s4);
+  margin-bottom: var(--s3);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+.icard--past { border-left-color: var(--neutral); }
+.icard__h { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.icard__t { font-size: var(--t-subhead); font-weight: 600; min-width: 0; }
+.icard__age {
+  font-size: var(--t-caption); color: var(--muted); margin-left: auto;
+  display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.icard__m, .icard__d { font-size: var(--t-caption); color: var(--muted); margin: 0; }
+.icard__grade {
+  display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap;
+  font-size: var(--t-caption);
+}
+/* The value and the person who set it, on one breath: a number without a name
+   would read as a measurement, and it is an opinion. */
+.ival { color: var(--ink-2); }
+.ival__who { color: var(--faint); }
+.ival--hint { color: var(--faint); }
+.igrade { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.igrade label { font-size: var(--t-caption); color: var(--muted); }
+.igrade select { margin-left: 3px; }
+
+.isig summary, .iedit summary { font-size: var(--t-caption); color: var(--muted); cursor: pointer; }
+.isig__row {
+  display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 2px var(--s3);
+  padding: var(--s2) 0; border-top: 1px solid var(--line);
+  font-size: var(--t-caption);
+}
+.isig__at { color: var(--faint); font-variant-numeric: tabular-nums; }
+.isig__src, .isig__who { color: var(--faint); }
+.isig__why { grid-column: 2; color: var(--muted); }
+.iedit__form { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); }
+.iedit__form label { font-size: var(--t-caption); color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+.icard__f { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.iclose { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+
+/* The field: probability rightwards, impact upwards, weight as tint. Colour is
+   decoration — every issue also stands on the list with its two numbers as
+   words, so the map adds a picture and carries nothing alone. */
+.heat { display: flex; flex-direction: column; gap: var(--s1); }
+.heat__grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+  aspect-ratio: 1 / 1;
+}
+.heat__cell {
+  background: var(--bg-2, var(--card)); border: 1px solid var(--line);
+  border-radius: 2px; min-height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 2px; flex-wrap: wrap;
+}
+.heat__dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--purple); display: inline-block;
+}
+.heat__ylab, .heat__xlab { font-size: var(--t-caption2); color: var(--faint); }
+.heat__xlab { text-align: right; }
+.heat__none { margin-top: var(--s3); border-top: 1px solid var(--line); padding-top: var(--s2); }
+.heat__nlab {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted);
+}
+.heat__nrow { font-size: var(--t-caption); color: var(--ink-2); padding: 2px 0; }
+.heat__nrow--empty { color: var(--faint); }
+/* Weight tints, weakest to strongest product of the two 1-5 values. Stops at
+   a light wash on purpose: the dots carry the positions, the wash only says
+   which corner is the expensive one. */
+.heat__cell--w12, .heat__cell--w15, .heat__cell--w16 { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.heat__cell--w20, .heat__cell--w25 { background: color-mix(in srgb, var(--alert) 14%, transparent); }
+
+.reg__past { margin-top: var(--s5); }

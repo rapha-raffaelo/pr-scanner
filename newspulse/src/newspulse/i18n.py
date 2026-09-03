@@ -2172,6 +2172,60 @@ _EN: dict[str, str] = {
     "Ablesung vom": "Reading of",
     "Gerechnet aus gespeicherten Zeilen, nicht geschätzt.":
         "Counted from stored rows, never estimated.",
+    # --- Das Issue-Register (RIS-02, DEC-3 A / DEC-6 A) -----------------------
+    # "Verwerfen", "Medien", "1 Medium", "Tage", "Tagen", "Speichern",
+    # "Bearbeiten", "Krise erklären", "überregional", "Grund der Schließung:",
+    # "Wirkung", "Vorschlag" and "Marktsignal" are already translated above —
+    # the register reuses them.
+    #
+    # "Issues" stays "Issues" in both languages on purpose: it is the trade's
+    # own word in German PR usage, and an invented translation would rename the
+    # feature its users already have a name for.
+    "Issues": "Issues",
+    "Issue?": "Issue?",
+    "Issue eröffnen": "Open an issue",
+    # The offer names what the repetition consists of, because "the tool thinks
+    # something is up" is not a sentence anyone can accept or refuse.
+    "Dieselbe Sache an": "The same matter on",
+    "Berichterstattung und datiertes Marktsignal derselben Sache:":
+        "Coverage and a dated market signal of the same matter:",
+    "Vorgeschlagen, nicht eröffnet. Bis jemand hier drückt, ändert sich nichts.":
+        "Proposed, not opened. Nothing changes until somebody presses this.",
+    "Offene Issues": "Open issues",
+    "Kein offenes Issue. Nichts wird getragen.":
+        "No open issue. Nothing is being carried.",
+    "Tag alt": "day old",
+    "Tage alt": "days old",
+    "letzte Bewegung": "last movement",
+    "Signal": "signal",
+    "Signale": "signals",
+    "eröffnet von": "opened by",
+    "Owner": "Owner",
+    "niemand benannt": "nobody named",
+    "Frühindikatoren": "Early indicators",
+    "Beschreibung": "Description",
+    # The two graded values carry the person who set them, in both languages:
+    # a value without a name would read as a measurement, and it is an opinion.
+    "Wahrscheinlichkeit": "Probability",
+    "gesetzt von": "set by",
+    "noch nicht gesetzt": "not set yet",
+    "Werte setzen": "Set values",
+    "angehängt von": "attached by",
+    "Grund: warum wird es geschlossen?": "Reason: why is it being closed?",
+    "Issue schließen": "Close the issue",
+    "Heatmap": "Heatmap",
+    # The named column beside the field. "Not graded" is a statement of its
+    # own, never a coordinate — an ungraded issue at the field's origin would
+    # claim "harmless", and nobody made that claim.
+    "Ohne Bewertung": "Not graded",
+    "keins": "none",
+    "Frühere Issues": "Past issues",
+    "eskaliert": "escalated",
+    "geschlossen": "closed",
+    "geschlossen von": "closed by",
+    "zur Krise": "to the crisis",
+    "Der Wert liegt im Anhängen, nicht im Anlegen: derselbe Vorwurf am Montag und am Freitag ist eine Zeile mit einem Alter, einer letzten Bewegung und einer Zahl. Eskaliert ein Issue, übernimmt die Krise seine Signale und seinen Beginn.":
+        "The value is in the attaching, not the opening: the same accusation on Monday and on Friday is one row with an age, a last movement and a number. When an issue escalates, the crisis takes over its signals and its beginning.",
 }
 
 _TABLES = {"de": {}, "en": _EN}
