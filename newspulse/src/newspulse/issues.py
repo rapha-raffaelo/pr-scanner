@@ -285,6 +285,33 @@ def _spoken_for(
     return attached, dismissed
 
 
+def _attached_signal_ids(
+    session: Session, client: Client, signal_ids: list[int]
+) -> set[int]:
+    """Which of these market signals already hang on an issue of the mandate.
+
+    A signal on a row is spoken for the same way an attached article is: fresh
+    coverage of its matter belongs on that row (:func:`link_signals` puts it
+    there), not on a second issue holding the same signal — which is exactly
+    what an offer built on it would open once the founding articles age out of
+    :data:`REPETITION_DAYS` while the signal is still inside its own lookback.
+    No dismissal twin is needed: a dismissal's trigger is always an article,
+    and it silences via the story's press members.
+    """
+    if not signal_ids:
+        return set()
+    return set(
+        session.scalars(
+            select(IssueSignal.signal_id)
+            .join(Issue, Issue.id == IssueSignal.issue_id)
+            .where(
+                Issue.client_id == client.id,
+                IssueSignal.signal_id.in_(signal_ids),
+            )
+        ).all()
+    )
+
+
 # --- The proposal (DEC-3: the tool proposes, a person opens) ----------------------
 
 
@@ -323,6 +350,9 @@ def propose(
         session, client, [row.article.id for row in articles]
     )
     spoken_for = attached | dismissed
+    taken_signals = _attached_signal_ids(
+        session, client, [row.signal.id for row in signals]
+    )
 
     # Articles first, so a story's lead is always an article: an offer has to
     # point at a piece of coverage, the way the crisis offer does.
@@ -330,6 +360,13 @@ def propose(
         members: tuple[_Row, ...] = story.members
         press = [row for row in members if row.article is not None]
         if not press or any(row.article.id in spoken_for for row in press):
+            continue
+        # A story carrying an already-attached signal is spoken for too: its
+        # fresh press belongs on that signal's row, not on a second issue.
+        if any(
+            row.signal is not None and row.signal.id in taken_signals
+            for row in members
+        ):
             continue
         days = {_local_day(row.happened_at) for row in press}
         carriers = {

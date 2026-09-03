@@ -285,6 +285,22 @@ def test_an_accepted_repetition_is_not_offered_again(session, mandate):
     assert issues.propose(session, mandate, now=_NOW) is None
 
 
+def test_an_attached_market_signal_does_not_propose_a_second_issue(session, mandate):
+    """A signal on an open row is spoken for. Once the founding article ages
+    out of the repetition window while the signal is still inside its own
+    thirty-day lookback, fresh coverage clustering with it must reach the row
+    via link_signals — not accept into a second issue holding the same signal."""
+    then = _NOW - dt.timedelta(days=8)
+    founding = _cover(session, mandate, source="FAZ", word="offiziell", days_ago=9)
+    signal = _market(session, mandate, word="Konsultation", published_days_ago=9)
+    opened = issues.accept(session, mandate, founding, by="lucas", now=then)
+    assert opened is not None
+    assert any(row.signal_id == signal.id for row in opened.signals)
+
+    _cover(session, mandate, source="taz", word="scharf", days_ago=0.5)
+    assert issues.propose(session, mandate, now=_NOW) is None
+
+
 # --- DEC-4 B: the reasoned attach ---------------------------------------------------
 
 
