@@ -106,6 +106,15 @@
         </div>
       </div>
     {% endfor %}
+    {# The Empfehlung names a speed out of six, so a set that named no
+       recommendation at all — or whose only one named a speed outside the set
+       and lost the mark — says so. The options still stand: three graded
+       options with the silence among them are what a stored set carries, and
+       a reader who is told there is no recommendation is better off than one
+       left inferring which row was meant. #}
+    {% if not options_here | selectattr("recommended") | list %}
+      <p class="ssel__missing">{{ t("Die Antwort nannte keine Empfehlung.") }}</p>
+    {% endif %}
     {% if editable %}
       <div class="ssel__acts">
         <form method="post" action="/issues/{{ issue.id }}/optionen/verwerfen">

@@ -837,6 +837,45 @@ def test_two_recommendations_leave_exactly_one(session, mandate):
     assert stored[1].speed is None
 
 
+def test_an_option_without_a_benefit_or_a_risk_is_dropped(session, mandate):
+    """"Jede mit Nutzen, Risiko und Eskalationspotenzial" is the acceptance.
+    A row missing one of them would still count toward the three and put a
+    bare "Nutzen:" in front of a reader, so it is dropped — and dropping it
+    costs the set its third member, which is the honest outcome for an answer
+    that came back half-written."""
+    issue = _issue(session, mandate)
+    stored = scenarios.generate_options(
+        session,
+        issue,
+        invoke=lambda *a, **k: _options_answer(
+            _option(),
+            _option(option="Schriftliche Stellungnahme", risiko="   "),
+            _silence(empfohlen=True, geschwindigkeit="heute"),
+        ),
+        now=_NOW,
+    )
+    assert stored == []
+    assert session.scalars(select(ResponseOption)).all() == []
+
+
+def test_two_silences_leave_exactly_one(session, mandate):
+    """The mirror of the two recommendations: "nicht reagieren" is *the* option
+    always on the list, and two pills against two labels is a page a reader
+    cannot act on. The later one stays an option and loses the mark."""
+    issue = _issue(session, mandate)
+    stored = scenarios.generate_options(
+        session,
+        issue,
+        invoke=lambda *a, **k: _options_answer(
+            _silence(empfohlen=True, geschwindigkeit="heute"),
+            _silence(option="Schweigen und beobachten"),
+            _option(),
+        ),
+        now=_NOW,
+    )
+    assert [row.no_response for row in stored] == [True, False, False]
+
+
 def test_an_option_with_an_invented_figure_is_dropped(session, mandate):
     """The same rule the courses take. Dropping the option costs the set its
     third member, so nothing is stored at all — which is the honest answer for
@@ -996,6 +1035,25 @@ def test_the_register_carries_the_mark_a_fired_condition_left(session, mandate, 
     assert "FAZ" in body
     # The condition that has not fired is still named, and not as a mark.
     assert "eine Medienanfrage im verbundenen Postfach" in body
+
+
+def test_the_register_says_when_no_recommendation_was_named(session, mandate, web):
+    """A recommendation names a speed out of six; where the answer named none,
+    the page says so rather than letting a reader infer which row was meant."""
+    _group(session, mandate)
+    issue = _issue(session, mandate)
+    scenarios.generate_options(
+        session,
+        issue,
+        invoke=lambda *a, **k: _options_answer(
+            _option(),
+            _option(option="Schriftliche Stellungnahme"),
+            _silence(),
+        ),
+        now=_NOW,
+    )
+    body = web.get(f"/client/{mandate.id}/issues").text
+    assert "Die Antwort nannte keine Empfehlung." in body
 
 
 def test_the_register_renders_in_english_without_german_leftovers(

@@ -829,11 +829,12 @@ def _option_row(
 ) -> ResponseOption | None:
     """One proposed option as it is filed, or ``None`` where it is dropped.
 
-    The same three drops the scenarios take: a nameless option, an escalation
-    word outside the closed set, and a figure the material does not carry. The
-    speed is read only off the recommended row, and an unreadable one drops
-    the recommendation rather than the option — the acceptance requires the
-    Empfehlung to *name* a speed, so a row that cannot is not one.
+    The same drops the scenarios take: a nameless option, an escalation word
+    outside the closed set, a benefit or a risk the answer left empty, and a
+    figure the material does not carry. The speed is read only off the
+    recommended row, and an unreadable one drops the recommendation rather
+    than the option — the acceptance requires the Empfehlung to *name* a
+    speed, so a row that cannot is not one.
     """
     label = _clean(proposal.option)[:RESPONSE_LABEL_MAX]
     if not label:
@@ -853,6 +854,19 @@ def _option_row(
         return None
     benefit = _clean(proposal.nutzen)
     risk = _clean(proposal.risiko)
+    if not benefit or not risk:
+        # "jede mit Nutzen, Risiko und Eskalationspotenzial" is the acceptance,
+        # and a row stored without one of them would still count toward the
+        # three and put an empty label in front of a reader. Dropped, like
+        # every other missing element here, rather than rendered as a gap.
+        _log.warning(
+            "the option %r for issue %d came back without a %s; an option that "
+            "cannot say what it buys or what it costs is not one",
+            label,
+            issue.id,
+            "benefit" if not benefit else "risk",
+        )
+        return None
     invented = _unsupported_figures(
         f"{label} {benefit} {risk}", material
     )
@@ -914,6 +928,26 @@ def _one_recommendation(rows: list[ResponseOption]) -> None:
         seen = True
 
 
+def _one_silence(rows: list[ResponseOption]) -> None:
+    """Leave at most one row marked "nicht reagieren": the first, as offered.
+
+    The mirror of :func:`_one_recommendation`, and for the same reason. The
+    silence is *the* option that is always on the list, so an answer marking
+    two of its rows as it has marked none of them properly — the page would
+    show two "nicht reagieren" pills against two different labels, and a
+    reader cannot tell which one the set was refused-or-stored on. The later
+    ones keep their place as ordinary options.
+    """
+    seen = False
+    for row in rows:
+        if not row.no_response:
+            continue
+        if seen:
+            row.no_response = False
+            continue
+        seen = True
+
+
 def generate_options(
     session: Session,
     issue: Issue,
@@ -935,6 +969,11 @@ def generate_options(
     Neither holding means nothing is stored and the log says which — a second
     press asks again, which is the right answer for an answer that came back
     unusable.
+
+    Two marks are collapsed rather than refused, because the set is still
+    readable without them: an answer marking two rows as the silence keeps the
+    first (:func:`_one_silence`), and one marking two recommendations keeps the
+    first (:func:`_one_recommendation`).
     """
     standing = stored_options(session, issue)
     if standing:
@@ -984,6 +1023,7 @@ def generate_options(
             "there is" if any(row.no_response for row in rows) else "there is not",
         )
         return []
+    _one_silence(rows)
     _one_recommendation(rows)
     for row in rows:
         session.add(row)

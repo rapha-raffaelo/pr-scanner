@@ -3550,8 +3550,9 @@ class ResponseOption(Base):
         default=EscalationPotential.MITTEL,
         server_default=EscalationPotential.MITTEL.value,
     )
-    #: Whether this is the "nicht reagieren" row. Exactly one per issue, held
-    #: by :mod:`newspulse.scenarios`, which stores no set without it.
+    #: Whether this is the "nicht reagieren" row. Exactly one per issue: no set
+    #: is stored without it, and a second one is collapsed back to an ordinary
+    #: option — both in :mod:`newspulse.scenarios`, where the answer is read.
     no_response: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("0")
     )

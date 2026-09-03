@@ -2378,6 +2378,7 @@ _EN: dict[str, str] = {
     "Nutzen:": "Upside:",
     "Risiko:": "Downside:",
     "Eskalationspotenzial": "Escalation potential",
+    "Die Antwort nannte keine Empfehlung.": "The answer named no recommendation.",
     # The six speeds, so that "schnell" and "sofort" cannot come to mean the
     # same thing in either language.
     "Geschwindigkeit": "Speed",
