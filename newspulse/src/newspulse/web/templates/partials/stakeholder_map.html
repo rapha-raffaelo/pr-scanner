@@ -1,0 +1,133 @@
+{# Die stehende Stakeholder-Karte (RIS-03).
+
+   The map hangs on the mandate, not on the occasion: who the neighbours of a
+   site are and which association speaks for the industry does not change with
+   the incident. Proposed from the profile, edited by a person, and every row
+   shows who set it — the same provenance the profile keeps for every
+   researched value.
+
+   A group without a named contact is the most important row of the map, not a
+   blank cell: it renders as a named gap with the link to where it is filled
+   in, the way the missing crisis contact reads on the crisis page. A mandate
+   without profile entries gets the sentence about what is missing, with the
+   link there — never an invented map.
+
+   Expects in context: client, smap, has_profile, stakeholder_note,
+   stakeholder_running (whether one of the card's model calls is in flight for
+   this mandate — the calls run on a worker thread), smap_max
+   (the stored cap, so the form cannot promise a width the column truncates),
+   back_to (where a button returns), and t. #}
+{% import "partials/brain_stamp.html" as provenance %}
+<section class="smap" aria-label="{{ t('Stakeholder-Karte') }}">
+  <div class="kcol__h">
+    <span class="kcol__t">{{ t("Stakeholder-Karte") }}</span>
+    <span class="kcol__s">{{ smap | length }}</span>
+    <form method="post" action="/client/{{ client.id }}/stakeholder/vorschlagen" class="smap__propose">
+      <input type="hidden" name="redirect_to" value="{{ back_to }}">
+      <button type="submit" class="btn btn--sm"{% if stakeholder_running %} disabled{% endif %}>{{ t("Aus dem Profil vorschlagen") }}</button>
+    </form>
+  </div>
+  <p class="smap__hint">{{ t("Die Karte steht am Mandat, nicht am Anlass. Vorgeschlagen wird aus dem Profil, bearbeitet von einem Menschen, und jede Zeile zeigt, wer sie gesetzt hat.") }}</p>
+  {% if stakeholder_running %}
+    {# The call runs on a worker thread, so the page has to say so and fetch
+       itself back: without this the redirect lands on an unchanged card and
+       the button reads as broken. #}
+    <p class="notice notice--ok"
+       hx-get="{{ back_to }}" hx-trigger="every 4s"
+       hx-select=".smap" hx-target=".smap" hx-swap="outerHTML">
+      <span class="spinner" aria-hidden="true"></span>{{ t("Die Anfrage läuft — die Karte aktualisiert sich, sobald sie steht.") }}
+    </p>
+  {% elif stakeholder_note %}
+    <p class="notice">{{ t(stakeholder_note) }}</p>
+  {% endif %}
+
+  {% if smap %}
+    {% for row in smap %}
+      <article class="smap__row{% if not row.has_contact %} smap__row--gap{% endif %}">
+        <div class="smap__h">
+          <span class="smap__g">{{ row.group_name }}</span>
+          <span class="smap__lvl smap__lvl--{{ row.einfluss }}">{{ t("Einfluss") }}: {{ t(row.einfluss) }}</span>
+          <span class="smap__who">{{ t("gesetzt von") }} {{ row.set_by }}</span>
+        </div>
+        {% if row.betroffenheit %}
+          <p class="smap__b">{{ t("Betroffenheit") }}: {{ row.betroffenheit }}</p>
+        {% endif %}
+        {# Only a proposed row carries a version, and only a proposed row shows
+           one: a person's Betroffenheit is their own text, and a stamp on it
+           would claim a model call that never happened. The number links,
+           because one the reader cannot open is not provenance. #}
+        {% if row.brain_version is not none %}
+          {{ provenance.brain_stamp(row.brain_version, t) }}
+        {% endif %}
+        <p class="smap__c">
+          {% if row.has_contact %}
+            {{ t("Ansprechpartner") }}: {{ row.contact }}
+          {% else %}
+            {# The named gap: the most important row of the map, never a blank
+               cell — the same posture as the crisis page's missing contact. #}
+            <b class="smap__gap">{{ t("Kein Ansprechpartner benannt.") }}</b>
+            <a href="/client/{{ client.id }}/profil">{{ t("Im Profil nachtragen") }} →</a>
+          {% endif %}
+          {% if row.channel %} &middot; {{ t("Kanal") }}: {{ row.channel }}{% endif %}
+        </p>
+        <details class="smap__edit">
+          <summary>{{ t("Bearbeiten") }}</summary>
+          <form method="post" action="/client/{{ client.id }}/stakeholder/save" class="smap__form">
+            <input type="hidden" name="redirect_to" value="{{ back_to }}">
+            <input type="hidden" name="row_id" value="{{ row.id }}">
+            <label>{{ t("Gruppe") }}
+              <input type="text" name="group" required maxlength="{{ smap_max }}" value="{{ row.group_name }}"></label>
+            <label>{{ t("Betroffenheit") }}
+              <textarea name="betroffenheit" rows="2">{{ row.betroffenheit }}</textarea></label>
+            <label>{{ t("Einfluss") }}
+              <select name="einfluss">
+                {% for level in ('hoch', 'mittel', 'niedrig') %}
+                  <option value="{{ level }}"{% if row.einfluss == level %} selected{% endif %}>{{ t(level) }}</option>
+                {% endfor %}
+              </select></label>
+            <label>{{ t("Ansprechpartner") }}
+              <input type="text" name="contact" maxlength="{{ smap_max }}" value="{{ row.contact }}"></label>
+            <label>{{ t("Kanal") }}
+              <input type="text" name="channel" maxlength="{{ smap_max }}" value="{{ row.channel }}"></label>
+            <button type="submit" class="btn btn--sm">{{ t("Speichern") }}</button>
+          </form>
+          <form method="post" action="/client/{{ client.id }}/stakeholder/{{ row.id }}/delete">
+            <input type="hidden" name="redirect_to" value="{{ back_to }}">
+            <button type="submit" class="btn btn--sm btn--ghost">{{ t("Zeile entfernen") }}</button>
+          </form>
+        </details>
+      </article>
+    {% endfor %}
+  {% elif has_profile %}
+    <p class="kcol__empty">{{ t("Noch keine Karte. Aus dem Profil vorschlagen oder eine Gruppe von Hand anlegen.") }}</p>
+  {% else %}
+    {# No profile entries, no invented map — the sentence about what is
+       missing, with the link to where it is filled in. #}
+    <p class="kcol__empty smap__missing">
+      {{ t("Für dieses Mandat sind keine Profilangaben hinterlegt; ohne sie wird keine Karte erfunden.") }}
+      <a href="/client/{{ client.id }}/profil">{{ t("Zum Profil") }} →</a>
+    </p>
+  {% endif %}
+
+  <details class="smap__edit smap__add">
+    <summary>{{ t("Gruppe hinzufügen") }}</summary>
+    <form method="post" action="/client/{{ client.id }}/stakeholder/save" class="smap__form">
+      <input type="hidden" name="redirect_to" value="{{ back_to }}">
+      <label>{{ t("Gruppe") }}
+        <input type="text" name="group" required maxlength="{{ smap_max }}"></label>
+      <label>{{ t("Betroffenheit") }}
+        <textarea name="betroffenheit" rows="2"></textarea></label>
+      <label>{{ t("Einfluss") }}
+        <select name="einfluss">
+          {% for level in ('hoch', 'mittel', 'niedrig') %}
+            <option value="{{ level }}"{% if level == 'mittel' %} selected{% endif %}>{{ t(level) }}</option>
+          {% endfor %}
+        </select></label>
+      <label>{{ t("Ansprechpartner") }}
+        <input type="text" name="contact" maxlength="{{ smap_max }}"></label>
+      <label>{{ t("Kanal") }}
+        <input type="text" name="channel" maxlength="{{ smap_max }}"></label>
+      <button type="submit" class="btn btn--sm">{{ t("Speichern") }}</button>
+    </form>
+  </details>
+</section>

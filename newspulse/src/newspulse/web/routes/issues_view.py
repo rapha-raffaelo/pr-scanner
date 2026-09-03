@@ -30,19 +30,23 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ... import crisis, issues
+from ... import crisis, issues, stakeholders
+from ... import profile as profiles
 from ...models import (
     ISSUE_SCALE_MAX,
     ISSUE_SCALE_MIN,
+    STAKEHOLDER_TEXT_MAX,
     Analysis,
     Article,
     Client,
     Issue,
     IssueStatus,
+    StakeholderSelection,
 )
 from ..app import get_db, templates
 from ..mandates import mandate_or_404
 from ..redirects import local_target
+from . import stakeholder_ui
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -151,6 +155,30 @@ def _views(open_rows: list[Issue], *, today: dt.date) -> list[IssueView]:
     ]
 
 
+def _selections_by_issue(
+    session: Session, rows: list[Issue]
+) -> dict[int, list[StakeholderSelection]]:
+    """Every issue on the page with its stakeholder selection, in one query.
+
+    Per-issue reads would cost the register two statements per row, and the
+    history half of the page is unbounded — the whole record of a mandate that
+    has been carried for years. One ``IN`` answers all of them, and the
+    ``selectin`` on :attr:`StakeholderSelection.stakeholder` loads the groups
+    themselves in one more.
+    """
+    grouped: dict[int, list[StakeholderSelection]] = {row.id: [] for row in rows}
+    if not grouped:
+        return grouped
+    stored = session.scalars(
+        select(StakeholderSelection)
+        .where(StakeholderSelection.issue_id.in_(list(grouped)))
+        .order_by(StakeholderSelection.issue_id, StakeholderSelection.position)
+    ).all()
+    for row in stored:
+        grouped[row.issue_id].append(row)
+    return grouped
+
+
 @router.get("/client/{client_id}/issues", response_class=HTMLResponse)
 def issues_page(
     request: Request, client_id: int, session: Session = Depends(get_db)
@@ -170,6 +198,11 @@ def issues_page(
         for row in issues.history(session, client)
         if row.status is not IssueStatus.OFFEN
     ]
+    # The standing map, and the selections hanging on every issue on the page —
+    # past ones too: a closed or escalated issue stays readable with its
+    # selection, the same rule its signals already keep.
+    smap = stakeholders.card(session, client)
+    selections = _selections_by_issue(session, open_rows + past)
     return templates.TemplateResponse(
         request,
         "client_issues.html",
@@ -184,6 +217,30 @@ def issues_page(
             "scale_min": ISSUE_SCALE_MIN,
             "scale_max": ISSUE_SCALE_MAX,
             "note": _last_note.pop(client.id, ""),
+            "smap": smap,
+            "selections": selections,
+            # Whether the profile has anything a proposal could rest on: the
+            # empty map's sentence says what is missing, with the link there.
+            "has_profile": bool(
+                profiles.as_prompt_lines(profiles.stored(session, client.id))
+            ),
+            "stakeholder_note": stakeholder_ui.pop_note(client.id),
+            # Whether one of the card's model calls is running for *this*
+            # mandate: the buttons spend a call on a worker thread, so without
+            # this the page after the redirect looks like a button that did
+            # nothing, and the reader presses it again.
+            "stakeholder_running": stakeholder_ui.busy(client.id),
+            # The stored cap, so the form cannot promise a width the column
+            # truncates, and where the map's buttons return to.
+            "smap_max": STAKEHOLDER_TEXT_MAX,
+            "back_to": f"/client/{client.id}/issues",
+            # Compared against, never printed: the page says "Vorschlag" /
+            # "Empfehlung" where the column says "modell".
+            "by_model": stakeholders.PROPOSED_BY_MODEL,
+            "recommended": {
+                issue_id: stakeholders.order_is_recommendation(rows)
+                for issue_id, rows in selections.items()
+            },
         },
     )
 
@@ -263,8 +320,24 @@ def dismiss_proposal(
 
 
 def _issue_for(session: Session, issue_id: int) -> Issue | None:
-    """The issue, or ``None`` for a stale id — never a 500 on a button."""
-    return session.get(Issue, issue_id)
+    """The issue, or ``None`` for a stale id — never a 500 on a button.
+
+    A benchmark's issue is ``None`` as well. :func:`mandate_or_404` keeps the
+    workspace *pages* off a company nobody reports to; the buttons have to
+    hold the same line, or a hand-typed POST still spends a model call writing
+    for a company that will never receive one — which is the harm
+    ``web/mandates.py`` was written to end.
+    """
+    row = session.get(Issue, issue_id)
+    if row is None:
+        return None
+    # ``Issue`` carries no ``client`` relationship, so the mandate is fetched:
+    # one keyed read on a button, against a model call spent on a company that
+    # will never receive what it writes.
+    mandate = session.get(Client, row.client_id)
+    if mandate is None or mandate.is_competitor:
+        return None
+    return row
 
 
 @router.post("/issues/{issue_id}/grade")
@@ -376,3 +449,140 @@ def escalate_issue(
     return RedirectResponse(
         f"/client/{standing.client_id}/krise", status_code=_SEE_OTHER
     )
+
+
+# --- The stakeholder selection at an issue (RIS-03) --------------------------------
+#
+# The notes and the order-form reader are ``stakeholder_ui``'s: the same
+# sentences answer the same clicks on the crisis page, and one channel means a
+# reader looks in one place for the answer to any of the card's buttons.
+
+
+@router.post("/issues/{issue_id}/stakeholder/auswahl")
+def select_stakeholders(
+    issue_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Build the issue's selection from the standing map, reasons included.
+
+    Idempotent by construction — an issue that already carries a selection
+    keeps it, order and all. An empty map selects nothing and says so: the
+    selection is *from* the card, so the card comes first. A map that has
+    grown since is reached through the Ergänzen button, which only appends.
+
+    The call runs on a worker thread behind ``stakeholder_ui``'s lock: it is a
+    three-minute timeout, and a second click would spend a second call.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+    def _select(worker: Session) -> str:
+        issue = _issue_for(worker, issue_id)
+        if issue is None:
+            return ""
+        selected = stakeholders.select_for(worker, issue=issue)
+        return "" if selected else stakeholder_ui.NO_SELECTION
+
+    stakeholder_ui.spend(
+        _select,
+        client_id=standing.client_id,
+        name=f"newspulse-stakeholder-issue-{issue_id}",
+        failed=stakeholder_ui.SELECTION_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/issues/{issue_id}/stakeholder/ergaenzen")
+def top_up_stakeholders(
+    issue_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Ask whether groups added to the map since also belong on this issue.
+
+    The way back into a selection that already stands. Without it the list is
+    frozen against the very card it is drawn from: a group put on the map on
+    Tuesday could never reach Monday's issue, and the only escape would be
+    deleting map rows until the selection empties — which destroys the map.
+
+    It appends and nothing else. The standing rows keep their reasons, their
+    positions and their ``position_set_by``, so a person's order survives.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+    def _top_up(worker: Session) -> str:
+        issue = _issue_for(worker, issue_id)
+        if issue is None:
+            return ""
+        added = stakeholders.add_to_selection(worker, issue=issue)
+        return "" if added else stakeholder_ui.NO_NEW_SELECTED
+
+    stakeholder_ui.spend(
+        _top_up,
+        client_id=standing.client_id,
+        name=f"newspulse-stakeholder-topup-issue-{issue_id}",
+        failed=stakeholder_ui.SELECTION_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/issues/{issue_id}/stakeholder/{selection_id}/entfernen")
+def drop_stakeholder(
+    issue_id: int,
+    selection_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Take one group off this issue's list, the standing map untouched.
+
+    Here and not on the map, because removing the map row would take the group
+    off every occasion at once. No model call: a person removing a group is a
+    decision, not a question.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is not None:
+        stakeholders.drop_from_selection(
+            session, issue=standing, selection_id=selection_id
+        )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/issues/{issue_id}/stakeholder/reihenfolge")
+def reorder_stakeholders(
+    request: Request,
+    issue_id: int,
+    # Both text, not int: a cleared number field posts "" and so does an
+    # emptied hidden id, and FastAPI would answer a person pressing a button
+    # with raw validation JSON. The coercion — and the sentence when it fails —
+    # belongs to :func:`stakeholder_ui.ordered_ids`.
+    sid: list[str] = Form(default_factory=list),
+    pos: list[str] = Form(default_factory=list),
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """A person sorts the selection, and the person's order is what is kept.
+
+    The form posts one (row id, position) pair per line; the handler sorts by
+    the numbers and stores 1..n under the person's name — from then on the
+    order is no Empfehlung any more. A form naming the wrong rows (a second
+    tab rebuilt the selection underneath it) changes nothing and says so.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is not None:
+        ordered, refusal = stakeholder_ui.ordered_ids(sid, pos)
+        if refusal:
+            stakeholder_ui.note(standing.client_id, refusal)
+        else:
+            try:
+                stakeholders.reorder(
+                    session, issue=standing, ordered_ids=ordered, by=_who(request)
+                )
+            except ValueError:
+                stakeholder_ui.note(
+                    standing.client_id, stakeholder_ui.ORDER_WRONG_ROWS
+                )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)

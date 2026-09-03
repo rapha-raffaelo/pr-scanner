@@ -395,6 +395,11 @@ CARRIED_BEFORE = {
     "krisen_qa.txt": set(),
     # New with UHR-04: the standing check. No "before" to carry.
     "newsjack.txt": set(),
+    # New with RIS-02: the issue-link verdict. No "before" to carry.
+    "issue_link.txt": set(),
+    # New with RIS-03: the stakeholder map and its selection. No "before".
+    "stakeholder_map.txt": set(),
+    "stakeholder_select.txt": set(),
 }
 
 #: Standards a prompt did *not* carry before and now does. Every one is a
@@ -520,6 +525,28 @@ ADDED_IN_MIGRATION = {
     # refusal's "empty answer" clauses would read as permission to answer
     # nothing where the schema requires one of three answers.
     "newsjack.txt": {"standing", "no_invention", "evidence"},
+    # The issue-link verdict (RIS-02, DEC-4 B). no_invention and evidence,
+    # because membership is decided off headlines and feed snippets and the
+    # one sentence why must rest on them; false_alarm, because a falsely
+    # attached signal corrupts the row somebody reads growth off — the
+    # in-doubt answer is no. house_style is absent on purpose: the sentence
+    # lands on an internal register row, not in a text that leaves the house.
+    "issue_link.txt": {"no_invention", "evidence", "false_alarm"},
+    # The stakeholder map's proposal (RIS-03). no_invention is the whole
+    # safety posture — a guessed contact gets called the one evening it
+    # matters, so the prompt forbids names outright and the code drops them
+    # besides. evidence, because a group has to follow from a stored profile
+    # line. false_alarm is absent: proposing few good groups is the prompt's
+    # own instruction, and refusal's empty-answer clauses would read as
+    # permission to propose nothing for a profile that carries plenty.
+    "stakeholder_map.txt": {"no_invention", "evidence"},
+    # The selection (RIS-03): which groups an occasion touches, why, and what
+    # each wants to know. no_invention and evidence, because the reason and
+    # the one-sentence information need must rest on the stored card and the
+    # occasion's signals — "erfindet keine Betroffenheit" is the acceptance
+    # itself. false_alarm, because a too-long selection is a list nobody
+    # telephones by, which is this feature's version of the always-red band.
+    "stakeholder_select.txt": {"no_invention", "evidence", "false_alarm"},
 }
 
 #: Phrases that only appear in a prompt if somebody wrote a standard out again
@@ -1753,6 +1780,38 @@ def _store_a_verdict(session) -> NewsjackOpportunity:
     return stored[0]
 
 
+def _store_a_stakeholder_row(session):
+    """Drive ``stakeholders`` the way the register's button does: one card
+    proposal off a stored profile line, with the model injected. The group and
+    its Betroffenheit are model prose a consultant works the map from, which
+    is exactly what the stamp is about."""
+    from newspulse import stakeholders
+    from newspulse.models import ClientFact
+
+    client = _a_mandate(session)
+    session.add(
+        ClientFact(client_id=client.id, key="sitz", value="Leipzig, Deutschland")
+    )
+    session.commit()
+    stored = stakeholders.propose_card(
+        session,
+        client,
+        invoke=lambda *a, **k: json.dumps(
+            {
+                "gruppen": [
+                    {
+                        "gruppe": "Anwohner am Standort",
+                        "betroffenheit": "Wohnen neben dem Werksgelände.",
+                        "einfluss": "mittel",
+                    }
+                ]
+            }
+        ),
+    )
+    assert stored
+    return stored[0]
+
+
 #: Every generator in the tool, each paired with a call that drives its real
 #: generate-then-store path. The point of the list is that it is exhaustive, and
 #: the test below it is what keeps it that way: a stamp on the two generators
@@ -1773,6 +1832,11 @@ GENERATORS = [
     # count come from stored rows, but the sentence naming what a "belegt"
     # rests on is model prose a consultant acts on within hours.
     ("newsjack", _store_a_verdict),
+    # The stakeholder map's proposals (RIS-03): the levels come from a closed
+    # set, but the group and its Betroffenheit are model prose the selection's
+    # own sentences later rest on. The selection rows are stamped by the same
+    # module through the same capture.
+    ("stakeholders", _store_a_stakeholder_row),
 ]
 
 

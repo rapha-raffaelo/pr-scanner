@@ -2444,3 +2444,52 @@ button:disabled { opacity: .55; cursor: default; }
 .heat__cell--w20, .heat__cell--w25 { background: color-mix(in srgb, var(--alert) 14%, transparent); }
 
 .reg__past { margin-top: var(--s5); }
+
+/* --- Die Stakeholder-Karte (RIS-03) --------------------------------------- */
+/* The standing map below the register. A row without a named contact carries
+   the accent border: the gap is the most important row of the map, and it has
+   to read as one before anything else on the line does. */
+.smap { margin-top: var(--s5); }
+.smap__propose { margin-left: auto; }
+.smap__hint { font-size: var(--t-caption); color: var(--muted); margin: var(--s1) 0 var(--s3); }
+.smap__row {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--s3); margin-bottom: var(--s2);
+}
+.smap__row--gap { border-left: 3px solid var(--warn); }
+.smap__h { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.smap__g { font-weight: 600; }
+.smap__lvl { font-size: var(--t-caption); color: var(--muted); }
+.smap__lvl--hoch { color: var(--alert); }
+/* The author on every line, the same discipline the profile keeps. */
+.smap__who { font-size: var(--t-caption); color: var(--faint); margin-left: auto; }
+.smap__b, .smap__c { font-size: var(--t-caption); color: var(--muted); margin: var(--s1) 0 0; }
+.smap__gap { color: var(--warn); }
+.smap__edit summary { font-size: var(--t-caption); color: var(--muted); cursor: pointer; }
+.smap__form { display: flex; flex-direction: column; gap: var(--s2); margin: var(--s2) 0; }
+.smap__form label { font-size: var(--t-caption); color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+.smap__add { margin-top: var(--s2); }
+.smap__missing a { font-weight: 600; }
+
+/* The selection at an issue: position first, because the order is what the
+   block exists to say. The number input is the resort handle — a person types
+   the order, presses save, and from then on it is no recommendation. */
+.ssel { border-top: 1px solid var(--line); padding-top: var(--s2); margin-top: var(--s2); }
+.ssel__h { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.ssel__t { font-size: var(--t-caption); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.ssel__form { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); }
+.ssel__row { display: flex; gap: var(--s3); align-items: flex-start; }
+.ssel__row--gap { border-left: 3px solid var(--warn); padding-left: var(--s2); }
+.ssel__pos { width: 3.2em; }
+.ssel__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+/* The per-row remove sits at the end of the row and stays quiet: taking a group
+   off the list is a real decision, but it is not the row's headline. */
+.ssel__drop { margin-left: auto; flex: none; align-self: flex-start; }
+.ssel__acts { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.ssel__g { font-weight: 600; }
+.ssel__why, .ssel__need, .ssel__c { font-size: var(--t-caption); color: var(--muted); }
+.ssel__c b { color: var(--warn); }
+/* No map, no selection: the named absence with the link to where the map is
+   maintained — the crisis page selects from the card and never edits it. */
+.ssel__missing { font-size: var(--t-caption); color: var(--muted); }
+.ssel__missing a { font-weight: 600; }

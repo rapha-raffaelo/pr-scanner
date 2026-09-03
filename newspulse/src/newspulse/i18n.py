@@ -2246,6 +2246,94 @@ _EN: dict[str, str] = {
         "escalate into an unrelated one.",
     "Ein eskaliertes Issue wird über seine Krise geschlossen.":
         "An escalated issue is closed through its crisis.",
+    # --- Die Stakeholder-Karte (RIS-03) ---------------------------------------
+    # "Speichern", "Bearbeiten", "gesetzt von" and "Verwerfen" are already
+    # translated above — the map reuses them. "Stakeholder" stays untranslated
+    # in the compounds for the same reason "Issues" does: it is the trade's own
+    # word in German PR usage.
+    "Stakeholder-Karte": "Stakeholder map",
+    "Aus dem Profil vorschlagen": "Propose from the profile",
+    "Die Karte steht am Mandat, nicht am Anlass. Vorgeschlagen wird aus dem Profil, bearbeitet von einem Menschen, und jede Zeile zeigt, wer sie gesetzt hat.":
+        "The map hangs on the mandate, not on the occasion. It is proposed "
+        "from the profile, edited by a person, and every row shows who set it.",
+    "Gruppe": "Group",
+    "Betroffenheit": "How it is affected",
+    "Einfluss": "Influence",
+    # The three levels are values a person picks, so they read as words in
+    # both languages — a number would claim a measurement nobody took.
+    "hoch": "high",
+    "mittel": "medium",
+    "niedrig": "low",
+    "Ansprechpartner": "Contact person",
+    "Kanal": "Channel",
+    # The named gap: the most important row of the map, never a blank cell.
+    "Kein Ansprechpartner benannt.": "No contact person named.",
+    "Im Profil nachtragen": "Add it in the profile",
+    "Zum Profil": "To the profile",
+    "Gruppe hinzufügen": "Add a group",
+    "Zeile entfernen": "Remove the row",
+    "Noch keine Karte. Aus dem Profil vorschlagen oder eine Gruppe von Hand anlegen.":
+        "No map yet. Propose it from the profile or add a group by hand.",
+    "Für dieses Mandat sind keine Profilangaben hinterlegt; ohne sie wird keine Karte erfunden.":
+        "No profile entries are on file for this mandate; without them no map "
+        "is invented.",
+    "Stakeholder-Auswahl": "Stakeholder selection",
+    # The order is a recommendation until a person sorts it, and the marker
+    # says which of the two the reader is looking at.
+    "Reihenfolge": "Order",
+    "Reihenfolge: Empfehlung": "Order: recommendation",
+    "Reihenfolge gesetzt von": "Order set by",
+    "Reihenfolge speichern": "Save the order",
+    "Stakeholder auswählen": "Select stakeholders",
+    "Will wissen:": "Wants to know:",
+    # The honest empty sentence: where no stored line supports one, none is
+    # invented.
+    "keine gespeicherte Angabe, aus der sich das ergibt":
+        "no stored line this could rest on",
+    # The map's and the selection's notes, written in Python and rendered as
+    # ``stakeholder_note`` / ``note`` — nothing that reads the templates for
+    # German strings can see them.
+    "Ohne Profilangaben wird keine Karte erfunden. Erst das Profil füllen, dann trägt der Vorschlag.":
+        "Without profile entries no map is invented. Fill the profile first, "
+        "then the proposal has something to stand on.",
+    "Der Vorschlag hat keine neuen Gruppen ergeben.":
+        "The proposal yielded no new groups.",
+    "Die Zeile wurde nicht gespeichert: es fehlt die Gruppe, oder der Name steht schon auf der Karte.":
+        "The row was not saved: the group is missing, or the name is already "
+        "on the map.",
+    "Keine Auswahl entstanden: ohne Karte oder ohne begründbar betroffene Gruppe wird nichts gespeichert.":
+        "No selection was made: without a map, or without a group whose "
+        "involvement can be justified, nothing is stored.",
+    "Die Reihenfolge wurde nicht gespeichert: das Formular war unvollständig.":
+        "The order was not saved: the form was incomplete.",
+    "Die Reihenfolge wurde nicht gespeichert: sie nennt nicht genau die Zeilen der Auswahl.":
+        "The order was not saved: it does not name exactly the rows of the "
+        "selection.",
+    "Die Reihenfolge wurde nicht gespeichert: zwei Zeilen tragen dieselbe Nummer.":
+        "The order was not saved: two rows carry the same number.",
+    "Die Auswahl ist fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The selection failed. The details are in the log.",
+    "Der Vorschlag ist fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The proposal failed. The details are in the log.",
+    # The crisis page selects from the map but does not maintain it, so its
+    # empty state is a named absence with the link to where it is filled in.
+    "Noch keine Stakeholder-Karte für dieses Mandat.":
+        "No stakeholder map for this mandate yet.",
+    "Zur Stakeholder-Karte": "To the stakeholder map",
+    # The card's model calls run on a worker thread behind one lock, so both
+    # the refused second click and the run in flight have to be sayable.
+    "Es läuft schon eine Anfrage für dieses Mandat. Ein zweiter Klick würde eine zweite kosten.":
+        "A request for this mandate is already running. A second click would "
+        "spend a second one.",
+    "Die Anfrage läuft — die Karte aktualisiert sich, sobald sie steht.":
+        "The request is running — the map refreshes as soon as it stands.",
+    # The way back into a selection that already stands: it appends only, so
+    # its empty answer is not the same sentence as "no selection at all".
+    "Um neue Gruppen ergänzen": "Add newly mapped groups",
+    "Die Auswahl wurde nicht ergänzt: keine weitere Gruppe der Karte ist begründbar betroffen.":
+        "The selection was not added to: no further group on the map is "
+        "affected in a way that can be stated.",
+    "Aus der Auswahl nehmen": "Remove from the selection",
 }
 
 _TABLES = {"de": {}, "en": _EN}

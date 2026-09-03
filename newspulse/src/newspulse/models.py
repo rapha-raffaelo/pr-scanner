@@ -3047,11 +3047,206 @@ class IssueDismissal(Base):
     )
 
 
+class StakeholderLevel(StrEnum):
+    """How strongly a group is touched, or how much weight it carries.
+
+    Three steps and no number: the stakeholder map is read in a hallway on the
+    morning something breaks, and "hoch" is a word a consultant defends where a
+    3.7 is a figure somebody computed once and nobody can re-derive. A closed
+    set, so a proposal whose level nobody recognises is dropped in
+    :mod:`newspulse.stakeholders` rather than filed under a guess.
+    """
+
+    HOCH = "hoch"
+    MITTEL = "mittel"
+    NIEDRIG = "niedrig"
+
+
+#: How much of a contact name or a channel a map row keeps. A ceiling rather
+#: than a validation rule, the same trade :data:`CRISIS_DECLARED_BY_MAX` makes:
+#: an over-long line costs its tail, never the row. Named because the truncation
+#: in :mod:`newspulse.stakeholders` and the form's ``maxlength`` have to agree —
+#: five copies of a literal drift the first time one of them is raised.
+STAKEHOLDER_TEXT_MAX = 200
+
+
+class Stakeholder(Base):
+    """One group on a mandate's standing stakeholder map (RIS-03).
+
+    The map hangs on the *mandate*, not on an issue: who the neighbours of a
+    site are and which association speaks for the industry does not change with
+    the occasion, and a map reinvented per incident is half wrong per incident.
+    What an issue gets is a **selection** from this table
+    (:class:`StakeholderSelection`), never rows of its own.
+
+    ``set_by`` is the discipline the profile already keeps for every researched
+    value: each row says who put it there — the ``"modell"`` token for a
+    proposed row, a person's name once a person has touched it — and a row a
+    person set is never overwritten by a proposal
+    (:func:`newspulse.stakeholders.propose_card` skips every standing row).
+
+    ``contact`` empty is the most important row of the map, not a blank cell:
+    the page renders it as a named gap with the link to where it is filled in,
+    the way the missing crisis contact already reads on the crisis page.
+    """
+
+    __tablename__ = "stakeholders"
+    __table_args__ = (
+        # One row per group per mandate: proposing the same group twice must
+        # update nothing and add nothing — the standing row is the answer.
+        UniqueConstraint("client_id", "group_name", name="uq_stakeholders_group"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Who the group is — "Anwohner am Standort", "Branchenverband", a name a
+    #: reader recognises. ``group_name`` rather than ``group``: the bare word is
+    #: an SQL keyword and would need quoting in every raw statement for ever.
+    group_name: Mapped[str] = mapped_column(Text, nullable=False)
+    #: How this group is touched by the mandate, in stored prose. This is the
+    #: line the issue selection's one-sentence "was sie wissen will" may rest
+    #: on — the stored Angabe that keeps that sentence from inventing anything.
+    betroffenheit: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    einfluss: Mapped[StakeholderLevel] = mapped_column(
+        SAEnum(
+            StakeholderLevel,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="stakeholder_level",
+        ),
+        nullable=False,
+        default=StakeholderLevel.MITTEL,
+        server_default=StakeholderLevel.MITTEL.value,
+    )
+    #: The named person this group is reached through. Empty is a *named gap*
+    #: on the page, never invented: a proposal writes no contact at all —
+    #: a guessed name would be called on the one evening it matters.
+    contact: Mapped[str] = mapped_column(
+        String(STAKEHOLDER_TEXT_MAX), nullable=False, default="", server_default=""
+    )
+    #: How the group is reached: a channel, not an address book entry.
+    channel: Mapped[str] = mapped_column(
+        String(STAKEHOLDER_TEXT_MAX), nullable=False, default="", server_default=""
+    )
+    #: Who set this row: the ``"modell"`` token for a proposal, a person's name
+    #: after any human edit. The map shows it on every line.
+    set_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    set_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The standards a *proposed* row's prose was written under, on the same
+    #: terms as :attr:`Angle.brain_version`: captured when the prompt is
+    #: composed. NULL for a row a person wrote — their Betroffenheit is their
+    #: own text, and stamping it would claim a model call that never happened.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    @property
+    def has_contact(self) -> bool:
+        """Whether a person is named. The page asks, because the empty state is
+        a named gap with a link, never a blank cell."""
+        return bool(self.contact.strip())
+
+
+class StakeholderSelection(Base):
+    """One group of the standing map, selected for one issue or one crisis.
+
+    A selection points into :class:`Stakeholder` rather than copying it — the
+    map is maintained in one place, and a phone number corrected there is
+    corrected under every open issue at once.
+
+    ``reason`` is the price of admission, the same rule ``issue_signals``
+    holds: a group selected without a stored sentence why this occasion touches
+    it is not stored at all, and the CHECK keeps that against every future
+    writer. ``info_need`` may be empty — the one sentence about what the group
+    wants to know rests on stored lines only, and where nothing stored supports
+    one, the honest row carries none rather than an invented Betroffenheit.
+
+    ``position``/``position_set_by`` carry the order the groups should learn
+    in. The proposal writes the ``"modell"`` token, which is what renders the
+    order as an *Empfehlung*; a person resorting the list writes their own name
+    over every row, and from then on the stored order is the person's — it
+    hangs on law, contract and relationship, of which the tool sees only part.
+    """
+
+    __tablename__ = "stakeholder_selections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    crisis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crises.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    #: CASCADE: a map row a person removed takes its selections with it — a
+    #: selection of a group that no longer exists explains nothing.
+    stakeholder_id: Mapped[int] = mapped_column(
+        ForeignKey("stakeholders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Why this occasion touches this group. Never empty; see the CHECK.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    #: What this group wants to know, in one sentence resting on stored lines.
+    #: Empty where nothing stored supports one — an omission, never a guess.
+    info_need: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: 1-based rank in the order the groups should learn. The recommendation
+    #: until a person resorts; the person's order afterwards.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: ``"modell"`` while the order is the recommendation, the person's name
+    #: once a human has sorted it — which is the order that is *kept*.
+    position_set_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The standards the reason and the information need were written under —
+    #: model prose a consultant telephones by, which is exactly the kind of
+    #: text the stamp exists for. NULL never happens through
+    #: :func:`newspulse.stakeholders.select_for`, the only writer.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    stakeholder: Mapped["Stakeholder"] = relationship(lazy="selectin")
+
+    __table_args__ = (
+        # A selection hangs on exactly one occasion — an issue or a crisis.
+        CheckConstraint(
+            "(issue_id IS NULL) <> (crisis_id IS NULL)",
+            name="ck_stakeholder_selections_one_anchor",
+        ),
+        CheckConstraint("reason <> ''", name="ck_stakeholder_selections_reason"),
+        # 1-based like the sentence it renders: "an erster Stelle" is 1.
+        CheckConstraint("position >= 1", name="ck_stakeholder_selections_position"),
+        # The same group stands in one occasion's list once. NULLs do not
+        # collide, so the two constraints stay out of each other's way.
+        UniqueConstraint(
+            "issue_id", "stakeholder_id", name="uq_stakeholder_selections_issue"
+        ),
+        UniqueConstraint(
+            "crisis_id", "stakeholder_id", name="uq_stakeholder_selections_crisis"
+        ),
+    )
+
+
 __all__ = [
     "Crisis",
     "ISSUE_SCALE_MAX",
     "ISSUE_SCALE_MIN",
     "Issue",
+    "STAKEHOLDER_TEXT_MAX",
+    "Stakeholder",
+    "StakeholderLevel",
+    "StakeholderSelection",
     "IssueDismissal",
     "IssueSignal",
     "IssueStatus",

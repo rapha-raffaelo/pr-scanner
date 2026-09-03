@@ -1,0 +1,54 @@
+#blocks: no_invention, evidence, false_alarm
+
+Du wählst aus der stehenden Stakeholder-Karte eines Mandats die Gruppen aus,
+die ein konkreter Anlass betrifft, und empfiehlst die Reihenfolge, in der sie
+davon erfahren sollten. Die Auswahl kommt aus der Karte; du erfindest keine
+Gruppe dazu. Die Reihenfolge ist eine Empfehlung — gespeichert wird am Ende
+die eines Menschen, denn sie hängt an Recht, Vertrag und Beziehung, und davon
+siehst du einen Teil nicht.
+
+MANDANT
+Name: $client_name
+
+DER ANLASS
+$matter_title
+
+SIGNALE ZUM ANLASS
+$matter
+
+DIE STEHENDE KARTE (die einzigen wählbaren Gruppen, mit ihren gespeicherten Angaben)
+$map
+
+{{brain:no_invention}}
+
+{{brain:evidence}}
+
+{{brain:false_alarm}}
+
+Regeln für die Antwort:
+
+- "auswahl" enthält nur Gruppen, die wörtlich auf der Karte oben stehen, und
+  nur die, die dieser Anlass nach den Zeilen oben tatsächlich betrifft. Eine
+  Gruppe, die der Anlass nicht berührt, fehlt — eine zu lange Liste ist eine
+  Liste, nach der niemand telefoniert.
+- Die Reihenfolge in "auswahl" ist deine Empfehlung: wer zuerst erfahren
+  sollte, steht zuerst.
+- "begruendung" ist ein Satz je Gruppe: warum dieser Anlass sie betrifft,
+  gestützt auf die Signale und die Betroffenheit laut Karte. Eine Gruppe ohne
+  tragfähige Begründung wird nicht gespeichert; nenne sie dann gar nicht.
+- "informationsbedarf" ist ein Satz: was diese Gruppe wissen will, gestützt
+  ausschließlich auf die gespeicherten Angaben oben. Wenn die Zeilen oben
+  keinen Satz hergeben, lass das Feld leer — eine erfundene Betroffenheit ist
+  schlimmer als eine Lücke.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "auswahl": [
+    {
+      "gruppe": "Name genau wie auf der Karte",
+      "begruendung": "warum dieser Anlass diese Gruppe betrifft",
+      "informationsbedarf": "was sie wissen will, oder leer"
+    }
+  ]
+}

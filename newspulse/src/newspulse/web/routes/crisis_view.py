@@ -39,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ... import assets as assets_mod
-from ... import config, crisis, profile
+from ... import config, crisis, profile, stakeholders
 from ...db import get_session
 from ...models import (
     Analysis,
@@ -61,6 +61,7 @@ from ..app import get_db, templates
 from ..mandates import mandate_or_404
 from ..redirects import local_target
 from ..runlock import guard as _run_guard
+from . import stakeholder_ui
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -583,6 +584,36 @@ def _timeline(
     return sorted(events, key=lambda event: event.at)
 
 
+def _stakeholder_block(
+    session: Session, client: Client, standing: Crisis
+) -> dict[str, object]:
+    """What ``partials/stakeholder_selection.html`` needs for this crisis.
+
+    The standing map is *maintained* on the register — it hangs on the mandate
+    and outlives every incident — so the crisis morning selects from it and
+    does not edit it here: where there is no map yet, the block names the
+    absence and links to where it is filled in, rather than putting an editing
+    form in front of somebody whose morning has already started.
+    """
+    card = stakeholders.card(session, client)
+    rows = stakeholders.selection_for(session, crisis=standing)
+    return {
+        "smap": card,
+        "has_map": bool(card),
+        "sel": rows,
+        "sel_recommended": stakeholders.order_is_recommendation(rows),
+        "sel_anchor": f"/crisis/{standing.id}/stakeholder",
+        # Back to the crisis being read, not to the newest one: the page can
+        # stand on an earlier crisis via ``?krise=``.
+        "back_to": f"/client/{client.id}/krise?krise={standing.id}",
+        "map_link": f"/client/{client.id}/issues",
+        "stakeholder_note": stakeholder_ui.pop_note(client.id),
+        # The card's model calls run on a worker thread, so the page has to
+        # say a call is in flight — otherwise the button looks unpressed.
+        "stakeholder_running": stakeholder_ui.busy(client.id),
+    }
+
+
 @router.get("/client/{client_id}/krise", response_class=HTMLResponse)
 def crisis_page(
     request: Request,
@@ -659,8 +690,153 @@ def crisis_page(
             # progress rewrites it on its next sentence, so consuming a
             # mid-run reload costs nothing.
             "note": _last_note.pop(client.id, ""),
+            # Die Stakeholder-Auswahl (RIS-03) at the other occasion the map
+            # anchors; the block is the register's own partial.
+            **_stakeholder_block(session, client, selected),
         },
     )
+
+
+# --- Die Stakeholder-Auswahl an der Krise (RIS-03) ---------------------------------
+#
+# The same two buttons the register carries at an issue, at the other occasion
+# the schema anchors. The engine is one function for both — the anchor is a
+# keyword — and the notes and the order-form reader are ``stakeholder_ui``'s,
+# so the crisis page refuses the same input for the same reason.
+
+
+def _crisis_for(session: Session, crisis_id: int) -> Crisis | None:
+    """The crisis, or ``None`` for a stale id — never a 500 on a button.
+
+    A benchmark's crisis is ``None`` as well: :func:`mandate_or_404` keeps the
+    pages off a company nobody reports to, and a button that spends a model
+    call has to hold the same line.
+    """
+    standing = session.get(Crisis, crisis_id)
+    if standing is None or standing.client.is_competitor:
+        return None
+    return standing
+
+
+@router.post("/crisis/{crisis_id}/stakeholder/auswahl")
+def select_crisis_stakeholders(
+    crisis_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Build the crisis's selection from the standing map, reasons included.
+
+    Idempotent by construction — a crisis that already carries a selection
+    keeps it, order and all, because re-asking would clobber the order a
+    person set in the hour it mattered.
+    """
+    standing = _crisis_for(session, crisis_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+    def _select(worker: Session) -> str:
+        subject = _crisis_for(worker, crisis_id)
+        if subject is None:
+            return ""
+        selected = stakeholders.select_for(worker, crisis=subject)
+        return "" if selected else stakeholder_ui.NO_SELECTION
+
+    stakeholder_ui.spend(
+        _select,
+        client_id=standing.client_id,
+        name=f"newspulse-stakeholder-crisis-{crisis_id}",
+        failed=stakeholder_ui.SELECTION_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/crisis/{crisis_id}/stakeholder/ergaenzen")
+def top_up_crisis_stakeholders(
+    crisis_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Ask whether groups added to the map since also belong on this crisis.
+
+    Appends only. On a crisis morning the map does grow — somebody remembers
+    the works council — and without this the list would be frozen against the
+    card it is drawn from. The standing rows keep their reasons and their
+    order, because that order is the call order somebody is working down.
+    """
+    standing = _crisis_for(session, crisis_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+    def _top_up(worker: Session) -> str:
+        subject = _crisis_for(worker, crisis_id)
+        if subject is None:
+            return ""
+        added = stakeholders.add_to_selection(worker, crisis=subject)
+        return "" if added else stakeholder_ui.NO_NEW_SELECTED
+
+    stakeholder_ui.spend(
+        _top_up,
+        client_id=standing.client_id,
+        name=f"newspulse-stakeholder-topup-crisis-{crisis_id}",
+        failed=stakeholder_ui.SELECTION_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/crisis/{crisis_id}/stakeholder/{selection_id}/entfernen")
+def drop_crisis_stakeholder(
+    crisis_id: int,
+    selection_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Take one group off this crisis's list, the standing map untouched.
+
+    Here and not on the map: removing the map row would take the group off
+    every occasion at once, and the map outlives the incident. No model call —
+    a person removing a group is a decision, not a question.
+    """
+    standing = _crisis_for(session, crisis_id)
+    if standing is not None:
+        stakeholders.drop_from_selection(
+            session, crisis=standing, selection_id=selection_id
+        )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/crisis/{crisis_id}/stakeholder/reihenfolge")
+def reorder_crisis_stakeholders(
+    request: Request,
+    crisis_id: int,
+    # Both text, not int: a cleared number field posts "" and so does an emptied
+    # hidden id, and FastAPI would answer a person pressing a button with raw
+    # validation JSON rather than the sentence the page has for it.
+    sid: list[str] = Form(default_factory=list),
+    pos: list[str] = Form(default_factory=list),
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """A person sorts the crisis's selection, and their order is what is kept.
+
+    The call order on a crisis morning hangs on law, contract and relationship,
+    of which the tool sees only part — so the moment a person sorts the list,
+    the "Empfehlung" marker ends and the stored order is theirs.
+    """
+    standing = _crisis_for(session, crisis_id)
+    if standing is not None:
+        ordered, refusal = stakeholder_ui.ordered_ids(sid, pos)
+        if refusal:
+            stakeholder_ui.note(standing.client_id, refusal)
+        else:
+            try:
+                stakeholders.reorder(
+                    session, crisis=standing, ordered_ids=ordered, by=_who(request)
+                )
+            except ValueError:
+                stakeholder_ui.note(
+                    standing.client_id, stakeholder_ui.ORDER_WRONG_ROWS
+                )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
 
 # --- Writing the two crisis texts ------------------------------------------------
