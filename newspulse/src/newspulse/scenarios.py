@@ -547,7 +547,12 @@ def _named_in_headline(session: Session, client: Client, issue: Issue) -> str:
     if matcher is None:
         return ""
     for row in issue.signals:
-        if row.article is not None and matcher.search(row.article.title or ""):
+        if row.article is None:
+            continue
+        # Case-folded, because the matcher is: its alternation is built out of
+        # folded variants, so a headline handed to it as written matches
+        # nothing and the condition would silently never fire.
+        if matcher.search((row.article.title or "").casefold()):
             return f"Mandat in der Überschrift: {row.article.title}"
     return ""
 
