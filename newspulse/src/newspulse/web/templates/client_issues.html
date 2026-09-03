@@ -271,7 +271,10 @@
             <summary>{{ t("Stakeholder-Auswahl") }} ({{ sel | length }})</summary>
             {% for srow in sel %}
               <div class="isig__row">
-                <span class="isig__at">{{ srow.position }}.</span>
+                {# The rank as drawn: the rows come ordered by position, and a
+                   two-row list has to read "1. 2." even where an older row
+                   set left the stored numbers with a hole in them. #}
+                <span class="isig__at">{{ loop.index }}.</span>
                 <span class="isig__what">{{ srow.stakeholder.group_name }}</span>
                 <span class="isig__why">{{ srow.reason }}</span>
               </div>

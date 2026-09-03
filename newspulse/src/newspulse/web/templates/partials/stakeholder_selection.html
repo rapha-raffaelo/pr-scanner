@@ -39,7 +39,12 @@
       <input type="hidden" name="redirect_to" value="{{ back_to }}">
       {% for srow in sel %}
         <div class="ssel__row{% if not srow.stakeholder.has_contact %} ssel__row--gap{% endif %}">
-          <input class="ssel__pos" type="number" name="pos" min="1" max="{{ sel | length }}" required value="{{ srow.position }}" aria-label="{{ t('Reihenfolge') }}">
+          {# The rank in the list as drawn, not the stored number: the rows
+             arrive ordered by position, so the two agree wherever the order is
+             gapless — and where an older row set left a hole, the form heals
+             it on the next save instead of prefilling a value its own ``max``
+             rejects, which would make "Reihenfolge speichern" unpressable. #}
+          <input class="ssel__pos" type="number" name="pos" min="1" max="{{ sel | length }}" required value="{{ loop.index }}" aria-label="{{ t('Reihenfolge') }}">
           <input type="hidden" name="sid" value="{{ srow.id }}">
           <div class="ssel__body">
             <span class="ssel__g">{{ srow.stakeholder.group_name }}</span>

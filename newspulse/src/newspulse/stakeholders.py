@@ -137,6 +137,56 @@ def _norm(name: str) -> str:
     return " ".join((name or "").split()).casefold()
 
 
+def _group_name(name: str) -> str:
+    """One group name as stored: collapsed, and capped at the column's width.
+
+    The cap is the same ceiling ``contact`` and ``channel`` carry, and it is
+    here rather than only on the form because the *model* writes this column
+    too: a five-thousand-character ``gruppe`` would be rendered into the map
+    header and into every later selection prompt, and the form's ``maxlength``
+    guards only the human path.
+    """
+    return " ".join((name or "").split())[:STAKEHOLDER_TEXT_MAX]
+
+
+def _rows_at(
+    session: Session, *, issue_id: int | None, crisis_id: int | None
+) -> list[StakeholderSelection]:
+    """One occasion's selection rows by id, in the order that stands.
+
+    By id rather than by ORM object, because :func:`delete_row` renumbers what
+    is left of an occasion it holds no :class:`Issue` for — only the foreign
+    key the deleted selections carried.
+    """
+    where = (
+        StakeholderSelection.issue_id == issue_id
+        if issue_id is not None
+        else StakeholderSelection.crisis_id == crisis_id
+    )
+    return list(
+        session.scalars(
+            select(StakeholderSelection)
+            .where(where)
+            .order_by(StakeholderSelection.position)
+        ).all()
+    )
+
+
+def _renumber(rows: list[StakeholderSelection]) -> None:
+    """Close the gaps in one occasion's order, 1..n, keeping who set it.
+
+    The one place the row set changing is answered, so no consumer has to
+    tolerate a hole. ``position_set_by`` is deliberately untouched: closing a
+    gap is not a person sorting the list, and rewriting the token here would
+    end the "Empfehlung" marker without anybody having decided anything.
+    """
+    for rank, row in enumerate(
+        sorted(rows, key=lambda row: row.position), start=1
+    ):
+        if row.position != rank:
+            row.position = rank
+
+
 def _parse(raw: str, schema: type[BaseModel]) -> BaseModel:
     """The payload out of the model's answer, or :class:`ParseError`."""
     try:
@@ -253,17 +303,30 @@ def delete_row(session: Session, client: Client, row_id: int) -> bool:
     the cascade only bites where the SQLite pragma is on (``db.make_engine``
     turns it on; a bare engine does not), and an orphaned selection row would
     render a group nobody can look up.
+
+    Every occasion the removed group stood in is then renumbered 1..n. A
+    deletion that left the survivors at ``[2, 3]`` would leave the order form
+    prefilled with numbers outside its own range — the page would refuse to
+    submit at all, and "Reihenfolge speichern" would be dead for that issue
+    until somebody hand-edited the fields.
     """
     row = session.get(Stakeholder, row_id)
     if row is None or row.client_id != client.id:
         return False
-    for selection in session.scalars(
+    doomed = session.scalars(
         select(StakeholderSelection).where(
             StakeholderSelection.stakeholder_id == row.id
         )
-    ).all():
+    ).all()
+    # Captured before the deletes: afterwards there is no row left to say
+    # which occasions have a hole in their order.
+    occasions = {(sel.issue_id, sel.crisis_id) for sel in doomed}
+    for selection in doomed:
         session.delete(selection)
     session.delete(row)
+    session.flush()
+    for issue_id, crisis_id in occasions:
+        _renumber(_rows_at(session, issue_id=issue_id, crisis_id=crisis_id))
     session.commit()
     return True
 
@@ -396,17 +459,10 @@ def selection_for(
 ) -> list[StakeholderSelection]:
     """The occasion's stored selection, in the order that stands."""
     issue, crisis = _anchor(issue, crisis)
-    where = (
-        StakeholderSelection.issue_id == issue.id
-        if issue is not None
-        else StakeholderSelection.crisis_id == crisis.id
-    )
-    return list(
-        session.scalars(
-            select(StakeholderSelection)
-            .where(where)
-            .order_by(StakeholderSelection.position)
-        ).all()
+    return _rows_at(
+        session,
+        issue_id=issue.id if issue is not None else None,
+        crisis_id=crisis.id if crisis is not None else None,
     )
 
 
