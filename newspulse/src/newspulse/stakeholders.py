@@ -766,6 +766,13 @@ def add_to_selection(
       survive a re-ask;
     * ``position_set_by`` on the standing rows is left exactly as it is.
 
+    One visible consequence, and it is the right one: the appended row does
+    carry the ``"modell"`` token, so the page's pill goes back to reading
+    "Empfehlung". The person's own rows keep their names and their numbers —
+    but nobody has yet said where the *new* group belongs in the call order,
+    and the pill asking them to is more honest than a list that presents a
+    machine's placement under their name.
+
     Returns the rows this call added — empty when the map holds nothing new,
     or when nothing new is reasonably touched by the occasion.
     """
