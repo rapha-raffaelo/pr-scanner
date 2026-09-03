@@ -746,9 +746,12 @@ def test_a_fired_trigger_survives_a_restart(session, factory, mandate):
         assert len(scenarios.fired_triggers(fresh, again)) == 1
 
 
-def test_the_mark_says_what_matched(session, mandate):
+def test_the_mark_says_what_matched_and_nothing_else(session, mandate):
     """A red mark that cannot say what it saw is one nobody can act on, and the
-    CHECK on the table holds that against every future writer."""
+    CHECK on the table holds that against every future writer. What it holds is
+    the matched value *alone*: which condition held is the condition column,
+    whose sentence the page and the mail translate, so a German sentence
+    composed into the note would stand untranslated on an English page."""
     issue = _with_trigger(
         session,
         mandate,
@@ -758,7 +761,7 @@ def test_the_mark_says_what_matched(session, mandate):
     scenarios.check_triggers(session, mandate, issue, now=_NOW)
     marks = scenarios.fired_triggers(session, issue)
     assert len(marks) == 1
-    assert marks[0].fired_note.strip()
+    assert marks[0].fired_note == "FAZ"
 
 
 # --- The response options ----------------------------------------------------------

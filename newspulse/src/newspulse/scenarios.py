@@ -934,11 +934,11 @@ def _one_silence(rows: list[ResponseOption]) -> None:
     """Leave at most one row marked "nicht reagieren": the first, as offered.
 
     The mirror of :func:`_one_recommendation`, and for the same reason. The
-    silence is *the* option that is always on the list, so an answer marking
-    two of its rows as it has marked none of them properly — the page would
-    show two "nicht reagieren" pills against two different labels, and a
-    reader cannot tell which one the set was refused-or-stored on. The later
-    ones keep their place as ordinary options.
+    silence is *the* option always on the list, and there is one of it: an
+    answer marking two rows as "nicht reagieren" has not offered two silences,
+    it has marked one of them wrongly, and the page would show the pill twice
+    against two different labels. The later ones keep their place as ordinary
+    options, since a second way of not acting is still a way of answering.
     """
     seen = False
     for row in rows:
