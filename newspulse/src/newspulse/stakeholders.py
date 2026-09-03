@@ -230,22 +230,31 @@ def save_row(
 ) -> Stakeholder | None:
     """A person writes one row of the map, and the row says who.
 
-    ``row_id`` edits the standing row; without one, a new group is added — or,
-    where the name already stands, the standing row is updated instead of a
-    duplicate being refused at the schema. A rename onto a name another row
-    already carries returns ``None`` and writes nothing, whichever way it
-    arrived: ``_norm`` is this module's idea of one group, and the page says
-    the name is taken rather than filing a second row nothing can select.
-    Either way ``set_by`` becomes the person's name (and ``brain_version``
-    goes back to NULL): a proposed row a person has touched is the person's
-    row, its prose their own, and no later proposal overwrites it.
+    ``row_id`` edits the standing row; without one, a new group is added. A
+    submission that names a group the map already holds returns ``None`` and
+    writes nothing — whether it arrived as an *add* whose name is taken or as
+    a *rename* onto another row's name. ``_norm`` is this module's idea of one
+    group, and the page says the name already stands rather than filing a
+    second row nothing can select.
+
+    The add form is the reason that refusal is a refusal and not a merge. It
+    posts every field, so its blank Ansprechpartner would land on the standing
+    row and erase the one value this feature exists never to invent — silently,
+    since the person is told nothing about a row that saved. The standing row
+    is the answer, and merging two rows a person told apart is not this
+    function's decision to make.
+
+    On the edit path ``set_by`` becomes the person's name (and
+    ``brain_version`` goes back to NULL): a proposed row a person has touched
+    is the person's row, its prose their own, and no later proposal overwrites
+    it.
 
     An empty group name returns ``None`` and writes nothing. An out-of-set
     Einfluss raises: the form only offers the three levels, so anything else
     was submitted around it, and a silently defaulted level would store a
     value the person did not choose, under their name.
     """
-    name = " ".join((group or "").split())
+    name = _group_name(group)
     if not name:
         return None
     level = einfluss if isinstance(einfluss, StakeholderLevel) else StakeholderLevel(einfluss)
@@ -268,8 +277,18 @@ def save_row(
             # row is the answer, and merging two rows a person told apart is
             # not this function's decision to make.
             return None
-    else:
-        row = same_name
+    elif same_name is not None:
+        # An *add* whose name the map already holds. Refused rather than
+        # merged, and the page carries the sentence saying so: the add form
+        # posts a blank Ansprechpartner, so merging would erase the one value
+        # of this row that is never invented — without a word to the person,
+        # whose click looks exactly like a successful save.
+        _log.info(
+            "an added group named %r, which the map already holds; the "
+            "standing row is kept and nothing is overwritten",
+            name,
+        )
+        return None
     if row is None:
         row = Stakeholder(client_id=client.id, group_name=name)
         session.add(row)
@@ -347,7 +366,7 @@ def _proposed_row(
     contact whatever the model volunteered: a guessed name would be called on
     the one evening it matters.
     """
-    name = " ".join(group.gruppe.split())
+    name = _group_name(group.gruppe)
     if not name or _norm(name) in taken:
         return None
     try:

@@ -292,17 +292,40 @@ def test_save_row_records_the_person_and_a_proposal_then_skips_the_row(
     assert session.get(Stakeholder, edited.id).einfluss is StakeholderLevel.HOCH
 
 
-def test_save_row_without_an_id_updates_the_standing_row_of_the_same_name(
+def test_adding_a_group_the_map_already_holds_keeps_the_standing_contact(
     session, mandate
 ):
+    """The add form posts every field, blank ones included. A merge would erase
+    the named contact — the one value this feature never invents — and the
+    person's click would look exactly like a successful save."""
     first = stakeholders.save_row(
-        session, mandate, group="Belegschaft", by="a@agentur.de"
+        session,
+        mandate,
+        group="Belegschaft",
+        betroffenheit="Eigene Verträge betroffen.",
+        contact="Frau Meier",
+        channel="Telefon",
+        by="a@agentur.de",
     )
-    second = stakeholders.save_row(
-        session, mandate, group="  Belegschaft ", contact="Betriebsrat", by="b@agentur.de"
+    # The add form's shape: no row_id, and the untouched fields arrive empty.
+    assert (
+        stakeholders.save_row(
+            session,
+            mandate,
+            group="  belegschaft ",
+            betroffenheit="",
+            contact="",
+            channel="",
+            by="b@agentur.de",
+        )
+        is None
     )
-    assert second.id == first.id
-    assert second.contact == "Betriebsrat"
+    session.expire_all()
+    standing = session.get(Stakeholder, first.id)
+    assert standing.contact == "Frau Meier"
+    assert standing.channel == "Telefon"
+    assert standing.betroffenheit == "Eigene Verträge betroffen."
+    assert standing.set_by == "a@agentur.de"
     assert len(session.scalars(select(Stakeholder)).all()) == 1
 
 
