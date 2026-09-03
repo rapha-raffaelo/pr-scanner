@@ -415,12 +415,12 @@ def generate_scenarios(
     card = stakeholders.card(session, client)
     signals = _signal_lines(issue)
     issue_line = _issue_line(issue)
-    # The material the figure rule measures against: exactly the stored lines
-    # the prompt was shown, so "eine benannte Zeile" means the same thing to
-    # the check as it does to the model.
-    material = f"{issue_line}\n{signals}\n" + "\n".join(
-        f"{row.group_name}: {row.betroffenheit}" for row in card
-    )
+    # One string, used twice on purpose: it is what the prompt shows as the map
+    # and it is what the figure rule measures against, so "eine benannte Zeile"
+    # means the same thing to the check as it does to the model. Built as two
+    # would let a figure the model never saw count as supported.
+    map_lines = "\n".join(f"- {row.group_name}" for row in card) or "Noch keine Karte."
+    material = f"{issue_line}\n{signals}\n{map_lines}"
     # Captured when the prompt is composed, not when the rows are saved: an
     # edit landing while the model writes changes the next set, not this one.
     written_under = brain.version(session)
@@ -428,7 +428,7 @@ def generate_scenarios(
         client_name=client.name,
         issue_title=issue_line,
         signals=signals,
-        map="\n".join(f"- {row.group_name}" for row in card) or "Noch keine Karte.",
+        map=map_lines,
     )
     resolved_invoke = invoke if invoke is not None else invoke_with_fallback
     answer = _parse(
@@ -710,7 +710,9 @@ CONDITION_READERS = {
 }
 
 
-def _by_condition(courses: list[Scenario]) -> dict[TriggerCondition, list[ScenarioTrigger]]:
+def _by_condition(
+    courses: list[Scenario],
+) -> dict[TriggerCondition, list[ScenarioTrigger]]:
     """The courses' triggers grouped by the condition each one watches for.
 
     The grouping is the whole of "einmal": the same condition legitimately

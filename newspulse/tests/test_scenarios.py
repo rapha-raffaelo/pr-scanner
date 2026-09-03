@@ -377,6 +377,34 @@ def test_a_figure_a_stored_line_does_carry_is_kept(session, mandate):
     assert len(stored) == 1
 
 
+def test_a_figure_only_a_stakeholder_card_carries_is_not_supported(session, mandate):
+    """The prompt shows the map as group names and nothing else, so a number
+    standing in a group's Betroffenheit is a number the model never saw. It
+    must not count as a named line, or the guard measures something other than
+    what the answer was written against."""
+    session.add(
+        Stakeholder(
+            client_id=mandate.id,
+            group_name="Anwohner am Standort",
+            betroffenheit="Rund 900 Haushalte grenzen an das Werksgelände.",
+            einfluss=StakeholderLevel.MITTEL,
+            set_by="mensch",
+            set_at=_NOW,
+        )
+    )
+    session.commit()
+    issue = _issue(session, mandate)
+    stored = scenarios.generate_scenarios(
+        session,
+        issue,
+        invoke=lambda *a, **k: _answer(
+            _course(verlauf="Die Kritik könnte 900 Haushalte erreichen.")
+        ),
+        now=_NOW,
+    )
+    assert stored == []
+
+
 # --- DEC-5: the closed set of triggers ---------------------------------------------
 
 
@@ -415,6 +443,13 @@ def test_every_condition_of_the_closed_set_has_a_reader():
     against."""
     assert set(scenarios.CONDITION_READERS) == set(TriggerCondition)
     assert set(scenarios.CONDITION_LABELS) == set(TriggerCondition)
+
+
+def test_every_course_of_the_closed_set_has_a_label():
+    """The page looks a course up in :data:`~newspulse.scenarios.KIND_LABELS`,
+    so a fourth kind added without one would not fail a test — it would 500 the
+    whole register."""
+    assert set(scenarios.KIND_LABELS) == set(ScenarioKind)
 
 
 # --- Firing, once, and never again -------------------------------------------------

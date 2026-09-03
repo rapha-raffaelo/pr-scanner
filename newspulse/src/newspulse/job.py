@@ -1908,30 +1908,15 @@ def _link_issue_signals(
     return attached
 
 
-def _check_scenario_triggers(
-    session: Session,
-    clients: Sequence[Client],
-    *,
-    now: dt.datetime,
-    notify_config: notify.NotifyConfig | None = None,
-) -> int:
-    """Fire the scenario triggers whose condition now holds (RIS-04). Never fails
-    the sweep.
+def _fired_this_sweep(
+    session: Session, clients: Sequence[Client], *, now: dt.datetime
+) -> list[notify.FiredTrigger]:
+    """Every condition that came to hold this morning, as the channel renders it.
 
-    Cheap enough to be unconditional, like the reading above it: DEC-5 locked
-    "nur maschinell prüfbare Bedingungen", so a check is a handful of queries
-    over stored rows and no model call. A mandate with no open issue costs one
-    query.
-
-    The notification goes out here rather than riding along with the alert mail,
-    and that is the acceptance rather than a preference: "trifft eine Bedingung
-    zu, wird das am Issue vermerkt und **einmal benachrichtigt**", and an offer
-    that waits for a morning with alerts is not a notification. It fires once,
-    ever — the latch is the ``fired_at`` column, so it survives a restart.
-
-    One fault boundary per mandate, so a broken read for one issue costs the
-    other mandates nothing, and one around the lot, so nothing here can end a
-    sweep whose ``runs`` row is already written as ok.
+    One fault boundary per mandate, so a broken read on one register costs the
+    others nothing. A benchmark is skipped: a competitor is tracked to compare
+    coverage and no register is kept on it, which is the line the reputation
+    sweep and the linking pass draw too.
     """
     fired: list[notify.FiredTrigger] = []
     for client in clients:
@@ -1955,6 +1940,41 @@ def _check_scenario_triggers(
             session.rollback()
             _log.exception("the scenario triggers for %r failed; skipping", client.name)
             continue
+    return fired
+
+
+def _check_scenario_triggers(
+    session: Session,
+    clients: Sequence[Client],
+    *,
+    now: dt.datetime,
+    notify_config: notify.NotifyConfig | None = None,
+) -> int:
+    """Fire the scenario triggers whose condition now holds (RIS-04). Never fails
+    the sweep.
+
+    Cheap enough to be unconditional, like the reading above it: DEC-5 locked
+    "nur maschinell prüfbare Bedingungen", so a check is a handful of queries
+    over stored rows and no model call. A mandate with no open issue costs one
+    query.
+
+    The notification goes out here rather than riding along with the alert mail,
+    and that is the acceptance rather than a preference: "trifft eine Bedingung
+    zu, wird das am Issue vermerkt und **einmal benachrichtigt**", and an offer
+    that waits for a morning with alerts is not a notification. It fires once,
+    ever — the latch is the ``fired_at`` column, so it survives a restart.
+
+    The boundary is doubled, like the report draft below: one per mandate
+    inside :func:`_fired_this_sweep`, and one here around the lot — the client
+    list and the channel are outside that loop, and nothing here may end a
+    sweep whose ``runs`` row is already written as ok.
+    """
+    try:
+        fired = _fired_this_sweep(session, clients, now=now)
+    except Exception:  # noqa: BLE001 — a trigger check is never worth a failed sweep
+        session.rollback()
+        _log.exception("the scenario trigger check failed; the sweep stands")
+        return 0
     if not fired:
         return 0
     _log.info("%d scenario trigger(s) fired this sweep", len(fired))
