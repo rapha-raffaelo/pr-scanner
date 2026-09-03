@@ -262,22 +262,18 @@ def _options_by_issue(
 
 
 def _fired_by_issue(courses: dict[int, list[Scenario]]) -> dict[int, list]:
-    """The triggers that have already fired, per issue, newest firing first.
+    """The conditions that have already fired, per issue, newest firing first.
 
     Read off the scenarios already loaded rather than with a query of its own:
     the marks *are* the trigger rows, and a second read would be the same rows
-    under a different name.
+    under a different name. One mark per condition, which is
+    :func:`newspulse.scenarios.fired_marks`'s doing and not this page's: a
+    condition standing on two courses is one event, and the mark belongs to the
+    issue.
     """
-    fired: dict[int, list] = {}
-    for issue_id, rows in courses.items():
-        marks = [
-            trigger
-            for scenario in rows
-            for trigger in scenario.triggers
-            if trigger.has_fired
-        ]
-        fired[issue_id] = sorted(marks, key=lambda row: row.fired_at, reverse=True)
-    return fired
+    return {
+        issue_id: scenarios.fired_marks(rows) for issue_id, rows in courses.items()
+    }
 
 
 @router.get("/client/{client_id}/issues", response_class=HTMLResponse)

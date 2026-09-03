@@ -654,6 +654,44 @@ def test_a_fired_trigger_does_not_fire_a_second_time(session, mandate):
     assert scenarios.check_triggers(session, mandate, issue, now=later) == []
 
 
+def test_one_condition_on_two_courses_fires_once(session, mandate):
+    """"Trifft eine Bedingung zu, wird das am Issue vermerkt und **einmal**
+    benachrichtigt." A second independent outlet starts the best course and
+    the likely one, and both carry the condition — but it is one event. It is
+    reported once, every row watching it is spent, and the issue carries one
+    mark rather than two identical ones."""
+    issue = _issue(
+        session,
+        mandate,
+        articles=[
+            _article(session, "Vorwurf im Werk", source="Rheinische Post"),
+            _article(session, "Vorwurf im Werk, zweiter Bericht", source="WDR"),
+        ],
+    )
+    scenarios.generate_scenarios(
+        session,
+        issue,
+        invoke=lambda *a, **k: _answer(
+            _course(art="bester", verlauf="Die Sache könnte ohne Nachlauf enden."),
+            _course(art="wahrscheinlicher"),
+        ),
+        now=_NOW,
+    )
+
+    fired = scenarios.check_triggers(session, mandate, issue, now=_NOW)
+    assert [row.condition for row in fired] == [TriggerCondition.ZWEITES_MEDIUM]
+    # Both rows are spent by the one event, so neither can fire tomorrow.
+    latched = [
+        trigger
+        for course in scenarios.stored_scenarios(session, issue)
+        for trigger in course.triggers
+    ]
+    assert [row.has_fired for row in latched] == [True, True]
+    assert len(scenarios.fired_triggers(session, issue)) == 1
+    later = _NOW + dt.timedelta(days=1)
+    assert scenarios.check_triggers(session, mandate, issue, now=later) == []
+
+
 def test_a_fired_trigger_survives_a_restart(session, factory, mandate):
     """The acceptance says "auch nicht nach einem Neustart", so the latch is a
     column and not a set in memory: a fresh session against the same database

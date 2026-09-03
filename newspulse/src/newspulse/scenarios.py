@@ -710,6 +710,22 @@ CONDITION_READERS = {
 }
 
 
+def _by_condition(courses: list[Scenario]) -> dict[TriggerCondition, list[ScenarioTrigger]]:
+    """The courses' triggers grouped by the condition each one watches for.
+
+    The grouping is the whole of "einmal": the same condition legitimately
+    stands on more than one course — a second independent outlet starts the
+    likely course *and* the worst one — but it is one condition holding once,
+    not two events. Read per row, an issue would report the same firing twice
+    and carry two identical marks.
+    """
+    grouped: dict[TriggerCondition, list[ScenarioTrigger]] = {}
+    for scenario in courses:
+        for trigger in scenario.triggers:
+            grouped.setdefault(trigger.condition, []).append(trigger)
+    return grouped
+
+
 def check_triggers(
     session: Session,
     client: Client,
@@ -717,13 +733,20 @@ def check_triggers(
     *,
     now: dt.datetime | None = None,
 ) -> list[ScenarioTrigger]:
-    """Fire the issue's standing triggers whose condition now holds. Returns them.
+    """Fire the issue's standing conditions that now hold. One row back per condition.
 
     Reads stored rows only — no model call and no fetch — which is what lets it
-    run for every open issue on every sweep. A trigger that has already fired
-    is skipped before its reader is even called: ``fired_at`` is a column, so
-    the skip survives a restart, and "einmal gemeldet, und danach nicht wieder"
-    holds across deployments rather than across an uptime.
+    run for every open issue on every sweep. A condition already fired on this
+    issue is skipped before its reader is even called: ``fired_at`` is a
+    column, so the skip survives a restart, and "einmal gemeldet, und danach
+    nicht wieder" holds across deployments rather than across an uptime. The
+    skip is per *issue* and not per row, so a condition that fired on one
+    course does not fire again through a second course carrying it.
+
+    Every row watching a condition that holds is latched, with the same moment
+    and the same note — they are all spent by the one event — and exactly one
+    of them comes back, because the acceptance marks and announces the issue
+    once.
 
     The caller notifies what comes back exactly once
     (:func:`newspulse.notify.notify_triggers`). The latch is written here
@@ -733,38 +756,52 @@ def check_triggers(
     """
     reference = now or dt.datetime.now(dt.UTC)
     fired: list[ScenarioTrigger] = []
-    for scenario in stored_scenarios(session, issue):
-        for trigger in scenario.triggers:
-            if trigger.has_fired:
-                continue
-            note = CONDITION_READERS[trigger.condition](session, client, issue)
-            if not note:
-                continue
-            trigger.fired_at = reference
-            trigger.fired_note = note
-            fired.append(trigger)
+    for condition, rows in _by_condition(stored_scenarios(session, issue)).items():
+        if any(row.has_fired for row in rows):
+            continue
+        note = CONDITION_READERS[condition](session, client, issue)
+        if not note:
+            continue
+        for row in rows:
+            row.fired_at = reference
+            row.fired_note = note
+        # The first row, in the order the courses are read, so the mark names
+        # the earliest course this condition would start. Every row is latched;
+        # only one is reported.
+        fired.append(rows[0])
     if fired:
         session.commit()
         _log.info(
-            "%d scenario trigger(s) fired on issue %d", len(fired), issue.id
+            "%d scenario condition(s) fired on issue %d", len(fired), issue.id
         )
     return fired
 
 
+def fired_marks(courses: list[Scenario]) -> list[ScenarioTrigger]:
+    """The marks a set of courses carries: one per fired condition, newest first.
+
+    One per condition rather than one per row, for the same reason
+    :func:`check_triggers` fires per condition: the acceptance puts the mark on
+    the *issue*, and two identical pills on a card say one event happened
+    twice. Takes the courses rather than a session so the page can read it off
+    the rows it has already loaded.
+    """
+    marks: dict[TriggerCondition, ScenarioTrigger] = {}
+    for scenario in courses:
+        for trigger in scenario.triggers:
+            if trigger.has_fired:
+                marks.setdefault(trigger.condition, trigger)
+    return sorted(marks.values(), key=lambda row: row.fired_at, reverse=True)
+
+
 def fired_triggers(session: Session, issue: Issue) -> list[ScenarioTrigger]:
-    """The issue's triggers that have already fired, newest firing first.
+    """The issue's fired conditions, newest firing first.
 
     What the register renders as the Vermerk am Issue: the condition, what
     matched, and when — a red mark that cannot say what it saw is one nobody
     can act on.
     """
-    rows = [
-        trigger
-        for scenario in stored_scenarios(session, issue)
-        for trigger in scenario.triggers
-        if trigger.has_fired
-    ]
-    return sorted(rows, key=lambda row: row.fired_at, reverse=True)
+    return fired_marks(stored_scenarios(session, issue))
 
 
 # --- The response options ----------------------------------------------------------
@@ -989,6 +1026,7 @@ __all__ = [
     "check_triggers",
     "clear_options",
     "clear_scenarios",
+    "fired_marks",
     "fired_triggers",
     "generate_options",
     "generate_scenarios",
