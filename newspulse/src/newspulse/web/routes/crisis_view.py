@@ -47,6 +47,7 @@ from ...models import (
     Asset,
     Client,
     Crisis,
+    Issue,
     Outreach,
     OutreachReply,
     OutreachState,
@@ -503,7 +504,7 @@ def _timeline(
     coverage: list[CoverageRow],
     texts: list[TextView],
     requests: list[RequestView],
-    prehistory=None,
+    prehistory: Issue | None = None,
 ) -> list[TimelineEvent]:
     """The whole crisis in time order — the after-action record once it closes.
 

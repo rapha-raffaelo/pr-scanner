@@ -2226,6 +2226,26 @@ _EN: dict[str, str] = {
     "zur Krise": "to the crisis",
     "Der Wert liegt im Anhängen, nicht im Anlegen: derselbe Vorwurf am Montag und am Freitag ist eine Zeile mit einem Alter, einer letzten Bewegung und einer Zahl. Eskaliert ein Issue, übernimmt die Krise seine Signale und seinen Beginn.":
         "The value is in the attaching, not the opening: the same accusation on Monday and on Friday is one row with an age, a last movement and a number. When an issue escalates, the crisis takes over its signals and its beginning.",
+    # The handover label on the crisis timeline (rendered by ``crisis_view``,
+    # written in Python, so no template scan can see it).
+    "Issue eröffnet": "Issue opened",
+    # The register's refusals and notes, written in Python and rendered as
+    # ``note`` — the same reason the asset notes further up are listed here:
+    # nothing that reads the templates for German strings can see them.
+    "Der Vorschlag stand nicht mehr: es wurde kein Issue eröffnet.":
+        "The proposal no longer stood: no issue was opened.",
+    "Das Issue wurde nicht geschlossen: es fehlt die Begründung.":
+        "The issue was not closed: the reason is missing.",
+    "Ein geschlossenes Issue eskaliert nicht.":
+        "A closed issue does not escalate.",
+    "Ohne Beitrag als Signal lässt sich keine Krise erklären: eine Krise braucht den Beitrag, an dem sie hängt.":
+        "Without an article among its signals no crisis can be declared: a "
+        "crisis needs the article it hangs on.",
+    "Für dieses Mandat läuft bereits eine Krise; das Issue eskaliert nicht in eine fremde Krise.":
+        "A crisis is already running for this mandate; the issue does not "
+        "escalate into an unrelated one.",
+    "Ein eskaliertes Issue wird über seine Krise geschlossen.":
+        "An escalated issue is closed through its crisis.",
 }
 
 _TABLES = {"de": {}, "en": _EN}
