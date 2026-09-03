@@ -480,6 +480,20 @@ def test_escalating_twice_is_one_crisis(session, mandate):
     assert first.id == second.id
 
 
+def test_an_issue_does_not_escalate_into_an_unrelated_open_crisis(session, mandate):
+    """At most one crisis per mandate is open, so declaring beside a standing
+    one could only merge two matters — the issue's signals would hang on an
+    unrelated chronology as fact. Refused, and the issue stays open."""
+    opened = _opened(session, mandate)
+    other = _cover(session, mandate, source="dpa", word="anders", days_ago=0.2)
+    foreign = crisis.declare(session, mandate, other, by="lucas", now=_NOW)
+    with pytest.raises(ValueError):
+        issues.escalate(session, opened, by="lucas", now=_NOW)
+    assert opened.status is IssueStatus.OFFEN
+    assert opened.crisis_id is None
+    assert crisis.prehistory(session, foreign) is None
+
+
 def test_a_closed_issue_does_not_escalate(session, mandate):
     opened = _opened(session, mandate)
     issues.close(session, opened, reason="Erledigt.", by="lucas", now=_NOW)

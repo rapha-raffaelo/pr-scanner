@@ -824,9 +824,17 @@ def prehistory(session: Session, crisis: Crisis) -> Issue | None:
     ``Issue.crisis_id`` is the link and this is its one reader; the issue row
     stays the owner of the signals — nothing is copied, because a copy could
     drift from the record it claims to be.
+
+    One issue per crisis is the writer's rule (``issues.escalate`` refuses
+    while a crisis is open, so no second issue can point here), but a read
+    must not depend on a writer keeping a promise: should more than one row
+    ever carry this ``crisis_id``, the oldest matter is the prehistory, the
+    same answer on every render.
     """
     return session.scalars(
-        select(Issue).where(Issue.crisis_id == crisis.id)
+        select(Issue)
+        .where(Issue.crisis_id == crisis.id)
+        .order_by(Issue.opened_at.asc(), Issue.id.asc())
     ).first()
 
 

@@ -991,6 +991,13 @@ def escalate(
     signal refuses too, because a crisis without a trigger article cannot exist
     (the schema says so), and pretending one of the market signals is coverage
     would grade the crisis off a row that is not press.
+
+    A mandate whose crisis is already open refuses as well. At most one crisis
+    per mandate is open at a time (the schema's unique index), so declaring
+    here could only hand back that standing crisis — which would silently hang
+    this issue's signals and opening on an unrelated matter's chronology and
+    present the merge as fact. The register says so instead, and the issue
+    stays open until that crisis is closed or a person merges by hand.
     """
     if issue.crisis_id is not None:
         standing = session.get(Crisis, issue.crisis_id)
@@ -998,6 +1005,12 @@ def escalate(
             return standing
     if issue.closed_at is not None:
         raise ValueError("Ein geschlossenes Issue eskaliert nicht.")
+    client = session.get(Client, issue.client_id)
+    if crisis_mod.open_crisis(session, client) is not None:
+        raise ValueError(
+            "Für dieses Mandat läuft bereits eine Krise; das Issue eskaliert "
+            "nicht in eine fremde Krise."
+        )
     newest = max(
         (row for row in issue.signals if row.article is not None),
         key=lambda row: row.happened_at,
@@ -1008,7 +1021,6 @@ def escalate(
             "Ohne Beitrag als Signal lässt sich keine Krise erklären: eine "
             "Krise braucht den Beitrag, an dem sie hängt."
         )
-    client = session.get(Client, issue.client_id)
     declared = crisis_mod.declare(session, client, newest.article, by=by, now=now)
     issue.status = IssueStatus.ESKALIERT
     issue.crisis_id = declared.id
