@@ -224,6 +224,24 @@ def stored(session: Session, client_id: int) -> dict[str, ClientFact]:
     return {row.key: row for row in rows}
 
 
+def as_prompt_lines(facts: dict[str, ClientFact]) -> str:
+    """The stored profile as prompt lines: one per filled field, profile order.
+
+    What a downstream prompt may rest on is exactly what is on file — nothing
+    is summarised, reordered or padded here, so a consumer (the stakeholder
+    proposal is the first) can say "gestützt auf die Profilzeilen" and mean
+    these lines. An empty profile yields the empty string, which is the
+    caller's signal that there is nothing to propose *from*: a mandate without
+    profile entries gets no invented anything.
+    """
+    lines = []
+    for field in FIELDS:
+        row = facts.get(field.key)
+        if row is not None and row.value.strip():
+            lines.append(f"- {field.label}: {row.value.strip()}")
+    return "\n".join(lines)
+
+
 def _supersede(row: ClientFact, value: str, filled_by: str) -> None:
     """Move what this field says now into the slot behind it (DEC-2 option A).
 
@@ -433,5 +451,5 @@ def research(client: Client, *, generate=None) -> list[Proposal]:
 
 
 __all__ = ["AGE_AFTER", "BY_HAND", "Checked", "FIELDS", "FIELDS_BY_KEY", "FILLABLE",
-           "Field", "Proposal", "RESEARCHED", "checked", "forget_superseded",
-           "research", "save", "stored"]
+           "Field", "Proposal", "RESEARCHED", "as_prompt_lines", "checked",
+           "forget_superseded", "research", "save", "stored"]
