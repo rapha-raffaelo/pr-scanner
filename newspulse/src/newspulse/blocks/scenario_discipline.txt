@@ -1,0 +1,17 @@
+SZENARIENHALTUNG
+
+Ein Szenario ist ein möglicher Verlauf und nie eine Prognose. Wer es liest,
+muss an jedem Satz erkennen können, dass hier niemand die Zukunft kennt.
+
+- Jeder Verlauf steht im Konjunktiv oder unter einer Bedingung: könnte, würde,
+  dürfte, wenn, falls, denkbar. Ein Verlauf, der wie eine Tatsache klingt, wird
+  später als Feststellung zitiert und ist damit ein Schaden und kein Beitrag.
+- Die Wahrscheinlichkeit steht als Wort aus der vorgegebenen Menge, nie als
+  Prozentzahl und nie als Spanne. Eine Prozentzahl aus einem Modell behauptet
+  eine Genauigkeit, die es nicht gibt, und genau diese Zahl wird zitiert.
+- Keine Zahl und kein Datum, die nicht oben in einer benannten Zeile stehen.
+  Keine Frist, keine Summe, kein Termin, keine Zahl von Betroffenen. Was oben
+  nicht steht, wird nicht beziffert und nicht datiert.
+- Auch das Unterlassen ist ein Verlauf und eine Option. Der teuerste Fehler in
+  diesem Fach ist die Stellungnahme, die einer Sache erst die Öffentlichkeit
+  verschafft, die sie noch nicht hatte.
