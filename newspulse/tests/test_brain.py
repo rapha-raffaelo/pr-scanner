@@ -400,6 +400,9 @@ CARRIED_BEFORE = {
     # New with RIS-03: the stakeholder map and its selection. No "before".
     "stakeholder_map.txt": set(),
     "stakeholder_select.txt": set(),
+    # New with RIS-04: the three courses and the response options. No "before".
+    "scenarios.txt": set(),
+    "response_options.txt": set(),
 }
 
 #: Standards a prompt did *not* carry before and now does. Every one is a
@@ -547,6 +550,25 @@ ADDED_IN_MIGRATION = {
     # itself. false_alarm, because a too-long selection is a list nobody
     # telephones by, which is this feature's version of the always-red band.
     "stakeholder_select.txt": {"no_invention", "evidence", "false_alarm"},
+    # The three courses (RIS-04, DEC-5). scenario_discipline is the block the
+    # story exists for: "der Block, der die Szenarienhaltung trägt, steht in
+    # den neuen Prompts und ist in keinem von ihnen ausgeschrieben" is the
+    # acceptance, and RESTATEMENT_TELLS below is what holds the second half of
+    # it. no_invention and evidence, because a course is written off headlines
+    # and feed snippets under time pressure, which is exactly when a plausible
+    # number gets invented, and because the affected groups have to come off
+    # the stored card rather than out of the industry. house_style is absent on
+    # purpose: a scenario lands on an internal register row, not in a text that
+    # leaves the house. false_alarm would read as permission to return fewer
+    # than three courses, and the schema requires three. journalistic_value and
+    # position address a text aimed at an editor, which a scenario is not.
+    "scenarios.txt": {"scenario_discipline", "no_invention", "evidence"},
+    # The response options (RIS-04). The same three, for the same reasons, plus
+    # one that is specific to this prompt: scenario_discipline is also what
+    # says that not acting is a course and an option, which is the standard
+    # behind "unter den Reaktionsoptionen steht immer nicht reagieren". The
+    # code refuses a set without it; the block is why the model offers it.
+    "response_options.txt": {"scenario_discipline", "no_invention", "evidence"},
 }
 
 #: Phrases that only appear in a prompt if somebody wrote a standard out again
@@ -585,6 +607,14 @@ RESTATEMENT_TELLS = {
     "standing": ["Nähe zum Thema ist kein Beleg", "Meinung ohne Absender",
                  "kostet den Ruf des Mandats",
                  "Beitrag und einer Peinlichkeit"],
+    # RIS-04's acceptance in guard form: the scenario posture lives in the
+    # block and in neither prompt. The prompts may *name* the four likelihood
+    # words and the six speeds — the schema requires the labels — but not
+    # restate why a percentage is refused or why the silence is an option.
+    "scenario_discipline": ["behauptet eine Genauigkeit, die es nicht gibt",
+                            "später als Feststellung zitiert",
+                            "Auch das Unterlassen ist ein Verlauf",
+                            "erst die Öffentlichkeit verschafft"],
 }
 
 #: The other half of DEC-2's guard, and the half RESTATEMENT_TELLS structurally
@@ -1812,6 +1842,57 @@ def _store_a_stakeholder_row(session):
     return stored[0]
 
 
+def _store_a_scenario(session):
+    """Drive ``scenarios`` the way the register's button does: one course set
+    off a stored issue, with the model injected. The narrative and the
+    Kommunikationsbedarf are model prose a consultant reads into a meeting,
+    which is exactly what the stamp is about."""
+    from newspulse import scenarios
+    from newspulse.models import Issue, IssueSignal
+
+    client = _a_mandate(session)
+    founding = _an_article(session, "szenario")
+    issue = Issue(
+        client_id=client.id,
+        title="Verwahrung im Wandel",
+        opened_by="mensch",
+        opened_at=_RECENTLY,
+        last_moved_at=_RECENTLY,
+    )
+    issue.signals.append(
+        IssueSignal(
+            article_id=founding.id,
+            reason="Teil der angenommenen Wiederholung.",
+            attached_by="mensch",
+            attached_at=_RECENTLY,
+            happened_at=founding.published_at,
+        )
+    )
+    session.add(issue)
+    session.commit()
+    stored = scenarios.generate_scenarios(
+        session,
+        issue,
+        invoke=lambda *a, **k: json.dumps(
+            {
+                "szenarien": [
+                    {
+                        "art": "wahrscheinlicher",
+                        "verlauf": "Die Kritik könnte sich fortsetzen.",
+                        "wahrscheinlichkeit": "möglich",
+                        "ausloeser": ["zweites_medium"],
+                        "stakeholder": [],
+                        "kommunikationsbedarf": "",
+                    }
+                ]
+            }
+        ),
+        now=_RECENTLY,
+    )
+    assert stored
+    return stored[0]
+
+
 #: Every generator in the tool, each paired with a call that drives its real
 #: generate-then-store path. The point of the list is that it is exhaustive, and
 #: the test below it is what keeps it that way: a stamp on the two generators
@@ -1837,6 +1918,11 @@ GENERATORS = [
     # own sentences later rest on. The selection rows are stamped by the same
     # module through the same capture.
     ("stakeholders", _store_a_stakeholder_row),
+    # The three courses (RIS-04): the likelihood and the triggers come from
+    # closed sets, but the narrative and the Kommunikationsbedarf are model
+    # prose a consultant reads into a meeting. The response options are
+    # stamped by the same module through the same capture.
+    ("scenarios", _store_a_scenario),
 ]
 
 
