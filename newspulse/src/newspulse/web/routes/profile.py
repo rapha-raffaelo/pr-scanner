@@ -20,6 +20,7 @@ from ..mandates import mandate_or_404
 from ..app import get_db, templates
 from ..redirects import local_target
 from ..runlock import guard as _run_guard
+from . import stakeholder_ui
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -462,22 +463,6 @@ def forget_superseded(
 # because that is where it is worked with: beside the issues its selections
 # hang on.
 
-#: What the page says when the proposal did not come back. A constant because
-#: it is a key in the i18n table; the cause goes to the log, never to the page.
-_PROPOSAL_FAILED = "Der Vorschlag ist fehlgeschlagen. Die Einzelheiten stehen im Log."
-
-# Why the last stakeholder-card click produced what it produced, per mandate.
-# In memory and not a schema change, the same posture as the register's own
-# note: it describes one click, and going stale on a restart is correct.
-_stakeholder_notes: dict[int, str] = {}
-
-
-def pop_stakeholder_note(client_id: int) -> str:
-    """Hand the register page the one-click note, clearing it — the register
-    renders the map, so its route is the reader of this."""
-    return _stakeholder_notes.pop(client_id, "")
-
-
 def _person(request: Request) -> str:
     """The signed-in person, or the token that says a person pressed the button.
 
@@ -509,17 +494,12 @@ def propose_stakeholders(
         # English page — and a ParseError's text is the model's malformed
         # answer, which is nothing a reader can act on.
         _log.exception("stakeholder proposal for client %s failed", client_id)
-        _stakeholder_notes[client_id] = _PROPOSAL_FAILED
+        stakeholder_ui.note(client_id, stakeholder_ui.PROPOSAL_FAILED)
     else:
         if added is None:
-            _stakeholder_notes[client_id] = (
-                "Ohne Profilangaben wird keine Karte erfunden. Erst das Profil "
-                "füllen, dann trägt der Vorschlag."
-            )
+            stakeholder_ui.note(client_id, stakeholder_ui.NO_PROFILE)
         elif not added:
-            _stakeholder_notes[client_id] = (
-                "Der Vorschlag hat keine neuen Gruppen ergeben."
-            )
+            stakeholder_ui.note(client_id, stakeholder_ui.NO_NEW_GROUPS)
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
 
@@ -559,10 +539,7 @@ def save_stakeholder(
         _log.info("out-of-set stakeholder level for client %s refused", client_id)
         row = None
     if row is None:
-        _stakeholder_notes[client_id] = (
-            "Die Zeile wurde nicht gespeichert: es fehlt die Gruppe, oder der "
-            "Name steht schon auf der Karte."
-        )
+        stakeholder_ui.note(client_id, stakeholder_ui.ROW_NOT_SAVED)
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
 

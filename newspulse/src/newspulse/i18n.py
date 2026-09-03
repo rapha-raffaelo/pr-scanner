@@ -2315,6 +2315,11 @@ _EN: dict[str, str] = {
         "The selection failed. The details are in the log.",
     "Der Vorschlag ist fehlgeschlagen. Die Einzelheiten stehen im Log.":
         "The proposal failed. The details are in the log.",
+    # The crisis page selects from the map but does not maintain it, so its
+    # empty state is a named absence with the link to where it is filled in.
+    "Noch keine Stakeholder-Karte für dieses Mandat.":
+        "No stakeholder map for this mandate yet.",
+    "Zur Stakeholder-Karte": "To the stakeholder map",
 }
 
 _TABLES = {"de": {}, "en": _EN}

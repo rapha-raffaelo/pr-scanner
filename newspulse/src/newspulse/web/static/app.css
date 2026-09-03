@@ -2485,3 +2485,7 @@ button:disabled { opacity: .55; cursor: default; }
 .ssel__g { font-weight: 600; }
 .ssel__why, .ssel__need, .ssel__c { font-size: var(--t-caption); color: var(--muted); }
 .ssel__c b { color: var(--warn); }
+/* No map, no selection: the named absence with the link to where the map is
+   maintained — the crisis page selects from the card and never edits it. */
+.ssel__missing { font-size: var(--t-caption); color: var(--muted); }
+.ssel__missing a { font-weight: 600; }

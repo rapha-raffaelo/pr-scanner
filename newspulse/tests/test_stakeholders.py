@@ -472,9 +472,11 @@ def test_a_crisis_carries_a_selection_of_its_own(session, mandate):
 # --- The order that is kept is the person's ----------------------------------------
 
 
-def _seed_selection(session, mandate) -> tuple[Issue, list[StakeholderSelection]]:
+def _seed_selection(
+    session, mandate, *, title: str = "Vorwurf Vertragsklauseln"
+) -> tuple[Issue, list[StakeholderSelection]]:
     _seed_card(session, mandate)
-    issue = _issue(session, mandate)
+    issue = _issue(session, mandate, title=title)
     answer = _selection_answer(
         {"gruppe": "Anwohner am Standort", "begruendung": "Wohnen am Standort."},
         {"gruppe": "Branchenverband", "begruendung": "Spricht für die Branche."},
@@ -651,25 +653,232 @@ def test_the_empty_information_need_renders_as_a_named_absence(
 
 def test_every_python_written_note_and_label_is_translated():
     """The strings written in Python and rendered through ``t(...)`` cannot be
-    seen by a template scan, so they are held to the table here."""
-    from newspulse import i18n
+    seen by a template scan, so they are held to the table here.
 
-    sentences = (
-        "Ohne Profilangaben wird keine Karte erfunden. Erst das Profil füllen, "
-        "dann trägt der Vorschlag.",
-        "Der Vorschlag hat keine neuen Gruppen ergeben.",
-        "Die Zeile wurde nicht gespeichert: es fehlt die Gruppe, oder der Name "
-        "steht schon auf der Karte.",
-        "Keine Auswahl entstanden: ohne Karte oder ohne begründbar betroffene "
-        "Gruppe wird nichts gespeichert.",
-        "Die Reihenfolge wurde nicht gespeichert: das Formular war unvollständig.",
-        "Die Reihenfolge wurde nicht gespeichert: sie nennt nicht genau die "
-        "Zeilen der Auswahl.",
+    The notes are walked off :data:`stakeholder_ui.NOTES` rather than copied
+    into a list here: a sentence added to the feature without its English pair
+    has to fail this test, and a list that has to be kept in step by hand is a
+    list that stops being in step.
+    """
+    from newspulse import i18n
+    from newspulse.web.routes import stakeholder_ui
+
+    labels = (
         # The three levels render through ``t(...)`` off the stored value.
         "hoch",
         "mittel",
         "niedrig",
     )
     known = set(i18n.known_keys())
-    for sentence in sentences:
+    for sentence in (*stakeholder_ui.NOTES, *labels):
         assert sentence in known, sentence
+
+
+# --- What the review found -----------------------------------------------------------
+
+
+def test_renaming_a_row_onto_a_case_variant_of_another_group_is_refused(
+    session, mandate
+):
+    """``_norm`` is what this module means by one group, and the schema's
+    UNIQUE compares the stored spelling — so the check has to be here, on the
+    edit branch as well as on the add branch. Two rows ``_norm`` calls the same
+    would collapse in ``select_for``'s lookup, and the loser would be
+    unselectable for every issue and every crisis, silently."""
+    stakeholders.save_row(session, mandate, group="Anwohner", by="mensch")
+    verband = stakeholders.save_row(session, mandate, group="Verband", by="mensch")
+
+    refused = stakeholders.save_row(
+        session, mandate, group="anwohner", by="mensch", row_id=verband.id
+    )
+
+    assert refused is None
+    session.expire_all()
+    assert sorted(row.group_name for row in stakeholders.card(session, mandate)) == [
+        "Anwohner",
+        "Verband",
+    ]
+
+
+def test_a_person_editing_a_proposed_row_clears_the_model_stamp(session, mandate):
+    """The row is the person's from that point: their Betroffenheit is their
+    own text, and a stamp would claim a model call that never happened."""
+    _fact(session, mandate, "sitz", "Leipzig, Deutschland")
+    added = stakeholders.propose_card(
+        session,
+        mandate,
+        invoke=lambda prompt, timeout=None: _card_answer(
+            {"gruppe": "Anwohner", "betroffenheit": "Wohnen am Werk.", "einfluss": "mittel"}
+        ),
+    )
+    proposed = added[0]
+    assert proposed.brain_version is not None
+
+    edited = stakeholders.save_row(
+        session,
+        mandate,
+        group="Anwohner",
+        betroffenheit="Wohnen seit dem Ausbau direkt an der Zufahrt.",
+        by="berater@agentur.de",
+        row_id=proposed.id,
+    )
+
+    assert edited.set_by == "berater@agentur.de"
+    assert edited.brain_version is None
+
+
+def test_a_cleared_position_field_answers_with_a_note_and_not_a_422(
+    web, session, mandate
+):
+    """The position input is a number field a person can empty. FastAPI's raw
+    validation JSON is not an answer somebody who pressed a button can act
+    on — the page has to come back with the sentence."""
+    issue, rows = _seed_selection(session, mandate)
+    response = web.post(
+        f"/issues/{issue.id}/stakeholder/reihenfolge",
+        data={
+            "sid": [str(row.id) for row in rows],
+            "pos": ["1", "", "3"],
+            "redirect_to": f"/client/{mandate.id}/issues",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    session.expire_all()
+    assert all(
+        row.position_set_by == stakeholders.PROPOSED_BY_MODEL
+        for row in stakeholders.selection_for(session, issue=issue)
+    )
+    assert "das Formular war unvollständig" in web.get(
+        f"/client/{mandate.id}/issues"
+    ).text
+
+
+def test_two_rows_carrying_the_same_number_refuse_the_order(web, session, mandate):
+    """A tie-break would be the tool guessing half the call order, which the
+    page would then present as the person's — the one claim this feature exists
+    not to make."""
+    issue, rows = _seed_selection(session, mandate)
+    response = web.post(
+        f"/issues/{issue.id}/stakeholder/reihenfolge",
+        data={
+            "sid": [str(row.id) for row in rows],
+            "pos": ["1", "1", "2"],
+            "redirect_to": f"/client/{mandate.id}/issues",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    session.expire_all()
+    stored = stakeholders.selection_for(session, issue=issue)
+    assert [row.id for row in stored] == [row.id for row in rows]
+    assert all(
+        row.position_set_by == stakeholders.PROPOSED_BY_MODEL for row in stored
+    )
+    assert "dieselbe Nummer" in web.get(f"/client/{mandate.id}/issues").text
+
+
+def test_the_register_reads_every_selection_in_one_query(web, session, mandate):
+    """The history half of the register is unbounded, so the selections cannot
+    be read per row. One IN answers them all, and ``selectin`` brings the groups
+    in one more."""
+    from sqlalchemy import event
+
+    _seed_selection(session, mandate)
+    _seed_selection(session, mandate, title="Zweiter Vorwurf")
+    _seed_selection(session, mandate, title="Dritter Vorwurf")
+
+    statements: list[str] = []
+
+    def _record(conn, cursor, statement, *args):
+        if "stakeholder_selections" in statement:
+            statements.append(statement)
+
+    event.listen(session.get_bind(), "before_cursor_execute", _record)
+    try:
+        assert web.get(f"/client/{mandate.id}/issues").status_code == 200
+    finally:
+        event.remove(session.get_bind(), "before_cursor_execute", _record)
+
+    assert len(statements) == 1, statements
+
+
+def _crisis(session, mandate) -> Crisis:
+    article = _article(session, "Werk stillgelegt — Bericht")
+    standing = Crisis(
+        client_id=mandate.id, article_id=article.id, declared_by="mensch"
+    )
+    session.add(standing)
+    session.commit()
+    return standing
+
+
+def test_the_crisis_page_offers_the_selection_and_keeps_the_persons_order(
+    web, session, mandate
+):
+    """The acceptance names both occasions. The engine anchored a crisis from
+    the start; this is the page that reaches it."""
+    _seed_card(session, mandate)
+    standing = _crisis(session, mandate)
+    back = f"/client/{mandate.id}/krise?krise={standing.id}"
+
+    page = web.get(f"/client/{mandate.id}/krise")
+    assert "Stakeholder auswählen" in page.text
+
+    rows = stakeholders.select_for(
+        session,
+        crisis=standing,
+        invoke=lambda prompt, timeout=None: _selection_answer(
+            {"gruppe": "Belegschaft", "begruendung": "Das eigene Werk steht still."},
+            {"gruppe": "Branchenverband", "begruendung": "Spricht für die Branche."},
+        ),
+    )
+    page = web.get(back)
+    assert "Reihenfolge: Empfehlung" in page.text
+    assert "Das eigene Werk steht still." in page.text
+
+    response = web.post(
+        f"/crisis/{standing.id}/stakeholder/reihenfolge",
+        data={
+            "sid": [str(row.id) for row in rows],
+            "pos": ["2", "1"],
+            "redirect_to": back,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    session.expire_all()
+    fresh = stakeholders.selection_for(session, crisis=standing)
+    assert [row.id for row in fresh] == [rows[1].id, rows[0].id]
+    assert all(row.position_set_by == "mensch" for row in fresh)
+    assert "Reihenfolge gesetzt von" in web.get(back).text
+
+
+def test_the_crisis_page_names_the_missing_map_with_the_link_to_it(
+    web, session, mandate
+):
+    """No map, no selection — and the named absence rather than a mute block:
+    the crisis morning selects from the card, so it says where the card is."""
+    standing = _crisis(session, mandate)
+    page = web.get(f"/client/{mandate.id}/krise?krise={standing.id}")
+    assert "Noch keine Stakeholder-Karte" in page.text
+    assert f"/client/{mandate.id}/issues" in page.text
+
+
+def test_a_benchmarks_issue_button_spends_no_model_call(web, session, mandate):
+    """A yardstick has no workspace page, so its buttons cannot act either —
+    otherwise a hand-typed POST still spends a call writing for a company that
+    will never receive one."""
+    _seed_card(session, mandate)
+    issue = _issue(session, mandate)
+    mandate.is_competitor = True
+    session.commit()
+
+    response = web.post(
+        f"/issues/{issue.id}/stakeholder/auswahl",
+        data={"redirect_to": "/"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert session.scalars(select(StakeholderSelection)).all() == []

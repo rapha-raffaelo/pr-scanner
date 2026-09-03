@@ -46,7 +46,7 @@ from ...models import (
 from ..app import get_db, templates
 from ..mandates import mandate_or_404
 from ..redirects import local_target
-from .profile import pop_stakeholder_note
+from . import stakeholder_ui
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -224,7 +224,7 @@ def issues_page(
             "has_profile": bool(
                 profiles.as_prompt_lines(profiles.stored(session, client.id))
             ),
-            "stakeholder_note": pop_stakeholder_note(client.id),
+            "stakeholder_note": stakeholder_ui.pop_note(client.id),
             # The stored cap, so the form cannot promise a width the column
             # truncates, and where the map's buttons return to.
             "smap_max": STAKEHOLDER_TEXT_MAX,
@@ -324,7 +324,13 @@ def _issue_for(session: Session, issue_id: int) -> Issue | None:
     ``web/mandates.py`` was written to end.
     """
     row = session.get(Issue, issue_id)
-    if row is None or row.client.is_competitor:
+    if row is None:
+        return None
+    # ``Issue`` carries no ``client`` relationship, so the mandate is fetched:
+    # one keyed read on a button, against a model call spent on a company that
+    # will never receive what it writes.
+    mandate = session.get(Client, row.client_id)
+    if mandate is None or mandate.is_competitor:
         return None
     return row
 
@@ -441,44 +447,10 @@ def escalate_issue(
 
 
 # --- The stakeholder selection at an issue (RIS-03) --------------------------------
-
-# The three sentences the selection's buttons can answer with. Held as
-# constants because each is a key in the i18n table, and a sentence built with
-# an f-string is a sentence that renders German on an English page.
-_SELECTION_FAILED = "Die Auswahl ist fehlgeschlagen. Die Einzelheiten stehen im Log."
-_ORDER_INCOMPLETE = (
-    "Die Reihenfolge wurde nicht gespeichert: das Formular war unvollständig."
-)
-_ORDER_DUPLICATE = (
-    "Die Reihenfolge wurde nicht gespeichert: zwei Zeilen tragen dieselbe Nummer."
-)
-_ORDER_WRONG_ROWS = (
-    "Die Reihenfolge wurde nicht gespeichert: sie nennt nicht genau die Zeilen "
-    "der Auswahl."
-)
-
-
-def _ordered_ids(sid: list[int], pos: list[str]) -> tuple[list[int], str]:
-    """The row ids in the person's order, or the sentence saying why not.
-
-    The numbers arrive as text on purpose: a cleared position field posts an
-    empty string, and FastAPI's 422 page is not an answer a person who pressed
-    "Reihenfolge speichern" can do anything with.
-
-    Two rows carrying the same number are refused rather than tie-broken. A
-    tie-break would be the tool guessing half the call order and the page then
-    presenting the result as "Reihenfolge gesetzt von <name>" — the one claim
-    this feature exists not to make.
-    """
-    if not sid or len(sid) != len(pos):
-        return [], _ORDER_INCOMPLETE
-    try:
-        numbers = [int(value) for value in pos]
-    except ValueError:
-        return [], _ORDER_INCOMPLETE
-    if len(set(numbers)) != len(numbers):
-        return [], _ORDER_DUPLICATE
-    return [row_id for _number, row_id in sorted(zip(numbers, sid, strict=True))], ""
+#
+# The notes and the order-form reader are ``stakeholder_ui``'s: the same
+# sentences answer the same clicks on the crisis page, and one channel means a
+# reader looks in one place for the answer to any of the card's buttons.
 
 
 @router.post("/issues/{issue_id}/stakeholder/auswahl")
@@ -503,12 +475,13 @@ def select_stakeholders(
             # page would be half English), and a ParseError's text is the
             # model's malformed answer, which is nothing a reader can act on.
             _log.exception("stakeholder selection for issue %d failed", issue_id)
-            _last_note[standing.client_id] = _SELECTION_FAILED
+            stakeholder_ui.note(
+                standing.client_id, stakeholder_ui.SELECTION_FAILED
+            )
         else:
             if not selected:
-                _last_note[standing.client_id] = (
-                    "Keine Auswahl entstanden: ohne Karte oder ohne begründbar "
-                    "betroffene Gruppe wird nichts gespeichert."
+                stakeholder_ui.note(
+                    standing.client_id, stakeholder_ui.NO_SELECTION
                 )
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
@@ -520,7 +493,7 @@ def reorder_stakeholders(
     sid: list[int] = Form(default_factory=list),
     # Text, not int: a cleared number field posts "" and FastAPI would answer
     # a person pressing a button with raw validation JSON. The coercion — and
-    # the sentence when it fails — belongs to :func:`_ordered_ids`.
+    # the sentence when it fails — belongs to :func:`stakeholder_ui.ordered_ids`.
     pos: list[str] = Form(default_factory=list),
     redirect_to: str = Form("/"),
     session: Session = Depends(get_db),
@@ -534,14 +507,16 @@ def reorder_stakeholders(
     """
     standing = _issue_for(session, issue_id)
     if standing is not None:
-        ordered, refusal = _ordered_ids(sid, pos)
+        ordered, refusal = stakeholder_ui.ordered_ids(sid, pos)
         if refusal:
-            _last_note[standing.client_id] = refusal
+            stakeholder_ui.note(standing.client_id, refusal)
         else:
             try:
                 stakeholders.reorder(
                     session, issue=standing, ordered_ids=ordered, by=_who(request)
                 )
             except ValueError:
-                _last_note[standing.client_id] = _ORDER_WRONG_ROWS
+                stakeholder_ui.note(
+                    standing.client_id, stakeholder_ui.ORDER_WRONG_ROWS
+                )
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
