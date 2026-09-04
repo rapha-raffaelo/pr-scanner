@@ -360,7 +360,7 @@ def test_the_guide_reaches_the_advisory_prompt(session):
     session.add(article)
     session.flush()
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id,
             client_id=client.id,
             summary="s",
@@ -417,7 +417,7 @@ def _covered(session, client, title, *, days_ago=1):
     session.add(article)
     session.flush()
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id,
             client_id=client.id,
             summary="s",
@@ -581,7 +581,7 @@ def _record_coverage(session, client, *, title: str, summary: str, when: dt.date
     session.add(article)
     session.flush()
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id, client_id=client.id, summary=summary,
             category=Category.SONSTIGES, relevance_score=7, importance_score=7,
             is_alert=False,

@@ -113,7 +113,7 @@ def _market(session, client_obj, article) -> None:
 
 def _coverage(session, client_obj, article) -> None:
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id,
             client_id=client_obj.id,
             summary="s",

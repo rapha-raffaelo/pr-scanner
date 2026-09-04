@@ -367,7 +367,7 @@ def test_deactivate_is_soft_and_keeps_articles_and_analyses(session):
     session.add(article)
     session.flush()
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id,
             client_id=client.id,
             category=Category.FINANZEN,

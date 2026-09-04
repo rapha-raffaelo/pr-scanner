@@ -105,7 +105,7 @@ def _seed_coverage(
             client_id=client.id,
             summary=summary,
             category=category,
-            relevance_score=importance,
+            is_relevant=importance >= 1, relevance_score=importance,
             importance_score=importance,
             is_alert=is_alert,
         )
@@ -256,6 +256,33 @@ def test_safe_url_blanks_dangerous_schemes_but_keeps_http():
     assert safe_url("javascript:alert(1)") == ""
     assert safe_url("data:text/html,<script>1</script>") == ""
     assert safe_url("java\tscript:alert(1)") == ""  # tab-strip bypass closed
+
+
+def test_an_article_the_model_rejected_is_not_shown_as_coverage(factory, client):
+    """``is_relevant`` is the analyzer's answer to "does this concern the
+    mandate", and it decides what counts as coverage — not the score beside it.
+
+    The score used to stand in for it, on the reasoning that a relevance of 0 is
+    how the model says no. True, but only how it says no *emphatically*:
+    everything rejected while scoring 1 to 4 came through and was rendered as
+    coverage. Measured in production, visible rows before and after asking the
+    right question: Freedom24 462 -> 100, Qonto 68 -> 19, Arrakis 27 -> 0, while
+    Zalando stayed at 375 and Asos at 12 — genuine coverage lost nothing.
+    """
+    with factory() as s:
+        _seed_coverage(
+            s, client_name="Zeta AG", title="ABGELEHNT Marktbericht",
+            url="https://ex.de/abgelehnt", importance=4, is_alert=False,
+            published_at=_local_noon(_TEST_DAY),
+        )
+        # The analyzer's verdict, against a score high enough to pass the floor:
+        # exactly the row that used to render.
+        s.query(Analysis).update({Analysis.is_relevant: False})
+        s.commit()
+
+    body = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
+
+    assert "ABGELEHNT Marktbericht" not in body
 
 
 def test_zero_relevance_analysis_is_excluded(factory, client):
@@ -487,7 +514,7 @@ def test_competitor_coverage_stays_out_of_the_daily_triage(factory, client):
             )
             s.add(art)
             s.flush()
-            s.add(Analysis(
+            s.add(Analysis(is_relevant=True, 
                 article_id=art.id, client_id=owner.id, summary="Zusammenfassung.",
                 category=Category.PRODUKT, relevance_score=5, importance_score=7,
                 is_alert=False,

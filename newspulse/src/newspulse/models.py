@@ -485,8 +485,9 @@ class Client(Base):
         return str(getattr(kind, "value", kind)) in (self.muted_signal_kinds or [])
 
 
-#: The floor for "this analysis concerns its client". A relevance of 0 is the
-#: analyzer's way of saying a matched pair does not actually concern the client.
+#: The confidence floor beneath :func:`visible_coverage`'s main question. It is
+#: not the question itself — ``is_relevant`` is — and treating it as such is what
+#: let every rejection scored 1 or higher render as coverage.
 MIN_RELEVANCE = 1
 
 
@@ -497,10 +498,30 @@ def visible_coverage():
     adding a second reason to hide a row — a human dismissing it — would have meant
     finding all of them and never missing one. One predicate cannot drift, and a
     dismissed article cannot survive in the corner nobody remembered.
+
+    ``is_relevant`` is the analyzer's own answer to "does this concern the
+    mandate", and it was not asked here. The score stood in for it, on the
+    reasoning that a relevance of 0 is how the model says no — true, but it is
+    only how the model says no *emphatically*. Everything it rejected while
+    scoring 1 to 4 came through and was rendered as coverage.
+
+    Measured before this line was added, per mandate, visible rows before and
+    after asking:
+
+        Zalando           375 -> 375     Freedom24   462 -> 100
+        Asos               12 ->  12     Qonto        68 ->  19
+        Revolut             2 ->   2     Remexian     43 ->  22
+        H&M               176 -> 175     Arrakis      27 ->   0
+
+    Genuine coverage loses nothing — Zalando, Asos and Revolut are unchanged —
+    and what goes is what the model had already rejected in writing. Arrakis
+    reaching zero is not a loss either: every one of those 27 was a crypto
+    article that matched a topic term, and the model said so 27 times.
     """
     from sqlalchemy import and_
 
     return and_(
+        Analysis.is_relevant.is_(True),
         Analysis.relevance_score >= MIN_RELEVANCE,
         Analysis.dismissed_at.is_(None),
     )

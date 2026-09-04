@@ -36,7 +36,7 @@ def _add(session, client, title, *, days_ago=1, relevance=5, alert=False, source
     session.add(
         Analysis(
             article_id=art.id, client_id=client.id, summary="Zusammenfassung.",
-            category=Category.FINANZEN, relevance_score=relevance,
+            category=Category.FINANZEN, is_relevant=relevance >= 1, relevance_score=relevance,
             importance_score=7, is_alert=alert,
         )
     )

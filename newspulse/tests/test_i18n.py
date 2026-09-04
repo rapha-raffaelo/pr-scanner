@@ -208,7 +208,7 @@ def test_category_labels_are_translated_but_the_stored_value_is_not(client, fact
         )
         s.add(art)
         s.flush()
-        s.add(Analysis(
+        s.add(Analysis(is_relevant=True, 
             article_id=art.id, client_id=c.id, summary="Zusammenfassung.",
             category=Category.KRISE, relevance_score=5, importance_score=8,
             is_alert=False,

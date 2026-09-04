@@ -60,7 +60,7 @@ def _seed(session, *, client_obj, title, url, source, day, category, importance=
     session.add(
         Analysis(
             article_id=article.id, client_id=client_obj.id, summary=summary,
-            category=category, relevance_score=relevance,
+            category=category, is_relevant=relevance >= 1, relevance_score=relevance,
             importance_score=importance, is_alert=is_alert,
         )
     )

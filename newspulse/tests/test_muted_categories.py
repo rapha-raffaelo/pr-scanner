@@ -98,7 +98,7 @@ def _seed(session, *, muted: list[str] | None = None) -> int:
         session.add(article)
         session.flush()
         session.add(
-            Analysis(
+            Analysis(is_relevant=True, 
                 article_id=article.id,
                 client_id=subject.id,
                 summary="s",
@@ -175,7 +175,7 @@ def test_muting_is_per_client_not_portfolio_wide(factory, client):
         session.add(article)
         session.flush()
         session.add(
-            Analysis(
+            Analysis(is_relevant=True, 
                 article_id=article.id,
                 client_id=bank.id,
                 summary="s",

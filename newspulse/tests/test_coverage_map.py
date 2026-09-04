@@ -58,7 +58,7 @@ def _covered(session, client: Client, source: str, n: int) -> None:
         session.add(article)
         session.flush()
         session.add(
-            Analysis(
+            Analysis(is_relevant=True, 
                 article_id=article.id, client_id=client.id, summary="s",
                 category=Category.SONSTIGES, relevance_score=5,
                 importance_score=5, is_alert=False,

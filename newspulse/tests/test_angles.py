@@ -210,7 +210,7 @@ def test_own_coverage_is_offered_as_background_when_it_exists(session):
     client = _client(session)
     covered = _article(session, "Arrakis erweitert Vaults", "https://ex.de/own")
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=covered.id,
             client_id=client.id,
             summary="s",

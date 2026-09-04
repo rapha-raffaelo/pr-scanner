@@ -71,7 +71,7 @@ def _alert(session, client_obj, *, day, url):
     )
     session.add(article)
     session.flush()
-    session.add(Analysis(
+    session.add(Analysis(is_relevant=True, 
         article_id=article.id, client_id=client_obj.id, summary="Ein Satz.",
         category=Category.KRISE, relevance_score=5, importance_score=8, is_alert=True,
     ))

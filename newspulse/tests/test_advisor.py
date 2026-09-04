@@ -49,7 +49,7 @@ def client(session):
         session.add(art)
         session.flush()
         session.add(
-            Analysis(
+            Analysis(is_relevant=True, 
                 article_id=art.id, client_id=c.id, summary="Zusammenfassung.",
                 category=Category.KRISE, relevance_score=5,
                 importance_score=9 - i, is_alert=True,

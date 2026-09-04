@@ -145,7 +145,7 @@ def test_analysis_stores_category_enum_by_value(session):
     session.add_all([client, article])
     session.flush()
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id,
             client_id=client.id,
             summary="Ein Satz.",
@@ -185,7 +185,7 @@ def test_one_article_two_clients_yields_two_analyses(session):
     session.flush()
     session.add_all(
         [
-            Analysis(
+            Analysis(is_relevant=True, 
                 article_id=article.id,
                 client_id=a.id,
                 category=Category.WETTBEWERB,
@@ -193,7 +193,7 @@ def test_one_article_two_clients_yields_two_analyses(session):
                 importance_score=5,
                 is_alert=False,
             ),
-            Analysis(
+            Analysis(is_relevant=True, 
                 article_id=article.id,
                 client_id=b.id,
                 category=Category.WETTBEWERB,
@@ -216,7 +216,7 @@ def test_duplicate_article_client_pair_is_rejected(session):
     session.add_all([client, article])
     session.flush()
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id,
             client_id=client.id,
             category=Category.PRODUKT,
@@ -228,7 +228,7 @@ def test_duplicate_article_client_pair_is_rejected(session):
     session.commit()
 
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id,
             client_id=client.id,
             category=Category.KRISE,
@@ -256,7 +256,7 @@ def test_importance_score_out_of_range_is_rejected(session):
     session.add_all([client, article])
     session.flush()
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id,
             client_id=client.id,
             category=Category.FINANZEN,

@@ -83,7 +83,7 @@ def _mandate(session, *, coverage: int = 0) -> tuple[Client, Angle]:
         session.add(art)
         session.flush()
         session.add(
-            Analysis(
+            Analysis(is_relevant=True, 
                 article_id=art.id, client_id=client.id, summary="s",
                 category=Category.PRODUKT, relevance_score=6,
                 importance_score=6, is_alert=False,
@@ -462,7 +462,7 @@ def test_radar_hits_that_are_all_own_coverage_are_named_as_such(factory, web):
         session.add(TopicHit(client_id=client.id, article_id=article.id,
                              found_at=dt.datetime.now(dt.UTC)))
         session.add(
-            Analysis(
+            Analysis(is_relevant=True, 
                 article_id=article.id, client_id=client.id, summary="s",
                 category=Category.PRODUKT, relevance_score=7,
                 importance_score=7, is_alert=False,

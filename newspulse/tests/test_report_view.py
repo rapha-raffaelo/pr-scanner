@@ -100,7 +100,7 @@ def _piece(
     )
     session.add(article)
     session.flush()
-    analysis = Analysis(
+    analysis = Analysis(is_relevant=True, 
         article_id=article.id,
         client_id=client.id,
         summary="Zusammenfassung.",

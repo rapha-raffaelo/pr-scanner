@@ -179,7 +179,7 @@ def test_the_clients_own_press_is_not_what_gets_refreshed_from(session, monkeypa
     client = _client(session)
     own = _market(session, client, "IB-7 eröffnet neues Werk")
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=own.id,
             client_id=client.id,
             summary="Über den Mandanten.",

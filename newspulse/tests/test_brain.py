@@ -1553,7 +1553,7 @@ def _own_coverage(session, client: Client) -> None:
     """One analysed story about the mandate, which is what the advisor reads."""
     article = _an_article(session, "eigene")
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id,
             client_id=client.id,
             summary="Alpha AG baut die Verwahrung aus.",

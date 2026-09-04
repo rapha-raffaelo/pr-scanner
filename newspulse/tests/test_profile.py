@@ -492,7 +492,7 @@ def test_the_competition_tab_puts_the_four_questions_in_one_place(factory, web):
         )
         session.add(article)
         session.flush()
-        session.add(Analysis(article_id=article.id, client_id=rival.id, summary="s",
+        session.add(Analysis(is_relevant=True, article_id=article.id, client_id=rival.id, summary="s",
                              category=Category.PRODUKT, relevance_score=6,
                              importance_score=6, is_alert=False))
         session.commit()

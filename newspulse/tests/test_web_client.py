@@ -102,7 +102,7 @@ def _seed_article(
             client_id=client_obj.id,
             summary=summary,
             category=category,
-            relevance_score=relevance,
+            is_relevant=relevance >= 1, relevance_score=relevance,
             importance_score=importance,
             is_alert=is_alert,
         )
