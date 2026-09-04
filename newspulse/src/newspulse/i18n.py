@@ -2452,9 +2452,9 @@ _EN: dict[str, str] = {
     "nachtragen": "fill in",
     "Im Profil steht kein Sprecher.": "The profile names no spokesperson.",
     "Im Profil steht kein Krisenkontakt.": "The profile names no crisis contact.",
-    "Keine bestätigte Zahl auf diesem Papier: keine belegte Angabe stammt aus einer bestätigten internen Quelle.":
-        "No confirmed figure on this packet: no supported statement comes from a "
-        "confirmed internal source.",
+    "Keine bestätigte Zahl auf diesem Papier: keine belegte Angabe aus einer bestätigten internen Quelle nennt eine Zahl.":
+        "No confirmed figure on this packet: no supported statement from a "
+        "confirmed internal source names a figure.",
     "Auf diesem Papier steht kein Entscheider.": "This packet names no decider.",
     "Auf diesem Papier steht keine Frist.": "This packet sets no deadline.",
     # The two that stand at the top of the paper when they are missing.

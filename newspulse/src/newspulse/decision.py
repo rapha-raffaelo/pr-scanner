@@ -946,8 +946,8 @@ GAP_LABELS: dict[GapKind, str] = {
     GapKind.SPRECHER: "Im Profil steht kein Sprecher.",
     GapKind.KRISENKONTAKT: "Im Profil steht kein Krisenkontakt.",
     GapKind.BETROFFENENZAHL: (
-        "Keine bestätigte Zahl auf diesem Papier: keine belegte Angabe stammt "
-        "aus einer bestätigten internen Quelle."
+        "Keine bestätigte Zahl auf diesem Papier: keine belegte Angabe aus "
+        "einer bestätigten internen Quelle nennt eine Zahl."
     ),
     GapKind.ENTSCHEIDER: "Auf diesem Papier steht kein Entscheider.",
     GapKind.FRIST: "Auf diesem Papier steht keine Frist.",
