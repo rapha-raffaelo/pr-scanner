@@ -58,7 +58,7 @@ from ...outlets import normalize_outlet
 from ...stories import cluster
 from .. import spawn
 from ..app import get_db, templates
-from ..mandates import mandate_or_404
+from ..mandates import crisis_or_none, mandate_or_404
 from ..redirects import local_target
 from ..runlock import guard as _run_guard
 from . import issues_view, stakeholder_ui
@@ -743,19 +743,6 @@ def crisis_page(
 # so the crisis page refuses the same input for the same reason.
 
 
-def _crisis_for(session: Session, crisis_id: int) -> Crisis | None:
-    """The crisis, or ``None`` for a stale id — never a 500 on a button.
-
-    A benchmark's crisis is ``None`` as well: :func:`mandate_or_404` keeps the
-    pages off a company nobody reports to, and a button that spends a model
-    call has to hold the same line.
-    """
-    standing = session.get(Crisis, crisis_id)
-    if standing is None or standing.client.is_competitor:
-        return None
-    return standing
-
-
 @router.post("/crisis/{crisis_id}/stakeholder/auswahl")
 def select_crisis_stakeholders(
     crisis_id: int,
@@ -768,12 +755,12 @@ def select_crisis_stakeholders(
     keeps it, order and all, because re-asking would clobber the order a
     person set in the hour it mattered.
     """
-    standing = _crisis_for(session, crisis_id)
+    standing = crisis_or_none(session, crisis_id)
     if standing is None:
         return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
     def _select(worker: Session) -> str:
-        subject = _crisis_for(worker, crisis_id)
+        subject = crisis_or_none(worker, crisis_id)
         if subject is None:
             return ""
         selected = stakeholders.select_for(worker, crisis=subject)
@@ -801,12 +788,12 @@ def top_up_crisis_stakeholders(
     card it is drawn from. The standing rows keep their reasons and their
     order, because that order is the call order somebody is working down.
     """
-    standing = _crisis_for(session, crisis_id)
+    standing = crisis_or_none(session, crisis_id)
     if standing is None:
         return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
     def _top_up(worker: Session) -> str:
-        subject = _crisis_for(worker, crisis_id)
+        subject = crisis_or_none(worker, crisis_id)
         if subject is None:
             return ""
         added = stakeholders.add_to_selection(worker, crisis=subject)
@@ -834,7 +821,7 @@ def drop_crisis_stakeholder(
     every occasion at once, and the map outlives the incident. No model call —
     a person removing a group is a decision, not a question.
     """
-    standing = _crisis_for(session, crisis_id)
+    standing = crisis_or_none(session, crisis_id)
     if standing is not None:
         stakeholders.drop_from_selection(
             session, crisis=standing, selection_id=selection_id
@@ -860,7 +847,7 @@ def reorder_crisis_stakeholders(
     of which the tool sees only part — so the moment a person sorts the list,
     the "Empfehlung" marker ends and the stored order is theirs.
     """
-    standing = _crisis_for(session, crisis_id)
+    standing = crisis_or_none(session, crisis_id)
     if standing is not None:
         ordered, refusal = stakeholder_ui.ordered_ids(sid, pos)
         if refusal:

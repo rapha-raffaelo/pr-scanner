@@ -52,7 +52,7 @@ from ...models import (
 )
 from ..app import get_db, templates
 from ..filenames import client_slug
-from ..mandates import mandate_or_404
+from ..mandates import crisis_or_none, mandate_or_404
 from ..redirects import local_target
 from . import stakeholder_ui
 from .today import _fetch_last_run, _local_tz
@@ -1100,6 +1100,12 @@ def build_packet(
         if issue is None:
             return ""
         mandate = worker.get(Client, issue.client_id)
+        if mandate is None:
+            # A mandate deleted between the click and the worker picking the
+            # job up. ``decision.build`` reads ``client.id`` on its first line,
+            # so without this the race is an AttributeError on a worker thread
+            # rather than a click that quietly did nothing.
+            return ""
         anchor, crisis = _packet_occasion(worker, issue)
         written = decision.build(
             worker, mandate, issue=anchor, crisis=crisis, by=who
@@ -1135,16 +1141,23 @@ def build_crisis_packet(
     one that did not write the same paper, and the papers of both stand in one
     list on the crisis.
     """
-    standing = session.get(Crisis, crisis_id)
+    standing = crisis_or_none(session, crisis_id)
     if standing is None:
         return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
     who = _who(request)
 
     def _write(worker: Session) -> str:
-        row = worker.get(Crisis, crisis_id)
+        # Guarded on the worker side too, and not merely on the request side:
+        # the check is what keeps a hand-typed POST from spending a model call
+        # writing for a company that will never receive one, and a crisis that
+        # became a benchmark's between the click and the worker picking it up
+        # is exactly the case a request-side-only check would let through.
+        row = crisis_or_none(worker, crisis_id)
         if row is None:
             return ""
         mandate = worker.get(Client, row.client_id)
+        if mandate is None:
+            return ""
         written = decision.build(worker, mandate, crisis=row, by=who)
         return "" if written is not None else NO_PACKET
 
