@@ -48,6 +48,7 @@ from newspulse import (
     brain,
     config,
     i18n,
+    issues,
     newsjack,
     outreach,
     plan,
@@ -64,13 +65,16 @@ from newspulse.models import (
     BrainOverride,
     Category,
     Client,
+    IssueSignal,
     MarketSignal,
     NewsjackOpportunity,
     Outreach,
     PlanHook,
     SignalKind,
+    Tonality,
     TopicHit,
 )
+from newspulse.matching import title_hash
 from newspulse.pitch import PitchTarget
 from newspulse.schemas import AngleDraft, PersonalMessage
 from newspulse.web.app import create_app, get_db
@@ -1982,6 +1986,78 @@ def _store_a_packet(session):
 #: generate-then-store path. The point of the list is that it is exhaustive, and
 #: the test below it is what keeps it that way: a stamp on the two generators
 #: with a page and not on the third is a stamp whose absence says nothing.
+def _store_an_issue_signal(session) -> IssueSignal:
+    """Drive ``issues`` through DEC-4's linking pass: an issue opened on a
+    repetition, then one fresh piece of the same matter that the model attaches.
+
+    The assignment's ``reason`` is the sentence a consultant reads when he asks
+    why a piece hangs on a running matter — model prose he then acts on, which
+    is exactly what the stamp is for. The dates, the origin and the mechanics
+    come from stored rows and need none.
+
+    The fresh piece is written *after* the issue is opened, and it has to be:
+    accepting a proposal attaches every article the repetition consists of, so
+    a candidate created beforehand would already hang on the row and there
+    would be nothing left for the model to decide.
+    """
+    client = _a_mandate(session)
+    matter = "Verbraucherschützer rügen Vertragsklauseln bei Alpha"
+    now = dt.datetime.now(dt.UTC)
+
+    def _piece(source: str, word: str, days: float) -> Article:
+        """One wording of the matter, ``days`` before the injected clock."""
+        title = f"{matter} {word}"
+        at = now - dt.timedelta(days=days)
+        article = Article(
+            title=title,
+            url=f"https://ex.de/issue-{source}-{word}",
+            source=source,
+            published_at=at,
+            fetched_at=at,
+            summary_text="Eine kurze Zusammenfassung.",
+            language="de",
+            title_hash=title_hash(title, source),
+        )
+        session.add(article)
+        session.commit()
+        session.add(
+            Analysis(
+                article_id=article.id,
+                client_id=client.id,
+                is_relevant=True,
+                summary=f"{matter} {word}.",
+                category=Category.SONSTIGES,
+                relevance_score=8,
+                importance_score=7,
+                is_alert=False,
+                # A repetition is a repetition of *negative* coverage: that is
+                # what the register is for, and _negative_rows filters on it.
+                tonality=Tonality.NEGATIV,
+                analyzed_at=at,
+            )
+        )
+        session.commit()
+        return article
+
+    _piece("FAZ", "offiziell", 3.0)
+    lead = _piece("taz", "erneut", 1.0)
+    opened = issues.accept(session, client, lead, by="lucas", now=now)
+    assert opened is not None, "the two-day repetition never became an issue"
+
+    _piece("WDR", "scharf", 0.2)
+
+    def _yes(prompt: str, timeout=None) -> str:
+        return json.dumps(
+            {"gehoert_dazu": True, "begruendung": "Derselbe Vorwurf, neu formuliert."}
+        )
+
+    assert issues.link_signals(session, client, invoke=_yes, now=now) == 1
+    session.refresh(opened)
+    return next(
+        row for row in opened.signals if row.attached_by == issues.ATTACHED_BY_MODEL
+    )
+
+
 GENERATORS = [
     ("angles", _store_an_angle),
     ("outreach", _store_a_letter),
@@ -2013,6 +2089,12 @@ GENERATORS = [
     # decided are model prose that goes into the room where a decision is
     # taken, and is read back afterwards to justify it.
     ("decision", _store_a_packet),
+    # The register's assignments (RIS-02): the dates, the origin and the
+    # mechanics come from stored rows, but ``IssueSignal.reason`` is the
+    # sentence a consultant reads when he asks why a piece hangs on a running
+    # matter — and acts on. NULL where a person attached it by hand, which is
+    # the stronger claim.
+    ("issues", _store_an_issue_signal),
 ]
 
 

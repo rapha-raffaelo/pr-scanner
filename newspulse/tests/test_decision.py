@@ -1391,7 +1391,10 @@ def test_the_crisis_button_writes_a_paper_that_hangs_on_the_crisis(
     monkeypatch.setattr(
         issues_view.stakeholder_ui,
         "spend",
-        lambda job, *, client_id, name, failed: job(session),
+        # The real signature, keyword for keyword: ``spend`` grew a ``refused``
+        # message and a stub narrower than the function it replaces turns a
+        # production signature change into a TypeError in an unrelated test.
+        lambda job, *, client_id, name, failed, refused=None: job(session),
     )
     monkeypatch.setattr(
         issues_view.decision,

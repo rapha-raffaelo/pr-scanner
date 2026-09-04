@@ -3023,6 +3023,16 @@ class IssueSignal(Base):
     #: from, because they are statements about the matter and not about when
     #: the tool noticed it.
     happened_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    #: Like :attr:`Angle.brain_version`, and NULL for the same kind of reason as
+    #: :attr:`Outreach.brain_version`: this row is written by two hands. A
+    #: consultant attaching a piece writes his own sentence and carries no
+    #: version; DEC-4's model writes ``reason`` under the standards composed into
+    #: its prompt, and a justification a consultant later acts on has to say
+    #: which ones. Captured where the prompt is composed, not where the row is
+    #: saved, so a redeploy between the two cannot restamp it.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, index=True
+    )
 
     issue: Mapped["Issue"] = relationship(back_populates="signals")
     article: Mapped["Article | None"] = relationship(lazy="selectin")

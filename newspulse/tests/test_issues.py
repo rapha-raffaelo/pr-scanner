@@ -360,6 +360,48 @@ def test_link_signals_attaches_with_the_models_reason(session, mandate):
     assert row.attached_by == issues.ATTACHED_BY_MODEL
 
 
+def test_a_market_signal_becomes_a_candidate_for_an_open_issue(session, mandate):
+    """The linking pass must offer market signals, not only articles.
+
+    Every other test here links coverage to coverage, so the whole market-signal
+    half of the candidate set rested on nothing. Arrived as a hand-run QA probe
+    (``test_qa_ris02_tmp.py``) that was committed by accident and could not be
+    collected — it imported its fixtures through a ``tests.`` package that does
+    not exist on this path. The fixtures live here, so the probe does too.
+    """
+    opened = issues.accept(
+        session, mandate, _two_day_repetition(session, mandate)[1], by="lucas", now=_NOW
+    )
+    assert opened is not None
+    _market(session, mandate, word="frist", published_days_ago=0.5)
+
+    count = issues.link_signals(
+        session, mandate, invoke=_verdict(True, "Derselbe Vorwurf."), now=_NOW
+    )
+
+    assert count == 1, "the dated market signal never became a candidate"
+
+
+def test_an_article_is_still_a_candidate_once_a_signal_hangs_on_the_issue(
+    session, mandate
+):
+    """The other direction across the two kinds: an issue founded on a market
+    signal must still take coverage. A candidate set that narrowed to the kind
+    already attached would quietly stop growing after the first signal."""
+    lead = _cover(session, mandate, source="FAZ", word="offiziell", days_ago=1)
+    _market(session, mandate, word="frist", published_days_ago=5)
+    opened = issues.accept(session, mandate, lead, by="lucas", now=_NOW)
+    assert opened is not None
+    assert any(row.signal_id is not None for row in opened.signals)
+    _cover(session, mandate, source="WDR", word="erneut", days_ago=0.2)
+
+    count = issues.link_signals(
+        session, mandate, invoke=_verdict(True, "Derselbe Vorwurf."), now=_NOW
+    )
+
+    assert count == 1, "no article candidate once a market signal hangs on an issue"
+
+
 def test_a_yes_without_a_reason_is_not_stored(session, mandate):
     """The rule DEC-4 came with, at the model boundary: an assignment nobody
     can justify is not evidence of anything."""

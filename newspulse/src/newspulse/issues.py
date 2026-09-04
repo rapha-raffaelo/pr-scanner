@@ -582,6 +582,7 @@ def attach(
     reason: str,
     by: str,
     now: dt.datetime | None = None,
+    brain_version: int | None = None,
 ) -> IssueSignal:
     """Hang one signal on one issue, with the reason it hangs there.
 
@@ -621,6 +622,10 @@ def attach(
         attached_by=_named(by),
         attached_at=now or dt.datetime.now(dt.UTC),
         happened_at=happened,
+        # Default NULL, which is exactly what a hand attach is: the consultant
+        # wrote that sentence and it carries no version. Only DEC-4's linking
+        # pass hands one in.
+        brain_version=brain_version,
     )
     issue.opened_at = min(issue.opened_at, happened)
     issue.last_moved_at = max(issue.last_moved_at, happened)
@@ -757,10 +762,17 @@ def _link_candidates(
     belongs to a running matter is exactly the question the model is asked, and
     pre-filtering it away would blind DEC-4 to the common case.
     """
+    # ``IS NOT NULL`` is load-bearing, not tidiness. An ``IssueSignal`` carries
+    # either an article or a market signal, so the other column is NULL — and
+    # ``x NOT IN (subquery yielding a NULL)`` is NULL in SQL, never true. One
+    # issue founded on a market signal therefore excluded *every* article from
+    # the candidate set, and one founded on articles excluded every market
+    # signal. Both halves of this function had it, so the register stopped
+    # growing the moment an issue held anything of the other kind.
     already = (
         select(IssueSignal.article_id)
         .join(Issue, Issue.id == IssueSignal.issue_id)
-        .where(Issue.client_id == client.id)
+        .where(Issue.client_id == client.id, IssueSignal.article_id.is_not(None))
         .scalar_subquery()
     )
     pairs = session.execute(
@@ -784,10 +796,11 @@ def _link_candidates(
         )
         for article, _analysis in pairs
     ]
+    # The same NULL trap as ``already`` above, from the other side.
     taken = (
         select(IssueSignal.signal_id)
         .join(Issue, Issue.id == IssueSignal.issue_id)
-        .where(Issue.client_id == client.id)
+        .where(Issue.client_id == client.id, IssueSignal.signal_id.is_not(None))
         .scalar_subquery()
     )
     fresh = session.scalars(
@@ -842,6 +855,10 @@ def link_signals(
     if not candidates:
         return 0
     resolved_invoke = invoke if invoke is not None else invoke_with_fallback
+    # Read once, before the first prompt is composed, and carried to every row
+    # this pass writes: a redeploy between the call and the commit must not
+    # restamp a sentence with standards it was never written under.
+    written_under = brain.version(session)
     attached = 0
     placed: set[int] = set()  # positions in ``candidates`` already attached
     for issue in open_rows:
@@ -876,6 +893,9 @@ def link_signals(
                 reason=reason,
                 by=ATTACHED_BY_MODEL,
                 now=reference,
+                brain_version=brain.stamp(
+                    written_under, what="an issue assignment"
+                ),
             )
             placed.add(index)
             attached += 1
