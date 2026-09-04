@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -362,10 +363,15 @@ def issues_page(
     courses = _scenarios_by_issue(session, open_rows + past)
     # The packet block takes its own sentence *before* the card's catch-all
     # takes what is left, so a paper's answer is read where the paper's button
-    # was pressed and not inside the Stakeholder-Karte.
+    # was pressed and not inside the Stakeholder-Karte — and only when the block
+    # it belongs to is one this page renders, so a crisis-anchored sentence is
+    # left standing for the page that can show it.
     running = stakeholder_ui.busy(client.id)
-    packet_note = stakeholder_ui.pop_note(client.id, owned=PACKET_NOTES)
-    packet_click = packet_click_anchor(client.id, running=running)
+    clicked = packet_click(
+        client.id,
+        running=running,
+        on_page={f"dpk-issue-{row.id}" for row in open_rows + past},
+    )
     stakeholder_note = stakeholder_ui.pop_note(client.id)
     return templates.TemplateResponse(
         request,
@@ -392,11 +398,14 @@ def issues_page(
             # The decision papers written from each row (RIS-05). A new one
             # stands beside the old, so this is a list and never one row.
             "packets": _packets_by_issue(session, open_rows + past),
-            "packet_note": packet_note,
-            # Which row's block the sentence and the spinner belong under: one
+            "packet_note": clicked.note,
+            # Which row's block the spinner and the sentence belong under: one
             # block renders per row, and an answer under all of them would name
-            # rows nobody pressed.
-            "packet_click": packet_click,
+            # rows nobody pressed. Two anchors, because a click refused while
+            # another row's call runs is answered on its own row without
+            # taking that row's spinner away.
+            "packet_running_anchor": clicked.running_anchor,
+            "packet_note_anchor": clicked.note_anchor,
             # The two label maps: the stored values are keys ("bester",
             # "zweites_medium"), and what a reader acts on is a sentence. In
             # Python rather than in Jinja because each label is an i18n key,
@@ -920,6 +929,15 @@ DEADLINE_UNREADABLE = (
     "Das Datum war nicht lesbar: die Frist blieb, wie sie war. Alles Übrige "
     "des Formulars wurde gespeichert."
 )
+#: A second click while a call is running. This feature's own wording rather
+#: than :data:`stakeholder_ui.ALREADY_RUNNING`, so the sentence is one the
+#: packet block owns: a refusal nobody claims is taken by the page's catch-all
+#: and read inside the Stakeholder-Karte, which answers a click nobody made
+#: there.
+PACKET_ALREADY_RUNNING = (
+    "Es läuft schon eine Anfrage für dieses Mandat. Das Papier wartet, bis sie "
+    "durch ist."
+)
 
 #: Every sentence this feature can put on a page. The i18n suite walks it, so a
 #: note added without its English pair fails there rather than on the evening a
@@ -930,32 +948,84 @@ PACKET_NOTES = (
     PACKET_DECIDED,
     DECISION_EMPTY,
     DEADLINE_UNREADABLE,
+    PACKET_ALREADY_RUNNING,
 )
 
 
-#: Which packet block the last click on this mandate belongs under, as the DOM
-#: id the templates build ("dpk-issue-12", "dpk-crisis-3"). The register renders
-#: one of these blocks per row, so without it a spinner and a failure sentence
-#: about one row's click would appear under every row on the page. In memory and
-#: not a schema change, the same posture as the note it travels with.
-_last_packet_click: dict[int, str] = {}
+#: Which packet block the call *holding the lock* belongs under, as the DOM id
+#: the templates build ("dpk-issue-12", "dpk-crisis-3"). The register renders one
+#: of these blocks per row, so without it a spinner and a failure sentence about
+#: one row's click would appear under every row on the page. In memory and not a
+#: schema change, the same posture as the note it travels with.
+_running_packet_click: dict[int, str] = {}
+
+#: Which packet block a *refused* click belongs under. A second dict and not a
+#: second write to the one above, because they are two different clicks: a
+#: refused click starts nothing, and moving the running call's marker onto the
+#: row it was refused on would take the spinner off the row that is working and
+#: hang one under a row where nothing was started.
+_refused_packet_click: dict[int, str] = {}
+
+#: How many mandates' packet clicks are kept at once. An entry is normally
+#: cleared by the page that renders its answer, but a click whose page is never
+#: opened again would sit in a process that runs for weeks. One entry is an int
+#: and a short string, and no workspace has this many mandates in flight, so the
+#: cap only ever drops a click nobody came back for.
+_MAX_TRACKED_CLICKS = 64
 
 
-def packet_click_anchor(client_id: int, *, running: bool) -> str:
-    """The block a running call, or the sentence it just left, belongs to.
+def _remember(where: dict[int, str], client_id: int, anchor: str) -> None:
+    """Note which block a click belongs under, oldest first out at the cap."""
+    where[client_id] = anchor
+    while len(where) > _MAX_TRACKED_CLICKS:
+        where.pop(next(iter(where)))
 
-    Read while the call is in flight and *taken* once it is not: the anchor has
+
+@dataclass(frozen=True, slots=True)
+class PacketClick:
+    """Where this page reads a packet click's spinner and its sentence."""
+
+    #: The block whose call holds the lock, or "" — where the spinner goes.
+    running_anchor: str
+    #: The block whose sentence is waiting, or "" — where the notice goes.
+    note_anchor: str
+    #: That sentence, or "".
+    note: str
+
+
+def packet_click(
+    client_id: int, *, running: bool, on_page: Collection[str]
+) -> PacketClick:
+    """The spinner's block, the sentence's block, and the sentence itself.
+
+    ``on_page`` names the packet blocks this page renders, and a sentence whose
+    block is not one of them is *left standing*. The register and the crisis
+    page share one note channel: a crisis-anchored failure popped by the
+    register, which renders no crisis block, is a failure nobody ever reads.
+
+    Read while the call is in flight and *taken* once it is not: an anchor has
     the same life as the note it goes with — it describes one click, and left
-    standing it would put the next stakeholder call's spinner under a packet
-    block nobody pressed.
+    standing it would put the next call's spinner under a block nobody pressed.
 
     Public because the crisis page renders the same partial and needs the same
-    answer; the dict behind it stays this module's, the way the note channel is
+    answer; the dicts behind it stay this module's, the way the note channel is
     ``stakeholder_ui``'s.
     """
-    if running:
-        return _last_packet_click.get(client_id, "")
-    return _last_packet_click.pop(client_id, "")
+    spinning = _running_packet_click.get(client_id, "")
+    # A refusal only means anything while the call that refused it runs. Once
+    # that call is through, the sentence waiting is its own.
+    refused = _refused_packet_click.get(client_id, "") if running else ""
+    anchor = refused or spinning
+    if anchor and anchor not in on_page:
+        return PacketClick("", "", "")
+    note = stakeholder_ui.pop_note(client_id, owned=PACKET_NOTES)
+    if refused and note:
+        # Answered. The running call's marker stays: it is still running.
+        _refused_packet_click.pop(client_id, None)
+    if not running:
+        _running_packet_click.pop(client_id, None)
+        _refused_packet_click.pop(client_id, None)
+    return PacketClick(spinning if running else "", anchor, note)
 
 
 def _packet_occasion(
@@ -1112,12 +1182,17 @@ def build_packet(
         )
         return "" if written is not None else NO_PACKET
 
-    _last_packet_click[standing.client_id] = f"dpk-issue-{issue_id}"
-    stakeholder_ui.spend(
+    started = stakeholder_ui.spend(
         _write,
         client_id=standing.client_id,
         name=f"newspulse-packet-issue-{issue_id}",
         failed=PACKET_FAILED,
+        refused=PACKET_ALREADY_RUNNING,
+    )
+    _remember(
+        _running_packet_click if started else _refused_packet_click,
+        standing.client_id,
+        f"dpk-issue-{issue_id}",
     )
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
@@ -1161,12 +1236,17 @@ def build_crisis_packet(
         written = decision.build(worker, mandate, crisis=row, by=who)
         return "" if written is not None else NO_PACKET
 
-    _last_packet_click[standing.client_id] = f"dpk-crisis-{crisis_id}"
-    stakeholder_ui.spend(
+    started = stakeholder_ui.spend(
         _write,
         client_id=standing.client_id,
         name=f"newspulse-packet-crisis-{crisis_id}",
         failed=PACKET_FAILED,
+        refused=PACKET_ALREADY_RUNNING,
+    )
+    _remember(
+        _running_packet_click if started else _refused_packet_click,
+        standing.client_id,
+        f"dpk-crisis-{crisis_id}",
     )
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 

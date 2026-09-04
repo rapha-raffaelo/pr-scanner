@@ -175,8 +175,13 @@ def _run(job: Callable[[Session], str], client_id: int, failed: str) -> None:
 
 
 def spend(
-    job: Callable[[Session], str], *, client_id: int, name: str, failed: str
-) -> None:
+    job: Callable[[Session], str],
+    *,
+    client_id: int,
+    name: str,
+    failed: str,
+    refused: str = ALREADY_RUNNING,
+) -> bool:
     """Run one model-backed card job, at most one at a time, off the request.
 
     Every button of this feature that shells out to a model comes through here.
@@ -186,12 +191,20 @@ def spend(
     second click while one is running would simply spend a second call.
 
     A refused click is *said*, not swallowed — an unanswered button reads as a
-    broken one, and the reader presses it again.
+    broken one, and the reader presses it again. ``refused`` is the sentence it
+    is said with, so a feature that renders its answers in its own block on the
+    page can own the refusal too: a sentence no block claims is popped by the
+    page's catch-all and read under the wrong heading.
+
+    Returns whether the call was actually started. A caller that records where
+    its answer belongs needs to know which of the two happened: a refused click
+    started nothing, and letting it move the running call's marker would take
+    the spinner off the row that is working.
     """
     global _calling_for
     if not _calling.acquire(blocking=False):
-        note(client_id, ALREADY_RUNNING)
-        return
+        note(client_id, refused)
+        return False
     _calling_for = client_id
 
     def _release() -> None:
@@ -202,6 +215,7 @@ def spend(
     spawn.start_or_release(
         _run, args=(job, client_id, failed), name=name, release=_release
     )
+    return True
 
 
 def ordered_ids(sid: list[str], pos: list[str]) -> tuple[list[int], str]:

@@ -600,17 +600,19 @@ def _packet_block(
     straight off an article has no register row, and it is the occasion a
     decision paper exists for.
     """
+    # One block on this page, and the sentence is taken only when it belongs to
+    # it: the same click may have come from the register's escalated row, whose
+    # answer is read there — and popped here it would be read nowhere.
+    clicked = issues_view.packet_click(
+        client.id,
+        running=stakeholder_ui.busy(client.id),
+        on_page={f"dpk-crisis-{standing.id}"},
+    )
     return {
         "packets_here": decision.packets_for(session, crisis=standing),
-        "packet_note": stakeholder_ui.pop_note(
-            client.id, owned=issues_view.PACKET_NOTES
-        ),
-        # Which block the sentence and the spinner belong under. One block on
-        # this page, but the same click may have come from the register's
-        # escalated row, and its answer is read there.
-        "packet_click": issues_view.packet_click_anchor(
-            client.id, running=stakeholder_ui.busy(client.id)
-        ),
+        "packet_note": clicked.note,
+        "packet_running_anchor": clicked.running_anchor,
+        "packet_note_anchor": clicked.note_anchor,
     }
 
 

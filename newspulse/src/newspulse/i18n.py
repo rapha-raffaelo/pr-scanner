@@ -2489,6 +2489,9 @@ _EN: dict[str, str] = {
         "No decision packet was stored: the answer did not say what happened.",
     "Das Entscheidungspapier ist fehlgeschlagen. Die Einzelheiten stehen im Log.":
         "The decision packet failed. The details are in the log.",
+    "Es läuft schon eine Anfrage für dieses Mandat. Das Papier wartet, bis sie durch ist.":
+        "A request for this mandate is already running. The packet waits until "
+        "it is through.",
     "Das Papier ist entschieden und wird nicht mehr geändert. Ein neuer Stand ist ein neues Papier.":
         "The packet is decided and is not changed any more. A new state is a new "
         "packet.",

@@ -1299,7 +1299,7 @@ def test_a_packet_answer_is_read_under_the_row_that_was_pressed(
 
     pressed = _issue(session, mandate)
     _issue(session, mandate)  # a second row, whose block must stay silent
-    issues_view._last_packet_click[mandate.id] = f"dpk-issue-{pressed.id}"
+    issues_view._running_packet_click[mandate.id] = f"dpk-issue-{pressed.id}"
     stakeholder_ui.note(mandate.id, issues_view.NO_PACKET)
 
     body = web.get(f"/client/{mandate.id}/issues").text
