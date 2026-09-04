@@ -2113,6 +2113,401 @@ _EN: dict[str, str] = {
     "Okt": "Oct",
     "Nov": "Nov",
     "Dez": "Dec",
+    # --- The reputation band on Heute (RIS-01, DEC-1 option B) ---------------
+    # "Medien", "negativ", "krise" and "Mandanten" are already translated above
+    # — the band reuses them rather than restating them.
+    #
+    # Every state and every direction is a *word* in both languages, never a
+    # colour on its own: a band that says only "red" makes the reader supply the
+    # sentence, and the sentence they supply is the one they already expected.
+    "Reputationslage": "Reputation standing",
+    # The singular to the "Medien" above: a braked single-outlet Beobachtung is
+    # a common tile, and "1 Medien" / "1 outlets" is wrong in both languages —
+    # the same branch the quiet line's Mandant/Mandanten already takes. Keyed
+    # as the whole phrase because "Medium" is already the contacts form's
+    # capitalised field label, and this one sits lowercase inside a line; the
+    # count is part of the key, since one is the only count the singular has.
+    "1 Medium": "1 outlet",
+    # models.ReputationState members, keyed on the stored German value the same
+    # way the categories above are. Capitalised at render, so the table holds
+    # them exactly as the database does.
+    "ruhig": "quiet",
+    "beobachtung": "watch",
+    "issue": "issue",
+    "risiko": "risk",
+    "steigend": "rising",
+    "stabil": "stable",
+    "fallend": "falling",
+    "Richtung": "Trend",
+    "überregional": "national reach",
+    "namentlich genannt": "named",
+    "keine Berichterstattung im Fenster": "no coverage in the window",
+    # The why-line of a tile the crisis floor raised over a quiet reading:
+    # coverage lay in the window and none of it was negative, so the counts the
+    # other tiles carry ("N Medien · x/y negativ") have nothing to count. Said
+    # as a sentence rather than as zeroes, because "0 Medien · 0/12 negativ"
+    # beside a declared Krise is a broken line in both languages.
+    "keine negative Berichterstattung im Fenster":
+        "no negative coverage in the window",
+    # The thirty is ``newspulse.reputation.BASELINE_READINGS``, spelled out here
+    # in both languages because a sentence that says "its own median" without
+    # saying over what is a claim the reader cannot check. Nothing in this file
+    # can see that constant move, so ``test_reputation_band`` holds the pair
+    # together — see
+    # ``test_the_deviation_sentence_names_the_baseline_it_is_counted_over``.
+    "über dem eigenen Median der letzten 30 Ablesungen":
+        "above its own median of the last 30 readings",
+    "Mandant ruhig": "client quiet",
+    "Mandanten ruhig": "clients quiet",
+    "davon ohne Berichterstattung": "of them with no coverage",
+    # The quiet count's third number. A mandate the sweep has been failing on
+    # keeps its last successful reading, and the count line says so rather than
+    # folding it into today's calm — the tiles already carry their own date, and
+    # this is the same honesty for the mandates that have no tile.
+    "davon zuletzt gelesen vor dem": "of them last read before",
+    # Only a mandate whose crisis was declared before it was ever swept: it has
+    # a tile, and about the coverage it has nothing to say yet.
+    "noch nicht abgelesen": "not read yet",
+    # "Stand" is already the name of a KI-Sichtbarkeit band further up, and a
+    # dictionary has one entry per key: this stamp needs its own noun anyway, and
+    # "Ablesung vom" is the more exact one — it dates the reading rather than the
+    # page it is rendered on.
+    "Ablesung vom": "Reading of",
+    "Gerechnet aus gespeicherten Zeilen, nicht geschätzt.":
+        "Counted from stored rows, never estimated.",
+    # --- Das Issue-Register (RIS-02, DEC-3 A / DEC-6 A) -----------------------
+    # "Verwerfen", "Medien", "1 Medium", "Tage", "Tagen", "Speichern",
+    # "Bearbeiten", "Krise erklären", "überregional", "Grund der Schließung:",
+    # "Wirkung", "Vorschlag" and "Marktsignal" are already translated above —
+    # the register reuses them.
+    #
+    # "Issues" stays "Issues" in both languages on purpose: it is the trade's
+    # own word in German PR usage, and an invented translation would rename the
+    # feature its users already have a name for.
+    "Issues": "Issues",
+    "Issue?": "Issue?",
+    "Issue eröffnen": "Open an issue",
+    # The offer names what the repetition consists of, because "the tool thinks
+    # something is up" is not a sentence anyone can accept or refuse.
+    "Dieselbe Sache an": "The same matter on",
+    "Berichterstattung und datiertes Marktsignal derselben Sache:":
+        "Coverage and a dated market signal of the same matter:",
+    "Vorgeschlagen, nicht eröffnet. Bis jemand hier drückt, ändert sich nichts.":
+        "Proposed, not opened. Nothing changes until somebody presses this.",
+    "Offene Issues": "Open issues",
+    "Kein offenes Issue. Nichts wird getragen.":
+        "No open issue. Nothing is being carried.",
+    "Tag alt": "day old",
+    "Tage alt": "days old",
+    "letzte Bewegung": "last movement",
+    "Signal": "signal",
+    "Signale": "signals",
+    "eröffnet von": "opened by",
+    "Owner": "Owner",
+    "niemand benannt": "nobody named",
+    "Frühindikatoren": "Early indicators",
+    "Beschreibung": "Description",
+    # The two graded values carry the person who set them, in both languages:
+    # a value without a name would read as a measurement, and it is an opinion.
+    "Wahrscheinlichkeit": "Probability",
+    "gesetzt von": "set by",
+    "noch nicht gesetzt": "not set yet",
+    "Werte setzen": "Set values",
+    "angehängt von": "attached by",
+    "Grund: warum wird es geschlossen?": "Reason: why is it being closed?",
+    "Issue schließen": "Close the issue",
+    "Heatmap": "Heatmap",
+    # The named column beside the field. "Not graded" is a statement of its
+    # own, never a coordinate — an ungraded issue at the field's origin would
+    # claim "harmless", and nobody made that claim.
+    "Ohne Bewertung": "Not graded",
+    "keins": "none",
+    "Frühere Issues": "Past issues",
+    "eskaliert": "escalated",
+    "geschlossen": "closed",
+    "geschlossen von": "closed by",
+    "zur Krise": "to the crisis",
+    "Der Wert liegt im Anhängen, nicht im Anlegen: derselbe Vorwurf am Montag und am Freitag ist eine Zeile mit einem Alter, einer letzten Bewegung und einer Zahl. Eskaliert ein Issue, übernimmt die Krise seine Signale und seinen Beginn.":
+        "The value is in the attaching, not the opening: the same accusation on Monday and on Friday is one row with an age, a last movement and a number. When an issue escalates, the crisis takes over its signals and its beginning.",
+    # The handover label on the crisis timeline (rendered by ``crisis_view``,
+    # written in Python, so no template scan can see it).
+    "Issue eröffnet": "Issue opened",
+    # The register's refusals and notes, written in Python and rendered as
+    # ``note`` — the same reason the asset notes further up are listed here:
+    # nothing that reads the templates for German strings can see them.
+    "Der Vorschlag stand nicht mehr: es wurde kein Issue eröffnet.":
+        "The proposal no longer stood: no issue was opened.",
+    "Das Issue wurde nicht geschlossen: es fehlt die Begründung.":
+        "The issue was not closed: the reason is missing.",
+    "Ein geschlossenes Issue eskaliert nicht.":
+        "A closed issue does not escalate.",
+    "Ohne Beitrag als Signal lässt sich keine Krise erklären: eine Krise braucht den Beitrag, an dem sie hängt.":
+        "Without an article among its signals no crisis can be declared: a "
+        "crisis needs the article it hangs on.",
+    "Für dieses Mandat läuft bereits eine Krise; das Issue eskaliert nicht in eine fremde Krise.":
+        "A crisis is already running for this mandate; the issue does not "
+        "escalate into an unrelated one.",
+    "Ein eskaliertes Issue wird über seine Krise geschlossen.":
+        "An escalated issue is closed through its crisis.",
+    # --- Die Stakeholder-Karte (RIS-03) ---------------------------------------
+    # "Speichern", "Bearbeiten", "gesetzt von" and "Verwerfen" are already
+    # translated above — the map reuses them. "Stakeholder" stays untranslated
+    # in the compounds for the same reason "Issues" does: it is the trade's own
+    # word in German PR usage.
+    "Stakeholder-Karte": "Stakeholder map",
+    "Aus dem Profil vorschlagen": "Propose from the profile",
+    "Die Karte steht am Mandat, nicht am Anlass. Vorgeschlagen wird aus dem Profil, bearbeitet von einem Menschen, und jede Zeile zeigt, wer sie gesetzt hat.":
+        "The map hangs on the mandate, not on the occasion. It is proposed "
+        "from the profile, edited by a person, and every row shows who set it.",
+    "Gruppe": "Group",
+    "Betroffenheit": "How it is affected",
+    "Einfluss": "Influence",
+    # The three levels are values a person picks, so they read as words in
+    # both languages — a number would claim a measurement nobody took.
+    "hoch": "high",
+    "mittel": "medium",
+    "niedrig": "low",
+    "Ansprechpartner": "Contact person",
+    "Kanal": "Channel",
+    # The named gap: the most important row of the map, never a blank cell.
+    "Kein Ansprechpartner benannt.": "No contact person named.",
+    "Im Profil nachtragen": "Add it in the profile",
+    "Zum Profil": "To the profile",
+    "Gruppe hinzufügen": "Add a group",
+    "Zeile entfernen": "Remove the row",
+    "Noch keine Karte. Aus dem Profil vorschlagen oder eine Gruppe von Hand anlegen.":
+        "No map yet. Propose it from the profile or add a group by hand.",
+    "Für dieses Mandat sind keine Profilangaben hinterlegt; ohne sie wird keine Karte erfunden.":
+        "No profile entries are on file for this mandate; without them no map "
+        "is invented.",
+    "Stakeholder-Auswahl": "Stakeholder selection",
+    # The order is a recommendation until a person sorts it, and the marker
+    # says which of the two the reader is looking at.
+    "Reihenfolge": "Order",
+    "Reihenfolge: Empfehlung": "Order: recommendation",
+    "Reihenfolge gesetzt von": "Order set by",
+    "Reihenfolge speichern": "Save the order",
+    "Stakeholder auswählen": "Select stakeholders",
+    "Will wissen:": "Wants to know:",
+    # The honest empty sentence: where no stored line supports one, none is
+    # invented.
+    "keine gespeicherte Angabe, aus der sich das ergibt":
+        "no stored line this could rest on",
+    # The map's and the selection's notes, written in Python and rendered as
+    # ``stakeholder_note`` / ``note`` — nothing that reads the templates for
+    # German strings can see them.
+    "Ohne Profilangaben wird keine Karte erfunden. Erst das Profil füllen, dann trägt der Vorschlag.":
+        "Without profile entries no map is invented. Fill the profile first, "
+        "then the proposal has something to stand on.",
+    "Der Vorschlag hat keine neuen Gruppen ergeben.":
+        "The proposal yielded no new groups.",
+    "Die Zeile wurde nicht gespeichert: es fehlt die Gruppe, oder der Name steht schon auf der Karte.":
+        "The row was not saved: the group is missing, or the name is already "
+        "on the map.",
+    "Keine Auswahl entstanden: ohne Karte oder ohne begründbar betroffene Gruppe wird nichts gespeichert.":
+        "No selection was made: without a map, or without a group whose "
+        "involvement can be justified, nothing is stored.",
+    "Die Reihenfolge wurde nicht gespeichert: das Formular war unvollständig.":
+        "The order was not saved: the form was incomplete.",
+    "Die Reihenfolge wurde nicht gespeichert: sie nennt nicht genau die Zeilen der Auswahl.":
+        "The order was not saved: it does not name exactly the rows of the "
+        "selection.",
+    "Die Reihenfolge wurde nicht gespeichert: zwei Zeilen tragen dieselbe Nummer.":
+        "The order was not saved: two rows carry the same number.",
+    "Die Auswahl ist fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The selection failed. The details are in the log.",
+    "Der Vorschlag ist fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The proposal failed. The details are in the log.",
+    # The crisis page selects from the map but does not maintain it, so its
+    # empty state is a named absence with the link to where it is filled in.
+    "Noch keine Stakeholder-Karte für dieses Mandat.":
+        "No stakeholder map for this mandate yet.",
+    "Zur Stakeholder-Karte": "To the stakeholder map",
+    # The card's model calls run on a worker thread behind one lock, so both
+    # the refused second click and the run in flight have to be sayable.
+    "Es läuft schon eine Anfrage für dieses Mandat. Ein zweiter Klick würde eine zweite kosten.":
+        "A request for this mandate is already running. A second click would "
+        "spend a second one.",
+    "Die Anfrage läuft — die Karte aktualisiert sich, sobald sie steht.":
+        "The request is running — the map refreshes as soon as it stands.",
+    # The way back into a selection that already stands: it appends only, so
+    # its empty answer is not the same sentence as "no selection at all".
+    "Um neue Gruppen ergänzen": "Add newly mapped groups",
+    "Die Auswahl wurde nicht ergänzt: keine weitere Gruppe der Karte ist begründbar betroffen.":
+        "The selection was not added to: no further group on the map is "
+        "affected in a way that can be stated.",
+    "Aus der Auswahl nehmen": "Remove from the selection",
+    # --- Szenarien, Auslöser und Reaktionsoptionen (RIS-04) -------------------
+    # "Wahrscheinlichkeit" and the three level words are already translated
+    # above; this feature reuses them. The scenario words below are *stored
+    # enum values* rendered as words: the whole point of the closed set is that
+    # a likelihood is a word and never a percentage, so it has to be a word in
+    # both languages too.
+    "Szenarien": "Scenarios",
+    "Empfehlung": "Recommendation",
+    "Szenario": "Scenario",
+    "Bester Verlauf": "Best case",
+    "Wahrscheinlicher Verlauf": "Likely case",
+    "Schlechtester Verlauf": "Worst case",
+    "unwahrscheinlich": "unlikely",
+    "möglich": "possible",
+    "wahrscheinlich": "likely",
+    "sehr wahrscheinlich": "very likely",
+    "Kommunikationsbedarf:": "Communication needed:",
+    "Betroffene Stakeholder": "Affected stakeholders",
+    "keine Gruppe der Karte": "no group from the map",
+    # The five conditions of the closed set DEC-5 locked. The stored value is a
+    # key; these are the sentences a reader acts on. The heading is its own
+    # sentence and not "Auslöser": that key is already in this table, held by
+    # the crisis page's per-article pill, and a second entry under it would not
+    # add a translation — it would silently re-translate that one.
+    "Auslöser des Szenarios": "The scenario's triggers",
+    "Ausgelöst": "Fired",
+    "ausgelöst": "fired",
+    "ein zweites unabhängiges Medium": "a second independent outlet",
+    "ein Medium der obersten Reichweitenklasse": "an outlet of the top reach class",
+    "das Mandat in einer Überschrift": "the mandate in a headline",
+    "eine Medienanfrage im verbundenen Postfach":
+        "a press enquiry in the connected mailbox",
+    "eine namentlich genannte Person des Managements":
+        "a named member of the management",
+    "Szenarien entwickeln": "Develop scenarios",
+    "Szenarien verwerfen": "Discard the scenarios",
+    # The options, with the one that is always on the list.
+    "Reaktionsoptionen": "Response options",
+    "Reaktionsoptionen entwickeln": "Develop response options",
+    "Optionen verwerfen": "Discard the options",
+    "nicht reagieren": "no response",
+    "Nutzen:": "Upside:",
+    "Risiko:": "Downside:",
+    "Eskalationspotenzial": "Escalation potential",
+    "Die Antwort nannte keine Empfehlung.": "The answer named no recommendation.",
+    # The six speeds, so that "schnell" and "sofort" cannot come to mean the
+    # same thing in either language.
+    "Geschwindigkeit": "Speed",
+    "sofort": "immediately",
+    "innerhalb einer Stunde": "within the hour",
+    # "heute" is not repeated here: it stands above, in the chrome, and a second
+    # entry would be a dead line the next edit to either one would not reach.
+    "innerhalb von 24 Stunden": "within 24 hours",
+    "vorbereiten und beobachten": "prepare and watch",
+    "keine Reaktion": "no response",
+    # The register's scenario notes, written in Python and rendered as ``note``
+    # — nothing that reads the templates for German strings can see them.
+    "Keine Szenarien gespeichert: ohne prüfbaren Auslöser, mit einer Zahl ohne Zeile oder als Tatsache formuliert wird ein Verlauf nicht gespeichert.":
+        "No scenarios were stored: a course is not stored without a checkable "
+        "trigger, with a figure that stands in no line, or written as a fact.",
+    "Die Szenarien sind fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The scenarios failed. The details are in the log.",
+    "Keine Reaktionsoptionen gespeichert: es braucht mindestens drei, darunter „nicht reagieren“.":
+        "No response options were stored: at least three are needed, one of "
+        "them \"no response\".",
+    "Die Reaktionsoptionen sind fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The response options failed. The details are in the log.",
+    "Erst die Szenarien: die Reaktionsoptionen werden gegen sie entwickelt.":
+        "The scenarios come first: the response options are developed against "
+        "them.",
+    # --- Das Entscheidungspapier (RIS-05) -------------------------------------
+    # "Anlass", "Erstellt am", "Frist", "Exportieren", "offen", "Empfehlung",
+    # "nicht reagieren", "Nutzen:", "Risiko:", "Eskalationspotenzial",
+    # "Reaktionsoptionen" and the six speeds are already in this table; the
+    # paper reuses them rather than restating them, which would silently
+    # re-translate the page that holds them.
+    "Entscheidungspapier": "Decision packet",
+    "Entscheidungspapiere": "Decision packets",
+    "Entscheidungspapier erstellen": "Write a decision packet",
+    "Noch kein Entscheidungspapier zu dieser Sache.":
+        "No decision packet on this matter yet.",
+    # The packet block fetches itself back while the call runs, so it says so
+    # in its own words: the Karte's sentence promises a map nobody asked for.
+    "Die Anfrage läuft — das Papier erscheint, sobald es steht.":
+        "The request is running; the packet appears as soon as it stands.",
+    "Papier vom": "Packet of",
+    "Zurück zum Register": "Back to the register",
+    # The four parts, and the separation between them is the whole value — so
+    # each heading has to be as unmistakable in English as it is in German.
+    "Was passiert ist": "What happened",
+    "Belegt": "Supported",
+    "Unbestätigt": "Unconfirmed",
+    "Offen": "Open",
+    "Widersprüche": "Contradictions",
+    "Nichts auf diesem Papier löst auf eine gespeicherte Zeile auf.":
+        "Nothing on this packet resolves to a stored row.",
+    "Nichts Unbestätigtes vermerkt.": "Nothing unconfirmed was recorded.",
+    "Keine offene Frage vermerkt.": "No open question was recorded.",
+    # Said as the rule rather than as an empty list: a reader is entitled to
+    # know that a contradiction with only one side is not reported at all.
+    "Kein Widerspruch, dessen beide Seiten als gespeicherte Zeilen benannt sind.":
+        "No contradiction whose two sides are both named as stored rows.",
+    # Die Quellenordnung. These four are *stored enum values* rendered as
+    # words, so they have to be words in both languages: the paper prints the
+    # order and marks every supported sentence with its rank.
+    "Die Quellenordnung": "The source order",
+    "bestätigte interne Angabe": "confirmed internal statement",
+    "Behörde oder Originaldokument": "authority or original document",
+    "verifizierter Medienbericht": "verified media report",
+    "alles Übrige": "everything else",
+    # The six kinds of stored line a sentence can resolve to, beside its
+    # Kennung. "Beitrag" and "Marktsignal" already stand in this table.
+    "Analyse": "Analysis",
+    "Profilfeld": "Profile field",
+    "Mail": "Mail",
+    "Freigegebener Text": "Released text",
+    # The named gaps, each a line with the link to where it is closed.
+    "Lücken": "Gaps",
+    "Keine benannte Lücke.": "No named gap.",
+    "nachtragen": "fill in",
+    "Im Profil steht kein Sprecher.": "The profile names no spokesperson.",
+    "Im Profil steht kein Krisenkontakt.": "The profile names no crisis contact.",
+    "Keine bestätigte Zahl auf diesem Papier: keine belegte Angabe aus einer bestätigten internen Quelle nennt eine Zahl.":
+        "No confirmed figure on this packet: no supported statement from a "
+        "confirmed internal source names a figure.",
+    "Auf diesem Papier steht kein Entscheider.": "This packet names no decider.",
+    "Auf diesem Papier steht keine Frist.": "This packet sets no deadline.",
+    # The two that stand at the top of the paper when they are missing.
+    "Dieses Papier trägt nicht, was eine Entscheidung braucht:":
+        "This packet does not carry what a decision needs:",
+    "Entscheider": "Decider",
+    "nicht benannt": "not named",
+    "nicht gesetzt": "not set",
+    "Was jetzt zu entscheiden ist": "What is to be decided now",
+    "Auf diesem Papier steht keine Entscheidungsfrage: es kam keine, die die gespeicherten Zeilen trägt.":
+        "No decision question stands on this packet: none arrived that the "
+        "stored rows carry.",
+    "Zu dieser Sache stehen keine Reaktionsoptionen.":
+        "No response options stand on this matter.",
+    # The decision itself, and the two forms that record it.
+    "Die Entscheidung": "The decision",
+    "Noch nicht entschieden.": "Not decided yet.",
+    "entschieden": "decided",
+    "Entschieden von": "Decided by",
+    "Wer entscheidet": "Who decides",
+    "Bis wann": "By when",
+    # "Eintragen" is not repeated here: it stands above, and a second entry
+    # would not add a translation — it would silently re-translate that one.
+    "Die getroffene Entscheidung": "The decision taken",
+    "Entscheidung festhalten": "Record the decision",
+    # The register's packet notes, written in Python and rendered as ``note`` —
+    # nothing that reads the templates for German strings can see them.
+    "Kein Entscheidungspapier gespeichert: die Antwort sagte nicht, was passiert ist.":
+        "No decision packet was stored: the answer did not say what happened.",
+    "Das Entscheidungspapier ist fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The decision packet failed. The details are in the log.",
+    "Es läuft schon eine Anfrage für dieses Mandat. Das Papier wartet, bis sie durch ist.":
+        "A request for this mandate is already running. The packet waits until "
+        "it is through.",
+    "Das Papier ist entschieden und wird nicht mehr geändert. Ein neuer Stand ist ein neues Papier.":
+        "The packet is decided and is not changed any more. A new state is a new "
+        "packet.",
+    "Die Entscheidung wurde nicht vermerkt: es fehlt, was entschieden wurde.":
+        "The decision was not recorded: what was decided is missing.",
+    "Das Datum war nicht lesbar: die Frist blieb, wie sie war. Alles Übrige des Formulars wurde gespeichert.":
+        "The date could not be read, so the deadline stands as it was. The rest "
+        "of the form was saved.",
+    "Jeder als belegt geführte Satz auf diesem Papier löst auf eine gespeicherte Zeile auf; die Kennung steht dabei. Ein Satz ohne auflösbaren Beleg steht unter unbestätigt. Ein Widerspruch wird nur genannt, wenn beide Seiten benannt sind.":
+        "Every sentence led as supported on this packet resolves to a stored row, "
+        "and carries its identifier. A sentence without a resolvable source stands "
+        "under unconfirmed. A contradiction is named only when both sides are.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

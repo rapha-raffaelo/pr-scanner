@@ -131,7 +131,7 @@ def test_a_dismissed_article_leaves_the_outlet_ranking(session):
     session.add(client)
     session.flush()
     article = _article(session, "Eine Verwechslung")
-    analysis = Analysis(
+    analysis = Analysis(is_relevant=True, 
         article_id=article.id,
         client_id=client.id,
         summary="s",

@@ -77,7 +77,7 @@ def _market(session, client, article):
 
 def _coverage(session, client, article):
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id, client_id=client.id, summary="s",
             category=Category.PRODUKT, relevance_score=6,
             importance_score=6, is_alert=False,

@@ -56,6 +56,7 @@ from . import (
     crisis,
     gnews,
     industry,
+    issues,
     mailsync,
     market_sources,
     newsjack,
@@ -63,6 +64,8 @@ from . import (
     plan,
     profile_refresh,
     report,
+    reputation,
+    scenarios,
     themes,
     visibility,
 )
@@ -1761,6 +1764,18 @@ class _PostRun:
     #: Editorial plans recomputed this sweep. Weekly per mandate, like the
     #: measurement above, and zero most mornings for the same reason.
     plans: int = 0
+    #: Reputation readings written this sweep (RIS-01). Unlike the two above it
+    #: this is daily and should equal the mandate count on a healthy morning —
+    #: a number below it says a mandate's coverage could not be counted.
+    readings: int = 0
+    #: Signals the model attached to open issues this sweep (RIS-02, DEC-4).
+    #: Zero on most mornings, because most mornings no mandate has an open
+    #: issue with fresh coverage clustering into it.
+    issue_links: int = 0
+    #: Scenario triggers that fired this sweep (RIS-04, DEC-5). Zero on almost
+    #: every morning by construction: a trigger fires once, ever, so a number
+    #: here is an event and not a rate.
+    triggers: int = 0
 
 
 def _settle_themes(session: Session, clients: Sequence[Client], fetch: FetchFeed) -> int:
@@ -1831,6 +1846,145 @@ def _settle_industries(session: Session, clients: Sequence[Client], fetch: Fetch
             # the run was already recorded ok.
             session.rollback()
     return settled
+
+
+def _read_reputation(
+    session: Session, clients: Sequence[Client], *, now: dt.datetime
+) -> int:
+    """One reading per mandate, for today. Never fails the sweep (RIS-01).
+
+    Daily rather than windowed, unlike the measurement and the plan above it:
+    the reading *is* the day, and a morning without one leaves a hole in the
+    series that the direction and the mandate's own median both read over.
+
+    Cheap enough to be unconditional. Every input is already in stored rows —
+    DEC-2 locked "gerechnet aus gespeicherten Zeilen" — so a reading is a
+    handful of queries and no model call, which is what lets it run for every
+    mandate every morning rather than for a few of them on a rota.
+
+    The per-mandate fault boundary lives in :func:`newspulse.reputation.sweep`;
+    this second one is for the failure *outside* that loop, so an exception here
+    cannot end a sweep whose ``runs`` row is already written as ok.
+    """
+    try:
+        written = reputation.sweep(session, list(clients), now=now)
+    except Exception:  # noqa: BLE001 — a reading is never worth a failed sweep
+        session.rollback()
+        _log.exception("the reputation readings failed; the sweep stands")
+        return 0
+    if written:
+        _log.info("wrote %d reputation reading(s)", written)
+    return written
+
+
+def _link_issue_signals(
+    session: Session, clients: Sequence[Client], *, now: dt.datetime
+) -> int:
+    """Attach the day's new signals to open issues (RIS-02, DEC-4). Never fails
+    the sweep.
+
+    One fault boundary per mandate: a broken verdict for one issue must not
+    cost the other mandates their attachments, and never the sweep its morning.
+    A mandate with no open issue costs one query and no model call — see
+    :func:`newspulse.issues.link_signals` — which is what makes running it
+    unconditionally affordable.
+
+    Yardsticks are skipped for the same reason the reputation sweep skips them:
+    a competitor is tracked to compare coverage, and no register is kept on it.
+    """
+    attached = 0
+    for client in clients:
+        if client.is_competitor:
+            continue
+        name = client.name
+        try:
+            attached += issues.link_signals(session, client, now=now)
+        except Exception:  # noqa: BLE001 — a linking pass is never worth a failed sweep
+            session.rollback()
+            _log.exception("issue linking for %r failed; skipping", name)
+            continue
+    if attached:
+        _log.info("attached %d signal(s) to open issues", attached)
+    return attached
+
+
+def _fired_this_sweep(
+    session: Session, clients: Sequence[Client], *, now: dt.datetime
+) -> list[notify.FiredTrigger]:
+    """Every condition that came to hold this morning, as the channel renders it.
+
+    One fault boundary per mandate, so a broken read on one register costs the
+    others nothing. A benchmark is skipped: a competitor is tracked to compare
+    coverage and no register is kept on it, which is the line the reputation
+    sweep and the linking pass draw too.
+    """
+    fired: list[notify.FiredTrigger] = []
+    for client in clients:
+        if client.is_competitor:
+            continue
+        try:
+            for issue in issues.open_issues(session, client):
+                for trigger in scenarios.check_triggers(
+                    session, client, issue, now=now
+                ):
+                    fired.append(
+                        notify.FiredTrigger(
+                            client_name=client.name,
+                            issue_title=issue.title,
+                            scenario=trigger.scenario.kind.value,
+                            condition=trigger.condition.value,
+                            note=trigger.fired_note,
+                        )
+                    )
+        except Exception:  # noqa: BLE001 — a trigger check is never worth a failed sweep
+            session.rollback()
+            _log.exception("the scenario triggers for %r failed; skipping", client.name)
+            continue
+    return fired
+
+
+def _check_scenario_triggers(
+    session: Session,
+    clients: Sequence[Client],
+    *,
+    now: dt.datetime,
+    notify_config: notify.NotifyConfig | None = None,
+) -> int:
+    """Fire the scenario triggers whose condition now holds (RIS-04). Never fails
+    the sweep.
+
+    Cheap enough to be unconditional, like the reading above it: DEC-5 locked
+    "nur maschinell prüfbare Bedingungen", so a check is a handful of queries
+    over stored rows and no model call. A mandate with no open issue costs one
+    query.
+
+    The notification goes out here rather than riding along with the alert mail,
+    and that is the acceptance rather than a preference: "trifft eine Bedingung
+    zu, wird das am Issue vermerkt und **einmal benachrichtigt**", and an offer
+    that waits for a morning with alerts is not a notification. It fires once,
+    ever — the latch is the ``fired_at`` column, so it survives a restart.
+
+    The boundary is doubled, like the report draft below: one per mandate
+    inside :func:`_fired_this_sweep`, and one here around the lot — the client
+    list and the channel are outside that loop, and nothing here may end a
+    sweep whose ``runs`` row is already written as ok.
+    """
+    try:
+        fired = _fired_this_sweep(session, clients, now=now)
+    except Exception:  # noqa: BLE001 — a trigger check is never worth a failed sweep
+        session.rollback()
+        _log.exception("the scenario trigger check failed; the sweep stands")
+        return 0
+    if not fired:
+        return 0
+    _log.info("%d scenario trigger(s) fired this sweep", len(fired))
+    # Non-raising by contract, and wrapped anyway: the marks are already
+    # committed, and a broken notifier must not undo them.
+    try:
+        notify.notify_triggers(fired, notify_config)
+    except Exception as exc:  # noqa: BLE001 — notification must never fail the run
+        _log.error("the trigger notification failed: %s; the marks stand", exc)
+    return len(fired)
 
 
 def _post_run(
@@ -1904,6 +2058,21 @@ def _post_run(
     # than next week's. Weekly per mandate, capped per sweep, and never touching
     # a hook a person has decided on — see _recompute_plans.
     outcome.plans = _recompute_plans(session, clients, now=now_fn())
+    # After the market sweep and the archive linking, so a signal that arrived
+    # this morning is a candidate this morning; before the reading, so the
+    # register the reading's Issue floor looks at is today's. Costs a model call
+    # only for a mandate with an open issue and fresh clustering coverage.
+    outcome.issue_links = _link_issue_signals(session, clients, now=now_fn())
+    # After everything that could still add coverage or an analysis to today, so
+    # the reading counts the morning the sweep actually brought in rather than
+    # the one it started with. Daily, for every mandate, and cheap: no model call
+    # and no fetch, only stored rows.
+    outcome.readings = _read_reputation(session, clients, now=now_fn())
+    # After the linking above, so today's coverage is already on the issue the
+    # conditions are read off: a second outlet that arrived this morning has to
+    # be a second outlet this morning, not tomorrow. Stored rows only, no model
+    # call, and each firing is announced exactly once.
+    outcome.triggers = _check_scenario_triggers(session, clients, now=now_fn())
     # Last, and outside everything above: the monthly report reads a period that
     # has already ended, so it needs nothing this sweep fetched, and putting it
     # here means a failure in it cannot cost the sweep any of the work that came
@@ -2012,7 +2181,8 @@ def _run_real(
     _log.info(
         "run done: status=%s, %d new article(s), %d analysis(es), %d draft(s), "
         "%d market signal(s), %d profile(s), %d visibility measurement(s), "
-        "%d plan(s), %d repl(y/ies), %d error(s)",
+        "%d plan(s), %d repl(y/ies), %d reputation reading(s), "
+        "%d issue signal(s), %d scenario trigger(s), %d error(s)",
         status.value,
         new_articles,
         analyses_written,
@@ -2026,6 +2196,13 @@ def _run_real(
         post.visibility,
         post.plans,
         post.replies,
+        # Daily, unlike the two above it: a number below the mandate count is
+        # the only place a mandate whose coverage could not be counted shows up.
+        post.readings,
+        post.issue_links,
+        # An event and not a rate: a trigger fires once, ever, so any number
+        # here is a condition that has just started holding.
+        post.triggers,
         len(errors),
     )
     # The run's data is committed; deliver any fired-alert notification now. This is

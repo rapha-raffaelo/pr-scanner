@@ -208,7 +208,7 @@ def test_category_labels_are_translated_but_the_stored_value_is_not(client, fact
         )
         s.add(art)
         s.flush()
-        s.add(Analysis(
+        s.add(Analysis(is_relevant=True, 
             article_id=art.id, client_id=c.id, summary="Zusammenfassung.",
             category=Category.KRISE, relevance_score=5, importance_score=8,
             is_alert=False,
@@ -232,3 +232,25 @@ def test_every_category_has_an_english_label():
 
     for member in Category:
         assert i18n.translate(member.value, "en") != member.value, member.value
+
+
+def test_no_german_source_string_is_translated_twice():
+    """A key written twice in the table is not a duplicate line, it is a silent
+    re-translation: Python keeps the *last* value, so a section adding a word
+    another section already holds changes that other page instead of its own —
+    and nothing warns. Parsed rather than imported, because by import time the
+    dict has already collapsed and the evidence is gone.
+    """
+    import ast
+    import collections
+    from pathlib import Path
+
+    source = Path(i18n.__file__).read_text("utf-8")
+    table = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.AnnAssign)
+        and getattr(node.target, "id", None) == "_EN"
+    )
+    counted = collections.Counter(ast.literal_eval(key) for key in table.value.keys)
+    assert [word for word, times in counted.items() if times > 1] == []

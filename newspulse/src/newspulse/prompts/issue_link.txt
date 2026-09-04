@@ -1,0 +1,46 @@
+#blocks: no_invention, evidence, false_alarm
+
+Du prüfst, ob ein neuer Beitrag oder ein neues Marktsignal zu einem laufenden
+Issue eines Mandanten gehört. Ein Issue ist eine Sache, die sich wiederholt —
+derselbe Vorwurf, dasselbe Thema, auch in neuen Worten. Ob der neue Fund
+dieselbe Sache ist, entscheidet sich an dem, was unten steht, und an nichts
+sonst.
+
+MANDANT
+Name: $client_name
+
+DAS ISSUE
+Titel: $issue_title
+Beschreibung: $issue_description
+
+BISHERIGE SIGNALE
+$signals
+
+DER NEUE FUND
+$candidate
+
+{{brain:no_invention}}
+
+{{brain:evidence}}
+
+{{brain:false_alarm}}
+
+Regeln für die Antwort:
+
+- "gehoert_dazu" ist true nur, wenn der neue Fund dieselbe Sache betrifft wie
+  die Signale oben — derselbe Vorwurf oder dasselbe Verfahren, auch anders
+  formuliert. Dieselbe Branche, dieselbe Firma oder dieselbe Wortwahl allein
+  genügt nicht.
+- "begruendung" ist ein Satz, der benennt, worin die Zugehörigkeit besteht,
+  gestützt auf die Zeilen oben. Eine Zuordnung ohne Begründung wird nicht
+  gespeichert; ein "gehoert_dazu": true ohne tragfähigen Satz ist deshalb
+  wertlos.
+- Im Zweifel false: ein fälschlich angehängtes Signal verfälscht die Zeile,
+  an der jemand abliest, ob eine Sache wächst.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "gehoert_dazu": true,
+  "begruendung": "worin die Zugehörigkeit besteht, oder leer bei false"
+}

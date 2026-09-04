@@ -256,7 +256,7 @@ def test_the_clients_own_coverage_is_not_offered_as_market_material(session, mon
     client = _client(session)
     own = _stored_market(session, client, "IB-7 eröffnet neues Werk")
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=own.id,
             client_id=client.id,
             summary="Berichterstattung über den Mandanten.",
@@ -287,7 +287,7 @@ def test_market_material_survives_beside_the_clients_own_coverage(session, monke
     client = _client(session)
     own = _stored_market(session, client, "IB-7 eröffnet neues Werk")
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=own.id,
             client_id=client.id,
             summary="Über den Mandanten.",

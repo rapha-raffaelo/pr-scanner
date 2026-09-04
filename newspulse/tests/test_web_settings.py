@@ -99,7 +99,7 @@ def _seed_analysis(session, *, importance: int, is_alert: bool) -> int:
         article_id=article.id,
         client_id=client_obj.id,
         category=Category.PRODUKT,
-        relevance_score=importance,
+        is_relevant=importance >= 1, relevance_score=importance,
         importance_score=importance,
         is_alert=is_alert,
     )

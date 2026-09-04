@@ -422,7 +422,7 @@ def test_the_standing_is_checked_against_profile_guide_and_archive(session, mand
     session.add(own)
     session.commit()
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=own.id,
             client_id=mandate.id,
             category=Category.PRODUKT,

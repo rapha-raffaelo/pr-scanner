@@ -1,0 +1,68 @@
+#blocks: scenario_discipline, no_invention, evidence
+
+Du entwickelst zu einem laufenden Issue eines Mandats drei mögliche Verläufe:
+den besten, den wahrscheinlichen und den schlechtesten. Jeder ist ausdrücklich
+ein Szenario. Du beschreibst, was passieren könnte, woran man es merken würde
+und wer davon betroffen wäre.
+
+MANDANT
+Name: $client_name
+
+DAS ISSUE
+$issue_title
+
+SIGNALE ZUM ISSUE
+$signals
+
+DIE STEHENDE STAKEHOLDER-KARTE (die einzigen wählbaren Gruppen)
+$map
+
+{{brain:scenario_discipline}}
+
+{{brain:no_invention}}
+
+{{brain:evidence}}
+
+DIE GESCHLOSSENE MENGE DER AUSLÖSER
+
+Ein Auslöser ist eine Bedingung, die der Lauf selbst prüfen kann. Du wählst
+ausschließlich aus dieser Liste:
+
+- "zweites_medium": ein zweites unabhängiges Medium berichtet über die Sache.
+- "leitmedium": ein Medium der obersten Reichweitenklasse berichtet.
+- "mandat_in_ueberschrift": das Mandat steht in einer Überschrift.
+- "medienanfrage": eine Medienanfrage geht im verbundenen Postfach ein.
+- "management_genannt": eine namentlich genannte Person des Managements kommt
+  in der Berichterstattung vor.
+
+Regeln für die Antwort:
+
+- Genau drei Szenarien, je eines mit "art": "bester", "wahrscheinlicher",
+  "schlechtester".
+- "verlauf" ist der Verlauf in zwei bis vier Sätzen.
+- "wahrscheinlichkeit" ist genau eines dieser Wörter: "unwahrscheinlich",
+  "möglich", "wahrscheinlich", "sehr wahrscheinlich".
+- "ausloeser" nennt mindestens einen Schlüssel aus der Liste oben. Ein Szenario
+  ohne Auslöser aus dieser Liste wird nicht gespeichert; nenne es dann gar
+  nicht.
+- "stakeholder" nennt nur Gruppen, die wörtlich auf der Karte oben stehen und
+  die dieser Verlauf betreffen würde. Eine Gruppe, die nicht auf der Karte
+  steht, wird verworfen.
+- "kommunikationsbedarf" ist ein Satz: was in diesem Verlauf kommuniziert
+  werden müsste, gestützt ausschließlich auf die Zeilen oben. Wenn die Zeilen
+  keinen Satz hergeben, lass das Feld leer.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "szenarien": [
+    {
+      "art": "bester",
+      "verlauf": "der mögliche Verlauf",
+      "wahrscheinlichkeit": "möglich",
+      "ausloeser": ["zweites_medium"],
+      "stakeholder": ["Name genau wie auf der Karte"],
+      "kommunikationsbedarf": "was kommuniziert werden müsste, oder leer"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+Du schlägst die stehende Stakeholder-Karte eines Mandats vor: welche Gruppen von
+diesem Unternehmen berührt sind und Gewicht haben, unabhängig vom Anlass. Die
+Karte steht am Mandat, nicht an einem Vorfall, und sie wird von einem Menschen
+bearbeitet; du machst nur den Anfang.
+
+MANDANT
+Name: $client_name
+Branche: $industry
+
+PROFIL (die einzigen Zeilen, auf die du dich stützen darfst)
+$profile
+
+BEREITS AUF DER KARTE (nicht erneut vorschlagen)
+$existing
+
+WAS NIE ERFUNDEN WIRD
+
+Erfundenes ist der schwerste Fehler, den dieses System machen kann. Ein einziger
+erfundener Name kostet den Mandanten die Beziehung zum Empfänger.
+
+- Nie erfunden werden: Namen von Personen und Unternehmen, Zahlen, Daten, Zitate,
+  Kontaktdaten, Artikelinhalte, Berichterstattung.
+- Raten ist Erfinden. Was du nicht sicher weißt, nennst du nicht. Ein falscher
+  Name verfälscht später jede Rechnung, die darauf aufbaut.
+- Nichts aus der Branche herleiten, nichts ergänzen, was in den Unterlagen nicht
+  steht. Was nicht dasteht, fehlt eben.
+- Eine bloße Namensgleichheit ist kein Beleg. Ein anderes Unternehmen, eine
+  Person oder ein Alltagswort mit demselben Namen ist nicht der Mandant.
+
+BELEGE UND WORAUF EINE AUSSAGE SICH STÜTZEN DARF
+
+Du siehst Schlagzeilen und kurze Feed-Anrisse, nie die vollständigen Artikel.
+Alles, was über einen Artikelinhalt behauptet wird und nicht aus den Zeilen
+hervorgeht, ist geraten.
+
+- Jede Aussage stützt sich auf die Meldungen, die dir vorliegen. Eine Aussage
+  ohne Beleg ist wertlos.
+- Was in der Liste steht, darfst und sollst du konkret benennen. Was nicht
+  dasteht, wird nicht behauptet: kein Datum, keine Zahl, kein Name, keine
+  Berichterstattung.
+- Lieber unscharf und belegt als präzise und geraten. Schreibe "mehrere
+  Handelsplätze" statt einer erfundenen Zahl.
+- Lieber wenige belastbare Aussagen als viele beliebige.
+
+Regeln für die Antwort:
+
+- Nur Gruppen, die sich aus den Profilzeilen oben ergeben. Ein Sitz ergibt
+  Anwohner und Kommune, eine Branche ergibt den Verband, Mitarbeitende ergeben
+  die Belegschaft, Eigentümer ergeben Investoren. Eine Gruppe, für die oben
+  keine Zeile spricht, gehört nicht auf die Karte.
+- "betroffenheit" ist ein Satz: wovon diese Gruppe berührt ist, gestützt auf
+  die Profilzeilen. Keine Vermutung über Stimmungen oder Absichten.
+- "einfluss" ist genau eines von: hoch, mittel, niedrig.
+- "kanal" ist der Weg, über den die Gruppe erreicht wird (z. B. persönliches
+  Gespräch, Rundschreiben, Verbandskontakt, Pressemitteilung). Leer, wenn die
+  Zeilen oben keinen hergeben.
+- Keinen Ansprechpartner nennen. Namen trägt ein Mensch nach; ein geratener
+  Name wird an dem einen Abend angerufen, an dem es zählt.
+- Lieber vier tragfähige Gruppen als zehn plausible.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "gruppen": [
+    {
+      "gruppe": "wer die Gruppe ist",
+      "betroffenheit": "wovon sie berührt ist, gestützt auf das Profil",
+      "einfluss": "hoch | mittel | niedrig",
+      "kanal": "wie sie erreicht wird, oder leer"
+    }
+  ]
+}

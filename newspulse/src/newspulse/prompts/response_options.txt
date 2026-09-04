@@ -1,0 +1,59 @@
+#blocks: scenario_discipline, no_invention, evidence
+
+Du entwickelst zu einem laufenden Issue eines Mandats die Reaktionsoptionen:
+was man tun könnte, was es bringt, was es kostet, und wie weit es die Sache
+tragen könnte. Eine der Optionen ist immer, nicht zu reagieren, und sie wird
+genauso bewertet wie jede andere.
+
+MANDANT
+Name: $client_name
+
+DAS ISSUE
+$issue_title
+
+SIGNALE ZUM ISSUE
+$signals
+
+DIE SZENARIEN, DIE ZU DIESEM ISSUE STEHEN
+$scenarios
+
+{{brain:scenario_discipline}}
+
+{{brain:no_invention}}
+
+{{brain:evidence}}
+
+DIE GESCHLOSSENE MENGE DER GESCHWINDIGKEITEN
+
+Die Empfehlung nennt genau eine Geschwindigkeit aus dieser Liste:
+
+"sofort", "innerhalb einer Stunde", "heute", "innerhalb von 24 Stunden",
+"vorbereiten und beobachten", "keine Reaktion".
+
+Regeln für die Antwort:
+
+- Mindestens drei Optionen. Eine davon trägt "nicht_reagieren": true und
+  beschreibt, nicht zu reagieren. Fehlt sie, wird die Antwort verworfen.
+- "option" ist die Option in einer Zeile. "nutzen" und "risiko" sind je ein
+  Satz, gestützt auf die Zeilen oben.
+- "eskalationspotenzial" ist genau eines dieser Wörter: "hoch", "mittel",
+  "niedrig". Es sagt, wie weit diese Option die Sache tragen könnte.
+- Genau eine Option trägt "empfohlen": true. Sie und nur sie trägt
+  "geschwindigkeit" aus der Liste oben. Die Empfehlung darf "nicht reagieren"
+  sein.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "optionen": [
+    {
+      "option": "die Option in einer Zeile",
+      "nutzen": "was sie bringt",
+      "risiko": "was sie kostet",
+      "eskalationspotenzial": "mittel",
+      "nicht_reagieren": false,
+      "empfohlen": false,
+      "geschwindigkeit": ""
+    }
+  ]
+}

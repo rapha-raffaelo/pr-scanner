@@ -395,6 +395,16 @@ CARRIED_BEFORE = {
     "krisen_qa.txt": set(),
     # New with UHR-04: the standing check. No "before" to carry.
     "newsjack.txt": set(),
+    # New with RIS-02: the issue-link verdict. No "before" to carry.
+    "issue_link.txt": set(),
+    # New with RIS-03: the stakeholder map and its selection. No "before".
+    "stakeholder_map.txt": set(),
+    "stakeholder_select.txt": set(),
+    # New with RIS-04: the three courses and the response options. No "before".
+    "scenarios.txt": set(),
+    "response_options.txt": set(),
+    # New with RIS-05: the decision paper. No "before" to carry.
+    "decision_packet.txt": set(),
 }
 
 #: Standards a prompt did *not* carry before and now does. Every one is a
@@ -520,6 +530,73 @@ ADDED_IN_MIGRATION = {
     # refusal's "empty answer" clauses would read as permission to answer
     # nothing where the schema requires one of three answers.
     "newsjack.txt": {"standing", "no_invention", "evidence"},
+    # The issue-link verdict (RIS-02, DEC-4 B). no_invention and evidence,
+    # because membership is decided off headlines and feed snippets and the
+    # one sentence why must rest on them; false_alarm, because a falsely
+    # attached signal corrupts the row somebody reads growth off — the
+    # in-doubt answer is no. house_style is absent on purpose: the sentence
+    # lands on an internal register row, not in a text that leaves the house.
+    "issue_link.txt": {"no_invention", "evidence", "false_alarm"},
+    # The stakeholder map's proposal (RIS-03). no_invention is the whole
+    # safety posture — a guessed contact gets called the one evening it
+    # matters, so the prompt forbids names outright and the code drops them
+    # besides. evidence, because a group has to follow from a stored profile
+    # line. false_alarm is absent: proposing few good groups is the prompt's
+    # own instruction, and refusal's empty-answer clauses would read as
+    # permission to propose nothing for a profile that carries plenty.
+    "stakeholder_map.txt": {"no_invention", "evidence"},
+    # The selection (RIS-03): which groups an occasion touches, why, and what
+    # each wants to know. no_invention and evidence, because the reason and
+    # the one-sentence information need must rest on the stored card and the
+    # occasion's signals — "erfindet keine Betroffenheit" is the acceptance
+    # itself. false_alarm, because a too-long selection is a list nobody
+    # telephones by, which is this feature's version of the always-red band.
+    "stakeholder_select.txt": {"no_invention", "evidence", "false_alarm"},
+    # The three courses (RIS-04, DEC-5). scenario_discipline is the block the
+    # story exists for: "der Block, der die Szenarienhaltung trägt, steht in
+    # den neuen Prompts und ist in keinem von ihnen ausgeschrieben" is the
+    # acceptance, and RESTATEMENT_TELLS below is what holds the second half of
+    # it. no_invention and evidence, because a course is written off headlines
+    # and feed snippets under time pressure, which is exactly when a plausible
+    # number gets invented, and because the affected groups have to come off
+    # the stored card rather than out of the industry. house_style is absent on
+    # purpose: a scenario lands on an internal register row, not in a text that
+    # leaves the house. false_alarm would read as permission to return fewer
+    # than three courses, and the schema requires three. journalistic_value and
+    # position address a text aimed at an editor, which a scenario is not.
+    "scenarios.txt": {"scenario_discipline", "no_invention", "evidence"},
+    # The response options (RIS-04). The same three, for the same reasons, plus
+    # one that is specific to this prompt: scenario_discipline is also what
+    # says that not acting is a course and an option, which is the standard
+    # behind "unter den Reaktionsoptionen steht immer nicht reagieren". The
+    # code refuses a set without it; the block is why the model offers it.
+    "response_options.txt": {"scenario_discipline", "no_invention", "evidence"},
+    # The decision paper (RIS-05). evidence and quellenordnung are the two the
+    # story exists for, and they are two blocks rather than one: every prompt
+    # here wants "nothing unbacked", and exactly one wants the four ranks and
+    # the instruction to name the line under each supported sentence. Appended
+    # to evidence, that instruction would have reached twenty prompts that print
+    # no Kennungen at all — a press release carrying "laut Zeile 12". no_invention,
+    # because a decision paper is written under maximum time pressure and a
+    # plausible number on it is quoted as a measurement. false_alarm, because
+    # the paper's most dangerous output is a contradiction reported where there
+    # is none — in a crisis it is believed. quoted_material, because the
+    # material includes journalists' own mail, which is the one channel where a
+    # sentence shaped like an instruction actually arrives. house_style,
+    # because the paper is downloaded and forwarded, which is the same reason
+    # the report's reader carries it. scenario_discipline and position are
+    # absent: the paper states what is the case, argues no thesis and courts no
+    # editor. refusal is absent too — its empty-answer clauses would read as
+    # permission to leave out "was passiert ist", which is the one field
+    # without which nothing is stored at all.
+    "decision_packet.txt": {
+        "evidence",
+        "quellenordnung",
+        "no_invention",
+        "false_alarm",
+        "quoted_material",
+        "house_style",
+    },
 }
 
 #: Phrases that only appear in a prompt if somebody wrote a standard out again
@@ -539,6 +616,14 @@ RESTATEMENT_TELLS = {
     "evidence": ["nie die vollständigen Artikel", "Schlagzeilen und kurze Feed-Anrisse",
                  "ohne Beleg ist wertlos", "statt einer erfundenen Zahl",
                  "viele beliebige"],
+    # RIS-05's acceptance in guard form: the four ranks and the citation rule
+    # live in one block, and the one prompt that prints Kennungen points at it.
+    # A prompt writing the order out again has forked the Quellenordnung the
+    # paper prints beside every supported sentence.
+    "quellenordnung": ["Nicht jeder Beleg wiegt gleich viel",
+                       "ist die obere die stärkere Seite",
+                       "Alles Übrige, etwa eine Behauptung in einer Zuschrift",
+                       "führst du sie nicht als gestützt"],
     "no_invention": ["Raten ist Erfinden", "Namensgleichheit",
                      "Nichts aus der Branche herleiten", "Was nicht dasteht, fehlt eben",
                      "Nie erfunden werden"],
@@ -558,6 +643,14 @@ RESTATEMENT_TELLS = {
     "standing": ["Nähe zum Thema ist kein Beleg", "Meinung ohne Absender",
                  "kostet den Ruf des Mandats",
                  "Beitrag und einer Peinlichkeit"],
+    # RIS-04's acceptance in guard form: the scenario posture lives in the
+    # block and in neither prompt. The prompts may *name* the four likelihood
+    # words and the six speeds — the schema requires the labels — but not
+    # restate why a percentage is refused or why the silence is an option.
+    "scenario_discipline": ["behauptet eine Genauigkeit, die es nicht gibt",
+                            "später als Feststellung zitiert",
+                            "Auch das Unterlassen ist ein Verlauf",
+                            "erst die Öffentlichkeit verschafft"],
 }
 
 #: The other half of DEC-2's guard, and the half RESTATEMENT_TELLS structurally
@@ -1553,7 +1646,7 @@ def _own_coverage(session, client: Client) -> None:
     """One analysed story about the mandate, which is what the advisor reads."""
     article = _an_article(session, "eigene")
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=article.id,
             client_id=client.id,
             summary="Alpha AG baut die Verwahrung aus.",
@@ -1753,6 +1846,138 @@ def _store_a_verdict(session) -> NewsjackOpportunity:
     return stored[0]
 
 
+def _store_a_stakeholder_row(session):
+    """Drive ``stakeholders`` the way the register's button does: one card
+    proposal off a stored profile line, with the model injected. The group and
+    its Betroffenheit are model prose a consultant works the map from, which
+    is exactly what the stamp is about."""
+    from newspulse import stakeholders
+    from newspulse.models import ClientFact
+
+    client = _a_mandate(session)
+    session.add(
+        ClientFact(client_id=client.id, key="sitz", value="Leipzig, Deutschland")
+    )
+    session.commit()
+    stored = stakeholders.propose_card(
+        session,
+        client,
+        invoke=lambda *a, **k: json.dumps(
+            {
+                "gruppen": [
+                    {
+                        "gruppe": "Anwohner am Standort",
+                        "betroffenheit": "Wohnen neben dem Werksgelände.",
+                        "einfluss": "mittel",
+                    }
+                ]
+            }
+        ),
+    )
+    assert stored
+    return stored[0]
+
+
+def _store_a_scenario(session):
+    """Drive ``scenarios`` the way the register's button does: one course set
+    off a stored issue, with the model injected. The narrative and the
+    Kommunikationsbedarf are model prose a consultant reads into a meeting,
+    which is exactly what the stamp is about."""
+    from newspulse import scenarios
+    from newspulse.models import Issue, IssueSignal
+
+    client = _a_mandate(session)
+    founding = _an_article(session, "szenario")
+    issue = Issue(
+        client_id=client.id,
+        title="Verwahrung im Wandel",
+        opened_by="mensch",
+        opened_at=_RECENTLY,
+        last_moved_at=_RECENTLY,
+    )
+    issue.signals.append(
+        IssueSignal(
+            article_id=founding.id,
+            reason="Teil der angenommenen Wiederholung.",
+            attached_by="mensch",
+            attached_at=_RECENTLY,
+            happened_at=founding.published_at,
+        )
+    )
+    session.add(issue)
+    session.commit()
+    stored = scenarios.generate_scenarios(
+        session,
+        issue,
+        invoke=lambda *a, **k: json.dumps(
+            {
+                "szenarien": [
+                    {
+                        "art": "wahrscheinlicher",
+                        "verlauf": "Die Kritik könnte sich fortsetzen.",
+                        "wahrscheinlichkeit": "möglich",
+                        "ausloeser": ["zweites_medium"],
+                        "stakeholder": [],
+                        "kommunikationsbedarf": "",
+                    }
+                ]
+            }
+        ),
+        now=_RECENTLY,
+    )
+    assert stored
+    return stored[0]
+
+
+def _store_a_packet(session):
+    """Drive ``decision`` the way the register's button does: one decision paper
+    off a stored issue, with the model injected. What happened, what is belegt
+    and what is to be decided are model prose that goes into the room where the
+    decision is taken, which is exactly what the stamp is about."""
+    from newspulse import decision
+    from newspulse.models import Issue, IssueSignal
+
+    client = _a_mandate(session)
+    founding = _an_article(session, "papier")
+    issue = Issue(
+        client_id=client.id,
+        title="Verwahrung im Wandel",
+        opened_by="mensch",
+        opened_at=_RECENTLY,
+        last_moved_at=_RECENTLY,
+    )
+    issue.signals.append(
+        IssueSignal(
+            article_id=founding.id,
+            reason="Teil der angenommenen Wiederholung.",
+            attached_by="mensch",
+            attached_at=_RECENTLY,
+            happened_at=founding.published_at,
+        )
+    )
+    session.add(issue)
+    session.commit()
+    stored = decision.build(
+        session,
+        client,
+        issue=issue,
+        by="mensch",
+        invoke=lambda *a, **k: json.dumps(
+            {
+                "was_passiert_ist": "Die Verwahrung des Mandanten steht in der Kritik.",
+                "belegt": [],
+                "unbestaetigt": [{"satz": "Ein Umbau sei beschlossen."}],
+                "offen": [{"satz": "Wer hat entschieden?"}],
+                "widersprueche": [],
+                "zu_entscheiden": "Ob wir uns öffentlich äußern.",
+            }
+        ),
+        now=_RECENTLY,
+    )
+    assert stored is not None
+    return stored
+
+
 #: Every generator in the tool, each paired with a call that drives its real
 #: generate-then-store path. The point of the list is that it is exhaustive, and
 #: the test below it is what keeps it that way: a stamp on the two generators
@@ -1773,6 +1998,21 @@ GENERATORS = [
     # count come from stored rows, but the sentence naming what a "belegt"
     # rests on is model prose a consultant acts on within hours.
     ("newsjack", _store_a_verdict),
+    # The stakeholder map's proposals (RIS-03): the levels come from a closed
+    # set, but the group and its Betroffenheit are model prose the selection's
+    # own sentences later rest on. The selection rows are stamped by the same
+    # module through the same capture.
+    ("stakeholders", _store_a_stakeholder_row),
+    # The three courses (RIS-04): the likelihood and the triggers come from
+    # closed sets, but the narrative and the Kommunikationsbedarf are model
+    # prose a consultant reads into a meeting. The response options are
+    # stamped by the same module through the same capture.
+    ("scenarios", _store_a_scenario),
+    # The decision paper (RIS-05): the Kennungen, the ranks and the gaps come
+    # from stored rows, but what happened, what is belegt and what is to be
+    # decided are model prose that goes into the room where a decision is
+    # taken, and is read back afterwards to justify it.
+    ("decision", _store_a_packet),
 ]
 
 

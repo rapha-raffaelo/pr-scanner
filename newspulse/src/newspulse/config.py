@@ -576,6 +576,46 @@ def newsjack_every_hours() -> int:
     return value
 
 
+# How far back a reputation reading looks (RIS-01). Twenty-four hours, because
+# the reading is a *daily* one and the day is what the band is read on: a wider
+# window would carry Monday's wave into Thursday's reading and leave the band red
+# for three days after the press had moved on, which is precisely the decoration
+# the brake in ``newspulse.reputation`` exists to prevent.
+#
+# Deliberately the same span as ``crisis.STORY_WINDOW`` rather than a share of
+# it: this is the same arithmetic one floor down, and two windows that differ by
+# an hour would let the crisis level and the reading disagree about the same
+# morning with nothing in either to explain why.
+ENV_REPUTATION_WINDOW_HOURS = "NEWSPULSE_REPUTATION_WINDOW_HOURS"
+_DEFAULT_REPUTATION_WINDOW_HOURS = 24
+
+# The floor a configured window is clamped to. Zero or a negative number would
+# make every reading see nothing at all — every mandate permanently ruhig, and a
+# band that is right in exactly the way that makes it useless — so a typo cannot
+# buy that.
+_MIN_REPUTATION_WINDOW_HOURS = 1
+
+
+def reputation_window_hours() -> int:
+    """How many hours of stored coverage one reading is counted over.
+
+    Read per call rather than at import, like :func:`crisis_sweep_minutes` and
+    for the same reason: a platform variable set after start-up is still seen,
+    and the value the running sweep uses is the one currently configured.
+    """
+    value = _env_int(ENV_REPUTATION_WINDOW_HOURS, _DEFAULT_REPUTATION_WINDOW_HOURS)
+    if value < _MIN_REPUTATION_WINDOW_HOURS:
+        _log.warning(
+            "%s=%d is below the %d-hour floor; using %d",
+            ENV_REPUTATION_WINDOW_HOURS,
+            value,
+            _MIN_REPUTATION_WINDOW_HOURS,
+            _MIN_REPUTATION_WINDOW_HOURS,
+        )
+        return _MIN_REPUTATION_WINDOW_HOURS
+    return value
+
+
 def gemini_configured() -> bool:
     """Whether the fallback provider can be used at all.
 

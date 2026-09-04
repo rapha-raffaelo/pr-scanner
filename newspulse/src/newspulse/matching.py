@@ -3,8 +3,8 @@
 This module does the two mechanical steps that stand between raw feed items and
 the (expensive, authoritative) Claude analysis:
 
-* :func:`match_candidates` pairs each feed item with every client whose name,
-  alias, or keyword appears in the item's headline or feed summary, using
+* :func:`match_candidates` pairs each feed item with every client whose name or
+  alias appears in the item's headline or feed summary, using
   case-insensitive *word-boundary* matching so a German compound noun
   ("Autobahn") never counts as a hit for a shorter company name ("Bahn").
 
@@ -110,9 +110,9 @@ def match_candidates(
 ) -> list[Candidate]:
     """Pair each item with every client it plausibly mentions.
 
-    A client "matches" an item when the client's name, any alias, or any keyword
-    occurs — case-insensitively and on a word boundary — in the item's title or
-    feed summary. See the module docstring: this is a deliberately loose recall
+    A client "matches" an item when the client's name or any alias occurs —
+    case-insensitively and on a word boundary — in the item's title or feed
+    summary. Topics are not identity: see :func:`_client_terms`. See the module docstring: this is a deliberately loose recall
     filter, not the final relevance decision.
     """
     # One compiled matcher per client, built once, then searched against every
@@ -148,7 +148,7 @@ def _haystack(item: FeedItem) -> str:
 def _compile_client_matcher(client: Client) -> re.Pattern[str] | None:
     """Compile a single case-folded, word-boundary matcher for a client.
 
-    All of a client's terms (name + aliases + keywords) become one alternation
+    All of a client's identifying terms (name + aliases) become one alternation
     wrapped in ``(?<!\\w) … (?!\\w)`` lookarounds. The lookarounds — rather than
     ``\\b`` — are what reject a substring inside a longer word: a term only
     matches when the characters immediately around it are not word characters, so
@@ -165,12 +165,31 @@ def _compile_client_matcher(client: Client) -> re.Pattern[str] | None:
 
 
 def _client_terms(client: Client) -> list[str]:
-    """Name + aliases + keywords, trimmed, blanks dropped, case-folded-deduped.
+    """Name + aliases, trimmed, blanks dropped, case-folded-deduped.
 
     Each name and alias also contributes its legal-form-free variant (see
     :mod:`newspulse.company_names`), so a client entered as "IB-7 Beauty Tech
-    GmbH" still matches the headline that writes "IB-7 Beauty Tech". Keywords are
-    topics, not company names, so they are taken as typed.
+    GmbH" still matches the headline that writes "IB-7 Beauty Tech".
+
+    ``keywords`` is deliberately not here, and the sentence this replaces said
+    why without acting on it: "Keywords are topics, not company names." Every
+    other reader in the package agrees — ``advisor``, ``angles``, ``assets`` and
+    ``outreach`` render the field into their prompts as "Themen:", ``rivals``
+    calls it "Beobachtete Themen", and ``gnews`` builds the topic radar's
+    searches from it. This function was the one place a topic counted as
+    evidence that an article was *about* the company.
+
+    Measured in production before the change, and it is not a rounding error:
+    Arrakis.finance carried the topics "Crypto, Krypto, DEX, Fintech, Blockchain,
+    Exchange", so every crypto article on earth became a candidate for coverage
+    of Arrakis — 1666 analyses, of which the model marked exactly zero as
+    relevant, correctly, one paid call at a time. Freedom24 ran at 14% on
+    "Aktien", "Börse" and "ETFs"; Qonto at 10%; and the archive filled with
+    articles that were right to be there for the radar and wrong to be there as
+    coverage.
+
+    Identity terms that were filed under ``keywords`` belong in ``aliases``,
+    which is what that field is for and where they were moved.
     """
     raw = [
         *company_names.variants(getattr(client, "name", "") or ""),
@@ -179,7 +198,6 @@ def _client_terms(client: Client) -> list[str]:
             for alias in (getattr(client, "aliases", None) or [])
             for variant in company_names.variants(alias or "")
         ),
-        *(getattr(client, "keywords", None) or []),
     ]
     terms: list[str] = []
     seen: set[str] = set()

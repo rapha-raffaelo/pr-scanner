@@ -24,7 +24,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
-from newspulse import cli, job, notify
+from newspulse import cli, issues, job, notify
 from newspulse.db import make_engine
 from newspulse.feeds import Feed
 from newspulse.ingest import FeedItem
@@ -1158,3 +1158,64 @@ def test_a_failed_sweep_writes_neither_report_nor_draft(
     period = real_report_draft.previous_month(_STICHTAG)
     assert real_report_draft.for_period(session, client.id, period) is None
     assert result.angles_written == 0
+
+
+# --- The issue-linking stage's wiring (RIS-02) ----------------------------------
+
+
+def test_the_sweep_reaches_the_issue_linking(session, no_issue_linking, monkeypatch):
+    """The autouse fixture stubs this stage suite-wide and promises the wiring
+    tests put it back — this is that test: ``_post_run`` genuinely calls the
+    linking pass, and the pass offers the day to the mandate."""
+    _add_client(session, "Alpha AG")
+    offered: list[str] = []
+
+    def _record(inner_session, client, *, now):
+        offered.append(client.name)
+        return 0
+
+    monkeypatch.setattr(job, "_link_issue_signals", no_issue_linking)
+    monkeypatch.setattr(issues, "link_signals", _record)
+
+    report = job.run(
+        session, analyzer=_FakeAnalyzer(), feeds=[], fetch=_fetch_from({}), now=lambda: _NOW
+    )
+
+    assert report.status is RunStatus.OK
+    assert offered == ["Alpha AG"]
+
+
+def test_the_issue_linking_skips_competitors(session, no_issue_linking, monkeypatch):
+    """A competitor is tracked to compare coverage; no register is kept on it,
+    so the linking pass never spends a candidate — or a model call — on one."""
+    rival = Client(name="Zolar", is_competitor=True)
+    session.add(rival)
+    session.commit()
+    offered: list[str] = []
+
+    def _record(inner_session, client, *, now):
+        offered.append(client.name)
+        return 0
+
+    monkeypatch.setattr(issues, "link_signals", _record)
+
+    assert no_issue_linking(session, [rival], now=_NOW) == 0
+    assert offered == []
+
+
+def test_a_failing_issue_link_does_not_cost_the_other_mandates(
+    session, no_issue_linking, monkeypatch
+):
+    """The per-mandate fault boundary: a broken verdict costs one mandate its
+    attachments, never the others theirs and never the sweep its morning."""
+    first = _add_client(session, "Bricht ab")
+    second = _add_client(session, "Läuft durch")
+
+    def _partly(inner_session, client, *, now):
+        if client.name == "Bricht ab":
+            raise RuntimeError("das Urteil ist gescheitert")
+        return 1
+
+    monkeypatch.setattr(issues, "link_signals", _partly)
+
+    assert no_issue_linking(session, [first, second], now=_NOW) == 1

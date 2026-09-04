@@ -2299,3 +2299,197 @@ button:disabled { opacity: .55; cursor: default; }
 .njarch__meta { color: var(--muted); font-size: var(--t-caption2);
                 display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
 .njarch__out { color: var(--ink-2); }
+
+/* --- The reputation band on Heute (RIS-01, DEC-1 option B) ----------------
+   A mandate gets a tile only once it has left the lowest rung; the rest are the
+   sentence at the foot. On an ordinary morning the whole band is that one line,
+   which is what makes it worth reading on the morning it is not.
+
+   Colour is decoration here and carries nothing on its own: every tile states
+   its rung, its direction and its deviation as words, so the band reads the same
+   to somebody who cannot tell the border colours apart. The left border is the
+   only place the rung is coloured at all — a filled red card would shout the
+   same volume for Beobachtung as for Krise, and the two are the difference
+   between "keep an eye on it" and "everything else waits". */
+.band { margin-bottom: var(--s4); }
+.band__row {
+  display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.band__tile {
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 3px solid var(--neutral);
+  border-radius: var(--radius); padding: var(--s3) var(--s4);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.band__tile--beobachtung { border-left-color: var(--warn); }
+.band__tile--issue { border-left-color: var(--purple); }
+.band__tile--risiko { border-left-color: var(--pink); }
+.band__tile--krise { border-left-color: var(--alert); }
+.band__head {
+  display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap;
+}
+.band__state {
+  font-size: var(--t-caption2); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink);
+}
+.band__name { font-size: var(--t-subhead); font-weight: 600; min-width: 0; }
+.band__why, .band__trend {
+  font-size: var(--t-caption); color: var(--muted);
+  display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.band__trend strong { color: var(--ink-2); font-weight: 600; }
+/* The mandate measured against its own median, spelled out rather than marked.
+   "Ungewöhnlich für dieses Mandat" is the one thing on the tile that a threshold
+   shared across the portfolio could not have said. */
+.band__dev { color: var(--ink-2); }
+/* Only rendered on a tile whose reading is older than the band's stamp. */
+.band__stale { font-size: var(--t-caption2); color: var(--faint); margin-top: var(--s1); }
+.band__foot {
+  font-size: var(--t-caption); color: var(--muted);
+  display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap;
+  margin: var(--s2) 0 0;
+}
+.band__row + .band__foot { margin-top: var(--s3); }
+.band__stamp { color: var(--faint); margin-left: auto; }
+
+/* --- Das Issue-Register (RIS-02, DEC-6 option A) ---------------------------
+   The list first, the heatmap beside it. The list is what is worked with —
+   age, last movement and signal count on every row — so it holds the wide
+   column; the map is a small block that grows (reg__map--full) once there are
+   enough graded issues for a picture. The named "Ohne Bewertung" column sits
+   under the field and never inside it: an ungraded issue at the origin would
+   claim a grading nobody made. */
+.reg { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: var(--s5); }
+.reg__map--full { width: auto; }
+@media (max-width: 900px) { .reg { grid-template-columns: 1fr; } }
+.koffer__badge--issue { background: var(--purple); color: #fff; }
+.koffer__note { font-size: var(--t-caption2); color: var(--faint); flex-basis: 100%; }
+
+.icard {
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 3px solid var(--purple);
+  border-radius: var(--radius); padding: var(--s3) var(--s4);
+  margin-bottom: var(--s3);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+.icard--past { border-left-color: var(--neutral); }
+.icard__h { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.icard__t { font-size: var(--t-subhead); font-weight: 600; min-width: 0; }
+.icard__age {
+  font-size: var(--t-caption); color: var(--muted); margin-left: auto;
+  display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.icard__m, .icard__d { font-size: var(--t-caption); color: var(--muted); margin: 0; }
+.icard__grade {
+  display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap;
+  font-size: var(--t-caption);
+}
+/* The value and the person who set it, on one breath: a number without a name
+   would read as a measurement, and it is an opinion. */
+.ival { color: var(--ink-2); }
+.ival__who { color: var(--faint); }
+.ival--hint { color: var(--faint); }
+.igrade { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.igrade label { font-size: var(--t-caption); color: var(--muted); }
+.igrade select { margin-left: 3px; }
+
+.isig summary, .iedit summary { font-size: var(--t-caption); color: var(--muted); cursor: pointer; }
+.isig__row {
+  display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 2px var(--s3);
+  padding: var(--s2) 0; border-top: 1px solid var(--line);
+  font-size: var(--t-caption);
+}
+.isig__at { color: var(--faint); font-variant-numeric: tabular-nums; }
+.isig__src, .isig__who { color: var(--faint); }
+.isig__why { grid-column: 2; color: var(--muted); }
+.iedit__form { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); }
+.iedit__form label { font-size: var(--t-caption); color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+.icard__f { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.iclose { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+
+/* The field: probability rightwards, impact upwards, weight as tint. Colour is
+   decoration — every issue also stands on the list with its two numbers as
+   words, so the map adds a picture and carries nothing alone. */
+.heat { display: flex; flex-direction: column; gap: var(--s1); }
+.heat__grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+  aspect-ratio: 1 / 1;
+}
+.heat__cell {
+  background: var(--bg-2, var(--card)); border: 1px solid var(--line);
+  border-radius: 2px; min-height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 2px; flex-wrap: wrap;
+}
+.heat__dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--purple); display: inline-block;
+}
+.heat__ylab, .heat__xlab { font-size: var(--t-caption2); color: var(--faint); }
+.heat__xlab { text-align: right; }
+.heat__none { margin-top: var(--s3); border-top: 1px solid var(--line); padding-top: var(--s2); }
+.heat__nlab {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted);
+}
+.heat__nrow { font-size: var(--t-caption); color: var(--ink-2); padding: 2px 0; }
+.heat__nrow--empty { color: var(--faint); }
+/* Weight tints, weakest to strongest product of the two 1-5 values. Stops at
+   a light wash on purpose: the dots carry the positions, the wash only says
+   which corner is the expensive one. */
+.heat__cell--w12, .heat__cell--w15, .heat__cell--w16 { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.heat__cell--w20, .heat__cell--w25 { background: color-mix(in srgb, var(--alert) 14%, transparent); }
+
+.reg__past { margin-top: var(--s5); }
+
+/* --- Die Stakeholder-Karte (RIS-03) --------------------------------------- */
+/* The standing map below the register. A row without a named contact carries
+   the accent border: the gap is the most important row of the map, and it has
+   to read as one before anything else on the line does. */
+.smap { margin-top: var(--s5); }
+.smap__propose { margin-left: auto; }
+.smap__hint { font-size: var(--t-caption); color: var(--muted); margin: var(--s1) 0 var(--s3); }
+.smap__row {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--s3); margin-bottom: var(--s2);
+}
+.smap__row--gap { border-left: 3px solid var(--warn); }
+.smap__h { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.smap__g { font-weight: 600; }
+.smap__lvl { font-size: var(--t-caption); color: var(--muted); }
+.smap__lvl--hoch { color: var(--alert); }
+/* The author on every line, the same discipline the profile keeps. */
+.smap__who { font-size: var(--t-caption); color: var(--faint); margin-left: auto; }
+.smap__b, .smap__c { font-size: var(--t-caption); color: var(--muted); margin: var(--s1) 0 0; }
+.smap__gap { color: var(--warn); }
+.smap__edit summary { font-size: var(--t-caption); color: var(--muted); cursor: pointer; }
+.smap__form { display: flex; flex-direction: column; gap: var(--s2); margin: var(--s2) 0; }
+.smap__form label { font-size: var(--t-caption); color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+.smap__add { margin-top: var(--s2); }
+.smap__missing a { font-weight: 600; }
+
+/* The selection at an issue: position first, because the order is what the
+   block exists to say. The number input is the resort handle — a person types
+   the order, presses save, and from then on it is no recommendation. */
+.ssel { border-top: 1px solid var(--line); padding-top: var(--s2); margin-top: var(--s2); }
+.ssel__h { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.ssel__t { font-size: var(--t-caption); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.ssel__form { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); }
+.ssel__row { display: flex; gap: var(--s3); align-items: flex-start; }
+.ssel__row--gap { border-left: 3px solid var(--warn); padding-left: var(--s2); }
+.ssel__pos { width: 3.2em; }
+.ssel__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+/* The per-row remove sits at the end of the row and stays quiet: taking a group
+   off the list is a real decision, but it is not the row's headline. */
+.ssel__drop { margin-left: auto; flex: none; align-self: flex-start; }
+.ssel__acts { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.ssel__g { font-weight: 600; }
+.ssel__why, .ssel__need, .ssel__c { font-size: var(--t-caption); color: var(--muted); }
+.ssel__c b { color: var(--warn); }
+/* No map, no selection: the named absence with the link to where the map is
+   maintained — the crisis page selects from the card and never edits it. */
+.ssel__missing { font-size: var(--t-caption); color: var(--muted); }
+.ssel__missing a { font-weight: 600; }

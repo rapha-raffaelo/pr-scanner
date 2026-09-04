@@ -1,0 +1,356 @@
+{# Das Issue-Register, in the shape DEC-6 A locks: the list first, the heatmap
+   beside it.
+
+   The list is what is worked with — every open row with its age, its last
+   movement and its signal count, because those three are what "something is
+   growing" is made of. The heatmap stands as a small block beside it and grows
+   once there are enough graded issues for a picture; an issue missing either
+   value stands in the named column under the field and never at its origin,
+   because a dot at the origin would claim a grading nobody made.
+
+   The offer at the top is DEC-3 A: the tool proposes, a person opens. It names
+   what the repetition consists of, and nothing anywhere changes until one of
+   its two buttons is pressed.
+
+   Every style rule lives in app.css, the same discipline the crisis page
+   keeps: a page-local <style> block is how a shared class breaks on the second
+   page that uses it. #}
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Issues") }} · {{ client.name }} · RauteOS{% endblock %}
+
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'issues' %}
+{% include '_client_tabs.html' %}
+
+{% if note %}
+  <p class="notice">{{ t(note) }}</p>
+{% endif %}
+
+{# DEC-3's offer: the question, what the repetition consists of, and the two
+   answers. A false proposal costs the one click on Verwerfen, and the same
+   repetition then stops being offered. #}
+{% if offer %}
+  <div class="koffer">
+    <span class="koffer__badge koffer__badge--issue">{{ t("Issue?") }}</span>
+    <span class="koffer__t">{{ offer.headline }}</span>
+    <span class="koffer__why">
+      {% if offer.kind == 'zweiter_tag' %}
+        {{ t("Dieselbe Sache an") }} {{ offer.days }} {{ t("Tagen") }},
+        {% if offer.outlets == 1 %}{{ t("1 Medium") }}{% else %}{{ offer.outlets }} {{ t("Medien") }}{% endif %}
+      {% else %}
+        {{ t("Berichterstattung und datiertes Marktsignal derselben Sache:") }}
+        {{ offer.signal_title }}
+      {% endif %}
+    </span>
+    <form method="post" action="/issues/accept">
+      <input type="hidden" name="client_id" value="{{ client.id }}">
+      <input type="hidden" name="article_id" value="{{ offer.article_id }}">
+      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+      <button type="submit" class="triage-btn triage-btn--crisis">{{ t("Issue eröffnen") }}</button>
+    </form>
+    <form method="post" action="/issues/dismiss">
+      <input type="hidden" name="client_id" value="{{ client.id }}">
+      <input type="hidden" name="article_id" value="{{ offer.article_id }}">
+      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+      <button type="submit" class="triage-btn">{{ t("Verwerfen") }}</button>
+    </form>
+    <span class="koffer__note">{{ t("Vorgeschlagen, nicht eröffnet. Bis jemand hier drückt, ändert sich nichts.") }}</span>
+  </div>
+{% endif %}
+
+<div class="reg">
+
+<section class="reg__list" aria-label="{{ t('Offene Issues') }}">
+  <div class="kcol__h">
+    <span class="kcol__t">{{ t("Offene Issues") }}</span>
+    <span class="kcol__s">{{ rows | length }}</span>
+  </div>
+
+  {% for view in rows %}
+    {% set issue = view.issue %}
+    <article class="icard">
+      <div class="icard__h">
+        <span class="icard__t">{{ issue.title }}</span>
+        <span class="icard__age">
+          {% if view.age_days == 1 %}1 {{ t("Tag alt") }}{% else %}{{ view.age_days }} {{ t("Tage alt") }}{% endif %}
+          &middot; {{ t("letzte Bewegung") }} {{ issue.last_moved_at | de_date }}
+          &middot; {{ view.signal_count }}
+          {% if view.signal_count == 1 %}{{ t("Signal") }}{% else %}{{ t("Signale") }}{% endif %}
+        </span>
+      </div>
+      <p class="icard__m">
+        {{ t("eröffnet von") }} {{ issue.opened_by }} &middot;
+        {{ t("Owner") }}: {% if issue.owner %}{{ issue.owner }}{% else %}<em>{{ t("niemand benannt") }}</em>{% endif %}
+      </p>
+      {# Der Vermerk am Issue (RIS-04): a condition a scenario was watching for
+         now holds. It says which condition and what actually matched, because
+         a red mark that cannot say what it saw is one nobody can act on. It is
+         reported once, and the mark stands afterwards. #}
+      {% set marks = fired.get(issue.id, []) %}
+      {% if marks %}
+        <p class="icard__d">
+          <b>{{ t("Ausgelöst") }}:</b>
+          {% for mark in marks %}
+            <span class="kpill kpill--neg">{{ t(condition_labels[mark.condition]) }}</span>
+            {{ mark.fired_note }}
+            <span class="isig__who">({{ mark.fired_at | de_date }})</span>{% if not loop.last %} &middot; {% endif %}
+          {% endfor %}
+        </p>
+      {% endif %}
+      {% if issue.description %}<p class="icard__d">{{ issue.description }}</p>{% endif %}
+      {% if issue.early_indicators %}
+        <p class="icard__d"><b>{{ t("Frühindikatoren") }}:</b> {{ issue.early_indicators }}</p>
+      {% endif %}
+
+      {# The two graded values, each with the person who set it — a value the
+         arithmetic only suggested is "noch nicht gesetzt", never a number. #}
+      <div class="icard__grade">
+        <span class="ival">
+          {{ t("Wahrscheinlichkeit") }}:
+          {% if issue.probability is not none %}
+            <b>{{ issue.probability }}</b>/{{ scale_max }}
+            <span class="ival__who">{{ t("gesetzt von") }} {{ issue.probability_set_by }}</span>
+          {% else %}
+            <em>{{ t("noch nicht gesetzt") }}</em>
+          {% endif %}
+        </span>
+        <span class="ival">
+          {{ t("Wirkung") }}:
+          {% if issue.impact is not none %}
+            <b>{{ issue.impact }}</b>/{{ scale_max }}
+            <span class="ival__who">{{ t("gesetzt von") }} {{ issue.impact_set_by }}</span>
+          {% else %}
+            <em>{{ t("noch nicht gesetzt") }}</em>
+          {% endif %}
+        </span>
+        <span class="ival ival--hint">
+          {{ t("Vorschlag") }}: {{ view.suggestion.probability }} × {{ view.suggestion.impact }}
+          ({{ view.suggestion.days }} {{ t("Tage") }}, {{ view.suggestion.outlets }} {{ t("Medien") }}{% if view.suggestion.national %}, {{ t("überregional") }}{% endif %})
+        </span>
+        <form method="post" action="/issues/{{ issue.id }}/grade" class="igrade">
+          <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+          <label>{{ t("Wahrscheinlichkeit") }}
+            <select name="probability">
+              {% for value in range(scale_min, scale_max + 1) %}
+                <option value="{{ value }}"{% if issue.probability == value %} selected{% elif issue.probability is none and view.suggestion.probability == value %} selected{% endif %}>{{ value }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>{{ t("Wirkung") }}
+            <select name="impact">
+              {% for value in range(scale_min, scale_max + 1) %}
+                <option value="{{ value }}"{% if issue.impact == value %} selected{% elif issue.impact is none and view.suggestion.impact == value %} selected{% endif %}>{{ value }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="submit" class="btn btn--sm">{{ t("Werte setzen") }}</button>
+        </form>
+      </div>
+
+      {# Every signal with its stored reason and who hung it there: the row is
+         readable evidence, not a count. #}
+      <details class="isig">
+        <summary>{{ view.signal_count }}
+          {% if view.signal_count == 1 %}{{ t("Signal") }}{% else %}{{ t("Signale") }}{% endif %}</summary>
+        {% for row in issue.signals | sort(attribute='happened_at', reverse=true) %}
+          <div class="isig__row">
+            <span class="isig__at">{{ row.happened_at | de_date }}</span>
+            <span class="isig__what">
+              {% if row.article %}{{ row.article.title }} <span class="isig__src">&middot; {{ row.article.source }}</span>
+              {% elif row.market_signal %}{{ t("Marktsignal") }}: {{ row.market_signal.title }}{% endif %}
+            </span>
+            <span class="isig__why">{{ row.reason }} <span class="isig__who">&middot; {{ t("angehängt von") }} {{ row.attached_by }}</span></span>
+          </div>
+        {% endfor %}
+      </details>
+
+      {# Die Stakeholder-Auswahl (RIS-03), in the partial the crisis page uses
+         too: which groups this occasion touches, the stored reason per group,
+         the one-sentence information need, and the order — an Empfehlung until
+         a person sorts it, and from then on the person's order is what is
+         kept. No ``map_link`` here: the standing map is on this page, below. #}
+      {% with sel = selections.get(issue.id, []),
+              sel_recommended = recommended.get(issue.id),
+              sel_anchor = "/issues/" ~ issue.id ~ "/stakeholder",
+              has_map = smap,
+              map_link = "",
+              stakeholder_note = "" %}
+        {% include 'partials/stakeholder_selection.html' %}
+      {% endwith %}
+
+      {# Szenarien, Auslöser und Reaktionsoptionen (RIS-04). #}
+      {% with courses_here = courses.get(issue.id, []),
+              options_here = options.get(issue.id, []),
+              editable = true %}
+        {% include 'partials/scenarios.html' %}
+      {% endwith %}
+
+      {# Das Entscheidungspapier (RIS-05): the button, and every paper written
+         from this row. A new one stands beside the old and never replaces it. #}
+      {% with packets_here = packets.get(issue.id, []),
+              editable = true,
+              packet_action = '/issues/' ~ issue.id ~ '/entscheidungspapier',
+              packet_redirect = '/client/' ~ client.id ~ '/issues',
+              packet_anchor = 'dpk-issue-' ~ issue.id %}
+        {% include 'partials/decision_packets.html' %}
+      {% endwith %}
+
+      <details class="iedit">
+        <summary>{{ t("Bearbeiten") }}</summary>
+        <form method="post" action="/issues/{{ issue.id }}/edit" class="iedit__form">
+          <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+          <label>{{ t("Beschreibung") }}
+            <textarea name="description" rows="2">{{ issue.description }}</textarea></label>
+          <label>{{ t("Frühindikatoren") }}
+            <textarea name="early_indicators" rows="2">{{ issue.early_indicators }}</textarea></label>
+          <label>{{ t("Owner") }}
+            <input type="text" name="owner" maxlength="80" value="{{ issue.owner }}"></label>
+          <button type="submit" class="btn btn--sm">{{ t("Speichern") }}</button>
+        </form>
+      </details>
+
+      <div class="icard__f">
+        <form method="post" action="/issues/{{ issue.id }}/escalate">
+          <button type="submit" class="btn btn--sm btn--stop">{{ t("Krise erklären") }}</button>
+        </form>
+        {# The reason is required at the button as well as in ``issues.close``:
+           "why did we stop watching this" is silence three months later. #}
+        <form method="post" action="/issues/{{ issue.id }}/close" class="iclose">
+          <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+          <input type="text" name="reason" required maxlength="200"
+                 placeholder="{{ t('Grund: warum wird es geschlossen?') }}">
+          <button type="submit" class="btn btn--sm btn--ghost">{{ t("Issue schließen") }}</button>
+        </form>
+      </div>
+    </article>
+  {% else %}
+    {# The empty register is a statement, not a missing page. #}
+    <p class="kcol__empty">{{ t("Kein offenes Issue. Nichts wird getragen.") }}</p>
+  {% endfor %}
+</section>
+
+{# DEC-6 A: the heatmap beside the list, small until there is a picture. #}
+<aside class="reg__map{% if heatmap.graded >= 4 %} reg__map--full{% endif %}"
+       aria-label="{{ t('Heatmap') }}">
+  <div class="kcol__h"><span class="kcol__t">{{ t("Heatmap") }}</span></div>
+  <div class="heat">
+    <span class="heat__ylab">{{ t("Wirkung") }}</span>
+    <div class="heat__grid">
+      {% for cells in heatmap.rows %}
+        {% for cell in cells %}
+          <div class="heat__cell heat__cell--w{{ cell.probability * cell.impact }}"
+               data-cell="{{ cell.probability }}-{{ cell.impact }}">
+            {% for issue in cell.rows %}
+              <span class="heat__dot" title="{{ issue.title }}"></span>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      {% endfor %}
+    </div>
+    <span class="heat__xlab">{{ t("Wahrscheinlichkeit") }}</span>
+  </div>
+  {# The named column beside the field: an issue missing either value stands
+     here and never at the origin — the origin would claim "harmless", and
+     nobody made that claim. #}
+  <div class="heat__none" data-ungraded>
+    <div class="heat__nlab">{{ t("Ohne Bewertung") }}</div>
+    {% for issue in heatmap.ungraded %}
+      <div class="heat__nrow">{{ issue.title }}</div>
+    {% else %}
+      <div class="heat__nrow heat__nrow--empty">{{ t("keins") }}</div>
+    {% endfor %}
+  </div>
+</aside>
+
+</div>
+
+{# The standing map, below the register: what the selections above draw from. #}
+{% include 'partials/stakeholder_map.html' %}
+
+{% if past %}
+  {# A closed issue stays readable with all its signals: the register is the
+     memory this feature exists to be, and hiding a closed row would delete it. #}
+  <section class="reg__past" aria-label="{{ t('Frühere Issues') }}">
+    <div class="kcol__h"><span class="kcol__t">{{ t("Frühere Issues") }}</span></div>
+    {% for issue in past %}
+      <article class="icard icard--past">
+        <div class="icard__h">
+          <span class="icard__t">{{ issue.title }}</span>
+          <span class="icard__age">
+            {% if issue.status == 'eskaliert' %}
+              <span class="kpill kpill--neg">{{ t("eskaliert") }}</span>
+              {% if issue.crisis_id %}
+                <a href="/client/{{ client.id }}/krise?krise={{ issue.crisis_id }}">{{ t("zur Krise") }} →</a>
+              {% endif %}
+            {% else %}
+              <span class="kpill">{{ t("geschlossen") }}</span>
+              {{ issue.closed_at | de_date }} &middot; {{ t("geschlossen von") }} {{ issue.closed_by }}
+            {% endif %}
+          </span>
+        </div>
+        {% if issue.close_reason %}
+          <p class="icard__m">{{ t("Grund der Schließung:") }} {{ issue.close_reason }}</p>
+        {% endif %}
+        {# A past issue keeps its selection readable, the same rule its
+           signals keep — the register is the memory. Read-only: the matter
+           ended, and resorting a closed list would rewrite what was decided. #}
+        {% set sel = selections.get(issue.id, []) %}
+        {% if sel %}
+          <details class="isig">
+            <summary>{{ t("Stakeholder-Auswahl") }} ({{ sel | length }})</summary>
+            {% for srow in sel %}
+              <div class="isig__row">
+                {# The rank as drawn: the rows come ordered by position, and a
+                   two-row list has to read "1. 2." even where an older row
+                   set left the stored numbers with a hole in them. #}
+                <span class="isig__at">{{ loop.index }}.</span>
+                <span class="isig__what">{{ srow.stakeholder.group_name }}</span>
+                <span class="isig__why">{{ srow.reason }}</span>
+              </div>
+            {% endfor %}
+          </details>
+        {% endif %}
+        {# A past issue keeps its courses and its options readable, the same
+           rule its signals and its selection keep. Read-only: the matter
+           ended, and re-asking would rewrite what was thought at the time. #}
+        {% with courses_here = courses.get(issue.id, []),
+                options_here = options.get(issue.id, []),
+                editable = false %}
+          {% include 'partials/scenarios.html' %}
+        {% endwith %}
+        {# A past issue keeps its papers readable, the same rule its signals
+           keep. An escalated one still takes the button: the matter did not
+           end, it became a crisis, and the paper then hangs on the crisis. #}
+        {% with packets_here = packets.get(issue.id, []),
+                editable = issue.status == 'eskaliert',
+                packet_action = '/issues/' ~ issue.id ~ '/entscheidungspapier',
+                packet_redirect = '/client/' ~ client.id ~ '/issues',
+                packet_anchor = 'dpk-issue-' ~ issue.id %}
+          {% include 'partials/decision_packets.html' %}
+        {% endwith %}
+        <details class="isig">
+          <summary>{{ issue.signals | length }}
+            {% if issue.signals | length == 1 %}{{ t("Signal") }}{% else %}{{ t("Signale") }}{% endif %}</summary>
+          {% for row in issue.signals | sort(attribute='happened_at', reverse=true) %}
+            <div class="isig__row">
+              <span class="isig__at">{{ row.happened_at | de_date }}</span>
+              <span class="isig__what">
+                {% if row.article %}{{ row.article.title }} <span class="isig__src">&middot; {{ row.article.source }}</span>
+                {% elif row.market_signal %}{{ t("Marktsignal") }}: {{ row.market_signal.title }}{% endif %}
+              </span>
+              <span class="isig__why">{{ row.reason }} <span class="isig__who">&middot; {{ t("angehängt von") }} {{ row.attached_by }}</span></span>
+            </div>
+          {% endfor %}
+        </details>
+      </article>
+    {% endfor %}
+  </section>
+{% endif %}
+
+<p class="kfoot">
+  {{ t("Der Wert liegt im Anhängen, nicht im Anlegen: derselbe Vorwurf am Montag und am Freitag ist eine Zeile mit einem Alter, einer letzten Bewegung und einer Zahl. Eskaliert ein Issue, übernimmt die Krise seine Signale und seinen Beginn.") }}
+</p>
+{% endblock %}

@@ -97,7 +97,7 @@ def _piece(
         client_id=client.id,
         summary=summary,
         category=Category.PRODUKT,
-        relevance_score=relevance,
+        is_relevant=relevance >= 1, relevance_score=relevance,
         importance_score=importance,
         tonality=tonality,
         dismissed_at=dt.datetime(2026, 7, 20, tzinfo=dt.UTC) if dismissed else None,

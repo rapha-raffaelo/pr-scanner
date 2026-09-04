@@ -143,14 +143,52 @@ def test_stripping_does_not_widen_a_name_into_a_bare_brand_word():
     assert matching.match_candidates([item], [client]) == []
 
 
-def test_keyword_hit_in_summary_produces_a_candidate():
-    """The feed summary is searched too, and a keyword (not only name/alias) hits."""
-    client = FakeClient("Muster GmbH", keywords=["Rekordgewinn"])
+def test_a_name_in_the_summary_produces_a_candidate():
+    """The feed summary is searched, not only the headline.
+
+    This test used to claim it proved a *keyword* hit. It never did: the summary
+    it uses also names the company, so the assertion held through the name and
+    would have held with the keyword removed.
+    """
+    client = FakeClient("Muster GmbH")
     item = _item(
         "Quartalszahlen veröffentlicht",
         "https://x.de/q",
         summary="Die Muster GmbH meldet einen Rekordgewinn im zweiten Quartal.",
     )
+
+    assert len(matching.match_candidates([item], [client])) == 1
+
+
+def test_a_topic_term_alone_is_not_evidence_the_article_is_about_the_client():
+    """``keywords`` is the topic list, and this filter answers a different
+    question: is this article *about* this company.
+
+    Every other reader in the package already treats the field as topics —
+    advisor, angles, assets and outreach render it into their prompts as
+    "Themen:", rivals as "Beobachtete Themen", gnews builds the radar's searches
+    from it. This matcher was the one place a topic counted as identity.
+
+    Measured in production before the change: Arrakis.finance carried "Crypto,
+    Krypto, DEX, Fintech, Blockchain, Exchange", so every crypto article became a
+    candidate for coverage of Arrakis — 1666 analyses, zero of them relevant, one
+    paid model call each. Freedom24 ran at 14% on "Aktien", "Börse", "ETFs".
+    """
+    client = FakeClient("Arrakis.finance", keywords=["Blockchain", "Fintech"])
+    item = _item(
+        "Blockchain-Regulierung: UN richtet Expertengruppe ein",
+        "https://x.de/un",
+        summary="Ein Gremium soll Fintech-Regeln harmonisieren.",
+    )
+
+    assert matching.match_candidates([item], [client]) == []
+
+
+def test_an_identity_term_in_the_aliases_still_matches():
+    """Where the identity terms belong, and where the ones filed under keywords
+    were moved — "Freedom Holding Corp", "FRHC", "Timur Turlov" and the rest."""
+    client = FakeClient("Freedom24", aliases=["Freedom Holding Corp", "FRHC"])
+    item = _item("FRHC meldet Quartalszahlen", "https://x.de/frhc")
 
     assert len(matching.match_candidates([item], [client])) == 1
 

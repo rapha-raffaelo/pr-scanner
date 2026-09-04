@@ -116,7 +116,7 @@ def test_the_clients_own_coverage_is_never_linked_as_market(session):
     client = _client(session)
     own = _article(session, "Zalando meldet sinkende Retouren im Fashion-Segment")
     session.add(
-        Analysis(
+        Analysis(is_relevant=True, 
             article_id=own.id,
             client_id=client.id,
             summary="Über den Mandanten.",

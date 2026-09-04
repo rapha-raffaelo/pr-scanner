@@ -329,7 +329,7 @@ def create_app() -> FastAPI:
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
         advisory, archive, assets_view, assistant, client, contacts,
-        crisis_view, guide_routes,
+        crisis_view, guide_routes, issues_view,
         language, login, onboarding as onboarding_routes,
         plan_view, profile as profile_routes, report as report_routes,
         rivals_view, runstatus, settings, today, triage, visibility_view,
@@ -361,6 +361,9 @@ def create_app() -> FastAPI:
     # The two buttons DEC-1 locked: a person declares the crisis the tool offered
     # on Heute, and a person stands it down again.
     app.include_router(crisis_view.router)
+    # The register between the daily card and the declared crisis: the thing
+    # that gets three weeks old, and DEC-3's two buttons (RIS-02).
+    app.include_router(issues_view.router)
     app.include_router(runstatus.router)
     app.include_router(guide_routes.router)
     app.include_router(contacts.router)
