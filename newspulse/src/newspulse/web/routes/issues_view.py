@@ -363,7 +363,9 @@ def issues_page(
     # The packet block takes its own sentence *before* the card's catch-all
     # takes what is left, so a paper's answer is read where the paper's button
     # was pressed and not inside the Stakeholder-Karte.
+    running = stakeholder_ui.busy(client.id)
     packet_note = stakeholder_ui.pop_note(client.id, owned=PACKET_NOTES)
+    packet_click = packet_click_anchor(client.id, running=running)
     stakeholder_note = stakeholder_ui.pop_note(client.id)
     return templates.TemplateResponse(
         request,
@@ -391,6 +393,10 @@ def issues_page(
             # stands beside the old, so this is a list and never one row.
             "packets": _packets_by_issue(session, open_rows + past),
             "packet_note": packet_note,
+            # Which row's block the sentence and the spinner belong under: one
+            # block renders per row, and an answer under all of them would name
+            # rows nobody pressed.
+            "packet_click": packet_click,
             # The two label maps: the stored values are keys ("bester",
             # "zweites_medium"), and what a reader acts on is a sentence. In
             # Python rather than in Jinja because each label is an i18n key,
@@ -407,7 +413,7 @@ def issues_page(
             # mandate: the buttons spend a call on a worker thread, so without
             # this the page after the redirect looks like a button that did
             # nothing, and the reader presses it again.
-            "stakeholder_running": stakeholder_ui.busy(client.id),
+            "stakeholder_running": running,
             # The stored cap, so the form cannot promise a width the column
             # truncates, and where the map's buttons return to.
             "smap_max": STAKEHOLDER_TEXT_MAX,
@@ -927,6 +933,31 @@ PACKET_NOTES = (
 )
 
 
+#: Which packet block the last click on this mandate belongs under, as the DOM
+#: id the templates build ("dpk-issue-12", "dpk-crisis-3"). The register renders
+#: one of these blocks per row, so without it a spinner and a failure sentence
+#: about one row's click would appear under every row on the page. In memory and
+#: not a schema change, the same posture as the note it travels with.
+_last_packet_click: dict[int, str] = {}
+
+
+def packet_click_anchor(client_id: int, *, running: bool) -> str:
+    """The block a running call, or the sentence it just left, belongs to.
+
+    Read while the call is in flight and *taken* once it is not: the anchor has
+    the same life as the note it goes with — it describes one click, and left
+    standing it would put the next stakeholder call's spinner under a packet
+    block nobody pressed.
+
+    Public because the crisis page renders the same partial and needs the same
+    answer; the dict behind it stays this module's, the way the note channel is
+    ``stakeholder_ui``'s.
+    """
+    if running:
+        return _last_packet_click.get(client_id, "")
+    return _last_packet_click.pop(client_id, "")
+
+
 def _packet_occasion(
     session: Session, issue: Issue
 ) -> tuple[Issue | None, Crisis | None]:
@@ -1075,6 +1106,7 @@ def build_packet(
         )
         return "" if written is not None else NO_PACKET
 
+    _last_packet_click[standing.client_id] = f"dpk-issue-{issue_id}"
     stakeholder_ui.spend(
         _write,
         client_id=standing.client_id,
@@ -1116,6 +1148,7 @@ def build_crisis_packet(
         written = decision.build(worker, mandate, crisis=row, by=who)
         return "" if written is not None else NO_PACKET
 
+    _last_packet_click[standing.client_id] = f"dpk-crisis-{crisis_id}"
     stakeholder_ui.spend(
         _write,
         client_id=standing.client_id,

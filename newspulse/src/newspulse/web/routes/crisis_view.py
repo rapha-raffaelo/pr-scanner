@@ -584,7 +584,9 @@ def _timeline(
     return sorted(events, key=lambda event: event.at)
 
 
-def _packet_block(session: Session, client: Client, standing: Crisis) -> dict:
+def _packet_block(
+    session: Session, client: Client, standing: Crisis
+) -> dict[str, object]:
     """What ``partials/decision_packets.html`` needs for this crisis (RIS-05).
 
     The papers written to this occasion, newest first, and this feature's own
@@ -602,6 +604,12 @@ def _packet_block(session: Session, client: Client, standing: Crisis) -> dict:
         "packets_here": decision.packets_for(session, crisis=standing),
         "packet_note": stakeholder_ui.pop_note(
             client.id, owned=issues_view.PACKET_NOTES
+        ),
+        # Which block the sentence and the spinner belong under. One block on
+        # this page, but the same click may have come from the register's
+        # escalated row, and its answer is read there.
+        "packet_click": issues_view.packet_click_anchor(
+            client.id, running=stakeholder_ui.busy(client.id)
         ),
     }
 

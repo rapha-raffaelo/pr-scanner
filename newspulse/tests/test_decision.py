@@ -1281,6 +1281,29 @@ def test_the_register_offers_the_button_and_lists_every_paper(web, session, mand
     assert f"/client/{mandate.id}/entscheidungspapier/{second.id}" in body
 
 
+def test_a_packet_answer_is_read_under_the_row_that_was_pressed(
+    web, session, mandate
+):
+    """The note channel is shared with the Stakeholder-Karte's buttons — one
+    channel is what stops two clicks paying for two calls — but the sentence is
+    read where the button was pressed. Once, under that row, and not inside the
+    Karte, which answers a click nobody made there."""
+    from newspulse.web.routes import issues_view, stakeholder_ui
+
+    pressed = _issue(session, mandate)
+    _issue(session, mandate)  # a second row, whose block must stay silent
+    issues_view._last_packet_click[mandate.id] = f"dpk-issue-{pressed.id}"
+    stakeholder_ui.note(mandate.id, issues_view.NO_PACKET)
+
+    body = web.get(f"/client/{mandate.id}/issues").text
+    assert body.count(issues_view.NO_PACKET) == 1
+    assert (
+        body.index(f'id="dpk-issue-{pressed.id}"')
+        < body.index(issues_view.NO_PACKET)
+        < body.index('<section class="smap"')
+    )
+
+
 def test_the_crisis_page_offers_the_button_and_lists_its_papers(
     web, session, mandate
 ):
@@ -1472,11 +1495,14 @@ def test_the_seeded_paper_renders_exactly_the_golden_file(
     body = web.get(
         f"/client/{mandate.id}/entscheidungspapier/{packet.id}/dokument.html"
     ).text
-    # The two ids the seed cannot pin: they are the rows' own primary keys, and
-    # the paper prints them as Kennungen. Normalised rather than dropped — the
+    # The ids the seed cannot pin: they are the rows' own primary keys, and the
+    # paper prints them as Kennungen. Normalised rather than dropped — the
     # golden has to show that a Kennung *is* printed, without freezing which
-    # number an in-memory database happened to hand out.
-    body = re.sub(r"\b(beitrag|profil|text):\d+\b", r"\1:N", body)
+    # number an in-memory database happened to hand out. The alternation comes
+    # off the enum rather than off the three kinds this seed happens to cite:
+    # a seed extended to cite a fourth would otherwise start freezing keys.
+    kinds = "|".join(kind.value for kind in EvidenceKind)
+    body = re.sub(rf"\b({kinds}):\d+\b", r"\1:N", body)
     if os.environ.get("NEWSPULSE_UPDATE_GOLDEN"):
         GOLDEN.parent.mkdir(parents=True, exist_ok=True)
         GOLDEN.write_text(body, "utf-8")

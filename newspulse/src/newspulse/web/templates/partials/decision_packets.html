@@ -20,15 +20,18 @@
 
    Expects in context: client, packets_here, editable, packet_action,
    packet_redirect, packet_anchor (a DOM id unique on the page, so the block
-   can fetch *itself* back), packet_note (this feature's own sentence, so a
-   packet's answer does not appear inside the Stakeholder-Karte),
-   stakeholder_running, t. #}
+   can fetch *itself* back), packet_click (the anchor of the block that was
+   pressed — the register renders one of these per row, and an answer under all
+   of them would name rows nobody pressed), packet_note (this feature's own
+   sentence, so a packet's answer does not appear inside the
+   Stakeholder-Karte), stakeholder_running, t. #}
 {% if packets_here or editable %}
 <div class="ssel" id="{{ packet_anchor }}">
   <div class="ssel__h">
     <span class="ssel__t">{{ t("Entscheidungspapiere") }}</span>
   </div>
-  {% if editable and stakeholder_running %}
+  {% set pressed = packet_click == packet_anchor %}
+  {% if editable and pressed and stakeholder_running %}
     {# The call runs on a worker thread, so this block fetches *itself* back:
        the map's own notice selects `.smap`, and a packet that finished while
        only the map was being swapped would not appear until a manual reload,
@@ -40,7 +43,7 @@
        hx-swap="outerHTML">
       <span class="spinner" aria-hidden="true"></span>{{ t("Die Anfrage läuft — das Papier erscheint, sobald es steht.") }}
     </p>
-  {% elif packet_note %}
+  {% elif packet_note and pressed %}
     {# This feature's own notice slot. The note channel is shared with the
        Stakeholder-Karte's buttons, and a sentence about a paper rendered
        inside the map answers a click nobody made there. #}
