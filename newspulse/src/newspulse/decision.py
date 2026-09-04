@@ -271,17 +271,29 @@ def _coverage_lines(
     if crisis is not None and crisis.article is not None:
         articles.setdefault(crisis.article.id, crisis.article)
     kept = list(articles.values())[:_MAX_LINES_PER_KIND]
-    lines = [
-        Line(
-            kind=EvidenceKind.BEITRAG,
-            ref_id=row.id,
-            label=_shorten(row.title),
-            source=_shorten(row.source),
-            happened_at=row.published_at,
-            url=row.url,
+    lines: list[Line] = []
+    for row in kept:
+        label = _shorten(row.title)
+        if not label:
+            # A stored row with nothing to show is not offered. ``articles.title``
+            # carries no CHECK and an ingested feed item without one is a real
+            # row, so this is reachable — and offered, its Kennung would resolve
+            # to evidence with an empty label, which the schema refuses at the
+            # commit that saves the paper: the whole paper would be lost over
+            # one line. Unoffered, the Kennung resolves to nothing and its
+            # sentence lands under unbestätigt, which is what this module does
+            # with a citation nobody can follow.
+            continue
+        lines.append(
+            Line(
+                kind=EvidenceKind.BEITRAG,
+                ref_id=row.id,
+                label=label,
+                source=_shorten(row.source),
+                happened_at=row.published_at,
+                url=row.url,
+            )
         )
-        for row in kept
-    ]
     if not kept:
         return lines
     # The readings of exactly those pieces, for this mandate. A reading of the
@@ -346,17 +358,24 @@ def _market_lines(anchor: Issue | None) -> list[Line]:
     for row in sorted(anchor.signals, key=lambda s: s.happened_at, reverse=True):
         if row.market_signal is not None:
             rows.append(row.market_signal)
-    return [
-        Line(
-            kind=EvidenceKind.MARKTSIGNAL,
-            ref_id=row.id,
-            label=_shorten(row.title),
-            source=_shorten(row.publisher or row.kind.value),
-            happened_at=row.effective_at or row.published_at or row.found_at,
-            url=row.url,
+    lines: list[Line] = []
+    for row in rows[:_MAX_LINES_PER_KIND]:
+        label = _shorten(row.title)
+        # Dropped for the same reason an untitled article is: a line with
+        # nothing to show may not be offered as one somebody can cite.
+        if not label:
+            continue
+        lines.append(
+            Line(
+                kind=EvidenceKind.MARKTSIGNAL,
+                ref_id=row.id,
+                label=label,
+                source=_shorten(row.publisher or row.kind.value),
+                happened_at=row.effective_at or row.published_at or row.found_at,
+                url=row.url,
+            )
         )
-        for row in rows[:_MAX_LINES_PER_KIND]
-    ]
+    return lines
 
 
 def _mail_lines(session: Session, client: Client, *, since: dt.datetime) -> list[Line]:
