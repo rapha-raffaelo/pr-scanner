@@ -1065,7 +1065,7 @@ def packet_page(
     )
 
 
-@router.get("/client/{client_id}/entscheidungspapier/{packet_id}.html")
+@router.get("/client/{client_id}/entscheidungspapier/{packet_id}/dokument.html")
 def packet_export(
     request: Request,
     client_id: int,
