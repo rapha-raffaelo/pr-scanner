@@ -109,6 +109,11 @@ _PROFILE_GAPS: dict[str, GapKind] = {
     "krisenkontakt": GapKind.KRISENKONTAKT,
 }
 
+#: The gaps the profile form closes, which is exactly the set that may carry
+#: the "nachtragen →" link. Derived from :data:`_PROFILE_GAPS` rather than
+#: written out again, so a gap added there cannot end up linkless by omission.
+_LINKED_TO_PROFILE: frozenset[GapKind] = frozenset(_PROFILE_GAPS.values())
+
 #: Where each evidence kind sits in the Quellenordnung. The one place the
 #: mapping exists: a profile field a person maintains and a text we released
 #: are our own confirmed record; a market signal is an authority or an original
@@ -994,8 +999,11 @@ class Gap:
     kind: GapKind
     #: The sentence a reader acts on, and a key in the i18n table.
     label: str
-    #: Where it is filled in. Empty in the downloaded paper, which carries no
-    #: link back into this application.
+    #: Where it is filled in, and empty where nothing fills it. Empty in the
+    #: downloaded paper too, which carries no link back into this application.
+    #: A named gap whose link led to a form with nowhere to type the answer
+    #: would send a reader looking for a field that does not exist, so a gap
+    #: with no such place is named without one.
     link: str
     #: Whether it belongs at the *top* of the paper. The decider and the
     #: deadline do: "fehlen Entscheider oder Frist, steht das oben auf dem
@@ -1043,6 +1051,10 @@ def gaps(session: Session, row: DecisionPacket) -> list[Gap]:
     written, because the paper is the record of what was known then. The decider
     and the deadline are read live off the packet: naming them is what gets them
     filled in, and a frozen row would keep reporting them missing afterwards.
+
+    Each carries the link to where it is closed, and the one gap no form closes
+    carries none: a "nachtragen →" that lands on a page without the field is a
+    worse answer than naming the gap plainly.
     """
     profile_link = f"/client/{row.client_id}/profil"
     packet_link = f"/client/{row.client_id}/entscheidungspapier/{row.id}"
@@ -1066,7 +1078,15 @@ def gaps(session: Session, row: DecisionPacket) -> list[Gap]:
             )
         )
     stored = [
-        Gap(kind=gap.kind, label=GAP_LABELS[gap.kind], link=profile_link)
+        Gap(
+            kind=gap.kind,
+            label=GAP_LABELS[gap.kind],
+            # Only the two the profile form closes. ``BETROFFENENZAHL`` is a
+            # reading of this paper's own sentences and no field anywhere fills
+            # it, so it is named without a link rather than pointed at a form
+            # that has nowhere to enter it.
+            link=profile_link if gap.kind in _LINKED_TO_PROFILE else "",
+        )
         for gap in sorted(row.stored_gaps, key=lambda g: g.position)
     ]
     return [*leading, *stored]
