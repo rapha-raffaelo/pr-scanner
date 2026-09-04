@@ -168,8 +168,13 @@
 
   {#- The three parts, each with its own sentence when it holds nothing: the
       separation is the value, and an omitted heading would let "nothing is
-      unconfirmed" read the same as "nobody looked". -#}
-  <h2>{{ t("Belegt") }}</h2>
+      unconfirmed" read the same as "nobody looked".
+
+      The headings come from `decision.SECTION_LABELS`, keyed by the stored
+      value, rather than being written out here: the names of the parts are a
+      fact about the paper, and a second copy of them is how a heading and the
+      section under it come to disagree. -#}
+  <h2>{{ t(section_labels["belegt"]) }}</h2>
   {%- if belegt %}
   {%- for row in belegt %}
   <div class="st">
@@ -186,7 +191,7 @@
   <p class="note">{{ t("Nichts auf diesem Papier löst auf eine gespeicherte Zeile auf.") }}</p>
   {%- endif %}
 
-  <h2>{{ t("Unbestätigt") }}</h2>
+  <h2>{{ t(section_labels["unbestätigt"]) }}</h2>
   {%- if unbestaetigt %}
   {%- for row in unbestaetigt %}
   <div class="st"><div class="st__s">{{ row.text }}</div></div>
@@ -195,7 +200,7 @@
   <p class="note">{{ t("Nichts Unbestätigtes vermerkt.") }}</p>
   {%- endif %}
 
-  <h2>{{ t("Offen") }}</h2>
+  <h2>{{ t(section_labels["offen"]) }}</h2>
   {%- if offen %}
   {%- for row in offen %}
   <div class="st"><div class="st__s">{{ row.text }}</div></div>

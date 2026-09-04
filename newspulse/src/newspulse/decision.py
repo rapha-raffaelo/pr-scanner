@@ -884,6 +884,14 @@ def _parse(raw: str) -> PacketDraft:
 # --- Reading the papers back -------------------------------------------------------
 
 
+#: How a list of papers is ordered, wherever one is read: newest first, ties
+#: broken by id. One tuple rather than one order_by per reader — the register
+#: reads every row's papers in a single query and the occasion pages read one
+#: occasion's, and two lists of the same papers must not come back differently
+#: sorted on two pages.
+NEWEST_FIRST = (DecisionPacket.created_at.desc(), DecisionPacket.id.desc())
+
+
 def packets_for(
     session: Session, *, issue: Issue | None = None, crisis: Crisis | None = None
 ) -> list[DecisionPacket]:
@@ -894,9 +902,7 @@ def packets_for(
     """
     if (issue is None) == (crisis is None):
         raise ValueError("ask for one occasion's papers, not both or neither")
-    query = select(DecisionPacket).order_by(
-        DecisionPacket.created_at.desc(), DecisionPacket.id.desc()
-    )
+    query = select(DecisionPacket).order_by(*NEWEST_FIRST)
     if issue is not None:
         query = query.where(DecisionPacket.issue_id == issue.id)
     else:
@@ -1102,6 +1108,7 @@ def record_decision(
 __all__ = [
     "EVIDENCE_LABELS",
     "GAP_LABELS",
+    "NEWEST_FIRST",
     "Gap",
     "Line",
     "PacketDraft",

@@ -2494,8 +2494,9 @@ _EN: dict[str, str] = {
         "packet.",
     "Die Entscheidung wurde nicht vermerkt: es fehlt, was entschieden wurde.":
         "The decision was not recorded: what was decided is missing.",
-    "Die Frist wurde nicht gesetzt: das Datum war nicht lesbar.":
-        "The deadline was not set: the date could not be read.",
+    "Das Datum war nicht lesbar: die Frist blieb, wie sie war. Alles Übrige des Formulars wurde gespeichert.":
+        "The date could not be read, so the deadline stands as it was. The rest "
+        "of the form was saved.",
     "Jeder als belegt geführte Satz auf diesem Papier löst auf eine gespeicherte Zeile auf; die Kennung steht dabei. Ein Satz ohne auflösbaren Beleg steht unter unbestätigt. Ein Widerspruch wird nur genannt, wenn beide Seiten benannt sind.":
         "Every sentence led as supported on this packet resolves to a stored row, "
         "and carries its identifier. A sentence without a resolvable source stands "

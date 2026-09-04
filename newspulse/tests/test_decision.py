@@ -1383,14 +1383,27 @@ def test_the_decider_form_stores_the_name_and_the_deadline(web, session, mandate
     assert stored.deadline is not None
 
 
-def test_an_unreadable_deadline_changes_nothing_and_says_so(web, session, mandate):
+def test_an_unreadable_deadline_keeps_the_old_one_and_stores_the_decider(
+    web, session, mandate
+):
     """A hand-edited date is not a deadline. Stored as "none" it would read as a
-    deadline nobody set, so the row is left alone and the page says why."""
+    deadline nobody set, so the Frist stays as it stood and the page says why —
+    but the name typed in the same form is not thrown away with it."""
     from newspulse.web.routes import issues_view
 
     issue = _issue(session, mandate)
     packet = _build(session, mandate, issue)
-    decision.set_decider(session, packet, decision_maker="Anna Berger")
+    decision.set_decider(
+        session,
+        packet,
+        decision_maker="Anna Berger",
+        deadline=_NOW + dt.timedelta(days=2),
+    )
+    # Read back rather than held from the write: SQLite hands the column back
+    # in its own shape, and the comparison below must be of two stored values.
+    session.expire_all()
+    kept = session.get(DecisionPacket, packet.id).deadline
+    assert kept is not None
     web.post(
         f"/client/{mandate.id}/entscheidungspapier/{packet.id}/entscheider",
         data={"decision_maker": "Jemand", "deadline": "übermorgen"},
@@ -1398,7 +1411,8 @@ def test_an_unreadable_deadline_changes_nothing_and_says_so(web, session, mandat
     )
     session.expire_all()
     stored = session.get(DecisionPacket, packet.id)
-    assert stored.decision_maker == "Anna Berger"
+    assert stored.decision_maker == "Jemand"
+    assert stored.deadline == kept
     body = web.get(f"/client/{mandate.id}/entscheidungspapier/{packet.id}").text
     assert issues_view.DEADLINE_UNREADABLE in body
 

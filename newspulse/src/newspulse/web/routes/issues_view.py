@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, lazyload
 
 from ... import crisis, decision, issues, scenarios, stakeholders
 from ... import profile as profiles
@@ -297,25 +297,41 @@ def _packets_by_issue(
     grouped: dict[int, list[DecisionPacket]] = {row.id: [] for row in rows}
     if not grouped:
         return grouped
-    by_crisis: dict[int, int] = {
-        row.crisis_id: row.id for row in rows if row.crisis_id is not None
-    }
+    # A list per crisis, not one row: ``Issue.crisis_id`` carries no UNIQUE
+    # constraint, so nothing stops two register rows naming one crisis. Keyed on
+    # the last one, that crisis's papers would attach to one row and vanish from
+    # the other — on the page that offers the button.
+    by_crisis: dict[int, list[int]] = {}
+    for row in rows:
+        if row.crisis_id is not None:
+            by_crisis.setdefault(row.crisis_id, []).append(row.id)
     stored = session.scalars(
         select(DecisionPacket)
         .where(
             DecisionPacket.issue_id.in_(list(grouped))
             | DecisionPacket.crisis_id.in_(list(by_crisis) or [0])
         )
-        .order_by(DecisionPacket.created_at.desc(), DecisionPacket.id.desc())
+        # The relationships are ``selectin`` on the model, which is right on the
+        # paper's own page and wrong here: this list renders five columns per
+        # row, and eager loading would pull every sentence, every piece of
+        # evidence and every gap of the whole packet history onto the busiest
+        # page in the workspace.
+        .options(
+            lazyload(DecisionPacket.statements),
+            lazyload(DecisionPacket.contradictions),
+            lazyload(DecisionPacket.stored_gaps),
+        )
+        .order_by(*decision.NEWEST_FIRST)
     ).all()
     for row in stored:
-        anchor = (
-            row.issue_id
+        anchors = (
+            [row.issue_id]
             if row.issue_id is not None
-            else by_crisis.get(row.crisis_id or 0)
+            else by_crisis.get(row.crisis_id or 0, [])
         )
-        if anchor in grouped:
-            grouped[anchor].append(row)
+        for anchor in anchors:
+            if anchor in grouped:
+                grouped[anchor].append(row)
     return grouped
 
 
@@ -891,9 +907,13 @@ PACKET_DECIDED = (
 DECISION_EMPTY = (
     "Die Entscheidung wurde nicht vermerkt: es fehlt, was entschieden wurde."
 )
-#: A hand-typed date that is not one. Refused without a write rather than
-#: stored as "no deadline", which would read as a deadline nobody set.
-DEADLINE_UNREADABLE = "Die Frist wurde nicht gesetzt: das Datum war nicht lesbar."
+#: A hand-typed date that is not one. The deadline is left as it stood rather
+#: than coerced to "none", which would read as a deadline nobody set — and the
+#: rest of the form is stored, because a name typed beside it is not wrong.
+DEADLINE_UNREADABLE = (
+    "Das Datum war nicht lesbar: die Frist blieb, wie sie war. Alles Übrige "
+    "des Formulars wurde gespeichert."
+)
 
 #: Every sentence this feature can put on a page. The i18n suite walks it, so a
 #: note added without its English pair fails there rather than on the evening a
@@ -1003,6 +1023,10 @@ def _packet_context(
         # The order is printed on the paper, off the enum's own declaration
         # order — the one place the Quellenordnung is written down.
         "source_ranks": list(SourceRank),
+        # The three headings off the one map rather than as literals here: the
+        # names of the parts are a fact about the paper, and two copies of them
+        # is how a heading and a section come to disagree.
+        "section_labels": decision.SECTION_LABELS,
         "evidence_labels": decision.EVIDENCE_LABELS,
         "name_max": DECISION_NAME_MAX,
         "deadline_value": f"{deadline:%Y-%m-%d}" if deadline else "",
@@ -1154,16 +1178,24 @@ def set_packet_decider(
 
     Never the tool's: a decider it nominated would be a name nobody agreed to,
     and a deadline it computed would be a promise nobody made. An unreadable
-    date changes nothing and says so, rather than quietly storing "no deadline".
+    date leaves the deadline as it stood and says so, rather than quietly
+    storing "no deadline" — and it does not throw away the name typed beside it.
     """
     client, row = _packet_or_404(session, client_id, packet_id)
     when, readable = _read_deadline(deadline)
-    if not readable:
-        stakeholder_ui.note(client.id, DEADLINE_UNREADABLE)
-    elif not decision.set_decider(
-        session, row, decision_maker=decision_maker, deadline=when
-    ):
+    # An unreadable date refuses the *deadline*, not the whole form: the name in
+    # the same field set is the person who decides, and dropping it unsaid would
+    # hand the reader back a form that lost what they typed.
+    stored = decision.set_decider(
+        session,
+        row,
+        decision_maker=decision_maker,
+        deadline=when if readable else row.deadline,
+    )
+    if not stored:
         stakeholder_ui.note(client.id, PACKET_DECIDED)
+    elif not readable:
+        stakeholder_ui.note(client.id, DEADLINE_UNREADABLE)
     return RedirectResponse(
         f"/client/{client.id}/entscheidungspapier/{row.id}", status_code=_SEE_OTHER
     )
