@@ -191,7 +191,10 @@
       {# Das Entscheidungspapier (RIS-05): the button, and every paper written
          from this row. A new one stands beside the old and never replaces it. #}
       {% with packets_here = packets.get(issue.id, []),
-              editable = true %}
+              editable = true,
+              packet_action = '/issues/' ~ issue.id ~ '/entscheidungspapier',
+              packet_redirect = '/client/' ~ client.id ~ '/issues',
+              packet_anchor = 'dpk-issue-' ~ issue.id %}
         {% include 'partials/decision_packets.html' %}
       {% endwith %}
 
@@ -322,7 +325,10 @@
            keep. An escalated one still takes the button: the matter did not
            end, it became a crisis, and the paper then hangs on the crisis. #}
         {% with packets_here = packets.get(issue.id, []),
-                editable = issue.status == 'eskaliert' %}
+                editable = issue.status == 'eskaliert',
+                packet_action = '/issues/' ~ issue.id ~ '/entscheidungspapier',
+                packet_redirect = '/client/' ~ client.id ~ '/issues',
+                packet_anchor = 'dpk-issue-' ~ issue.id %}
           {% include 'partials/decision_packets.html' %}
         {% endwith %}
         <details class="isig">

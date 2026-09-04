@@ -39,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ... import assets as assets_mod
-from ... import config, crisis, profile, stakeholders
+from ... import config, crisis, decision, profile, stakeholders
 from ...db import get_session
 from ...models import (
     Analysis,
@@ -61,7 +61,7 @@ from ..app import get_db, templates
 from ..mandates import mandate_or_404
 from ..redirects import local_target
 from ..runlock import guard as _run_guard
-from . import stakeholder_ui
+from . import issues_view, stakeholder_ui
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -584,6 +584,28 @@ def _timeline(
     return sorted(events, key=lambda event: event.at)
 
 
+def _packet_block(session: Session, client: Client, standing: Crisis) -> dict:
+    """What ``partials/decision_packets.html`` needs for this crisis (RIS-05).
+
+    The papers written to this occasion, newest first, and this feature's own
+    note. The note is *popped here*, before ``_stakeholder_block`` takes
+    whatever is left: one channel across every model-backed button on the page
+    is what stops two clicks paying for two calls, but a paper's answer belongs
+    beside the paper's button and not inside the Stakeholder-Karte. The caller
+    keeps the two calls in that order for that reason.
+
+    The button hangs on the crisis rather than on an issue: a crisis declared
+    straight off an article has no register row, and it is the occasion a
+    decision paper exists for.
+    """
+    return {
+        "packets_here": decision.packets_for(session, crisis=standing),
+        "packet_note": stakeholder_ui.pop_note(
+            client.id, owned=issues_view.PACKET_NOTES
+        ),
+    }
+
+
 def _stakeholder_block(
     session: Session, client: Client, standing: Crisis
 ) -> dict[str, object]:
@@ -646,6 +668,9 @@ def crisis_page(
     contacts = _contacts(session, client)
 
     now = dt.datetime.now(dt.UTC)
+    # Before the card's block below, which is the page's catch-all for the
+    # shared note channel: a paper's sentence is read beside the paper.
+    packets = _packet_block(session, client, selected)
     return templates.TemplateResponse(
         request,
         "client_crisis.html",
@@ -690,6 +715,11 @@ def crisis_page(
             # progress rewrites it on its next sentence, so consuming a
             # mid-run reload costs nothing.
             "note": _last_note.pop(client.id, ""),
+            # Das Entscheidungspapier (RIS-05) at the second occasion the
+            # acceptance names. Read through ``decision.packets_for`` — one
+            # occasion, newest first — because a crisis declared straight off an
+            # article has no register row whose button could reach it.
+            **packets,
             # Die Stakeholder-Auswahl (RIS-03) at the other occasion the map
             # anchors; the block is the register's own partial.
             **_stakeholder_block(session, client, selected),

@@ -344,6 +344,11 @@ def issues_page(
     smap = stakeholders.card(session, client)
     selections = _selections_by_issue(session, open_rows + past)
     courses = _scenarios_by_issue(session, open_rows + past)
+    # The packet block takes its own sentence *before* the card's catch-all
+    # takes what is left, so a paper's answer is read where the paper's button
+    # was pressed and not inside the Stakeholder-Karte.
+    packet_note = stakeholder_ui.pop_note(client.id, owned=PACKET_NOTES)
+    stakeholder_note = stakeholder_ui.pop_note(client.id)
     return templates.TemplateResponse(
         request,
         "client_issues.html",
@@ -369,6 +374,7 @@ def issues_page(
             # The decision papers written from each row (RIS-05). A new one
             # stands beside the old, so this is a list and never one row.
             "packets": _packets_by_issue(session, open_rows + past),
+            "packet_note": packet_note,
             # The two label maps: the stored values are keys ("bester",
             # "zweites_medium"), and what a reader acts on is a sentence. In
             # Python rather than in Jinja because each label is an i18n key,
@@ -380,7 +386,7 @@ def issues_page(
             "has_profile": bool(
                 profiles.as_prompt_lines(profiles.stored(session, client.id))
             ),
-            "stakeholder_note": stakeholder_ui.pop_note(client.id),
+            "stakeholder_note": stakeholder_note,
             # Whether one of the card's model calls is running for *this*
             # mandate: the buttons spend a call on a worker thread, so without
             # this the page after the redirect looks like a button that did
@@ -1000,7 +1006,14 @@ def _packet_context(
         "evidence_labels": decision.EVIDENCE_LABELS,
         "name_max": DECISION_NAME_MAX,
         "deadline_value": f"{deadline:%Y-%m-%d}" if deadline else "",
-        "note": stakeholder_ui.pop_note(client.id) if not download else "",
+        # Only this feature's sentences: the paper's page is not where a
+        # stakeholder button's answer is read, and popping one here would
+        # swallow it before the register renders.
+        "note": (
+            stakeholder_ui.pop_note(client.id, owned=PACKET_NOTES)
+            if not download
+            else ""
+        ),
         # The screen carries the nav, the gap links and the two forms; the
         # downloaded file carries none of them, and neither changes a line of
         # content.
@@ -1042,6 +1055,47 @@ def build_packet(
         _write,
         client_id=standing.client_id,
         name=f"newspulse-packet-issue-{issue_id}",
+        failed=PACKET_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.post("/crisis/{crisis_id}/entscheidungspapier")
+def build_crisis_packet(
+    request: Request,
+    crisis_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Write a decision paper to a crisis, from the crisis page.
+
+    The second occasion the acceptance names, and the only route to a paper for
+    a crisis declared straight off an article: :func:`newspulse.crisis.declare`
+    needs no register row, so such a matter has no issue whose button could
+    reach it — and it is the most urgent occasion the tool has.
+
+    The same anchor an escalated issue's button already resolves to
+    (:func:`_packet_occasion`), so a matter that grew out of the register and
+    one that did not write the same paper, and the papers of both stand in one
+    list on the crisis.
+    """
+    standing = session.get(Crisis, crisis_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+    who = _who(request)
+
+    def _write(worker: Session) -> str:
+        row = worker.get(Crisis, crisis_id)
+        if row is None:
+            return ""
+        mandate = worker.get(Client, row.client_id)
+        written = decision.build(worker, mandate, crisis=row, by=who)
+        return "" if written is not None else NO_PACKET
+
+    stakeholder_ui.spend(
+        _write,
+        client_id=standing.client_id,
+        name=f"newspulse-packet-crisis-{crisis_id}",
         failed=PACKET_FAILED,
     )
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)

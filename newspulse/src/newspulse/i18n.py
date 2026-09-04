@@ -2415,6 +2415,10 @@ _EN: dict[str, str] = {
     "Entscheidungspapier erstellen": "Write a decision packet",
     "Noch kein Entscheidungspapier zu dieser Sache.":
         "No decision packet on this matter yet.",
+    # The packet block fetches itself back while the call runs, so it says so
+    # in its own words: the Karte's sentence promises a map nobody asked for.
+    "Die Anfrage läuft — das Papier erscheint, sobald es steht.":
+        "The request is running; the packet appears as soon as it stands.",
     "Papier vom": "Packet of",
     "Zurück zum Register": "Back to the register",
     # The four parts, and the separation between them is the whole value — so

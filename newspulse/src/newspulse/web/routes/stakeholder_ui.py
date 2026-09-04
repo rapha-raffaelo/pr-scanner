@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 
 from sqlalchemy.orm import Session
 
@@ -114,12 +114,23 @@ def note(client_id: int, sentence: str) -> None:
     _notes[client_id] = sentence
 
 
-def pop_note(client_id: int) -> str:
+def pop_note(client_id: int, *, owned: Collection[str] | None = None) -> str:
     """Hand the page the one-click note, clearing it.
 
     Popped, not read: a note describes one click, and showing it once is its
     whole job — left in the dict it would outlive the morning it belongs to.
+
+    ``owned`` names the sentences the calling block renders, and leaves anything
+    else standing for the block that owns it. One channel across every
+    model-backed button on these pages is what keeps two clicks from spending
+    two calls, but the answer is read where the button was pressed: a decision
+    paper's sentence rendered inside the Stakeholder-Karte answers a click
+    nobody made there. A caller that passes nothing is the page's catch-all and
+    takes whatever is left, so it runs *after* the blocks that own theirs.
     """
+    stored = _notes.get(client_id, "")
+    if not stored or (owned is not None and stored not in owned):
+        return ""
     return _notes.pop(client_id, "")
 
 

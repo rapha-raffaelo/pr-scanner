@@ -1281,6 +1281,76 @@ def test_the_register_offers_the_button_and_lists_every_paper(web, session, mand
     assert f"/client/{mandate.id}/entscheidungspapier/{second.id}" in body
 
 
+def test_the_crisis_page_offers_the_button_and_lists_its_papers(
+    web, session, mandate
+):
+    """The second occasion the acceptance names. A crisis declared straight off
+    an article has no register row, so without this button the most urgent
+    matter the tool knows has no path to a decision paper at all."""
+    article = _article(session, "Werk stoppt Produktion")
+    standing = _crisis(session, mandate, article)
+    packet = decision.build(
+        session,
+        mandate,
+        crisis=standing,
+        by="lucas",
+        invoke=_reply_with(),
+        now=_NOW,
+    )
+    assert packet is not None
+    body = web.get(f"/client/{mandate.id}/krise").text
+    assert f"/crisis/{standing.id}/entscheidungspapier" in body
+    assert f"/client/{mandate.id}/entscheidungspapier/{packet.id}" in body
+
+
+def test_the_crisis_button_writes_a_paper_that_hangs_on_the_crisis(
+    web, session, mandate, monkeypatch
+):
+    """The anchor is the crisis itself. A paper written here must not quietly
+    hang on an issue: the crisis is what the matter is called from the
+    declaration onwards, and a cold-declared one has no issue at all."""
+    from newspulse.web.routes import issues_view
+
+    article = _article(session, "Werk stoppt Produktion")
+    standing = _crisis(session, mandate, article)
+
+    # The route spends its call on a worker thread with a session of its own.
+    # Run the job here against this test's session instead, with the generation
+    # injected: what is under test is which anchor the route hands `build`.
+    written = decision.build
+    monkeypatch.setattr(
+        issues_view.stakeholder_ui,
+        "spend",
+        lambda job, *, client_id, name, failed: job(session),
+    )
+    monkeypatch.setattr(
+        issues_view.decision,
+        "build",
+        lambda worker, client, *, issue=None, crisis=None, by="": written(
+            worker, client, issue=issue, crisis=crisis, by=by,
+            invoke=_reply_with(), now=_NOW,
+        ),
+    )
+    resp = web.post(
+        f"/crisis/{standing.id}/entscheidungspapier",
+        data={"redirect_to": f"/client/{mandate.id}/krise"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    stored = decision.packets_for(session, crisis=standing)
+    assert len(stored) == 1
+    assert stored[0].crisis_id == standing.id and stored[0].issue_id is None
+
+
+def test_a_crisis_that_is_gone_redirects_rather_than_raising(web, session, mandate):
+    resp = web.post(
+        "/crisis/9999/entscheidungspapier",
+        data={"redirect_to": f"/client/{mandate.id}/krise"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+
 def test_recording_the_decision_through_the_form_lands_back_on_the_paper(
     web, session, mandate
 ):

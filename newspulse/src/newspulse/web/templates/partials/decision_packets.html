@@ -13,12 +13,39 @@
    empty heading on every historic row would be noise on the one page that has
    to stay readable years later.
 
-   Expects in context: client, issue, packets_here, editable, t. #}
+   Two pages include this: the register row it was written from, and the
+   crisis it hangs on. ``packet_action`` is therefore passed in rather than
+   built here — a crisis declared straight off an article has no register row,
+   and its button is the only path to a paper it has.
+
+   Expects in context: client, packets_here, editable, packet_action,
+   packet_redirect, packet_anchor (a DOM id unique on the page, so the block
+   can fetch *itself* back), packet_note (this feature's own sentence, so a
+   packet's answer does not appear inside the Stakeholder-Karte),
+   stakeholder_running, t. #}
 {% if packets_here or editable %}
-<div class="ssel">
+<div class="ssel" id="{{ packet_anchor }}">
   <div class="ssel__h">
     <span class="ssel__t">{{ t("Entscheidungspapiere") }}</span>
   </div>
+  {% if editable and stakeholder_running %}
+    {# The call runs on a worker thread, so this block fetches *itself* back:
+       the map's own notice selects `.smap`, and a packet that finished while
+       only the map was being swapped would not appear until a manual reload,
+       with the button still disabled. Selecting on the block's own id and not
+       on its class, because the register renders one of these per row. #}
+    <p class="notice notice--ok"
+       hx-get="{{ packet_redirect }}" hx-trigger="every 5s"
+       hx-select="#{{ packet_anchor }}" hx-target="#{{ packet_anchor }}"
+       hx-swap="outerHTML">
+      <span class="spinner" aria-hidden="true"></span>{{ t("Die Anfrage läuft — das Papier erscheint, sobald es steht.") }}
+    </p>
+  {% elif packet_note %}
+    {# This feature's own notice slot. The note channel is shared with the
+       Stakeholder-Karte's buttons, and a sentence about a paper rendered
+       inside the map answers a click nobody made there. #}
+    <p class="notice">{{ t(packet_note) }}</p>
+  {% endif %}
   {% if packets_here %}
     {% for row in packets_here %}
       <div class="ssel__row">
@@ -40,8 +67,8 @@
   {% endif %}
   {% if editable %}
     <div class="ssel__acts">
-      <form method="post" action="/issues/{{ issue.id }}/entscheidungspapier">
-        <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+      <form method="post" action="{{ packet_action }}">
+        <input type="hidden" name="redirect_to" value="{{ packet_redirect }}">
         <button type="submit" class="btn btn--sm"{% if stakeholder_running %} disabled{% endif %}>{{ t("Entscheidungspapier erstellen") }}</button>
       </form>
     </div>
