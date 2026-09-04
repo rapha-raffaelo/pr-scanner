@@ -1,0 +1,311 @@
+{#- Das Entscheidungspapier (RIS-05).
+
+    A self-contained page: no stylesheet link, no script, no image, no font.
+    Every rule is in the <style> below, for the same two reasons the report
+    document gives — the file is downloaded and forwarded, and a document that
+    phoned home when somebody opened it would tell a third party who is reading
+    the agency's crisis papers and when.
+
+    It does not extend base.html on purpose. The app chrome is not part of the
+    document, and a decision paper carrying a sidebar of other mandates is not
+    something that can be handed round a room.
+
+    The screen and the download render this same file. Everything they differ by
+    is `download`: the nav above the article, the links on the gap lines, and the
+    two forms at the foot. Nothing that differs is *content*, so the downloaded
+    paper cannot say less or more than the one on screen — and it carries no
+    link back into this application, which is the acceptance.
+
+    The order of the parts is the argument: what happened, then what is belegt,
+    then what is not, then what nobody has answered, then where two stored lines
+    disagree. The separation is the whole value, so a part that holds nothing
+    still stands with its own sentence — "nothing is unconfirmed" and "nobody
+    looked" are different statements, and an omitted heading says neither. -#}
+{%- set t = translator(request) -%}
+{%- import "partials/brain_stamp.html" as provenance -%}
+{%- macro kennung(kind, ref_id) -%}
+{#- The Kennung of a stored line, printed as it is. This is what "jeder als
+    belegt geführte Satz trägt die Kennung der Zeile" means on the page: a
+    reader can take these two parts back to the row the sentence came from. -#}
+<code class="ref">{{ kind.value }}:{{ ref_id }}</code>
+{%- endmacro -%}
+{%- macro evidence_line(e) -%}
+  {{ kennung(e.kind, e.ref_id) }}
+  <span class="ev__k">{{ t(evidence_labels[e.kind]) }}</span>
+  {%- if e.url and not download %} <a href="{{ e.url | safe_url }}">{{ e.label }}</a>
+  {%- else %} {{ e.label }}{% endif %}
+  {%- if e.source %} <span class="ev__s">&middot; {{ e.source }}</span>{% endif %}
+  {%- if e.happened_at %} <span class="ev__s">&middot; {{ e.happened_at | de_date }}</span>{% endif %}
+{%- endmacro -%}
+<!DOCTYPE html>
+<html lang="{{ request_language(request) }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ t("Entscheidungspapier") }} · {{ client.name }} · {{ packet.created_at | de_date }}</title>
+<style>
+  :root { --ink: #16181d; --muted: #6b7280; --line: #e2e5ea; --mandate: #2f4a7a;
+          --warn: #a3342e; --ok: #2f7a4d; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 15px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); background: #f4f5f7; padding: 28px 18px 64px; }
+  .doc { max-width: 780px; margin: 0 auto; background: #fff; border: 1px solid var(--line);
+         border-radius: 10px; padding: 40px 46px 46px; }
+  .docnav { max-width: 780px; margin: 0 auto 14px; display: flex; gap: 16px; font-size: 13px; }
+  .docnav a { color: var(--mandate); }
+  h1 { font-size: 25px; letter-spacing: -0.01em; margin-bottom: 4px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+       margin: 32px 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  .meta { font-size: 13px; color: var(--muted); }
+  .meta dt { float: left; clear: left; width: 150px; }
+  .meta dd { margin-left: 150px; color: var(--ink); }
+  .lead { margin-top: 16px; border: 1px solid var(--warn); border-radius: 8px;
+          padding: 12px 14px; font-size: 14px; }
+  .lead__t { font-weight: 700; color: var(--warn); }
+  .lead ul { list-style: none; margin-top: 6px; }
+  .lead li { margin-bottom: 3px; }
+  .who { margin-top: 14px; font-size: 13.5px; }
+  .who b { font-weight: 600; }
+  .st { border-bottom: 1px solid var(--line); padding: 11px 0; }
+  .st:last-child { border-bottom: 0; }
+  .st__s { font-size: 15px; }
+  .st__r { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+           color: var(--muted); margin-bottom: 3px; }
+  .ev { list-style: none; margin-top: 7px; font-size: 12.5px; color: #3a3f4a; }
+  .ev li { margin-bottom: 3px; }
+  .ev a { color: var(--mandate); }
+  .ev__k { color: var(--muted); }
+  .ev__s { color: var(--muted); }
+  .ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+         background: #eef0f4; border-radius: 3px; padding: 1px 5px; }
+  .contra { border: 1px solid var(--line); border-radius: 8px; padding: 13px 15px;
+            margin-bottom: 11px; }
+  .contra__n { font-weight: 600; margin-bottom: 7px; }
+  .contra__s { font-size: 12.5px; color: #3a3f4a; margin-bottom: 3px; }
+  .opt { border-bottom: 1px solid var(--line); padding: 10px 0; font-size: 14px; }
+  .opt:last-child { border-bottom: 0; }
+  .opt__l { font-weight: 600; }
+  .opt__m { font-size: 12.5px; color: #3a3f4a; }
+  .pill { display: inline-block; font-size: 11px; border: 1px solid var(--line);
+          border-radius: 10px; padding: 1px 8px; color: var(--muted); }
+  .pill--rec { border-color: var(--ok); color: var(--ok); }
+  .gaps { list-style: none; font-size: 14px; }
+  .gaps li { padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .gaps li:last-child { border-bottom: 0; }
+  .gaps a { color: var(--mandate); }
+  .order { list-style: none; counter-reset: rank; font-size: 13.5px; }
+  .order li { counter-increment: rank; padding: 4px 0; }
+  .order li::before { content: counter(rank) ". "; color: var(--muted); }
+  .decided { border: 1px solid var(--ok); border-radius: 8px; padding: 14px 16px;
+             margin-top: 8px; }
+  .decided__w { font-size: 16px; font-weight: 600; margin-bottom: 5px; }
+  .decided__m { font-size: 12.5px; color: var(--muted); }
+  form { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px;
+         padding: 13px 15px; }
+  form label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+  form input, form textarea { width: 100%; font: inherit; padding: 6px 8px;
+                              border: 1px solid var(--line); border-radius: 5px; }
+  form button { font: inherit; font-size: 13px; padding: 5px 13px; border: 1px solid var(--mandate);
+                background: var(--mandate); color: #fff; border-radius: 5px; cursor: pointer; }
+  .note { font-size: 14px; color: var(--muted); font-style: italic; }
+  .stamp { margin-top: 14px; font-size: 12px; color: var(--muted);
+           border-left: 3px solid var(--mandate); padding: 6px 0 6px 12px; }
+  .foot { margin-top: 34px; padding-top: 12px; border-top: 1px solid var(--line);
+          font-size: 11.5px; color: var(--muted); }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .doc { border: 0; padding: 0; max-width: none; }
+    .docnav, form { display: none; }
+  }
+</style>
+</head>
+<body>
+{%- if not download %}
+<nav class="docnav">
+  <a href="/client/{{ client.id }}/issues">← {{ t("Zurück zum Register") }}</a>
+  <a href="/client/{{ client.id }}/entscheidungspapier/{{ packet.id }}.html" download>↓ {{ t("Exportieren") }}</a>
+</nav>
+{%- endif %}
+<article class="doc">
+  <header>
+    <h1>{{ t("Entscheidungspapier") }}: {{ client.name }}</h1>
+    <dl class="meta">
+      <dt>{{ t("Anlass") }}</dt>
+      <dd>{{ occasion }}</dd>
+      <dt>{{ t("Erstellt am") }}</dt>
+      <dd>{{ packet.created_at | de_date }} &middot; {{ packet.created_by }}</dd>
+    </dl>
+
+    {#- The acceptance in one block: "fehlen Entscheider oder Frist, steht das
+        oben auf dem Papier und nicht als Leerstelle". Above everything the
+        paper says, because a page nobody owns by a date nobody set is a page
+        that produces no decision. -#}
+    {%- if leading_gaps %}
+    <div class="lead">
+      <div class="lead__t">{{ t("Dieses Papier trägt nicht, was eine Entscheidung braucht:") }}</div>
+      <ul>
+        {%- for gap in leading_gaps %}
+        <li>{{ t(gap.label) }}</li>
+        {%- endfor %}
+      </ul>
+    </div>
+    {%- endif %}
+    <p class="who">
+      {{ t("Entscheider") }}:
+      {%- if packet.decision_maker %} <b>{{ packet.decision_maker }}</b>
+      {%- else %} <em>{{ t("nicht benannt") }}</em>{% endif %}
+      &middot; {{ t("Frist") }}:
+      {%- if packet.deadline %} <b>{{ packet.deadline | de_date }}</b>
+      {%- else %} <em>{{ t("nicht gesetzt") }}</em>{% endif %}
+    </p>
+    {#- The provenance line, on screen only: it links into the settings panel,
+        and the downloaded paper carries no link back into this application. -#}
+    {%- if not download %}{{ provenance.brain_stamp(packet.brain_version, t) }}{% endif %}
+  </header>
+
+  <h2>{{ t("Was passiert ist") }}</h2>
+  <p>{{ packet.situation }}</p>
+
+  {#- The three parts, each with its own sentence when it holds nothing: the
+      separation is the value, and an omitted heading would let "nothing is
+      unconfirmed" read the same as "nobody looked". -#}
+  <h2>{{ t("Belegt") }}</h2>
+  {%- if belegt %}
+  {%- for row in belegt %}
+  <div class="st">
+    <div class="st__r">{{ t(row.source_rank.value) }}</div>
+    <div class="st__s">{{ row.text }}</div>
+    <ul class="ev">
+      {%- for e in row.evidence %}
+      <li>{{ evidence_line(e) }}</li>
+      {%- endfor %}
+    </ul>
+  </div>
+  {%- endfor %}
+  {%- else %}
+  <p class="note">{{ t("Nichts auf diesem Papier löst auf eine gespeicherte Zeile auf.") }}</p>
+  {%- endif %}
+
+  <h2>{{ t("Unbestätigt") }}</h2>
+  {%- if unbestaetigt %}
+  {%- for row in unbestaetigt %}
+  <div class="st"><div class="st__s">{{ row.text }}</div></div>
+  {%- endfor %}
+  {%- else %}
+  <p class="note">{{ t("Nichts Unbestätigtes vermerkt.") }}</p>
+  {%- endif %}
+
+  <h2>{{ t("Offen") }}</h2>
+  {%- if offen %}
+  {%- for row in offen %}
+  <div class="st"><div class="st__s">{{ row.text }}</div></div>
+  {%- endfor %}
+  {%- else %}
+  <p class="note">{{ t("Keine offene Frage vermerkt.") }}</p>
+  {%- endif %}
+
+  <h2>{{ t("Widersprüche") }}</h2>
+  {%- if packet.contradictions %}
+  {%- for row in packet.contradictions %}
+  <div class="contra">
+    <div class="contra__n">{{ row.note }}</div>
+    <div class="contra__s">{{ kennung(row.left_kind, row.left_ref_id) }}
+      <span class="ev__k">{{ t(evidence_labels[row.left_kind]) }}</span> {{ row.left_label }}
+      {%- if row.left_source %} <span class="ev__s">&middot; {{ row.left_source }}</span>{% endif %}</div>
+    <div class="contra__s">{{ kennung(row.right_kind, row.right_ref_id) }}
+      <span class="ev__k">{{ t(evidence_labels[row.right_kind]) }}</span> {{ row.right_label }}
+      {%- if row.right_source %} <span class="ev__s">&middot; {{ row.right_source }}</span>{% endif %}</div>
+  </div>
+  {%- endfor %}
+  {%- else %}
+  {#- Said as the rule rather than as an empty list: a contradiction whose
+      second side nobody can name is not reported, and a reader is entitled to
+      know that is why none stands here. -#}
+  <p class="note">{{ t("Kein Widerspruch, dessen beide Seiten als gespeicherte Zeilen benannt sind.") }}</p>
+  {%- endif %}
+
+  <h2>{{ t("Reaktionsoptionen") }}</h2>
+  {%- if options %}
+  {%- for row in options %}
+  <div class="opt">
+    <div class="opt__l">{{ row.label }}
+      {%- if row.no_response %} <span class="pill">{{ t("nicht reagieren") }}</span>{% endif %}
+      {%- if row.recommended %} <span class="pill pill--rec">{{ t("Empfehlung") }}{% if row.speed %} &middot; {{ t(row.speed.value) }}{% endif %}</span>{% endif %}
+    </div>
+    <div class="opt__m">{{ t("Nutzen:") }} {{ row.benefit }}</div>
+    <div class="opt__m">{{ t("Risiko:") }} {{ row.risk }}</div>
+    <div class="opt__m">{{ t("Eskalationspotenzial") }}: {{ t(row.escalation.value) }}</div>
+  </div>
+  {%- endfor %}
+  {%- else %}
+  <p class="note">{{ t("Zu dieser Sache stehen keine Reaktionsoptionen.") }}</p>
+  {%- endif %}
+
+  <h2>{{ t("Was jetzt zu entscheiden ist") }}</h2>
+  {%- if packet.question %}
+  <p>{{ packet.question }}</p>
+  {%- else %}
+  <p class="note">{{ t("Die gespeicherten Zeilen gaben keine Entscheidungsfrage her.") }}</p>
+  {%- endif %}
+
+  <h2>{{ t("Lücken") }}</h2>
+  {%- if gaps %}
+  <ul class="gaps">
+    {%- for gap in gaps %}
+    <li>{{ t(gap.label) }}
+      {#- The link is the point of a named gap, and it is exactly what a
+          downloaded paper must not carry: the file leaves the tool, and a
+          path into an application the reader may not have is worse than no
+          link at all. -#}
+      {%- if gap.link and not download %} <a href="{{ gap.link }}">{{ t("nachtragen") }} →</a>{% endif %}
+    </li>
+    {%- endfor %}
+  </ul>
+  {%- else %}
+  <p class="note">{{ t("Keine benannte Lücke.") }}</p>
+  {%- endif %}
+
+  {#- Die Quellenordnung, printed rather than kept in a module: a reader
+      deciding under pressure has to see what outweighs what, and the ranks
+      above are only readable against it. -#}
+  <h2>{{ t("Die Quellenordnung") }}</h2>
+  <ol class="order">
+    {%- for rank in source_ranks %}
+    <li>{{ t(rank.value) }}</li>
+    {%- endfor %}
+  </ol>
+
+  <h2>{{ t("Die Entscheidung") }}</h2>
+  {%- if packet.is_decided %}
+  <div class="decided">
+    <div class="decided__w">{{ packet.decision }}</div>
+    <div class="decided__m">{{ t("Entschieden von") }} {{ packet.decided_by }}
+      &middot; {{ packet.decided_at | de_date }}</div>
+  </div>
+  {%- else %}
+  <p class="note">{{ t("Noch nicht entschieden.") }}</p>
+  {%- if not download %}
+  <form method="post" action="/client/{{ client.id }}/entscheidungspapier/{{ packet.id }}/entscheider">
+    <label>{{ t("Wer entscheidet") }}
+      <input type="text" name="decision_maker" maxlength="{{ name_max }}"
+             value="{{ packet.decision_maker }}"></label>
+    <label>{{ t("Bis wann") }}
+      <input type="date" name="deadline"
+             value="{{ deadline_value }}"></label>
+    <button type="submit">{{ t("Eintragen") }}</button>
+  </form>
+  <form method="post" action="/client/{{ client.id }}/entscheidungspapier/{{ packet.id }}/entscheidung">
+    <label>{{ t("Die getroffene Entscheidung") }}
+      <textarea name="decision" rows="2" required></textarea></label>
+    <button type="submit">{{ t("Entscheidung festhalten") }}</button>
+  </form>
+  {%- endif %}
+  {%- endif %}
+  {%- if note %}<p class="note">{{ t(note) }}</p>{% endif %}
+
+  <footer class="foot">
+    {{ t("Jeder als belegt geführte Satz auf diesem Papier löst auf eine gespeicherte Zeile auf; die Kennung steht dabei. Ein Satz ohne auflösbaren Beleg steht unter unbestätigt. Ein Widerspruch wird nur genannt, wenn beide Seiten benannt sind.") }}
+  </footer>
+</article>
+</body>
+</html>

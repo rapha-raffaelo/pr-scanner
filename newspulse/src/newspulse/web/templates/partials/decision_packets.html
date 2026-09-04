@@ -1,0 +1,43 @@
+{# Die Entscheidungspapiere zu diesem Issue (RIS-05).
+
+   The button writes one, and a new paper stands *beside* the old rather than
+   replacing it: two papers a week apart are the record of how the reading
+   changed, which is exactly what gets asked afterwards. The list is therefore a
+   list, newest first, and nothing here ever deletes one.
+
+   Each line says whether a decision was recorded on it and by whom, because
+   that is what somebody looking back is looking for.
+
+   Expects in context: client, issue, packets_here, editable, t. #}
+<div class="ssel">
+  <div class="ssel__h">
+    <span class="ssel__t">{{ t("Entscheidungspapiere") }}</span>
+  </div>
+  {% if packets_here %}
+    {% for row in packets_here %}
+      <div class="ssel__row">
+        <div class="ssel__body">
+          <span class="ssel__g">
+            <a href="/client/{{ client.id }}/entscheidungspapier/{{ row.id }}">{{ t("Papier vom") }} {{ row.created_at | de_date }}</a>
+            {% if row.is_decided %}
+              <span class="kpill">{{ t("entschieden") }} &middot; {{ row.decided_by }}</span>
+            {% else %}
+              <span class="kpill kpill--wait">{{ t("offen") }}</span>
+            {% endif %}
+          </span>
+          <span class="ssel__why">{{ row.situation }}</span>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="ssel__missing">{{ t("Noch kein Entscheidungspapier zu dieser Sache.") }}</p>
+  {% endif %}
+  {% if editable %}
+    <div class="ssel__acts">
+      <form method="post" action="/issues/{{ issue.id }}/entscheidungspapier">
+        <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+        <button type="submit" class="btn btn--sm"{% if stakeholder_running %} disabled{% endif %}>{{ t("Entscheidungspapier erstellen") }}</button>
+      </form>
+    </div>
+  {% endif %}
+</div>

@@ -25,27 +25,33 @@ import datetime as dt
 import logging
 from dataclasses import dataclass
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ... import crisis, issues, scenarios, stakeholders
+from ... import crisis, decision, issues, scenarios, stakeholders
 from ... import profile as profiles
 from ...models import (
+    DECISION_NAME_MAX,
     ISSUE_SCALE_MAX,
     ISSUE_SCALE_MIN,
     STAKEHOLDER_TEXT_MAX,
     Analysis,
     Article,
     Client,
+    Crisis,
+    DecisionPacket,
     Issue,
     IssueStatus,
+    PacketSection,
     ResponseOption,
     Scenario,
+    SourceRank,
     StakeholderSelection,
 )
 from ..app import get_db, templates
+from ..filenames import client_slug
 from ..mandates import mandate_or_404
 from ..redirects import local_target
 from . import stakeholder_ui
@@ -276,6 +282,43 @@ def _fired_by_issue(courses: dict[int, list[Scenario]]) -> dict[int, list]:
     }
 
 
+def _packets_by_issue(
+    session: Session, rows: list[Issue]
+) -> dict[int, list[DecisionPacket]]:
+    """Every issue on the page with the papers written from it, newest first.
+
+    Keyed on the *register row* rather than on the anchor, because that is where
+    a reader looks for them: an escalated issue's papers hang on the crisis it
+    became (:func:`_packet_occasion`), and hiding them from the row they were
+    written from would make them unreachable from the one page that offers the
+    button. One query for both anchors, so an unbounded history costs two reads
+    rather than two per row.
+    """
+    grouped: dict[int, list[DecisionPacket]] = {row.id: [] for row in rows}
+    if not grouped:
+        return grouped
+    by_crisis: dict[int, int] = {
+        row.crisis_id: row.id for row in rows if row.crisis_id is not None
+    }
+    stored = session.scalars(
+        select(DecisionPacket)
+        .where(
+            DecisionPacket.issue_id.in_(list(grouped))
+            | DecisionPacket.crisis_id.in_(list(by_crisis) or [0])
+        )
+        .order_by(DecisionPacket.created_at.desc(), DecisionPacket.id.desc())
+    ).all()
+    for row in stored:
+        anchor = (
+            row.issue_id
+            if row.issue_id is not None
+            else by_crisis.get(row.crisis_id or 0)
+        )
+        if anchor in grouped:
+            grouped[anchor].append(row)
+    return grouped
+
+
 @router.get("/client/{client_id}/issues", response_class=HTMLResponse)
 def issues_page(
     request: Request, client_id: int, session: Session = Depends(get_db)
@@ -323,6 +366,9 @@ def issues_page(
             "courses": courses,
             "options": _options_by_issue(session, open_rows + past),
             "fired": _fired_by_issue(courses),
+            # The decision papers written from each row (RIS-05). A new one
+            # stands beside the old, so this is a list and never one row.
+            "packets": _packets_by_issue(session, open_rows + past),
             # The two label maps: the stored values are keys ("bester",
             # "zweites_medium"), and what a reader acts on is a sentence. In
             # Python rather than in Jinja because each label is an i18n key,
@@ -806,3 +852,290 @@ def drop_options(
     if standing is not None:
         scenarios.clear_options(session, standing)
     return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+# --- Das Entscheidungspapier (RIS-05) ----------------------------------------------
+#
+# The paper is written from the register and read on a page of its own, because
+# it is a document rather than a card: it is handed round a room and downloaded,
+# and the downloaded copy carries no link back into this application.
+#
+# The lock and the note channel are ``stakeholder_ui``'s, for the same reason
+# RIS-04's four buttons use them: one lock across every model-backed button on
+# this page is what stops a reader who presses two of them in a row from paying
+# for both, and the answer appears where this page's answers already appear.
+
+#: The answer came back without the one thing a paper cannot do without. Said
+#: rather than swallowed: a button that answers with an unchanged page reads as
+#: broken, and the reader presses it again.
+NO_PACKET = (
+    "Kein Entscheidungspapier gespeichert: die Antwort sagte nicht, was passiert "
+    "ist."
+)
+PACKET_FAILED = (
+    "Das Entscheidungspapier ist fehlgeschlagen. Die Einzelheiten stehen im Log."
+)
+#: A decided paper is the record of what a decision rested on. Editing it
+#: afterwards is the one thing that would make it worthless, so both forms
+#: refuse and say so.
+PACKET_DECIDED = (
+    "Das Papier ist entschieden und wird nicht mehr geändert. Ein neuer Stand "
+    "ist ein neues Papier."
+)
+DECISION_EMPTY = (
+    "Die Entscheidung wurde nicht vermerkt: es fehlt, was entschieden wurde."
+)
+#: A hand-typed date that is not one. Refused without a write rather than
+#: stored as "no deadline", which would read as a deadline nobody set.
+DEADLINE_UNREADABLE = (
+    "Die Frist wurde nicht gesetzt: das Datum war nicht lesbar."
+)
+
+#: Every sentence this feature can put on a page. The i18n suite walks it, so a
+#: note added without its English pair fails there rather than on the evening a
+#: reader has the page in English.
+PACKET_NOTES = (
+    NO_PACKET,
+    PACKET_FAILED,
+    PACKET_DECIDED,
+    DECISION_EMPTY,
+    DEADLINE_UNREADABLE,
+)
+
+
+def _packet_occasion(session: Session, issue: Issue) -> tuple[Issue | None, Crisis | None]:
+    """Which occasion a paper written from this row hangs on.
+
+    An escalated issue's paper hangs on the *crisis*: that is what the matter is
+    called from the declaration onwards, and the acceptance asks for a paper
+    "zu einem Issue oder einer Krise". The row keeps its ``crisis_id`` from the
+    handover, so no second button is needed to reach the second anchor.
+    """
+    if issue.crisis_id is not None:
+        standing = session.get(Crisis, issue.crisis_id)
+        if standing is not None:
+            return None, standing
+    return issue, None
+
+
+def _packet_or_404(
+    session: Session, client_id: int, packet_id: int
+) -> tuple[Client, DecisionPacket]:
+    """One mandate's paper, or a 404. Never another mandate's.
+
+    The paper carries a company's unconfirmed claims and its contradictions, so
+    the mandate guard is the same one every workspace page takes and the id is
+    checked against it rather than trusted.
+    """
+    client = mandate_or_404(session, client_id)
+    row = decision.packet(session, client, packet_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Entscheidungspapier nicht gefunden")
+    return client, row
+
+
+def _read_deadline(raw: str) -> tuple[dt.datetime | None, bool]:
+    """The date field as a moment, and whether it was readable.
+
+    ``<input type="date">`` posts ``YYYY-MM-DD``; an emptied field posts "",
+    which is a deadline being *taken off* and not an error. Anything else was
+    submitted around the browser, and the honest answer is the unchanged row —
+    a value coerced to "no deadline" would read as a deadline nobody set.
+
+    Local midnight rather than UTC midnight: a Frist is a day in the reader's
+    calendar, and storing 00:00 UTC would render as the day before for anybody
+    west of Greenwich.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None, True
+    try:
+        day = dt.date.fromisoformat(text)
+    except ValueError:
+        return None, False
+    return (
+        dt.datetime.combine(day, dt.time.min, tzinfo=_local_tz()).astimezone(dt.UTC),
+        True,
+    )
+
+
+def _packet_context(
+    session: Session,
+    client: Client,
+    row: DecisionPacket,
+    *,
+    download: bool,
+) -> dict:
+    """Everything the paper renders from, identical for screen and export.
+
+    One builder for both, so the downloaded file cannot carry a sentence the
+    screen did not — the only thing ``download`` changes is the chrome around
+    the content.
+
+    The response options are *named* rather than copied: they are the matter's
+    own stored rows with their own provenance, and the same rule the stakeholder
+    selection keeps by pointing into the standing map. Everything the model
+    wrote is frozen on the packet itself.
+    """
+    parts = decision.sections(row)
+    anchor = decision.anchor_issue(session, row)
+    all_gaps = decision.gaps(session, row)
+    deadline = row.deadline.astimezone(_local_tz()).date() if row.deadline else None
+    return {
+        "client": client,
+        "packet": row,
+        "occasion": decision.occasion(session, row) or client.name,
+        "belegt": parts[PacketSection.BELEGT],
+        "unbestaetigt": parts[PacketSection.UNBESTAETIGT],
+        "offen": parts[PacketSection.OFFEN],
+        "options": scenarios.stored_options(session, anchor) if anchor else [],
+        "gaps": all_gaps,
+        # The decider and the deadline stand at the *top* of the paper when they
+        # are missing, which is the acceptance: their absence is the first line
+        # and never a blank space.
+        "leading_gaps": [gap for gap in all_gaps if gap.leading],
+        # The order is printed on the paper, off the enum's own declaration
+        # order — the one place the Quellenordnung is written down.
+        "source_ranks": list(SourceRank),
+        "evidence_labels": decision.EVIDENCE_LABELS,
+        "name_max": DECISION_NAME_MAX,
+        "deadline_value": f"{deadline:%Y-%m-%d}" if deadline else "",
+        "note": stakeholder_ui.pop_note(client.id) if not download else "",
+        # The screen carries the nav, the gap links and the two forms; the
+        # downloaded file carries none of them, and neither changes a line of
+        # content.
+        "download": download,
+    }
+
+
+@router.post("/issues/{issue_id}/entscheidungspapier")
+def build_packet(
+    request: Request,
+    issue_id: int,
+    redirect_to: str = Form("/"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Write a decision paper to this matter. A new one stands beside the old.
+
+    Deliberately not idempotent, unlike every other model-backed button on this
+    page: "ein neues Papier zum selben Issue ersetzt das alte nicht, sondern
+    tritt daneben", because two papers a week apart are the record of how the
+    reading changed — which is exactly what gets asked afterwards.
+    """
+    standing = _issue_for(session, issue_id)
+    if standing is None:
+        return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+    who = _who(request)
+
+    def _write(worker: Session) -> str:
+        issue = _issue_for(worker, issue_id)
+        if issue is None:
+            return ""
+        mandate = worker.get(Client, issue.client_id)
+        anchor, crisis = _packet_occasion(worker, issue)
+        written = decision.build(
+            worker, mandate, issue=anchor, crisis=crisis, by=who
+        )
+        return "" if written is not None else NO_PACKET
+
+    stakeholder_ui.spend(
+        _write,
+        client_id=standing.client_id,
+        name=f"newspulse-packet-issue-{issue_id}",
+        failed=PACKET_FAILED,
+    )
+    return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
+
+
+@router.get(
+    "/client/{client_id}/entscheidungspapier/{packet_id}", response_class=HTMLResponse
+)
+def packet_page(
+    request: Request,
+    client_id: int,
+    packet_id: int,
+    session: Session = Depends(get_db),
+) -> HTMLResponse:
+    """The paper as it is read in the room, with the two forms under it."""
+    client, row = _packet_or_404(session, client_id, packet_id)
+    return templates.TemplateResponse(
+        request,
+        "decision_packet.html",
+        _packet_context(session, client, row, download=False),
+    )
+
+
+@router.get("/client/{client_id}/entscheidungspapier/{packet_id}.html")
+def packet_export(
+    request: Request,
+    client_id: int,
+    packet_id: int,
+    session: Session = Depends(get_db),
+) -> Response:
+    """The same paper as a file. The same template, so it cannot say more."""
+    client, row = _packet_or_404(session, client_id, packet_id)
+    stamp = f"{row.created_at.astimezone(_local_tz()):%Y-%m-%d}"
+    return templates.TemplateResponse(
+        request,
+        "decision_packet.html",
+        _packet_context(session, client, row, download=True),
+        headers={
+            "Content-Disposition": (
+                'attachment; filename="entscheidungspapier_'
+                f'{client_slug(client.name)}_{stamp}.html"'
+            )
+        },
+    )
+
+
+@router.post("/client/{client_id}/entscheidungspapier/{packet_id}/entscheider")
+def set_packet_decider(
+    client_id: int,
+    packet_id: int,
+    decision_maker: str = Form(""),
+    deadline: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """A person names who decides and by when. Both are theirs to set.
+
+    Never the tool's: a decider it nominated would be a name nobody agreed to,
+    and a deadline it computed would be a promise nobody made. An unreadable
+    date changes nothing and says so, rather than quietly storing "no deadline".
+    """
+    client, row = _packet_or_404(session, client_id, packet_id)
+    when, readable = _read_deadline(deadline)
+    if not readable:
+        stakeholder_ui.note(client.id, DEADLINE_UNREADABLE)
+    elif not decision.set_decider(
+        session, row, decision_maker=decision_maker, deadline=when
+    ):
+        stakeholder_ui.note(client.id, PACKET_DECIDED)
+    return RedirectResponse(
+        f"/client/{client.id}/entscheidungspapier/{row.id}", status_code=_SEE_OTHER
+    )
+
+
+@router.post("/client/{client_id}/entscheidungspapier/{packet_id}/entscheidung")
+def record_packet_decision(
+    request: Request,
+    client_id: int,
+    packet_id: int,
+    decision_text: str = Form("", alias="decision"),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Note the decision that was taken and who took it; the paper closes.
+
+    A second decision written over the first would erase the answer rather than
+    add to it, so it is refused and said: a changed mind is a new paper, which
+    is the button on the register.
+    """
+    client, row = _packet_or_404(session, client_id, packet_id)
+    if not decision.record_decision(
+        session, row, decision=decision_text, by=_who(request)
+    ):
+        stakeholder_ui.note(
+            client.id, PACKET_DECIDED if row.is_decided else DECISION_EMPTY
+        )
+    return RedirectResponse(
+        f"/client/{client.id}/entscheidungspapier/{row.id}", status_code=_SEE_OTHER
+    )

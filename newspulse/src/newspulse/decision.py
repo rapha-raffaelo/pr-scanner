@@ -834,6 +834,35 @@ def packets_for(
     return list(session.scalars(query).all())
 
 
+def anchor_issue(session: Session, row: DecisionPacket) -> Issue | None:
+    """The issue whose stored rows this paper's occasion is made of.
+
+    The paper's own issue where it has one, and the issue a crisis escalated out
+    of otherwise. It is what the page reads the response options off: the
+    options hang on the *matter*, and a crisis that grew out of an issue is the
+    same matter under a different name.
+    """
+    if row.issue_id is not None:
+        return session.get(Issue, row.issue_id)
+    standing = session.get(Crisis, row.crisis_id) if row.crisis_id else None
+    if standing is None:
+        return None
+    return _anchor_issue(session, issue=None, crisis=standing)
+
+
+def occasion(session: Session, row: DecisionPacket) -> str:
+    """The matter this paper was written to, in one line.
+
+    Read off the anchor rather than copied onto the packet: the issue's title is
+    the matter's name, and a paper that kept a stale copy of it would head a
+    document with a name nobody uses any more.
+    """
+    if row.issue_id is not None:
+        return _occasion_line(issue=session.get(Issue, row.issue_id), crisis=None)
+    standing = session.get(Crisis, row.crisis_id) if row.crisis_id else None
+    return _occasion_line(issue=None, crisis=standing)
+
+
 def packet(session: Session, client: Client, packet_id: int) -> DecisionPacket | None:
     """One paper of this mandate, or ``None``.
 
@@ -1008,9 +1037,11 @@ __all__ = [
     "PacketDraft",
     "RANK_BY_KIND",
     "SECTION_LABELS",
+    "anchor_issue",
     "build",
     "gaps",
     "material_lines",
+    "occasion",
     "packet",
     "packets_for",
     "record_decision",

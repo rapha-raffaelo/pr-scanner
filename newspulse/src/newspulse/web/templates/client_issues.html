@@ -188,6 +188,13 @@
         {% include 'partials/scenarios.html' %}
       {% endwith %}
 
+      {# Das Entscheidungspapier (RIS-05): the button, and every paper written
+         from this row. A new one stands beside the old and never replaces it. #}
+      {% with packets_here = packets.get(issue.id, []),
+              editable = true %}
+        {% include 'partials/decision_packets.html' %}
+      {% endwith %}
+
       <details class="iedit">
         <summary>{{ t("Bearbeiten") }}</summary>
         <form method="post" action="/issues/{{ issue.id }}/edit" class="iedit__form">
@@ -310,6 +317,13 @@
                 options_here = options.get(issue.id, []),
                 editable = false %}
           {% include 'partials/scenarios.html' %}
+        {% endwith %}
+        {# A past issue keeps its papers readable, the same rule its signals
+           keep. An escalated one still takes the button: the matter did not
+           end, it became a crisis, and the paper then hangs on the crisis. #}
+        {% with packets_here = packets.get(issue.id, []),
+                editable = issue.status == 'eskaliert' %}
+          {% include 'partials/decision_packets.html' %}
         {% endwith %}
         <details class="isig">
           <summary>{{ issue.signals | length }}
