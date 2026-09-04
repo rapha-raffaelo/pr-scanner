@@ -88,13 +88,29 @@ def _stub(module, lock_name: str):
 
 
 @pytest.fixture(autouse=True)
+def no_background_stakeholder_call(monkeypatch):
+    """Stop the stakeholder card's three model-call buttons from spending one.
+
+    Same two reasons as the impulse button, plus one of its own: the worker
+    opens its *own* session against the process engine, which is not the
+    in-memory database a web test overrides ``get_db`` with. The disciplines
+    those buttons carry are exercised against
+    :mod:`newspulse.stakeholders` directly in ``test_stakeholders.py``.
+    """
+    from newspulse.web.routes import stakeholder_ui
+
+    monkeypatch.setattr(stakeholder_ui, "_run", _stub(stakeholder_ui, "_calling"))
+
+
+@pytest.fixture(autouse=True)
 def background_locks_are_free():
     """Fail the test that leaked one, rather than the innocent test that waits."""
-    from newspulse.web.routes import advisory
+    from newspulse.web.routes import advisory, stakeholder_ui
 
     yield
     for name in ("_drafting", "_writing"):
         assert not getattr(advisory, name).locked(), f"a test left {name} held"
+    assert not stakeholder_ui._calling.locked(), "a test left _calling held"
 
 
 @pytest.fixture(autouse=True)
@@ -271,6 +287,33 @@ def no_plan_recompute(monkeypatch):
         return 0
 
     monkeypatch.setattr(job, "_recompute_plans", _stub)
+    return original
+
+
+@pytest.fixture(autouse=True)
+def no_issue_linking(monkeypatch):
+    """Keep the sweep's issue linking out of the tests that are not about it.
+
+    ``job.run`` now offers the day's new pieces to every open issue (RIS-02,
+    DEC-4), and each mechanical match is a model call. Most fixtures here have
+    no issues at all, so the pass would usually cost nothing — but "usually"
+    is exactly the kind of guarantee this file exists to replace: one fixture
+    that happens to seed an issue and similar headlines would shell out to
+    `claude` from a test about something else entirely.
+
+    Yields the real function, so the tests that are about the wiring can put
+    it back and prove the sweep genuinely reaches it.
+    """
+    from newspulse import job
+
+    original = job._link_issue_signals
+
+    def _stub(session, clients, *, now) -> int:
+        """The real signature, so a change to it breaks the suite rather than
+        production: ``lambda *a, **k`` would have accepted anything."""
+        return 0
+
+    monkeypatch.setattr(job, "_link_issue_signals", _stub)
     return original
 
 

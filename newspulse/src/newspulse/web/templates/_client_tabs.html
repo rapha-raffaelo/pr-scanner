@@ -45,6 +45,10 @@
   {% if kstate.has_history %}
     <a href="/client/{{ client.id }}/krise" class="{% if active == 'krise' %}active {% endif %}{% if kstate.open_id %}subtabs__hot{% endif %}"{% if active == 'krise' %} aria-current="page"{% endif %}>{{ t("Krise") }}</a>
   {% endif %}
+  {# The register between the daily card and the crisis: the matter that gets
+     three weeks old (RIS-02). Always present, unlike the Krise tab — an empty
+     register is a statement ("nothing is being carried"), not a missing page. #}
+  <a href="/client/{{ client.id }}/issues"{% if active == 'issues' %} class="active" aria-current="page"{% endif %}>{{ t("Issues") }}</a>
   {# The long clock. Sits right after the texts because it is where the next
      occasion comes from: six months of dated hooks, each on a stored row
      (DEC-5). #}

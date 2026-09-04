@@ -75,6 +75,10 @@ def test_alembic_upgrade_creates_schema_and_round_trips_arrays(tmp_path, monkeyp
             # card on Today, and the one condition under which the sweep changes
             # its cadence has nowhere to be stored.
             "crises",
+            # The daily reading. Without this table the tool has no memory of how
+            # a mandate stood yesterday, which is the whole difference between a
+            # red card that expires at midnight and a thing three weeks old.
+            "reputation_readings",
         } <= tables
 
         # The acceptance-required array round-trip, but against the *migrated*
@@ -426,6 +430,126 @@ def test_the_cadence_stamp_starts_empty_rather_than_at_the_declaration(
         assert row[0] is None
         assert row[1] == ""
         assert row[2] == 3
+    finally:
+        engine.dispose()
+
+
+_READING_INSERT = (
+    "INSERT INTO reputation_readings "
+    "(client_id, day, state, outlets, national, articles, negative, named, "
+    "points, computed_at) "
+    "VALUES (:client_id, :day, :state, :outlets, 0, :articles, :negative, 0, "
+    ":points, '2026-09-02 06:10:00')"
+)
+
+
+def _read(conn, *, client_id=1, day="2026-09-02", state="beobachtung", outlets=2,
+          articles=3, negative=2, points=3):
+    conn.execute(
+        text(_READING_INSERT),
+        {
+            "client_id": client_id,
+            "day": day,
+            "state": state,
+            "outlets": outlets,
+            "articles": articles,
+            "negative": negative,
+            "points": points,
+        },
+    )
+
+
+def _seeded_reading_db(tmp_path, monkeypatch, name: str):
+    """A migrated database holding one mandate, ready for a reading."""
+    db_path = tmp_path / name
+    monkeypatch.setattr(config, "DATABASE_PATH", db_path)
+    command.upgrade(_alembic_config(), "head")
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    with engine.begin() as conn:
+        conn.execute(text(_CLIENT_INSERT), {"name": "Solaris AG"})
+    return engine
+
+
+def test_one_reputation_reading_per_mandate_and_day_is_a_schema_guarantee(
+    tmp_path, monkeypatch
+):
+    """The UNIQUE, against the real migration rather than against the ORM.
+
+    ``newspulse.reputation.record`` updates the standing row rather than writing
+    a second one, but a manual run, a redeploy and a second scheduler tick can
+    all reach that insert together and only the database settles it. A day stored
+    twice would weigh double in the direction and in the mandate's own median for
+    as long as it stayed in their windows — a wrong answer that is invisible in
+    the row that caused it.
+
+    The second half is the other direction: a *second mandate* on the same day,
+    and the same mandate on a second day, are both ordinary and must not be
+    caught by an index written one column too narrow.
+    """
+    engine = _seeded_reading_db(tmp_path, monkeypatch, "reading.db")
+    try:
+        with engine.begin() as conn:
+            _read(conn)
+        with pytest.raises(IntegrityError):
+            with engine.begin() as conn:
+                _read(conn)
+
+        with engine.begin() as conn:
+            conn.execute(text(_CLIENT_INSERT), {"name": "Helios GmbH"})
+            _read(conn, client_id=2)
+            _read(conn, day="2026-09-03")
+        with engine.connect() as conn:
+            assert conn.execute(
+                text("SELECT COUNT(*) FROM reputation_readings")
+            ).scalar() == 3
+    finally:
+        engine.dispose()
+
+
+def test_a_reading_with_no_coverage_is_stored_rather_than_refused(
+    tmp_path, monkeypatch
+):
+    """"Nothing was written about this mandate" is a reading, not a missing one.
+
+    A CHECK demanding ``articles > 0`` would be the easy default and it would
+    delete the answer the acceptance asks for by name: a mandate without coverage
+    in the window is ruhig and *not* unknown, and the row is the only thing that
+    can say which of the two it is.
+    """
+    engine = _seeded_reading_db(tmp_path, monkeypatch, "quiet.db")
+    try:
+        with engine.begin() as conn:
+            _read(conn, state="ruhig", outlets=0, articles=0, negative=0, points=0)
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT state, articles, negative, points FROM reputation_readings")
+            ).one()
+        assert tuple(row) == ("ruhig", 0, 0, 0)
+    finally:
+        engine.dispose()
+
+
+def test_a_negative_count_above_its_own_denominator_is_refused(tmp_path, monkeypatch):
+    """The share is what the band reads. A numerator above its denominator would
+    render as a percentage above a hundred with nothing to say which of the two
+    numbers was the wrong one."""
+    engine = _seeded_reading_db(tmp_path, monkeypatch, "share.db")
+    try:
+        with pytest.raises(IntegrityError):
+            with engine.begin() as conn:
+                _read(conn, articles=2, negative=3)
+    finally:
+        engine.dispose()
+
+
+def test_a_rung_outside_the_ladder_is_refused(tmp_path, monkeypatch):
+    """The five rungs are the whole vocabulary of the band. A sixth would render
+    as a step nothing in the tool knows how to name, in either language."""
+    engine = _seeded_reading_db(tmp_path, monkeypatch, "rung.db")
+    try:
+        with pytest.raises(IntegrityError):
+            with engine.begin() as conn:
+                _read(conn, state="katastrophe")
     finally:
         engine.dispose()
 

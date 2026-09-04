@@ -1,0 +1,102 @@
+{# The reputation band (RIS-01, DEC-1 option B).
+
+   A mandate appears only once it has left the lowest rung; everything else is
+   one sentence at the end. On an ordinary morning that makes the whole band a
+   single line, and on the morning something is wrong it is the first thing on
+   the page — which is the entire argument for option B over a row per mandate.
+
+   Every statement here is a word. The rung is a word, the direction is a word,
+   and the deviation is a sentence: colour is decoration on this band and never
+   the thing that carries the meaning, because a reader who has to infer the
+   sentence from a hue infers the one they were already expecting.
+
+   No arithmetic is done at render. The tiles are the readings the sweep wrote,
+   so the band says what a consultant can re-derive from the stored row and does
+   not move under them during the morning. The one thing read live is the
+   open-crisis floor, which is a person's statement rather than a count and is
+   true the second it is made — see newspulse.reputation._in_crisis. #}
+{% if not band.is_empty %}
+<section class="band" aria-label="{{ t('Reputationslage') }}">
+  {% if band.entries %}
+    <div class="band__row">
+      {% for entry in band.entries %}
+        <article class="band__tile band__tile--{{ entry.state }}">
+          <div class="band__head">
+            <span class="band__state">{{ t(entry.state) | capitalize }}</span>
+            <span class="band__name">{{ entry.client_name }}</span>
+          </div>
+          {# The four inputs the rung was counted from, beside the rung. A
+             consultant asked "why is this Risiko" gets the numbers in the hour
+             they ask, which is the whole of DEC-2 option A. #}
+          <div class="band__why">
+            {% if entry.negative %}
+              {% if entry.outlets == 1 %}{{ t("1 Medium") }}{% else %}{{ entry.outlets }} {{ t("Medien") }}{% endif %}
+              <span class="dot">·</span>
+              {{ entry.negative }}/{{ entry.articles }} {{ t("negativ") }}
+              {% if entry.national %}<span class="dot">·</span> {{ t("überregional") }}{% endif %}
+              {% if entry.named %}<span class="dot">·</span> {{ t("namentlich genannt") }}{% endif %}
+            {% elif entry.articles %}
+              {# Coverage, none of it negative. Only the crisis floor can put
+                 this tile on the band - the arithmetic leaves such a reading on
+                 ruhig - and "0 Medien · 0/12 negativ" beside a declared Krise
+                 would be a broken sentence pretending to be a count. The honest
+                 count is that nothing negative lay in the window. #}
+              {{ t("keine negative Berichterstattung im Fenster") }}
+            {% elif entry.day %}
+              {{ t("keine Berichterstattung im Fenster") }}
+            {% else %}
+              {# No row at all, which only a mandate whose crisis was declared
+                 before its first sweep can be. The tile says the crisis and
+                 says plainly that nothing has been counted — zeroes would be a
+                 count, and there has not been one. #}
+              {{ t("noch nicht abgelesen") }}
+            {% endif %}
+          </div>
+          <div class="band__trend">
+            {{ t("Richtung") }}: <strong>{{ t(entry.direction) }}</strong>
+            {% if entry.deviates %}
+              <span class="dot">·</span>
+              <span class="band__dev">{{ t("über dem eigenen Median der letzten 30 Ablesungen") }}</span>
+            {% endif %}
+          </div>
+          {# A tile whose reading is older than the band's own stamp says so on
+             itself. The sweep skips a mandate it cannot count and carries on, so
+             this tile can be the last reading that succeeded — and its four
+             counts are that day's coverage, not today's. Undated, it would be
+             read under the date in the foot and re-derived against the wrong
+             morning. #}
+          {% if entry.day and band.day and entry.day < band.day %}
+            <div class="band__stale">{{ t("Ablesung vom") }} {{ entry.day.strftime("%d.%m.%Y") }}</div>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {# The count line. It is the *whole* band on a quiet morning — no empty tiles,
+     no placeholder — and the absence of a tile is the statement option B asks
+     the reader to be able to read, so the line says how many mandates it stands
+     for, how many of those nobody wrote about at all, and how many of them were
+     last read before this morning. That last number is the honesty the tiles
+     already have: the sweep logs a mandate it cannot count and carries on, and
+     a reading three weeks stale folded silently into "N Mandanten ruhig" would
+     make the reassuring half of the band the half that degrades in silence. #}
+  {# Skipped whole when it would be empty, which only a band of nothing but a
+     freshly declared crisis can be: no mandate is quiet and none has been read,
+     so there is neither a count nor a date to stamp. #}
+  {% if band.quiet or band.day %}
+  <p class="band__foot">
+    {% if band.quiet %}
+      {# The count and its noun on one line on purpose: Jinja keeps the
+         newlines it is written with, and "3\n  Mandanten ruhig" is a sentence
+         broken in the middle wherever the band is read as text rather than as
+         a rendered box. #}
+      <span class="band__quiet">{{ band.quiet }} {% if band.quiet == 1 %}{{ t("Mandant ruhig") }}{% else %}{{ t("Mandanten ruhig") }}{% endif %}{% if band.without_coverage %}, {{ band.without_coverage }} {{ t("davon ohne Berichterstattung") }}{% endif %}{% if band.quiet_stale and band.day %}, {{ band.quiet_stale }} {{ t("davon zuletzt gelesen vor dem") }} {{ band.day.strftime("%d.%m.%Y") }}{% endif %}.</span>
+    {% endif %}
+    {% if band.day %}
+      <span class="band__stamp"
+            title="{{ t('Gerechnet aus gespeicherten Zeilen, nicht geschätzt.') }}">{{ t("Ablesung vom") }} {{ band.day.strftime("%d.%m.%Y") }}</span>
+    {% endif %}
+  </p>
+  {% endif %}
+</section>
+{% endif %}

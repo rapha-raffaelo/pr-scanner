@@ -19,7 +19,7 @@ from __future__ import annotations
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from ..models import Client
+from ..models import Client, Crisis
 
 
 def mandate_or_404(session: Session, client_id: int) -> Client:
@@ -34,3 +34,20 @@ def mandate_or_404(session: Session, client_id: int) -> Client:
     if client is None or client.is_competitor:
         raise HTTPException(status_code=404, detail="Client not found")
     return client
+
+
+def crisis_or_none(session: Session, crisis_id: int) -> Crisis | None:
+    """The crisis, or ``None`` for a stale id — and a benchmark's is ``None``.
+
+    The button half of the guard above, in the same place as the page half. A
+    crisis id arrives on POST endpoints in two route modules, and both of them
+    hang a model call off it: without this, a hand-typed POST still spends one
+    writing for a company that will never receive what it writes. ``None``
+    rather than a 404, because these are one-click actions inside a list that
+    may have been open since before a sweep — a stale id costs nothing rather
+    than the page.
+    """
+    standing = session.get(Crisis, crisis_id)
+    if standing is None or standing.client is None or standing.client.is_competitor:
+        return None
+    return standing

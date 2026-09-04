@@ -225,6 +225,25 @@
         </div>
       {% endfor %}
     </section>
+
+    {# Die Stakeholder-Auswahl (RIS-03): who learns of this crisis, in what
+       order, and what each group wants to know. The same block the register
+       carries at an issue — the map is one map, and the crisis morning selects
+       from it rather than rebuilding it. #}
+    {% include 'partials/stakeholder_selection.html' %}
+
+    {# Das Entscheidungspapier (RIS-05) at the second occasion the acceptance
+       names. The register's button reaches a crisis only through the issue it
+       escalated from, and a crisis declared straight off an article has no such
+       row — so for that one, the most urgent occasion the tool has, this is the
+       only path to a paper. #}
+    {% with packets_here = packets_here,
+            editable = crisis.closed_at is none,
+            packet_action = '/crisis/' ~ crisis.id ~ '/entscheidungspapier',
+            packet_redirect = '/client/' ~ client.id ~ '/krise?krise=' ~ crisis.id,
+            packet_anchor = 'dpk-crisis-' ~ crisis.id %}
+      {% include 'partials/decision_packets.html' %}
+    {% endwith %}
   </section>
 
 </div>

@@ -21,6 +21,7 @@ from enum import StrEnum
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -2687,8 +2688,1425 @@ class CrisisDismissal(Base):
     article: Mapped["Article"] = relationship(lazy="selectin")
 
 
+#: The rungs of the ladder, as the arithmetic and the interface both name them.
+class ReputationState(StrEnum):
+    """How a mandate stands, counted from stored rows and never estimated.
+
+    Five rungs, and the order they are declared in *is* the ladder —
+    :func:`newspulse.reputation.rank` reads this class, so a rung inserted in
+    the wrong place would silently reorder the comparison the open-crisis floor
+    relies on.
+
+    ``ISSUE`` is the one rung no sum over a single day can reach, and it is not
+    reached by one: :func:`newspulse.reputation.measure` sets it where the
+    arithmetic says Beobachtung and the stored series says this mandate already
+    stood above ruhig on another day this week — a matter being carried rather
+    than a bad morning. What the series cannot yet say is *which* matter; the
+    issue register (RIS-02) will name it, and it will name it on this rung.
+    """
+
+    RUHIG = "ruhig"
+    BEOBACHTUNG = "beobachtung"
+    ISSUE = "issue"
+    RISIKO = "risiko"
+    KRISE = "krise"
+
+
+class ReputationReading(Base):
+    """One mandate's state on one day: the rung, the four inputs, and when.
+
+    The row exists so the state has a *history*, which is the whole difference
+    between this and the red card on Today that expires at midnight. Two things
+    fall out of a stored series without any further work:
+
+    * the direction, because there is a run of previous days to compare against;
+    * the deviation, because a mandate can be measured against its own median
+      instead of against a threshold that would mean the same thing for a
+      municipal utility and for a listed group.
+
+    **One reading per mandate and day** — the UNIQUE below, not a convention.
+    The sweep runs once a morning today, but a manual run, a redeploy or a
+    second scheduler tick would otherwise leave two rows for the same day, and
+    every median and every trend read over that series would double-weight
+    whichever day happened to be swept twice.
+    :func:`newspulse.reputation.record` updates the standing row instead.
+
+    **The four inputs sit beside the rung**, exactly as they do on
+    :class:`Crisis` and for exactly the same reason: a rung nobody can re-derive
+    is a rung nobody will defend in front of a client. ``articles`` and
+    ``negative`` are kept as two integers rather than as a rounded share, so the
+    fraction is checkable rather than merely plausible.
+
+    ``articles = 0`` is a *reading*, not a missing one: a mandate nobody wrote
+    about is quiet, and the row is what says so.
+    """
+
+    __tablename__ = "reputation_readings"
+    __table_args__ = (
+        UniqueConstraint("client_id", "day", name="uq_reputation_reading_per_day"),
+        CheckConstraint(
+            "negative >= 0 AND articles >= negative",
+            name="ck_reputation_reading_share",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The *local* day the reading is for — the same day the Heute page is keyed
+    #: on. A UTC day would file a reading taken at 01:00 Berlin time under the
+    #: previous day, and the band and the coverage under it would then disagree
+    #: about what day it is.
+    day: Mapped[dt.date] = mapped_column(Date(), nullable=False, index=True)
+    state: Mapped[ReputationState] = mapped_column(
+        SAEnum(
+            ReputationState,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="reputation_state",
+        ),
+        nullable=False,
+        default=ReputationState.RUHIG,
+        server_default=ReputationState.RUHIG.value,
+    )
+
+    # --- The four inputs, and the sum they produced ---------------------------
+    #: How many independent outlets carry the strongest negative story of the
+    #: window. Story-scoped on purpose: two outlets on *the same* thing is what
+    #: corroboration means, and two outlets on two unrelated stories is not.
+    outlets: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: The reach class, as the one bit the ranking in ``outlet_tiers.toml``
+    #: actually decides: whether any of the negative coverage ran nationally.
+    national: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    #: The denominator of the negative share: everything visible about this
+    #: mandate in the window. Zero means nothing was written, which is a
+    #: statement and not a gap.
+    articles: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: Its numerator: how many of those read negative for the mandate.
+    negative: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: Whether the mandate is named in the feed-provided text of any negative
+    #: piece. No body is ever fetched, here or anywhere else.
+    named: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    #: The sum the rung was read off. Stored rather than recomputed on render,
+    #: because it is what the direction and the median are counted over — a
+    #: series recomputed from today's coverage would silently rewrite its own
+    #: history as articles age out of the window.
+    points: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: When the reading was taken. The acceptance asks for it by name, and it is
+    #: the one thing ``day`` cannot say: a reading updated at 18:00 by a second
+    #: run is a different statement from the one taken at 06:10.
+    computed_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    #: Lazy, unlike the eager relationships on :class:`Crisis` and the rest.
+    #: Those are loaded because the page renders them; nothing renders a
+    #: reading's mandate — the band already holds the :class:`Client` it asked
+    #: for the reading about — so eager-loading it would buy a second query per
+    #: statement on the busiest page in the tool and hand back an object the
+    #: caller has.
+    client: Mapped["Client"] = relationship()
+
+
+#: The scale Wahrscheinlichkeit and Wirkung are set on. Five steps, the same
+#: hand a crisis level is graded on (:data:`CRISIS_LEVEL_MIN`), because the two
+#: numbers meet on one heatmap and a 1-5 next to a 1-10 would make the field
+#: unreadable. NULL is a value of its own — "noch nicht gesetzt" — and the
+#: heatmap gives it a named column rather than a corner of the field.
+ISSUE_SCALE_MIN = 1
+ISSUE_SCALE_MAX = 5
+
+
+class IssueStatus(StrEnum):
+    """Where one issue stands with the person who owns it.
+
+    ``ESKALIERT`` is not a second kind of closed: the matter did not end, it
+    became a crisis, and the row stays readable with all its signals because it
+    is the crisis's prehistory. ``GESCHLOSSEN`` always carries a reason — the
+    CHECK on :class:`Issue` holds that the way it does on :class:`Crisis`.
+    """
+
+    OFFEN = "offen"
+    ESKALIERT = "eskaliert"
+    GESCHLOSSEN = "geschlossen"
+
+
+class Issue(Base):
+    """The thing that gets three weeks old: one repeated matter, as one row.
+
+    Until now the same accusation on Monday and on Friday was two cards on two
+    days. This row is the object between the daily card and the declared
+    crisis: it has an age, a last movement and a growing count of attached
+    signals, and that is what "something is growing" is made of.
+
+    Three disciplines are carried on the row rather than remembered by callers:
+
+    * **A person opened it and a person grades it.** DEC-3 locked "das Werkzeug
+      schlägt vor, ein Mensch eröffnet", so ``opened_by`` names the person who
+      accepted the proposal. ``probability`` and ``impact`` are suggested by
+      arithmetic and *set* by a person, and ``probability_set_by`` /
+      ``impact_set_by`` say who — a model-set Eintrittswahrscheinlichkeit looks
+      like a measurement and is an opinion. NULL means nobody has set the value
+      yet, and the heatmap shows that as a named column, never as the origin of
+      the field.
+    * **A closed issue carries its reason**, the same CHECK the crisis has: an
+      empty answer to "why did we stop watching this" is silence three months
+      later. The row and its signals stay readable after.
+    * **Escalation is a handover, not an end.** ``crisis_id`` points at the
+      crisis this issue became, so the crisis's chronology can begin where the
+      issue began rather than on the day somebody pressed the button.
+
+    ``opened_at`` is the day the *matter* began — the earliest attached
+    signal's own date, not the moment of the click — because the age on the
+    register row and the start of an escalated crisis's chronology are both
+    statements about the matter, and the click is a statement about the person.
+    ``last_moved_at`` moves with the signals for the same reason.
+    """
+
+    __tablename__ = "issues"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The matter in one line — the lead headline of the repetition it was
+    #: opened from, editable by the person who owns it.
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: Frühindikatoren, one per line. Free text a person maintains: what to
+    #: watch for before the matter grows, not something a model fills.
+    early_indicators: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    owner: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False, default="", server_default=""
+    )
+    status: Mapped[IssueStatus] = mapped_column(
+        SAEnum(
+            IssueStatus,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="issue_status",
+        ),
+        nullable=False,
+        default=IssueStatus.OFFEN,
+        server_default=IssueStatus.OFFEN.value,
+    )
+    #: When the matter began: the earliest attached signal's own date.
+    opened_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The person who accepted the proposal — the same discipline as
+    #: ``Crisis.declared_by``: a user name where the tool has one, the
+    #: ``"mensch"`` token otherwise, never a name nobody typed.
+    opened_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    #: When the matter last moved: the newest attached signal's own date.
+    last_moved_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+    # --- The two graded values, each with the person who set it ---------------
+    probability: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    probability_set_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False, default="", server_default=""
+    )
+    impact: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    impact_set_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False, default="", server_default=""
+    )
+
+    closed_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    close_reason: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    closed_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False, default="", server_default=""
+    )
+    #: The crisis this issue became, once it escalated. SET NULL rather than
+    #: CASCADE: an issue outlives the crisis row the way its signals do — the
+    #: prehistory does not vanish because the crisis record was deleted.
+    crisis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crises.id", ondelete="SET NULL"), nullable=True
+    )
+
+    signals: Mapped[list["IssueSignal"]] = relationship(
+        back_populates="issue", lazy="selectin", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            f"probability IS NULL OR (probability >= {ISSUE_SCALE_MIN} "
+            f"AND probability <= {ISSUE_SCALE_MAX})",
+            name="ck_issues_probability_range",
+        ),
+        CheckConstraint(
+            f"impact IS NULL OR (impact >= {ISSUE_SCALE_MIN} "
+            f"AND impact <= {ISSUE_SCALE_MAX})",
+            name="ck_issues_impact_range",
+        ),
+        # The same one-direction CHECK the crisis carries: it cannot be closed
+        # without a reason. The other direction is a convention of
+        # :func:`newspulse.issues.close`, the only writer of the pair.
+        CheckConstraint(
+            "closed_at IS NULL OR close_reason <> ''", name="ck_issues_close_reason"
+        ),
+    )
+
+
+class IssueSignal(Base):
+    """One signal hanging on one issue, with the reason it hangs there.
+
+    A signal is either a stored article or a stored market signal — exactly one,
+    and the CHECK holds that. Never free text: a signal that does not resolve to
+    a stored row is not evidence of anything.
+
+    ``reason`` is the load-bearing column. DEC-4 locked "mechanisch gefundene
+    Kandidaten, das Modell entscheidet" — and the rule that came with it is that
+    an assignment nobody can justify is not stored. The CHECK refuses an empty
+    reason at the schema, so the rule survives every future writer of this
+    table, not only the one that was reviewed.
+
+    ``attached_by`` distinguishes the model's assignments (the ``"modell"``
+    token) from a person's, the way ``ClientFact.filled_by`` does: the register
+    shows who hung a signal on the row, because a model's one-sentence reason
+    reads differently from a consultant's.
+    """
+
+    __tablename__ = "issue_signals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issue_id: Mapped[int] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    article_id: Mapped[int | None] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=True
+    )
+    signal_id: Mapped[int | None] = mapped_column(
+        ForeignKey("market_signals.id", ondelete="CASCADE"), nullable=True
+    )
+    #: Why this belongs to this issue — stored, so every assignment is readable
+    #: afterwards. Never empty; see the CHECK.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    #: ``"modell"`` for a DEC-4 assignment, a person's name otherwise.
+    attached_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    attached_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The signal's own date — the article's publication, or the market
+    #: signal's stated date. What the issue's age and last movement are read
+    #: from, because they are statements about the matter and not about when
+    #: the tool noticed it.
+    happened_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+    issue: Mapped["Issue"] = relationship(back_populates="signals")
+    article: Mapped["Article | None"] = relationship(lazy="selectin")
+    market_signal: Mapped["MarketSignal | None"] = relationship(lazy="selectin")
+
+    __table_args__ = (
+        # Exactly one of the two targets, spelled as the boolean it is.
+        CheckConstraint(
+            "(article_id IS NULL) <> (signal_id IS NULL)",
+            name="ck_issue_signals_one_target",
+        ),
+        CheckConstraint("reason <> ''", name="ck_issue_signals_reason"),
+        # The same piece hangs on the same issue once. NULLs do not collide in
+        # a UNIQUE, so the two constraints stay out of each other's way.
+        UniqueConstraint("issue_id", "article_id", name="uq_issue_signals_article"),
+        UniqueConstraint("issue_id", "signal_id", name="uq_issue_signals_signal"),
+    )
+
+
+class IssueDismissal(Base):
+    """One issue proposal a person waved off (DEC-3's one-click false positive).
+
+    The same posture as :class:`CrisisDismissal` and for the same reason:
+    "verwerfen lässt dieselbe Wiederholung nicht erneut vorschlagen". Keyed on
+    the proposal's lead article; :func:`newspulse.issues.propose` reads these
+    through the same clustering the proposals come from, so the whole repeated
+    story stops being offered, not merely the one headline that led it.
+
+    ``(client_id, article_id)`` is UNIQUE so a double click, a second tab and a
+    replayed POST all land on the same dismissal.
+    """
+
+    __tablename__ = "issue_dismissals"
+    __table_args__ = (
+        UniqueConstraint("client_id", "article_id", name="uq_issue_dismissals_once"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    dismissed_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    dismissed_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+
+
+class StakeholderLevel(StrEnum):
+    """How strongly a group is touched, or how much weight it carries.
+
+    Three steps and no number: the stakeholder map is read in a hallway on the
+    morning something breaks, and "hoch" is a word a consultant defends where a
+    3.7 is a figure somebody computed once and nobody can re-derive. A closed
+    set, so a proposal whose level nobody recognises is dropped in
+    :mod:`newspulse.stakeholders` rather than filed under a guess.
+    """
+
+    HOCH = "hoch"
+    MITTEL = "mittel"
+    NIEDRIG = "niedrig"
+
+
+#: How much of a contact name or a channel a map row keeps. A ceiling rather
+#: than a validation rule, the same trade :data:`CRISIS_DECLARED_BY_MAX` makes:
+#: an over-long line costs its tail, never the row. Named because the truncation
+#: in :mod:`newspulse.stakeholders` and the form's ``maxlength`` have to agree —
+#: five copies of a literal drift the first time one of them is raised.
+STAKEHOLDER_TEXT_MAX = 200
+
+
+class Stakeholder(Base):
+    """One group on a mandate's standing stakeholder map (RIS-03).
+
+    The map hangs on the *mandate*, not on an issue: who the neighbours of a
+    site are and which association speaks for the industry does not change with
+    the occasion, and a map reinvented per incident is half wrong per incident.
+    What an issue gets is a **selection** from this table
+    (:class:`StakeholderSelection`), never rows of its own.
+
+    ``set_by`` is the discipline the profile already keeps for every researched
+    value: each row says who put it there — the ``"modell"`` token for a
+    proposed row, a person's name once a person has touched it — and a row a
+    person set is never overwritten by a proposal
+    (:func:`newspulse.stakeholders.propose_card` skips every standing row).
+
+    ``contact`` empty is the most important row of the map, not a blank cell:
+    the page renders it as a named gap with the link to where it is filled in,
+    the way the missing crisis contact already reads on the crisis page.
+    """
+
+    __tablename__ = "stakeholders"
+    __table_args__ = (
+        # One row per group per mandate: proposing the same group twice must
+        # update nothing and add nothing — the standing row is the answer.
+        UniqueConstraint("client_id", "group_name", name="uq_stakeholders_group"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Who the group is — "Anwohner am Standort", "Branchenverband", a name a
+    #: reader recognises. ``group_name`` rather than ``group``: the bare word is
+    #: an SQL keyword and would need quoting in every raw statement for ever.
+    group_name: Mapped[str] = mapped_column(Text, nullable=False)
+    #: How this group is touched by the mandate, in stored prose. This is the
+    #: line the issue selection's one-sentence "was sie wissen will" may rest
+    #: on — the stored Angabe that keeps that sentence from inventing anything.
+    betroffenheit: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    einfluss: Mapped[StakeholderLevel] = mapped_column(
+        SAEnum(
+            StakeholderLevel,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="stakeholder_level",
+        ),
+        nullable=False,
+        default=StakeholderLevel.MITTEL,
+        server_default=StakeholderLevel.MITTEL.value,
+    )
+    #: The named person this group is reached through. Empty is a *named gap*
+    #: on the page, never invented: a proposal writes no contact at all —
+    #: a guessed name would be called on the one evening it matters.
+    contact: Mapped[str] = mapped_column(
+        String(STAKEHOLDER_TEXT_MAX), nullable=False, default="", server_default=""
+    )
+    #: How the group is reached: a channel, not an address book entry.
+    channel: Mapped[str] = mapped_column(
+        String(STAKEHOLDER_TEXT_MAX), nullable=False, default="", server_default=""
+    )
+    #: Who set this row: the ``"modell"`` token for a proposal, a person's name
+    #: after any human edit. The map shows it on every line.
+    set_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    set_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The standards a *proposed* row's prose was written under, on the same
+    #: terms as :attr:`Angle.brain_version`: captured when the prompt is
+    #: composed. NULL for a row a person wrote — their Betroffenheit is their
+    #: own text, and stamping it would claim a model call that never happened.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    @property
+    def has_contact(self) -> bool:
+        """Whether a person is named. The page asks, because the empty state is
+        a named gap with a link, never a blank cell."""
+        return bool(self.contact.strip())
+
+
+class StakeholderSelection(Base):
+    """One group of the standing map, selected for one issue or one crisis.
+
+    A selection points into :class:`Stakeholder` rather than copying it — the
+    map is maintained in one place, and a phone number corrected there is
+    corrected under every open issue at once.
+
+    ``reason`` is the price of admission, the same rule ``issue_signals``
+    holds: a group selected without a stored sentence why this occasion touches
+    it is not stored at all, and the CHECK keeps that against every future
+    writer. ``info_need`` may be empty — the one sentence about what the group
+    wants to know rests on stored lines only, and where nothing stored supports
+    one, the honest row carries none rather than an invented Betroffenheit.
+
+    ``position``/``position_set_by`` carry the order the groups should learn
+    in. The proposal writes the ``"modell"`` token, which is what renders the
+    order as an *Empfehlung*; a person resorting the list writes their own name
+    over every row, and from then on the stored order is the person's — it
+    hangs on law, contract and relationship, of which the tool sees only part.
+    """
+
+    __tablename__ = "stakeholder_selections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    crisis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crises.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    #: CASCADE: a map row a person removed takes its selections with it — a
+    #: selection of a group that no longer exists explains nothing.
+    stakeholder_id: Mapped[int] = mapped_column(
+        ForeignKey("stakeholders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Why this occasion touches this group. Never empty; see the CHECK.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    #: What this group wants to know, in one sentence resting on stored lines.
+    #: Empty where nothing stored supports one — an omission, never a guess.
+    info_need: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: 1-based rank in the order the groups should learn. The recommendation
+    #: until a person resorts; the person's order afterwards.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: ``"modell"`` while the order is the recommendation, the person's name
+    #: once a human has sorted it — which is the order that is *kept*.
+    position_set_by: Mapped[str] = mapped_column(
+        String(CRISIS_DECLARED_BY_MAX), nullable=False
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The standards the reason and the information need were written under —
+    #: model prose a consultant telephones by, which is exactly the kind of
+    #: text the stamp exists for. NULL never happens through
+    #: :func:`newspulse.stakeholders.select_for`, the only writer.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    stakeholder: Mapped["Stakeholder"] = relationship(lazy="selectin")
+
+    __table_args__ = (
+        # A selection hangs on exactly one occasion — an issue or a crisis.
+        CheckConstraint(
+            "(issue_id IS NULL) <> (crisis_id IS NULL)",
+            name="ck_stakeholder_selections_one_anchor",
+        ),
+        CheckConstraint("reason <> ''", name="ck_stakeholder_selections_reason"),
+        # 1-based like the sentence it renders: "an erster Stelle" is 1.
+        CheckConstraint("position >= 1", name="ck_stakeholder_selections_position"),
+        # The same group stands in one occasion's list once. NULLs do not
+        # collide, so the two constraints stay out of each other's way.
+        UniqueConstraint(
+            "issue_id", "stakeholder_id", name="uq_stakeholder_selections_issue"
+        ),
+        UniqueConstraint(
+            "crisis_id", "stakeholder_id", name="uq_stakeholder_selections_crisis"
+        ),
+    )
+
+
+# --- Szenarien, Auslöser und Reaktionsoptionen (RIS-04) ----------------------------
+
+
+class ScenarioKind(StrEnum):
+    """The three courses an issue can take, and there are exactly three.
+
+    Not a free label: a page that can hold four scenarios holds four essays,
+    and the value of "bester, wahrscheinlicher, schlechtester" is that the
+    reader knows what each column is for before reading a word of it. The
+    UNIQUE on :class:`Scenario` holds one row per kind per issue.
+    """
+
+    BESTER = "bester"
+    WAHRSCHEINLICHER = "wahrscheinlicher"
+    SCHLECHTESTER = "schlechtester"
+
+
+class ScenarioLikelihood(StrEnum):
+    """How likely a course is, **as a word and never as a percentage**.
+
+    A percentage out of a model claims an accuracy that does not exist, and it
+    is precisely that number which gets quoted back in the meeting four weeks
+    later. A closed set of four words cannot be quoted as a measurement, and a
+    value outside it is dropped in :mod:`newspulse.scenarios` rather than
+    filed under a guess.
+    """
+
+    UNWAHRSCHEINLICH = "unwahrscheinlich"
+    MOEGLICH = "möglich"
+    WAHRSCHEINLICH = "wahrscheinlich"
+    SEHR_WAHRSCHEINLICH = "sehr wahrscheinlich"
+
+
+class TriggerCondition(StrEnum):
+    """The closed set of conditions a scenario trigger may be built from (DEC-5).
+
+    DEC-5 locked option A: "nur maschinell prüfbare Bedingungen". Every member
+    here resolves to stored rows the sweep can actually read —
+
+    * ``ZWEITES_MEDIUM`` — a second independent outlet carries the matter;
+    * ``LEITMEDIUM`` — an outlet of the top reach tier carries it;
+    * ``MANDAT_IN_UEBERSCHRIFT`` — the mandate is named in a headline;
+    * ``MEDIENANFRAGE`` — a journalist wrote into the connected mailbox;
+    * ``MANAGEMENT_GENANNT`` — a person named in the profile's management line
+      appears in the coverage.
+
+    A trigger that is only well phrased is never fired and is therefore not a
+    trigger, which is why free text is not a member of this enum and a
+    scenario whose triggers all fall outside it is not stored at all.
+    """
+
+    ZWEITES_MEDIUM = "zweites_medium"
+    LEITMEDIUM = "leitmedium"
+    MANDAT_IN_UEBERSCHRIFT = "mandat_in_ueberschrift"
+    MEDIENANFRAGE = "medienanfrage"
+    MANAGEMENT_GENANNT = "management_genannt"
+
+
+class ResponseSpeed(StrEnum):
+    """How fast the recommendation says to move, from a fixed set.
+
+    "Schnell" and "sofort" are the same word to a model and four hours apart to
+    an agency, so the recommendation names one of six and nothing else.
+    ``KEINE`` is a member like any other: the most expensive mistake in this
+    trade is the statement that gives a matter the publicity it did not yet
+    have.
+    """
+
+    SOFORT = "sofort"
+    EINE_STUNDE = "innerhalb einer Stunde"
+    HEUTE = "heute"
+    VIERUNDZWANZIG_STUNDEN = "innerhalb von 24 Stunden"
+    VORBEREITEN = "vorbereiten und beobachten"
+    KEINE = "keine Reaktion"
+
+
+class EscalationPotential(StrEnum):
+    """How much a response option could grow the matter. Three words, no number.
+
+    Its own set rather than :class:`StakeholderLevel`'s: the two answer
+    different questions and share only their spelling, and a scenario table
+    reaching into the stakeholder map's enum would tie one feature's closed set
+    to another's the first time either grows a fourth step.
+    """
+
+    HOCH = "hoch"
+    MITTEL = "mittel"
+    NIEDRIG = "niedrig"
+
+
+#: How much of a response option's one-line label is kept. The same ceiling
+#: trade :data:`STAKEHOLDER_TEXT_MAX` makes: an over-long line costs its tail,
+#: never the row. The *model* writes this column, so the cap cannot live only
+#: in a form's ``maxlength``.
+RESPONSE_LABEL_MAX = 200
+
+#: How many response options an issue must carry for the set to be stored at
+#: all, per the acceptance. Three, and one of them is always "nicht reagieren"
+#: — a tool that can only propose acting proposes acting.
+RESPONSE_OPTIONS_MIN = 3
+
+
+class Scenario(Base):
+    """One of an issue's three courses: what could happen next (RIS-04).
+
+    A scenario and never a forecast, and the difference is carried in three
+    places rather than in a caption: ``likelihood`` is a word from a closed set
+    and can never be a percentage; the narrative has to read as a scenario or
+    :mod:`newspulse.scenarios` refuses it; and every row carries at least one
+    machine-checkable trigger, without which it is not stored — an essay about
+    the future is not a scenario.
+
+    ``groups`` is the selection of affected stakeholders, pointing into the
+    mandate's standing map (:class:`Stakeholder`) exactly as
+    :class:`StakeholderSelection` does: the map is maintained in one place, and
+    a group invented beside it would be a second map half wrong per incident.
+    """
+
+    __tablename__ = "scenarios"
+    __table_args__ = (
+        # Three courses, one row each. A second "schlechtester" is not a
+        # fourth scenario, it is the same question answered twice.
+        UniqueConstraint("issue_id", "kind", name="uq_scenarios_kind"),
+        CheckConstraint("narrative <> ''", name="ck_scenarios_narrative"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issue_id: Mapped[int] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[ScenarioKind] = mapped_column(
+        SAEnum(
+            ScenarioKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="scenario_kind",
+        ),
+        nullable=False,
+    )
+    #: How the course would run, in prose that says of itself that it is a
+    #: scenario. Never empty; see the CHECK.
+    narrative: Mapped[str] = mapped_column(Text, nullable=False)
+    likelihood: Mapped[ScenarioLikelihood] = mapped_column(
+        SAEnum(
+            ScenarioLikelihood,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="scenario_likelihood",
+        ),
+        nullable=False,
+    )
+    #: What would have to be communicated, and to whom, if this course ran.
+    #: May be empty where the stored lines support no sentence — an omission,
+    #: never an invented Kommunikationsbedarf.
+    communication_need: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: The standards this prose was written under, captured when the prompt was
+    #: composed — the same terms as :attr:`StakeholderSelection.brain_version`.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    triggers: Mapped[list["ScenarioTrigger"]] = relationship(
+        back_populates="scenario", lazy="selectin", cascade="all, delete-orphan"
+    )
+    groups: Mapped[list["ScenarioStakeholder"]] = relationship(
+        back_populates="scenario", lazy="selectin", cascade="all, delete-orphan"
+    )
+
+
+class ScenarioStakeholder(Base):
+    """One group of the standing map this scenario would touch.
+
+    A pointer into :class:`Stakeholder`, never a copy: a contact corrected on
+    the map is corrected under every scenario at once, and a group the map does
+    not hold is dropped in :mod:`newspulse.scenarios` rather than invented
+    beside it.
+    """
+
+    __tablename__ = "scenario_stakeholders"
+    __table_args__ = (
+        UniqueConstraint(
+            "scenario_id", "stakeholder_id", name="uq_scenario_stakeholders_once"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scenario_id: Mapped[int] = mapped_column(
+        ForeignKey("scenarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    stakeholder_id: Mapped[int] = mapped_column(
+        ForeignKey("stakeholders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    scenario: Mapped["Scenario"] = relationship(back_populates="groups")
+    stakeholder: Mapped["Stakeholder"] = relationship(lazy="selectin")
+
+
+class ScenarioTrigger(Base):
+    """One machine-checkable condition under which a scenario starts (DEC-5).
+
+    ``fired_at`` is the whole latch, and it is a stored column rather than a
+    set in memory for one reason the acceptance states outright: a trigger that
+    has fired must not fire again, *not even after a restart*. Anything held in
+    the process would re-announce every standing trigger on the next boot, and
+    a channel that re-announces is a channel that stops being read.
+
+    ``fired_note`` is what actually matched, and *only* that — the outlet, the
+    headline, the journalist, the name. Which condition held is the
+    ``condition`` column, and the page and the mail put its sentence beside the
+    note, so the note carries no prose of this tool's own: a German sentence
+    written into a stored value would stand untranslated on the English page,
+    beside chrome that switched. The CHECK ties note and firing together: a
+    firing that cannot say what it saw is a red mark on an issue nobody can
+    act on.
+    """
+
+    __tablename__ = "scenario_triggers"
+    __table_args__ = (
+        # The same condition stands once per scenario: a second copy would fire
+        # twice for one event, which is the one thing this table must not do.
+        UniqueConstraint("scenario_id", "condition", name="uq_scenario_triggers_once"),
+        CheckConstraint(
+            "fired_at IS NULL OR fired_note <> ''", name="ck_scenario_triggers_note"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scenario_id: Mapped[int] = mapped_column(
+        ForeignKey("scenarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    condition: Mapped[TriggerCondition] = mapped_column(
+        SAEnum(
+            TriggerCondition,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="trigger_condition",
+        ),
+        nullable=False,
+    )
+    #: When the condition was first found to hold. NULL means it has not, and
+    #: it is written exactly once — the restart-proof half of "einmal gemeldet".
+    fired_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: What matched, in one line. Never empty once fired; see the CHECK.
+    fired_note: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+
+    scenario: Mapped["Scenario"] = relationship(back_populates="triggers")
+
+    @property
+    def has_fired(self) -> bool:
+        """Whether this condition has already been found to hold."""
+        return self.fired_at is not None
+
+
+class ResponseOption(Base):
+    """One way of answering an issue, with what it buys and what it costs.
+
+    ``no_response`` marks the option that is always on the list: "nicht
+    reagieren", graded like every other. A tool that can only propose acting
+    proposes acting, and the most expensive mistake in this trade is the
+    statement that gives a matter the publicity it did not yet have.
+
+    ``recommended`` marks the one option the answer puts forward, and the
+    CHECK ties the speed to it: a recommendation that does not say how fast
+    lets "schnell" and "sofort" mean the same thing, which is what the closed
+    :class:`ResponseSpeed` set exists to prevent.
+    """
+
+    __tablename__ = "response_options"
+    __table_args__ = (
+        CheckConstraint("label <> ''", name="ck_response_options_label"),
+        CheckConstraint("position >= 1", name="ck_response_options_position"),
+        # The recommendation names a speed. Held here rather than only in
+        # :mod:`newspulse.scenarios` so it survives every future writer.
+        CheckConstraint(
+            "recommended = 0 OR speed IS NOT NULL", name="ck_response_options_speed"
+        ),
+        UniqueConstraint("issue_id", "position", name="uq_response_options_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issue_id: Mapped[int] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The option in one line. Never empty; see the CHECK.
+    label: Mapped[str] = mapped_column(String(RESPONSE_LABEL_MAX), nullable=False)
+    #: What it buys, what it costs, and how far it could carry the matter. The
+    #: three the acceptance names, and the reason "nicht reagieren" is a real
+    #: option here rather than a caption: it is graded on the same three.
+    benefit: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    risk: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    escalation: Mapped[EscalationPotential] = mapped_column(
+        SAEnum(
+            EscalationPotential,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="escalation_potential",
+        ),
+        nullable=False,
+        default=EscalationPotential.MITTEL,
+        server_default=EscalationPotential.MITTEL.value,
+    )
+    #: Whether this is the "nicht reagieren" row. Exactly one per issue: no set
+    #: is stored without it, and a second one is collapsed back to an ordinary
+    #: option — both in :mod:`newspulse.scenarios`, where the answer is read.
+    no_response: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    recommended: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    #: How fast to move, from the closed set. NULL on every option but the
+    #: recommended one; see the CHECK.
+    speed: Mapped[ResponseSpeed | None] = mapped_column(
+        SAEnum(
+            ResponseSpeed,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="response_speed",
+        ),
+        nullable=True,
+    )
+    #: 1-based rank in the order the options are read.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+
+# --- Das Entscheidungspapier (RIS-05) ----------------------------------------------
+
+
+class PacketSection(StrEnum):
+    """The parts a decision packet stands in, and the separation *is* the value.
+
+    ``BELEGT`` is the only one that carries weight, and it carries it because
+    every sentence under it resolves to a stored row. ``UNBESTAETIGT`` is where
+    a sentence lands that does not — said out loud rather than dropped, because
+    "we have heard this and cannot stand it up" is itself worth reading in the
+    hour a decision is made. ``OFFEN`` is the questions nobody has answered yet.
+
+    The fourth part, the contradictions, is :class:`DecisionContradiction` and
+    not a member here: it is not a sentence with a section, it is two named
+    sides and what stands between them, and a schema that let it be one row of
+    prose would let a contradiction be reported with only one side.
+    """
+
+    BELEGT = "belegt"
+    UNBESTAETIGT = "unbestätigt"
+    OFFEN = "offen"
+
+
+class EvidenceKind(StrEnum):
+    """The kinds of stored row a sentence of the packet may resolve to.
+
+    A closed set, and every member is a table in this schema: a piece of
+    coverage, its analysis, a profile field, a market signal, a reply in the
+    connected mailbox, and a text of our own that a person released. A
+    "Kennung" outside this set resolves to nothing, and the sentence that
+    carried it is not led as belegt — which is the whole safety argument of the
+    packet.
+    """
+
+    BEITRAG = "beitrag"
+    ANALYSE = "analyse"
+    PROFIL = "profil"
+    MARKTSIGNAL = "marktsignal"
+    MAIL = "mail"
+    TEXT = "text"
+
+
+class SourceRank(StrEnum):
+    """Die Quellenordnung: what outweighs what, in declaration order.
+
+    Fixed, and printed on the paper rather than kept in a module nobody opens:
+    a reader deciding under pressure has to be able to see that the sentence
+    they are about to act on rests on a confirmed internal statement and not on
+    a journalist's question in an inbox. The order here *is* the order — a
+    member's position in this enum is what :mod:`newspulse.decision` ranks by,
+    so re-ordering the four is a deliberate edit and never a side effect.
+    """
+
+    INTERN = "bestätigte interne Angabe"
+    BEHOERDE = "Behörde oder Originaldokument"
+    MEDIEN = "verifizierter Medienbericht"
+    UEBRIGES = "alles Übrige"
+
+
+class GapKind(StrEnum):
+    """The named gaps a packet reports, from a closed set.
+
+    A gap is the part a person under pressure does not assemble for themselves,
+    so it has to be a *named* line with a link to where it is closed and never a
+    blank space. Closed, because a gap the tool invented would send somebody
+    looking for a field that does not exist.
+
+    Three of them are found in the stored material when the paper is built and
+    are frozen onto it (:class:`DecisionGap`). The two that are properties of
+    the paper itself — the decider and the deadline — are read live off
+    :class:`DecisionPacket`, because naming them is what gets them filled in,
+    and a frozen row would keep saying they are missing after somebody had
+    supplied them.
+    """
+
+    SPRECHER = "sprecher"
+    KRISENKONTAKT = "krisenkontakt"
+    BETROFFENENZAHL = "betroffenenzahl"
+    ENTSCHEIDER = "entscheider"
+    FRIST = "frist"
+
+
+#: How much of a decider's name the paper keeps. The same ceiling
+#: :data:`CRISIS_DECLARED_BY_MAX` sets, and for the same reason: a long sign-in
+#: name costs its tail, never the record of who decided.
+DECISION_NAME_MAX = CRISIS_DECLARED_BY_MAX
+
+#: How much of one evidence line's label is kept on the paper. A copy rather
+#: than a pointer (see :class:`DecisionEvidence`), so the width is this table's
+#: business and not the archive's.
+EVIDENCE_LABEL_MAX = 300
+
+
+class DecisionPacket(Base):
+    """One decision paper: what is known, what is not, and who decides by when.
+
+    Written on a button press to an issue or to a crisis, and **never replaced**:
+    "ein neues Papier zum selben Issue ersetzt das alte nicht, sondern tritt
+    daneben" is the acceptance, so there is deliberately no UNIQUE over the
+    anchor and no upsert anywhere in :mod:`newspulse.decision`. Two papers a week
+    apart are the record of how the reading changed, which is exactly the
+    question asked afterwards.
+
+    The paper is stored **as it read**: every statement, every piece of evidence
+    and every contradiction is a row with its text copied rather than a pointer
+    resolved at render time. That is the opposite of what a *draft* report does
+    and the same thing a released one does, for the same reason — a piece of
+    coverage dismissed in October must not silently change what the September
+    paper says it said. The ids are kept beside the copies, so a reader can
+    still walk back to the row a sentence came from.
+
+    ``decision``/``decided_by``/``decided_at`` are the three the CHECK ties
+    together: afterwards the question is always what was decided, by whom, and
+    on what the decision rested, and a decision recorded without a name answers
+    two thirds of it.
+    """
+
+    __tablename__ = "decision_packets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The issue this paper was written to. CASCADE: a paper about an issue that
+    #: no longer exists explains nothing.
+    issue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    crisis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crises.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    #: What happened, in the packet's own words. Never empty: a paper that
+    #: cannot say what this is about is not stored at all.
+    situation: Mapped[str] = mapped_column(Text, nullable=False)
+    #: What is to be decided now. May be empty where the material supported no
+    #: sentence — an omission the paper names, never an invented question.
+    question: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: Who decides. Empty is a *named gap at the top of the paper*, never a
+    #: blank line, and it is set by a person: a decider this tool nominated
+    #: would be a name nobody agreed to.
+    decision_maker: Mapped[str] = mapped_column(
+        String(DECISION_NAME_MAX), nullable=False, default="", server_default=""
+    )
+    #: By when. NULL is the other named gap at the top.
+    deadline: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: Who pressed the button: a user name where the tool has one, the
+    #: ``"mensch"`` token otherwise — the discipline every other row here keeps.
+    created_by: Mapped[str] = mapped_column(String(DECISION_NAME_MAX), nullable=False)
+
+    #: The decision that was taken, in the deciding person's own words. Empty
+    #: until one is recorded, and from then on the paper is closed.
+    decision: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    decided_by: Mapped[str] = mapped_column(
+        String(DECISION_NAME_MAX), nullable=False, default="", server_default=""
+    )
+    decided_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    #: The standards the prose on this paper was written under, captured when
+    #: the prompt was composed — the same terms as :attr:`Scenario.brain_version`.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    statements: Mapped[list["DecisionStatement"]] = relationship(
+        back_populates="packet",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="DecisionStatement.position",
+    )
+    contradictions: Mapped[list["DecisionContradiction"]] = relationship(
+        back_populates="packet",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="DecisionContradiction.position",
+    )
+    stored_gaps: Mapped[list["DecisionGap"]] = relationship(
+        back_populates="packet",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="DecisionGap.position",
+    )
+
+    __table_args__ = (
+        # A paper hangs on exactly one occasion — an issue or a crisis. The same
+        # spelling ``stakeholder_selections`` uses, so the two read alike.
+        CheckConstraint(
+            "(issue_id IS NULL) <> (crisis_id IS NULL)",
+            name="ck_decision_packets_one_anchor",
+        ),
+        CheckConstraint("situation <> ''", name="ck_decision_packets_situation"),
+        # A recorded decision always carries its words and the person. Held at
+        # the schema because "what was decided, and by whom" is the question the
+        # paper exists to answer months later, and a future writer that filled
+        # only one of the three would leave it unanswerable.
+        CheckConstraint(
+            "decided_at IS NULL OR (decision <> '' AND decided_by <> '')",
+            name="ck_decision_packets_decision",
+        ),
+    )
+
+    @property
+    def is_decided(self) -> bool:
+        """Whether a decision has been recorded. The paper is closed from then on."""
+        return self.decided_at is not None
+
+
+class DecisionStatement(Base):
+    """One sentence of the paper, in the part it belongs to.
+
+    ``source_rank`` is the Quellenordnung made visible: a ``BELEGT`` sentence
+    carries the rank of the strongest line under it, and no other section
+    carries one at all. The CHECK holds both halves of that, so a future writer
+    cannot file an unconfirmed sentence under "bestätigte interne Angabe", nor
+    lead a sentence as belegt without saying where it sits in the order.
+
+    A ``BELEGT`` row without evidence is impossible by construction:
+    :mod:`newspulse.decision` moves a sentence whose Kennung resolves to nothing
+    into ``UNBESTAETIGT`` before anything is written. The rank column is what
+    makes that visible at the schema — no rank, no claim.
+    """
+
+    __tablename__ = "decision_statements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    packet_id: Mapped[int] = mapped_column(
+        ForeignKey("decision_packets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    section: Mapped[PacketSection] = mapped_column(
+        SAEnum(
+            PacketSection,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="packet_section",
+        ),
+        nullable=False,
+    )
+    #: The sentence as it is read. Never empty; see the CHECK.
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Where the strongest line under this sentence sits in the Quellenordnung.
+    #: NULL on every section but ``belegt``; see the CHECK.
+    source_rank: Mapped[SourceRank | None] = mapped_column(
+        SAEnum(
+            SourceRank,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="source_rank",
+        ),
+        nullable=True,
+    )
+    #: 1-based rank across the whole paper, so the order the sentences were
+    #: written in survives a re-read.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    packet: Mapped["DecisionPacket"] = relationship(back_populates="statements")
+    evidence: Mapped[list["DecisionEvidence"]] = relationship(
+        back_populates="statement",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="DecisionEvidence.id",
+    )
+
+    __table_args__ = (
+        CheckConstraint("text <> ''", name="ck_decision_statements_text"),
+        CheckConstraint("position >= 1", name="ck_decision_statements_position"),
+        # Belegt and only belegt carries a rank. Written as the two-sided
+        # equivalence it is, because either half alone would let the paper lie:
+        # a rank on an unconfirmed sentence claims an authority nobody gave it,
+        # and a belegt sentence without one hides where it sits in the order.
+        CheckConstraint(
+            "(section = 'belegt') = (source_rank IS NOT NULL)",
+            name="ck_decision_statements_rank",
+        ),
+        UniqueConstraint(
+            "packet_id", "position", name="uq_decision_statements_position"
+        ),
+    )
+
+
+class DecisionEvidence(Base):
+    """The stored row one belegt sentence resolves to — id kept, text copied.
+
+    ``kind`` and ``ref_id`` together are the "Kennung der Zeile" the acceptance
+    asks every belegt sentence to carry, and they are what a reader walks back
+    along. ``label``, ``source``, ``happened_at`` and ``url`` are copies of what
+    that row said *at the time*, because the paper is the record of what a
+    decision rested on: a headline re-titled or a piece of coverage dismissed
+    afterwards must not be able to change it.
+
+    Deliberately no foreign key to the six tables it can point into. A real FK
+    would need six nullable columns and would delete evidence out from under a
+    stored paper on a CASCADE — which is the one thing this table exists to
+    prevent.
+    """
+
+    __tablename__ = "decision_evidence"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    statement_id: Mapped[int] = mapped_column(
+        ForeignKey("decision_statements.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[EvidenceKind] = mapped_column(
+        SAEnum(
+            EvidenceKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="evidence_kind",
+        ),
+        nullable=False,
+    )
+    #: The stored row's own id. Half of the Kennung, and never resolved on
+    #: render — see the class docstring.
+    ref_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: What the row said: the headline, the profile field and its value, the
+    #: subject line. Never empty; see the CHECK.
+    label: Mapped[str] = mapped_column(String(EVIDENCE_LABEL_MAX), nullable=False)
+    #: Where it came from: the outlet, the publisher, the sender.
+    source: Mapped[str] = mapped_column(
+        String(EVIDENCE_LABEL_MAX), nullable=False, default="", server_default=""
+    )
+    happened_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+    #: The row's own external address, where it has one. Never a link back into
+    #: this application: the downloaded paper carries none of those.
+    url: Mapped[str] = mapped_column(
+        String(2048), nullable=False, default="", server_default=""
+    )
+
+    statement: Mapped["DecisionStatement"] = relationship(back_populates="evidence")
+
+    __table_args__ = (
+        CheckConstraint("label <> ''", name="ck_decision_evidence_label"),
+        # One line stands under one sentence once: a doubled Kennung is not two
+        # pieces of evidence, it is the same one counted twice.
+        UniqueConstraint(
+            "statement_id", "kind", "ref_id", name="uq_decision_evidence_once"
+        ),
+    )
+
+
+class DecisionContradiction(Base):
+    """One contradiction, with **both** sides named as stored rows.
+
+    The columns are doubled on purpose, and the NOT NULLs are the acceptance
+    itself: "ein Widerspruch mit nur einer Seite wird nicht gemeldet". A
+    reported contradiction that cannot name what it contradicts is worse than
+    no reported contradiction, because in a crisis it is believed — so a schema
+    that allowed one side to be absent would be the defect, not the code that
+    happened to fill both.
+
+    Both sides copy their line the way :class:`DecisionEvidence` does, and for
+    the same reason.
+    """
+
+    __tablename__ = "decision_contradictions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    packet_id: Mapped[int] = mapped_column(
+        ForeignKey("decision_packets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    #: What the contradiction consists of, in one sentence. Never empty.
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+
+    left_kind: Mapped[EvidenceKind] = mapped_column(
+        SAEnum(
+            EvidenceKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            # A name of its own rather than ``evidence_kind``: the CHECK an
+            # Enum emits is named after it, and two constraints of one name on
+            # one table is a schema nobody can alter later.
+            name="contradiction_left_kind",
+        ),
+        nullable=False,
+    )
+    left_ref_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    left_label: Mapped[str] = mapped_column(String(EVIDENCE_LABEL_MAX), nullable=False)
+    left_source: Mapped[str] = mapped_column(
+        String(EVIDENCE_LABEL_MAX), nullable=False, default="", server_default=""
+    )
+
+    right_kind: Mapped[EvidenceKind] = mapped_column(
+        SAEnum(
+            EvidenceKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="contradiction_right_kind",
+        ),
+        nullable=False,
+    )
+    right_ref_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    right_label: Mapped[str] = mapped_column(String(EVIDENCE_LABEL_MAX), nullable=False)
+    right_source: Mapped[str] = mapped_column(
+        String(EVIDENCE_LABEL_MAX), nullable=False, default="", server_default=""
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    packet: Mapped["DecisionPacket"] = relationship(back_populates="contradictions")
+
+    __table_args__ = (
+        CheckConstraint("note <> ''", name="ck_decision_contradictions_note"),
+        CheckConstraint(
+            "left_label <> '' AND right_label <> ''",
+            name="ck_decision_contradictions_sides",
+        ),
+        CheckConstraint("position >= 1", name="ck_decision_contradictions_position"),
+        UniqueConstraint(
+            "packet_id", "position", name="uq_decision_contradictions_position"
+        ),
+    )
+
+
+class DecisionGap(Base):
+    """One named gap the paper found in the stored material, frozen onto it.
+
+    Only the three gaps that are statements about the *material* live here —
+    the missing spokesperson, the missing crisis contact, the absence of any
+    confirmed internal figure. They are frozen because the paper is the record
+    of what was known at the time, and a profile filled in on Thursday must not
+    quietly remove Monday's gap from Monday's paper.
+
+    The decider and the deadline are deliberately *not* stored: they are
+    columns on :class:`DecisionPacket`, they are filled from the paper itself,
+    and a frozen row would keep reporting them missing after somebody supplied
+    them. :func:`newspulse.decision.gaps` puts both origins into one list.
+    """
+
+    __tablename__ = "decision_gaps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    packet_id: Mapped[int] = mapped_column(
+        ForeignKey("decision_packets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[GapKind] = mapped_column(
+        SAEnum(
+            GapKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="gap_kind",
+        ),
+        nullable=False,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    packet: Mapped["DecisionPacket"] = relationship(back_populates="stored_gaps")
+
+    __table_args__ = (
+        # The same gap is named once per paper: a second copy is not a second
+        # gap, it is the same one printed twice.
+        UniqueConstraint("packet_id", "kind", name="uq_decision_gaps_once"),
+        CheckConstraint("position >= 1", name="ck_decision_gaps_position"),
+    )
+
+
 __all__ = [
+    "DECISION_NAME_MAX",
+    "EVIDENCE_LABEL_MAX",
+    "DecisionContradiction",
+    "DecisionEvidence",
+    "DecisionGap",
+    "DecisionPacket",
+    "DecisionStatement",
+    "EvidenceKind",
+    "GapKind",
+    "PacketSection",
+    "SourceRank",
+    "Scenario",
+    "ScenarioKind",
+    "ScenarioLikelihood",
+    "ScenarioStakeholder",
+    "ScenarioTrigger",
+    "TriggerCondition",
+    "ResponseOption",
+    "ResponseSpeed",
+    "EscalationPotential",
+    "RESPONSE_LABEL_MAX",
+    "RESPONSE_OPTIONS_MIN",
     "Crisis",
+    "ISSUE_SCALE_MAX",
+    "ISSUE_SCALE_MIN",
+    "Issue",
+    "STAKEHOLDER_TEXT_MAX",
+    "Stakeholder",
+    "StakeholderLevel",
+    "StakeholderSelection",
+    "IssueDismissal",
+    "IssueSignal",
+    "IssueStatus",
+    "ReputationReading",
+    "ReputationState",
     "NewsjackOpportunity",
     "Standing",
 

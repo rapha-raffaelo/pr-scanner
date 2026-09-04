@@ -1,0 +1,132 @@
+{# Szenarien, Auslöser und Reaktionsoptionen (RIS-04).
+
+   Three courses per issue, and every one of them says of itself that it is a
+   scenario: the pill states it, and the stored narrative had to read as one or
+   it was never stored. The likelihood stands as a word, never as a percentage —
+   a percentage out of a model claims an accuracy that does not exist, and it is
+   exactly that number which gets quoted back four weeks later.
+
+   Each course carries its triggers from the closed set DEC-5 locked, and each
+   trigger says whether it has already fired. A fired one keeps its mark and
+   never fires again; the row is history from then on.
+
+   Under the options stands "nicht reagieren", graded on the same three columns
+   as every other. The recommendation names a speed from the fixed set, so
+   "schnell" and "sofort" cannot come to mean the same thing.
+
+   Expects in context: client, issue, courses_here, options_here, editable
+   (open issues take the buttons; a past one is read-only), kind_labels,
+   condition_labels, stakeholder_running, t. #}
+{% import "partials/brain_stamp.html" as provenance %}
+<div class="ssel">
+  <div class="ssel__h">
+    <span class="ssel__t">{{ t("Szenarien") }}</span>
+    {% if courses_here %}{{ provenance.brain_stamp(courses_here[0].brain_version, t) }}{% endif %}
+  </div>
+
+  {% if courses_here %}
+    {% for course in courses_here %}
+      <div class="ssel__row">
+        <div class="ssel__body">
+          <span class="ssel__g">
+            <span class="kpill kpill--wait">{{ t("Szenario") }}</span>
+            {{ t(kind_labels[course.kind]) }}
+            &middot; {{ t("Wahrscheinlichkeit") }}: <b>{{ t(course.likelihood.value) }}</b>
+          </span>
+          <span class="ssel__why">{{ course.narrative }}</span>
+          <span class="ssel__need">{{ t("Kommunikationsbedarf:") }}
+            {% if course.communication_need %}{{ course.communication_need }}
+            {% else %}<em>{{ t("keine gespeicherte Angabe, aus der sich das ergibt") }}</em>{% endif %}
+          </span>
+          {# The affected groups, drawn from the standing map and never
+             invented beside it. A course that touches nobody on the card says
+             so rather than showing an empty line. #}
+          <span class="ssel__c">{{ t("Betroffene Stakeholder") }}:
+            {% for row in course.groups %}{{ row.stakeholder.group_name }}{% if not loop.last %}, {% endif %}
+            {% else %}<em>{{ t("keine Gruppe der Karte") }}</em>{% endfor %}
+          </span>
+          {# The triggers: the closed set is what separates a scenario from an
+             essay, so each one is named, and a fired one carries what matched
+             and never fires again. #}
+          <span class="ssel__c">{{ t("Auslöser des Szenarios") }}:
+            {% for trigger in course.triggers %}
+              {% if trigger.has_fired %}
+                <span class="kpill kpill--neg">{{ t(condition_labels[trigger.condition]) }}
+                  &middot; {{ t("ausgelöst") }} {{ trigger.fired_at | de_date }}</span>
+              {% else %}
+                <span class="kpill">{{ t(condition_labels[trigger.condition]) }}</span>
+              {% endif %}
+            {% endfor %}
+          </span>
+        </div>
+      </div>
+    {% endfor %}
+    {% if editable %}
+      <div class="ssel__acts">
+        <form method="post" action="/issues/{{ issue.id }}/szenarien/verwerfen">
+          <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+          {# Verwerfen and not "neu entwickeln": the options go with the courses
+             they were written against, and the triggers are re-armed. That is a
+             person's decision and never a side effect. #}
+          <button type="submit" class="btn btn--sm btn--ghost">{{ t("Szenarien verwerfen") }}</button>
+        </form>
+      </div>
+    {% endif %}
+  {% elif editable %}
+    <form method="post" action="/issues/{{ issue.id }}/szenarien">
+      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+      <button type="submit" class="btn btn--sm"{% if stakeholder_running %} disabled{% endif %}>{{ t("Szenarien entwickeln") }}</button>
+    </form>
+  {% endif %}
+
+  {% if options_here %}
+    <div class="ssel__h">
+      <span class="ssel__t">{{ t("Reaktionsoptionen") }}</span>
+      {{ provenance.brain_stamp(options_here[0].brain_version, t) }}
+    </div>
+    {% for option in options_here %}
+      <div class="ssel__row">
+        <div class="ssel__body">
+          <span class="ssel__g">
+            {% if option.recommended %}
+              <span class="kpill kpill--ok">{{ t("Empfehlung") }}</span>
+            {% endif %}
+            {% if option.no_response %}
+              <span class="kpill">{{ t("nicht reagieren") }}</span>
+            {% endif %}
+            {{ option.label }}
+          </span>
+          <span class="ssel__why">{{ t("Nutzen:") }} {{ option.benefit }}</span>
+          <span class="ssel__need">{{ t("Risiko:") }} {{ option.risk }}</span>
+          <span class="ssel__c">{{ t("Eskalationspotenzial") }}: <b>{{ t(option.escalation.value) }}</b>
+            {% if option.recommended and option.speed %}
+              &middot; {{ t("Geschwindigkeit") }}: <b>{{ t(option.speed.value) }}</b>
+            {% endif %}
+          </span>
+        </div>
+      </div>
+    {% endfor %}
+    {# The Empfehlung names a speed out of six, so a set that named no
+       recommendation at all — or whose only one named a speed outside the set
+       and lost the mark — says so. The options still stand: three graded
+       options with the silence among them are what a stored set carries, and
+       a reader who is told there is no recommendation is better off than one
+       left inferring which row was meant. #}
+    {% if not options_here | selectattr("recommended") | list %}
+      <p class="ssel__missing">{{ t("Die Antwort nannte keine Empfehlung.") }}</p>
+    {% endif %}
+    {% if editable %}
+      <div class="ssel__acts">
+        <form method="post" action="/issues/{{ issue.id }}/optionen/verwerfen">
+          <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+          <button type="submit" class="btn btn--sm btn--ghost">{{ t("Optionen verwerfen") }}</button>
+        </form>
+      </div>
+    {% endif %}
+  {% elif editable and courses_here %}
+    <form method="post" action="/issues/{{ issue.id }}/optionen">
+      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/issues">
+      <button type="submit" class="btn btn--sm"{% if stakeholder_running %} disabled{% endif %}>{{ t("Reaktionsoptionen entwickeln") }}</button>
+    </form>
+  {% endif %}
+</div>

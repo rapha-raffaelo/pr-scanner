@@ -1,0 +1,96 @@
+{# Die Stakeholder-Auswahl (RIS-03): who learns of this occasion, in what order.
+
+   One partial for both occasions the schema anchors: an issue on the register,
+   and a declared crisis on the crisis page. The selection is the same question
+   in the same shape either way — which groups of the standing map this matter
+   touches, the stored reason per group, the one sentence about what the group
+   wants to know, and the order — so it is one block and not two that drift.
+
+   The order carries the "Empfehlung" pill until a person resorts it; from then
+   on the pill names the person, because the stored order is theirs. A group
+   without a contact renders as a named gap with the link to the profile, never
+   as a blank cell.
+
+   Expects in context: client, sel (the stored rows), sel_recommended,
+   sel_anchor (the POST prefix of the occasion), back_to, has_map, map_link
+   (where the standing map is maintained, where it is not on this page),
+   stakeholder_note (the card's one-click note, where this page has no map
+   partial to carry it — the register passes an empty one, or the same sentence
+   would stand twice), stakeholder_running (whether one of the card's model
+   calls is in flight for this mandate, so a spent button is not offered
+   twice), t. #}
+{% import "partials/brain_stamp.html" as provenance %}
+<div class="ssel">
+  {% if stakeholder_note %}
+    <p class="notice">{{ t(stakeholder_note) }}</p>
+  {% endif %}
+  {% if sel %}
+    <div class="ssel__h">
+      <span class="ssel__t">{{ t("Stakeholder-Auswahl") }}</span>
+      {% if sel_recommended %}
+        <span class="kpill kpill--wait">{{ t("Reihenfolge: Empfehlung") }}</span>
+      {% else %}
+        <span class="kpill kpill--ok">{{ t("Reihenfolge gesetzt von") }} {{ sel[0].position_set_by }}</span>
+      {% endif %}
+      {# The standards the reasons were written under, once for the selection:
+         one model call wrote all of its rows. A number the reader cannot open
+         is not provenance, so it is the link the other stamped texts carry. #}
+      {{ provenance.brain_stamp(sel[0].brain_version, t) }}
+    </div>
+    <form method="post" action="{{ sel_anchor }}/reihenfolge" class="ssel__form">
+      <input type="hidden" name="redirect_to" value="{{ back_to }}">
+      {% for srow in sel %}
+        <div class="ssel__row{% if not srow.stakeholder.has_contact %} ssel__row--gap{% endif %}">
+          {# The rank in the list as drawn, not the stored number: the rows
+             arrive ordered by position, so the two agree wherever the order is
+             gapless — and where an older row set left a hole, the form heals
+             it on the next save instead of prefilling a value its own ``max``
+             rejects, which would make "Reihenfolge speichern" unpressable. #}
+          <input class="ssel__pos" type="number" name="pos" min="1" max="{{ sel | length }}" required value="{{ loop.index }}" aria-label="{{ t('Reihenfolge') }}">
+          <input type="hidden" name="sid" value="{{ srow.id }}">
+          <div class="ssel__body">
+            <span class="ssel__g">{{ srow.stakeholder.group_name }}</span>
+            <span class="ssel__why">{{ srow.reason }}</span>
+            <span class="ssel__need">{{ t("Will wissen:") }}
+              {% if srow.info_need %}{{ srow.info_need }}{% else %}<em>{{ t("keine gespeicherte Angabe, aus der sich das ergibt") }}</em>{% endif %}
+            </span>
+            <span class="ssel__c">
+              {% if srow.stakeholder.has_contact %}
+                {{ t("Ansprechpartner") }}: {{ srow.stakeholder.contact }}{% if srow.stakeholder.channel %} &middot; {{ srow.stakeholder.channel }}{% endif %}
+              {% else %}
+                <b>{{ t("Kein Ansprechpartner benannt.") }}</b>
+                <a href="/client/{{ client.id }}/profil">{{ t("Im Profil nachtragen") }} →</a>
+              {% endif %}
+            </span>
+          </div>
+          {# ``formaction`` rather than a form of its own: this row sits inside
+             the order form, and a nested form is not HTML. ``formnovalidate``
+             because removing a row must not be blocked by the number field of
+             some *other* row a person happens to have emptied. #}
+          <button type="submit" class="ssel__drop btn btn--sm btn--ghost" formnovalidate
+                  formaction="{{ sel_anchor }}/{{ srow.id }}/entfernen">{{ t("Aus der Auswahl nehmen") }}</button>
+        </div>
+      {% endfor %}
+      <div class="ssel__acts">
+        <button type="submit" class="btn btn--sm">{{ t("Reihenfolge speichern") }}</button>
+        {# The way back into a list that already stands: the selection is drawn
+           from the standing card, so a group added to the card afterwards has
+           to be able to reach it. Appends only — the rows above keep their
+           reasons and the order a person set. #}
+        <button type="submit" class="btn btn--sm btn--ghost" formnovalidate
+                formaction="{{ sel_anchor }}/ergaenzen"{% if stakeholder_running %} disabled{% endif %}>{{ t("Um neue Gruppen ergänzen") }}</button>
+      </div>
+    </form>
+  {% elif has_map %}
+    <form method="post" action="{{ sel_anchor }}/auswahl">
+      <input type="hidden" name="redirect_to" value="{{ back_to }}">
+      <button type="submit" class="btn btn--sm"{% if stakeholder_running %} disabled{% endif %}>{{ t("Stakeholder auswählen") }}</button>
+    </form>
+  {% elif map_link %}
+    {# No map, no selection — and the named absence rather than a mute block:
+       the selection is *from* the card, so the card comes first, and the link
+       goes where it is maintained. #}
+    <p class="ssel__missing">{{ t("Noch keine Stakeholder-Karte für dieses Mandat.") }}
+      <a href="{{ map_link }}">{{ t("Zur Stakeholder-Karte") }} →</a></p>
+  {% endif %}
+</div>
