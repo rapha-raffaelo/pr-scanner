@@ -676,6 +676,56 @@ def test_an_invented_figure_in_the_question_leaves_it_empty(session, mandate):
     assert packet.question == ""
 
 
+def test_a_forbidden_figure_in_the_opening_stores_no_paper(session, mandate):
+    """The same two rules everywhere on the paper. The opening is the sentence a
+    reader takes into the room, so a figure this tool may not produce is refused
+    there at least as firmly as in a bullet under it."""
+    issue = _issue(session, mandate)
+    assert (
+        decision.build(
+            session,
+            mandate,
+            issue=issue,
+            by="lucas",
+            invoke=_reply_with(
+                was_passiert_ist="Die Reichweite der Meldung ist erheblich."
+            ),
+            now=_NOW,
+        )
+        is None
+    )
+
+
+def test_a_forbidden_figure_in_the_question_leaves_it_empty(session, mandate):
+    issue = _issue(session, mandate)
+    packet = _build(
+        session,
+        mandate,
+        issue,
+        zu_entscheiden="Ob wir den Werbewert der Berichterstattung ausweisen.",
+    )
+    assert packet.question == ""
+
+
+def test_a_forbidden_figure_in_a_contradiction_drops_it(session, mandate):
+    first = _article(session, "Werk bestätigt die Klauseln")
+    second = _article(session, "Werk bestreitet die Klauseln")
+    issue = _issue(session, mandate, articles=[first, second])
+    packet = _build(
+        session,
+        mandate,
+        issue,
+        widersprueche=[
+            {
+                "worin": "Die Impressionen der beiden Meldungen gehen auseinander.",
+                "seite_a": f"beitrag:{first.id}",
+                "seite_b": f"beitrag:{second.id}",
+            }
+        ],
+    )
+    assert packet.contradictions == []
+
+
 # --- The named gaps ----------------------------------------------------------------
 
 

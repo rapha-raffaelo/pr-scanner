@@ -498,6 +498,30 @@ def _unsupported_figures(text: str, material: str) -> list[str]:
     return [figure for figure in _DIGITS.findall(text or "") if figure not in supported]
 
 
+def _unusable(text: str, material: str) -> str:
+    """Why this sentence may not stand on the paper, or the empty string.
+
+    Two rules and one place. A sentence carrying a figure the material does not
+    hold is refused — an invented number on a decision paper is quoted back as a
+    measurement — and so is one naming a figure this tool may not produce at all
+    (:func:`newspulse.reporting.forbidden_terms`: reach, impressions, advertising
+    value). Both rules read the same wherever the sentence stands: the paper's
+    opening, the question somebody acts on and a contradiction's sentence are
+    read as closely as its bullets are, and a check that held for the bullets
+    alone would let the loudest line through.
+
+    A reason rather than a bool, because the caller owes its log the word it
+    tripped on: "names 'reichweite'" tells a reader in one line what to reword.
+    """
+    invented = _unsupported_figures(text, material)
+    if invented:
+        return f"figure(s) {invented} that stand in no named line"
+    forbidden = reporting.forbidden_terms(text)
+    if forbidden:
+        return f"{list(forbidden)}, which this tool may not produce"
+    return ""
+
+
 # --- Resolving a Kennung -----------------------------------------------------------
 
 
@@ -579,21 +603,12 @@ def _statement_rows(
         sentence = _clean(text)
         if not sentence:
             return
-        invented = _unsupported_figures(sentence, material)
-        if invented:
+        refused = _unusable(sentence, material)
+        if refused:
             _log.warning(
-                "a sentence of the packet carries figure(s) %s that stand in no "
-                "named line; it is dropped rather than put on a paper somebody "
-                "decides from",
-                invented,
-            )
-            return
-        forbidden = reporting.forbidden_terms(sentence)
-        if forbidden:
-            _log.warning(
-                "a sentence of the packet names %s, which this tool may not "
-                "produce; it is dropped",
-                forbidden,
+                "a sentence of the packet carries %s; it is dropped rather than "
+                "put on a paper somebody decides from",
+                refused,
             )
             return
         rows.append(
@@ -625,6 +640,24 @@ def _statement_rows(
     return rows
 
 
+def _contradiction_refusal(note: str, left: Line | None, right: Line | None) -> str:
+    """Why a reported contradiction is not stored, or the empty string.
+
+    Three causes and three sentences, because the one thing a reader looking for
+    a missing contradiction needs is which of them fired: "it named two sides"
+    is true of a self-contradiction and of one with no sentence, and reads as
+    the opposite of the reason it was dropped.
+    """
+    if not note:
+        return "it said nothing about what the contradiction is"
+    named = sum(side is not None for side in (left, right))
+    if named < 2:
+        return f"only {named} of its two sides resolve to a stored line"
+    if left is not None and right is not None and left.token == right.token:
+        return f"both of its sides are the same line ({left.token})"
+    return ""
+
+
 def _contradiction_rows(
     draft: PacketDraft, *, offered: dict[str, Line], material: str
 ) -> list[DecisionContradiction]:
@@ -641,20 +674,13 @@ def _contradiction_rows(
         note = _clean(claim.worin)
         left = _resolve(claim.seite_a, offered)
         right = _resolve(claim.seite_b, offered)
-        if not note or left is None or right is None or left.token == right.token:
-            _log.info(
-                "a contradiction was not stored: it named %s side(s) that resolve "
-                "to a stored line",
-                sum(side is not None for side in (left, right)),
-            )
+        refusal = _contradiction_refusal(note, left, right)
+        if refusal:
+            _log.info("a contradiction was not stored: %s", refusal)
             continue
-        invented = _unsupported_figures(note, material)
-        if invented:
-            _log.warning(
-                "a contradiction carries figure(s) %s that stand in no named "
-                "line; it is dropped",
-                invented,
-            )
+        refused = _unusable(note, material)
+        if refused:
+            _log.warning("a contradiction carries %s; it is dropped", refused)
             continue
         rows.append(
             DecisionContradiction(
@@ -747,18 +773,25 @@ def _opening(draft: PacketDraft, *, material: str, client_id: int) -> str:
     held is worse than none: it is the sentence a reader takes into the room.
     """
     situation = _clean(draft.was_passiert_ist)
-    if situation and _unsupported_figures(situation, material):
-        _log.warning(
-            "the packet's opening carries a figure that stands in no named line; "
-            "the paper is not stored"
-        )
-        situation = ""
     if not situation:
         _log.warning(
             "no decision packet was stored for client %d: the answer did not say "
             "what happened",
             client_id,
         )
+        return ""
+    refused = _unusable(situation, material)
+    if refused:
+        # Returned here rather than falling through: the answer *did* say what
+        # happened, and a second line saying it did not would send the next
+        # reader of the log looking for an empty answer that never arrived.
+        _log.warning(
+            "the packet's opening carries %s; the paper is not stored for "
+            "client %d",
+            refused,
+            client_id,
+        )
+        return ""
     return situation
 
 
@@ -797,9 +830,12 @@ def build(
     offered = _by_token(lines)
     statements = _statement_rows(draft, offered=offered, material=material)
     question = _clean(draft.zu_entscheiden)
-    if question and _unsupported_figures(question, material):
-        # Dropped rather than stored: "was jetzt zu entscheiden ist" carrying an
-        # invented figure is the one sentence on the paper somebody acts on.
+    refused = _unusable(question, material) if question else ""
+    if refused:
+        # Dropped rather than stored: "was jetzt zu entscheiden ist" is the one
+        # sentence on the paper somebody acts on, and it is held to the same two
+        # rules as every bullet under it.
+        _log.warning("the packet's question carries %s; it is dropped", refused)
         question = ""
     packet = DecisionPacket(
         client_id=client.id,
