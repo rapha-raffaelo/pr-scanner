@@ -434,6 +434,34 @@ def test_a_kennung_dressed_up_in_prose_resolves_to_nothing(session, mandate):
     assert _texts(packet, PacketSection.BELEGT) == []
 
 
+def test_an_untitled_row_is_not_offered_and_does_not_destroy_the_paper(
+    session, mandate
+):
+    """``articles.title`` carries no CHECK and an ingested feed item without one
+    is a real stored row. Offered, its Kennung would resolve to evidence with an
+    empty label — which the schema refuses at the commit that saves the paper,
+    losing every sentence, contradiction and gap over one line. Unoffered, the
+    Kennung resolves to nothing and the sentence lands under unbestätigt."""
+    blank = _article(session, "   ", source="Blank Post")
+    issue = _issue(session, mandate, articles=[blank])
+    packet = _build(
+        session,
+        mandate,
+        issue,
+        belegt=[
+            {
+                "satz": "Der Vorwurf steht in der Berichterstattung.",
+                "beleg": [f"beitrag:{blank.id}"],
+            }
+        ],
+    )
+    assert packet.situation
+    assert not _texts(packet, PacketSection.BELEGT)
+    assert _texts(packet, PacketSection.UNBESTAETIGT) == [
+        "Der Vorwurf steht in der Berichterstattung."
+    ]
+
+
 def test_the_same_kennung_named_twice_is_one_piece_of_evidence(session, mandate):
     article = _article(session)
     issue = _issue(session, mandate, articles=[article])
@@ -790,9 +818,21 @@ def test_a_missing_decider_and_deadline_stand_at_the_top(session, mandate):
 
 
 def test_every_gap_carries_a_link_to_where_it_is_closed(session, mandate):
+    """The acceptance asks for named gaps "mit Link dorthin, wo sie nachgetragen
+    werden", so the link has to lead to what closes the gap. ``BETROFFENENZAHL``
+    is a reading of the paper's own sentences and no field anywhere fills it: it
+    is named without a link rather than pointed at a form with nowhere to type
+    the answer."""
     issue = _issue(session, mandate)
     packet = _build(session, mandate, issue)
-    assert all(gap.link for gap in decision.gaps(session, packet))
+    linked = {gap.kind: gap.link for gap in decision.gaps(session, packet)}
+    profil = f"/client/{mandate.id}/profil"
+    paper = f"/client/{mandate.id}/entscheidungspapier/{packet.id}"
+    assert linked[GapKind.SPRECHER] == profil
+    assert linked[GapKind.KRISENKONTAKT] == profil
+    assert linked[GapKind.ENTSCHEIDER] == paper
+    assert linked[GapKind.FRIST] == paper
+    assert linked[GapKind.BETROFFENENZAHL] == ""
 
 
 def test_naming_the_decider_takes_the_leading_gap_off(session, mandate):
@@ -1370,6 +1410,69 @@ def test_the_crisis_button_writes_a_paper_that_hangs_on_the_crisis(
     stored = decision.packets_for(session, crisis=standing)
     assert len(stored) == 1
     assert stored[0].crisis_id == standing.id and stored[0].issue_id is None
+
+
+def test_a_benchmarks_crisis_button_spends_nothing(web, session, monkeypatch):
+    """A yardstick is tracked to measure a mandate against; nobody reports to it.
+    :func:`mandate_or_404` keeps the pages off one, and the button that spends a
+    model call has to hold the same line — or a hand-typed POST still writes a
+    paper for a company that will never receive it."""
+    from newspulse.web.routes import stakeholder_ui
+
+    def _never_spent(*args, **kwargs):
+        raise AssertionError("a model call was spent for a company nobody reports to")
+
+    bench = Client(name="Rivalis SE", aliases=["Rivalis"], is_competitor=True)
+    session.add(bench)
+    session.commit()
+    standing = _crisis(session, bench, _article(session, "Rivalis stoppt"))
+    monkeypatch.setattr(stakeholder_ui, "spend", _never_spent)
+
+    web.post(
+        f"/crisis/{standing.id}/entscheidungspapier",
+        data={"redirect_to": "/"},
+        follow_redirects=False,
+    )
+    assert decision.packets_for(session, crisis=standing) == []
+
+
+def test_a_refused_packet_click_answers_on_the_row_it_was_pressed_on(
+    web, session, mandate
+):
+    """A second click while one call runs is refused, and the sentence belongs
+    under the row it was pressed on: not inside the Stakeholder-Karte, which
+    answers a click nobody made there, and not on the row whose call is running,
+    which would take that row's spinner away with it."""
+    from newspulse.web.routes import issues_view, stakeholder_ui
+
+    working = _issue(session, mandate)
+    pressed = _issue(session, mandate)
+    assert stakeholder_ui._calling.acquire(blocking=False)
+    stakeholder_ui._calling_for = mandate.id
+    issues_view._running_packet_click[mandate.id] = f"dpk-issue-{working.id}"
+    try:
+        web.post(
+            f"/issues/{pressed.id}/entscheidungspapier",
+            data={"redirect_to": f"/client/{mandate.id}/issues"},
+            follow_redirects=False,
+        )
+        body = web.get(f"/client/{mandate.id}/issues").text
+        # The running call keeps its own block, and with it its spinner.
+        assert issues_view._running_packet_click[mandate.id] == (
+            f"dpk-issue-{working.id}"
+        )
+    finally:
+        stakeholder_ui._calling_for = None
+        stakeholder_ui._calling.release()
+        issues_view._running_packet_click.pop(mandate.id, None)
+        issues_view._refused_packet_click.pop(mandate.id, None)
+        stakeholder_ui._notes.pop(mandate.id, None)
+    assert body.count(issues_view.PACKET_ALREADY_RUNNING) == 1
+    assert (
+        body.index(f'id="dpk-issue-{pressed.id}"')
+        < body.index(issues_view.PACKET_ALREADY_RUNNING)
+        < body.index('<section class="smap"')
+    )
 
 
 def test_a_crisis_that_is_gone_redirects_rather_than_raising(web, session, mandate):
