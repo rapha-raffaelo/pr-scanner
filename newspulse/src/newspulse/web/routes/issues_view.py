@@ -887,9 +887,7 @@ DECISION_EMPTY = (
 )
 #: A hand-typed date that is not one. Refused without a write rather than
 #: stored as "no deadline", which would read as a deadline nobody set.
-DEADLINE_UNREADABLE = (
-    "Die Frist wurde nicht gesetzt: das Datum war nicht lesbar."
-)
+DEADLINE_UNREADABLE = "Die Frist wurde nicht gesetzt: das Datum war nicht lesbar."
 
 #: Every sentence this feature can put on a page. The i18n suite walks it, so a
 #: note added without its English pair fails there rather than on the evening a
@@ -903,7 +901,9 @@ PACKET_NOTES = (
 )
 
 
-def _packet_occasion(session: Session, issue: Issue) -> tuple[Issue | None, Crisis | None]:
+def _packet_occasion(
+    session: Session, issue: Issue
+) -> tuple[Issue | None, Crisis | None]:
     """Which occasion a paper written from this row hangs on.
 
     An escalated issue's paper hangs on the *crisis*: that is what the matter is

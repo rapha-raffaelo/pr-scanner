@@ -8,7 +8,13 @@
    Each line says whether a decision was recorded on it and by whom, because
    that is what somebody looking back is looking for.
 
+   A closed row that never carried a paper renders nothing at all: the block is
+   either a list or a button, and on a matter that ended it is neither — an
+   empty heading on every historic row would be noise on the one page that has
+   to stay readable years later.
+
    Expects in context: client, issue, packets_here, editable, t. #}
+{% if packets_here or editable %}
 <div class="ssel">
   <div class="ssel__h">
     <span class="ssel__t">{{ t("Entscheidungspapiere") }}</span>
@@ -41,3 +47,4 @@
     </div>
   {% endif %}
 </div>
+{% endif %}

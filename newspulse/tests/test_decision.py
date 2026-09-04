@@ -293,7 +293,12 @@ def test_the_three_parts_are_kept_apart(session, mandate):
         session,
         mandate,
         issue,
-        belegt=[{"satz": "Der Vorwurf steht in der Presse.", "beleg": [f"beitrag:{article.id}"]}],
+        belegt=[
+            {
+                "satz": "Der Vorwurf steht in der Presse.",
+                "beleg": [f"beitrag:{article.id}"],
+            }
+        ],
         unbestaetigt=[{"satz": "Eine Kündigung sei im Gespräch."}],
         offen=[{"satz": "Wer hat die Klauseln formuliert?"}],
     )
@@ -909,7 +914,10 @@ def test_a_paper_to_a_crisis_takes_the_escalated_issues_coverage(session, mandat
         by="lucas",
         invoke=_reply_with(
             belegt=[
-                {"satz": "Der Vorwurf steht in der Presse.", "beleg": [f"beitrag:{article.id}"]}
+                {
+                    "satz": "Der Vorwurf steht in der Presse.",
+                    "beleg": [f"beitrag:{article.id}"],
+                }
             ]
         ),
         now=_NOW,
@@ -1059,7 +1067,9 @@ def _seeded_paper(session, client: Client) -> DecisionPacket:
     )
     session.add(issue)
     _fact(session, client, "sprecher", "Anna Berger, Unternehmenssprecherin")
-    text = _released_text(session, client, "Alle Klauseln sind mit dem Betriebsrat abgestimmt.")
+    text = _released_text(
+        session, client, "Alle Klauseln sind mit dem Betriebsrat abgestimmt."
+    )
     session.add(
         ResponseOption(
             issue_id=issue.id,
@@ -1172,7 +1182,9 @@ def test_the_download_says_what_the_screen_says(web, session, mandate):
     not — or leave one out."""
     packet = _seeded_paper(session, mandate)
     screen = web.get(f"/client/{mandate.id}/entscheidungspapier/{packet.id}").text
-    export = web.get(f"/client/{mandate.id}/entscheidungspapier/{packet.id}/dokument.html").text
+    export = web.get(
+        f"/client/{mandate.id}/entscheidungspapier/{packet.id}/dokument.html"
+    ).text
     for sentence in (
         packet.situation,
         packet.decision,
@@ -1323,7 +1335,9 @@ def test_the_seeded_paper_renders_exactly_the_golden_file(
     monkeypatch.setattr(config, "LOCAL_ZONE", ZoneInfo("Europe/Berlin"))
     packet = _seeded_paper(session, mandate)
 
-    body = web.get(f"/client/{mandate.id}/entscheidungspapier/{packet.id}/dokument.html").text
+    body = web.get(
+        f"/client/{mandate.id}/entscheidungspapier/{packet.id}/dokument.html"
+    ).text
     # The two ids the seed cannot pin: they are the rows' own primary keys, and
     # the paper prints them as Kennungen. Normalised rather than dropped — the
     # golden has to show that a Kennung *is* printed, without freezing which
