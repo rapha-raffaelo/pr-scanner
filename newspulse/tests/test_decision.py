@@ -31,6 +31,7 @@ as a reviewable diff. Regenerate deliberately with
 from __future__ import annotations
 
 import datetime as dt
+import itertools
 import json
 import os
 import re
@@ -103,12 +104,18 @@ def mandate(session) -> Client:
     return client
 
 
+#: One counter for every article this file stores. ``articles.url`` is UNIQUE,
+#: and a URL derived from the title alone made the second row of any test that
+#: seeds two default issues an ``IntegrityError`` rather than a test failure.
+_urls = itertools.count(1)
+
+
 def _article(
     session, title: str = "Vorwurf im Werk", *, source: str = "Rheinische Post"
 ) -> Article:
     article = Article(
         title=title,
-        url=f"https://example.de/{abs(hash((title, source)))}",
+        url=f"https://example.de/{next(_urls)}",
         source=source,
         published_at=_NOW - dt.timedelta(days=2),
         fetched_at=_NOW - dt.timedelta(days=2),
