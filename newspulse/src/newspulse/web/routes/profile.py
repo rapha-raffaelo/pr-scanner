@@ -10,9 +10,11 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from ... import config
 from ... import onboarding
 from ... import profile as profiles
 from ... import profile_refresh, stakeholders
+from ...clients import list_clients
 from ...db import get_session
 from ...models import Client, ClientFact, OnboardingAnswer, ProfileProposal
 from .. import spawn
@@ -82,6 +84,64 @@ def _run_research(client_id: int) -> None:
     except Exception as exc:  # noqa: BLE001 — a worker thread must never die silently
         _errors[client_id] = f"Die Recherche ist abgebrochen: {exc}"
         _log.exception("profile research failed")
+    finally:
+        _researching.release()
+
+
+def _run_research_all() -> None:
+    """The 06:10 pass, on demand: every mandate, gaps researched, finds adopted.
+
+    Per mandate, in order: adopt what the pile already holds (no model call, no
+    search — rows are on file and only need writing in), then re-count. A profile
+    that is complete after that is skipped — reading the web again for a page
+    with no blank line spends the budget on the answer we already have. The rest
+    get the same read a click on their own page would trigger, and the finds are
+    adopted right away, because "fill all profiles" is a request for filled
+    profiles and not for seventeen piles of proposals.
+
+    The rules are :func:`profile_refresh.adopt`'s, unchanged: only sourced
+    values, never over a hand-filled field. What a person typed stays; the
+    machine's contradictions wait on the pile as proposals.
+
+    Fault-isolated per mandate like the sweep: one dead website costs one
+    profile, its error note keeps that mandate's page honest, and the loop
+    moves on. The single process-wide lock is held for the whole pass — it
+    guards model spend, and a bulk pass spends most where two at once would
+    spend double.
+    """
+    try:
+        with _run_guard:
+            with get_session() as session:
+                now = dt.datetime.now(dt.UTC)
+                for client in list_clients(session):
+                    try:
+                        profile_refresh.adopt(
+                            session, client, proposed_by=config.review_model()
+                        )
+                        if len(profiles.stored(session, client.id)) >= len(
+                            profiles.FIELDS
+                        ):
+                            continue
+                        _errors.pop(client.id, None)
+                        found = profile_refresh.refresh(session, client, now=now)
+                        adopted = profile_refresh.adopt(
+                            session, client, proposed_by=config.review_model()
+                        )
+                        _log.info(
+                            "profile research for %r: %d proposal(s), %d adopted",
+                            client.name,
+                            found,
+                            len(adopted),
+                        )
+                    except Exception as exc:  # noqa: BLE001 — per-mandate isolation
+                        session.rollback()
+                        _errors[client.id] = f"Die Recherche ist abgebrochen: {exc}"
+                        _log.exception(
+                            "profile research for %r failed; the pass continues",
+                            client.name,
+                        )
+    except Exception:  # noqa: BLE001 — a worker thread must never die silently
+        _log.exception("the fill-all pass died outside a mandate")
     finally:
         _researching.release()
 
@@ -304,6 +364,27 @@ def fill_profile(client_id: int, session: Session = Depends(get_db)) -> Response
             _run_research,
             args=(client_id,),
             name=f"newspulse-profile-{client_id}",
+            release=_researching.release,
+        )
+    return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
+
+
+@router.post("/client/{client_id}/profil/fill-alle")
+def fill_all_profiles(
+    client_id: int, session: Session = Depends(get_db)
+) -> Response:
+    """One click, every mandate: research the gaps, write in what is sourced.
+
+    Redirects back to the page the click came from; the pass runs on a worker
+    thread behind the same single-flight lock as the per-mandate button, so
+    while it runs both buttons read as busy everywhere.
+    """
+    mandate_or_404(session, client_id)
+    if _researching.acquire(blocking=False):
+        spawn.start_or_release(
+            _run_research_all,
+            args=(),
+            name="newspulse-profile-all",
             release=_researching.release,
         )
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)

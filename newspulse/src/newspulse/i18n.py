@@ -31,6 +31,9 @@ COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
 # German source string -> English. Ordered roughly by where it appears.
 _EN: dict[str, str] = {
+    "Alle Profile ausfüllen": "Fill all profiles",
+    "Recherchiert jeden Mandanten mit Lücken und pflegt belegte Werte gleich ein. Handgepflegte Felder bleiben unangetastet.":
+        "Researches every mandate with gaps and writes the sourced values straight in. Hand-filled fields stay untouched.",
     # --- Chrome / navigation -------------------------------------------------
     "Heute": "Today",
     "Mandanten": "Clients",
