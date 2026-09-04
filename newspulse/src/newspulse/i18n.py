@@ -2468,8 +2468,9 @@ _EN: dict[str, str] = {
     "nicht benannt": "not named",
     "nicht gesetzt": "not set",
     "Was jetzt zu entscheiden ist": "What is to be decided now",
-    "Die gespeicherten Zeilen gaben keine Entscheidungsfrage her.":
-        "The stored rows supported no decision question.",
+    "Auf diesem Papier steht keine Entscheidungsfrage: es kam keine, die die gespeicherten Zeilen trägt.":
+        "No decision question stands on this packet: none arrived that the "
+        "stored rows carry.",
     "Zu dieser Sache stehen keine Reaktionsoptionen.":
         "No response options stand on this matter.",
     # The decision itself, and the two forms that record it.

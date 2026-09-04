@@ -514,6 +514,11 @@ def _figure_material(lines: list[Line], occasion: str) -> str:
     return "\n".join([occasion, *(line.stated for line in lines)])
 
 
+def _unpadded(run: str) -> str:
+    """One digit run without the zeros a rendered date pads it with."""
+    return run.lstrip("0") or "0"
+
+
 def _unsupported_figures(text: str, material: str) -> list[str]:
     """Digit runs in ``text`` that ``material`` does not carry, in order.
 
@@ -521,9 +526,20 @@ def _unsupported_figures(text: str, material: str) -> list[str]:
     a reader quoting "1,2 Millionen" back at a client quotes the characters, and
     a normalisation that made 1.200.000 and 1,2 the same figure would let one of
     them through under the other's authority.
+
+    The one thing normalised is a leading zero, because the material carries
+    rendered dates: a line stated as "02.09.2026" and a sentence writing "am 2.
+    September" name the same day, and refusing the sentence over the padding
+    would drop a line that says nothing the material does not hold. It widens
+    nothing else — "200" and "2" stay two different figures.
     """
     supported = set(_DIGITS.findall(material))
-    return [figure for figure in _DIGITS.findall(text or "") if figure not in supported]
+    supported |= {_unpadded(run) for run in supported}
+    return [
+        figure
+        for figure in _DIGITS.findall(text or "")
+        if figure not in supported and _unpadded(figure) not in supported
+    ]
 
 
 def _unusable(text: str, material: str) -> str:

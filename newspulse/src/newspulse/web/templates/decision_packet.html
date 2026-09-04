@@ -250,7 +250,11 @@
   {%- if packet.question %}
   <p>{{ packet.question }}</p>
   {%- else %}
-  <p class="note">{{ t("Die gespeicherten Zeilen gaben keine Entscheidungsfrage her.") }}</p>
+  {#- Said as "none arrived that the lines carry" rather than as "the lines
+      gave none": the question is dropped both when the answer offered nothing
+      and when it offered one carrying a figure no stored line holds, and a
+      sentence naming only the first misstates the second. -#}
+  <p class="note">{{ t("Auf diesem Papier steht keine Entscheidungsfrage: es kam keine, die die gespeicherten Zeilen trägt.") }}</p>
   {%- endif %}
 
   <h2>{{ t("Lücken") }}</h2>

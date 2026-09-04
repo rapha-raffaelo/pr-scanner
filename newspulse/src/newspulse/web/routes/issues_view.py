@@ -64,6 +64,9 @@ _log = logging.getLogger(__name__)
 
 _SEE_OTHER = 303
 
+#: What ``<input type="date">`` posts, and the only shape the Frist is read in.
+_DATE_FIELD = "%Y-%m-%d"
+
 # Why the last click produced what it produced, per mandate. In memory and not
 # a schema change on purpose, the same posture as the crisis page's note: it
 # describes one click, and going stale on a restart is correct.
@@ -1069,6 +1072,10 @@ def _read_deadline(raw: str) -> tuple[dt.datetime | None, bool]:
     submitted around the browser, and the honest answer is the unchanged row —
     a value coerced to "no deadline" would read as a deadline nobody set.
 
+    Exactly that one format, rather than everything ``date.fromisoformat``
+    accepts on 3.11+ ("20260904", "2026-W36-1"): the form documents one shape,
+    and a Frist a reader cannot read back off the field is not one they set.
+
     Local midnight rather than UTC midnight: a Frist is a day in the reader's
     calendar, and storing 00:00 UTC would render as the day before for anybody
     west of Greenwich.
@@ -1077,7 +1084,7 @@ def _read_deadline(raw: str) -> tuple[dt.datetime | None, bool]:
     if not text:
         return None, True
     try:
-        day = dt.date.fromisoformat(text)
+        day = dt.datetime.strptime(text, _DATE_FIELD).date()
     except ValueError:
         return None, False
     return (
