@@ -38,7 +38,9 @@ them are found in the stored material and frozen onto the paper; the decider and
 the deadline are read live off the packet, because naming them is what gets them
 filled in and the acceptance puts them at the *top* of the paper rather than
 leaving a blank line. :func:`gaps` puts both origins into one list, each with
-the link to where it is closed.
+the link to where it is closed — and the one gap no form anywhere closes
+carries none, because a link landing on a page without the field sends a reader
+looking for something that does not exist.
 
 **The paper is stored as it read.** Statements, evidence and contradictions copy
 their text rather than resolving pointers at render time, and a new paper for the
