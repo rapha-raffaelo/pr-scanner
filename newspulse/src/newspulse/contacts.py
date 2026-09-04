@@ -191,6 +191,7 @@ def save(
     email: str = "",
     phone: str = "",
     beat: str = "",
+    position: str = "",
     notes: str = "",
 ) -> Contact:
     """Create or update one contact. Raises ``ValueError`` on an empty name.
@@ -211,6 +212,7 @@ def save(
     contact.email = (email or "").strip()
     contact.phone = (phone or "").strip()
     contact.beat = (beat or "").strip()
+    contact.position = (position or "").strip()
     contact.notes = (notes or "").strip()
     session.commit()
     # A one-time repair per entry: letters that went out before this contact

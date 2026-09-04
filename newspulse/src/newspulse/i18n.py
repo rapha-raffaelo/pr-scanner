@@ -920,6 +920,12 @@ _EN: dict[str, str] = {
     "E-Mail": "Email",
     "Telefon": "Phone",
     "Themengebiet": "Beat",
+    #: Their role at the masthead, kept apart from the beat: two people cover
+    #: banking at the same paper and the one running the desk is approached
+    #: differently. "Position" reads the same in both languages; the placeholder
+    #: does not.
+    "Position": "Position",
+    "Leiter Ressort Banken": "Head of banking desk",
     "Notizen": "Notes",
     "Löschen": "Delete",
     "Name, Medium oder Themengebiet": "Name, outlet or beat",

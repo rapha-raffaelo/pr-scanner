@@ -226,3 +226,127 @@ def test_no_address_is_ever_produced_without_someone_typing_it(factory, client):
     body = client.get(f"/client/{client_id}/advice").text
     assert "mailto:" not in body
     assert "Kontakt hinterlegen" in body
+
+
+# --- The position at the masthead ------------------------------------------------
+#
+# "was wir noch haben ist die Position im Kontaktbuch, das sollte hinzugefügt
+# werden. hier schreiben wir am besten immer die Position im Unternehmen."
+#
+# The book knew the masthead and the beat, and neither answers the question a
+# pitch turns on: two people cover banking at the same paper, and the one who
+# runs the desk is approached differently from the one who files to them.
+
+
+def test_the_position_is_stored_and_read_back(factory):
+    with factory() as session:
+        contacts.save(
+            session,
+            name="Andreas Kröner",
+            outlet="Handelsblatt",
+            position="Leiter Ressort Banken und Versicherer",
+        )
+
+        found = contacts.find(session, "Andreas Kröner", "Handelsblatt")
+
+        assert found.position == "Leiter Ressort Banken und Versicherer"
+
+
+def test_the_position_is_its_own_field_and_not_the_beat(factory):
+    """Two different questions: what they cover, and who they are at the desk.
+    Folding either into the other loses the one a pitch actually turns on."""
+    with factory() as session:
+        contacts.save(
+            session,
+            name="Andreas Kröner",
+            outlet="Handelsblatt",
+            beat="Finanzen, Wirtschaft",
+            position="Leiter Ressort Banken und Versicherer",
+        )
+
+        found = contacts.find(session, "Andreas Kröner", "Handelsblatt")
+
+        assert found.beat == "Finanzen, Wirtschaft"
+        assert found.position == "Leiter Ressort Banken und Versicherer"
+
+
+def test_an_entry_saved_without_a_position_has_none_rather_than_null(factory):
+    """Non-null with an empty default, like every other optional string here: an
+    entry that predates the column has no position, not an unknown one."""
+    with factory() as session:
+        contacts.save(session, name="Freie Autorin", outlet="")
+
+        assert contacts.find(session, "Freie Autorin").position == ""
+
+
+def test_the_file_shows_the_position_beside_the_masthead(client, factory):
+    with factory() as session:
+        contacts.save(
+            session,
+            name="Andreas Kröner",
+            outlet="Handelsblatt",
+            beat="Finanzen, Wirtschaft",
+            position="Leiter Ressort Banken und Versicherer",
+        )
+        stored = contacts.find(session, "Andreas Kröner", "Handelsblatt").id
+
+    body = client.get("/contacts", params={"id": stored}).text
+
+    assert "Leiter Ressort Banken und Versicherer" in body
+    # Masthead, then role, then beat — one line, in that order.
+    assert body.index("Handelsblatt") < body.index("Leiter Ressort Banken")
+
+
+def test_the_form_offers_the_position_prefilled(client, factory):
+    with factory() as session:
+        contacts.save(
+            session,
+            name="Andreas Kröner",
+            outlet="Handelsblatt",
+            position="Leiter Ressort Banken und Versicherer",
+        )
+        stored = contacts.find(session, "Andreas Kröner", "Handelsblatt").id
+
+    body = client.get("/contacts", params={"edit": stored}).text
+
+    assert 'name="position"' in body
+    assert 'value="Leiter Ressort Banken und Versicherer"' in body
+
+
+def test_saving_through_the_form_records_the_position(client, factory):
+    client.post(
+        "/contacts",
+        data={
+            "name": "Andreas Kröner",
+            "outlet": "Handelsblatt",
+            "position": "Leiter Ressort Banken und Versicherer",
+        },
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        found = contacts.find(session, "Andreas Kröner", "Handelsblatt")
+        assert found.position == "Leiter Ressort Banken und Versicherer"
+
+
+def test_recording_an_address_leaves_the_position_alone(factory):
+    """The letter card's one-field write must not blank it, the same way it must
+    not blank the phone or the notes."""
+    with factory() as session:
+        contacts.save(
+            session,
+            name="Andreas Kröner",
+            outlet="Handelsblatt",
+            position="Leiter Ressort Banken und Versicherer",
+        )
+
+        contacts.remember_address(
+            session,
+            name="Andreas Kröner",
+            outlet="Handelsblatt",
+            email="kroener@handelsblatt.com",
+        )
+
+        found = contacts.find(session, "Andreas Kröner", "Handelsblatt")
+        assert found.email == "kroener@handelsblatt.com"
+        assert found.position == "Leiter Ressort Banken und Versicherer"

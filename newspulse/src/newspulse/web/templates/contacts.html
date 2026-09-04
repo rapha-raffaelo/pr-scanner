@@ -170,6 +170,16 @@
               <input type="text" id="c-outlet" name="outlet"
                      value="{{ editing.outlet if editing else prefill_outlet }}">
             </div>
+            {# Beside the masthead, because it qualifies it: "Handelsblatt" and
+               "Leiter Ressort Banken" are one thought, and the beat two fields
+               along answers a different question — what they cover, not who
+               they are at the desk. #}
+            <div>
+              <label for="c-position">{{ t("Position") }}</label>
+              <input type="text" id="c-position" name="position"
+                     placeholder="{{ t('Leiter Ressort Banken') }}"
+                     value="{{ editing.position if editing else '' }}">
+            </div>
             <div>
               <label for="c-email">{{ t("E-Mail") }}</label>
               <input type="text" id="c-email" name="email" value="{{ editing.email if editing else '' }}">
@@ -200,7 +210,15 @@
         <div class="file__head">
           <div>
             <div class="file__name">{{ selected.name }}</div>
-            <div class="file__outlet">{{ selected.outlet or '—' }}{% if selected.beat %} · {{ selected.beat }}{% endif %}</div>
+            {# Masthead, then role, then beat: who they are at the desk sits
+               next to where the desk is, and what they cover follows. The role
+               used to be typed into Notizen if it was recorded at all, where
+               nothing could sort by it or read it into a letter. #}
+            <div class="file__outlet">
+              {{- selected.outlet or '—' -}}
+              {%- if selected.position %} · <b>{{ selected.position }}</b>{% endif -%}
+              {%- if selected.beat %} · {{ selected.beat }}{% endif -%}
+            </div>
             {% if selected.email or selected.phone or last_written_days is not none %}
               <div class="file__meta">
                 {%- if selected.email %}<a href="mailto:{{ selected.email }}">{{ selected.email }}</a>{% endif -%}

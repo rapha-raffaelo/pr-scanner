@@ -856,6 +856,13 @@ class Contact(Base):
     phone: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     #: What they write about, in the consultant's own words.
     beat: Mapped[str] = mapped_column(String(400), nullable=False, default="")
+    #: Their role at the masthead — "Leiter Ressort Banken und Versicherer",
+    #: "Freie Autorin", "Chefredakteur". Distinct from ``beat``, which is the
+    #: subject they cover: two people on the same beat are approached
+    #: differently when one of them runs the desk, and that was the one thing
+    #: the book could not say. Kept out of ``notes`` on purpose — a fact every
+    #: entry has belongs in a field, not in prose nobody can sort by.
+    position: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[dt.datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow

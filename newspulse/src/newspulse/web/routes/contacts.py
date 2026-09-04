@@ -179,6 +179,7 @@ def save_contact(
     email: str = Form(""),
     phone: str = Form(""),
     beat: str = Form(""),
+    position: str = Form(""),
     notes: str = Form(""),
     redirect_to: str = Form(""),
     session: Session = Depends(get_db),
@@ -199,6 +200,7 @@ def save_contact(
             email=email,
             phone=phone,
             beat=beat,
+            position=position,
             notes=notes,
         )
     except ValueError as exc:
