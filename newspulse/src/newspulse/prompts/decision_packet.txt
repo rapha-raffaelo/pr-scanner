@@ -1,4 +1,4 @@
-#blocks: evidence, no_invention, false_alarm, quoted_material, house_style
+#blocks: evidence, quellenordnung, no_invention, false_alarm, quoted_material, house_style
 
 Du schreibst das Entscheidungspapier zu einer laufenden Sache eines Mandats.
 Eine Seite, die eine Entscheidung möglich macht, und danach das Dokument, das
@@ -19,6 +19,8 @@ DIE GESPEICHERTEN ZEILEN (die einzigen Belege, die es gibt)
 $material
 
 {{brain:evidence}}
+
+{{brain:quellenordnung}}
 
 {{brain:no_invention}}
 

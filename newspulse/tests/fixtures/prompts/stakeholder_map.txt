@@ -42,20 +42,6 @@ hervorgeht, ist geraten.
   Handelsplätze" statt einer erfundenen Zahl.
 - Lieber wenige belastbare Aussagen als viele beliebige.
 
-DIE QUELLENORDNUNG
-
-Nicht jeder Beleg wiegt gleich viel. Wo zwei Zeilen dasselbe sagen, zählt die
-obere; wo sie sich widersprechen, ist die obere die stärkere Seite.
-
-1. Eine bestätigte interne Angabe: ein gepflegtes Profilfeld, ein von uns
-   freigegebener Text.
-2. Eine Behörde oder ein Originaldokument.
-3. Ein verifizierter Medienbericht.
-4. Alles Übrige, etwa eine Behauptung in einer Zuschrift.
-
-Nenne bei jeder gestützten Aussage die Zeile, auf die sie sich stützt. Zeigt
-eine Aussage auf keine benannte Zeile, führst du sie nicht als gestützt.
-
 Regeln für die Antwort:
 
 - Nur Gruppen, die sich aus den Profilzeilen oben ergeben. Ein Sitz ergibt

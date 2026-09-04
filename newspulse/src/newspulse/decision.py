@@ -20,7 +20,11 @@ confirmed internal statement, an authority or an original document, a verified
 media report, everything else — and :data:`RANK_BY_KIND` is the one place an
 evidence kind is mapped onto it. Every belegt sentence carries the rank of its
 strongest line, so a reader deciding under pressure can see whether they are
-acting on our own confirmed record or on a claim in somebody's inbox.
+acting on our own confirmed record or on a claim in somebody's inbox. The half
+the model is told sits in :file:`blocks/quellenordnung.txt` and in no other
+block: every prompt in the tree wants "nothing unbacked", and this is the only
+one that prints Kennungen, so the instruction to name a line under each
+supported sentence is a standard for one prompt rather than for twenty.
 
 **A contradiction is reported only with both sides named.** A reported
 contradiction whose second side nobody can name is worse than none at all,

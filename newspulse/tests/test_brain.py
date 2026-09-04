@@ -571,9 +571,12 @@ ADDED_IN_MIGRATION = {
     # behind "unter den Reaktionsoptionen steht immer nicht reagieren". The
     # code refuses a set without it; the block is why the model offers it.
     "response_options.txt": {"scenario_discipline", "no_invention", "evidence"},
-    # The decision paper (RIS-05). evidence is the block the story exists for:
-    # it now carries the Quellenordnung, and the whole paper is the separation
-    # between what resolves to a stored line and what does not. no_invention,
+    # The decision paper (RIS-05). evidence and quellenordnung are the two the
+    # story exists for, and they are two blocks rather than one: every prompt
+    # here wants "nothing unbacked", and exactly one wants the four ranks and
+    # the instruction to name the line under each supported sentence. Appended
+    # to evidence, that instruction would have reached twenty prompts that print
+    # no Kennungen at all — a press release carrying "laut Zeile 12". no_invention,
     # because a decision paper is written under maximum time pressure and a
     # plausible number on it is quoted as a measurement. false_alarm, because
     # the paper's most dangerous output is a contradiction reported where there
@@ -588,6 +591,7 @@ ADDED_IN_MIGRATION = {
     # without which nothing is stored at all.
     "decision_packet.txt": {
         "evidence",
+        "quellenordnung",
         "no_invention",
         "false_alarm",
         "quoted_material",
@@ -612,6 +616,14 @@ RESTATEMENT_TELLS = {
     "evidence": ["nie die vollständigen Artikel", "Schlagzeilen und kurze Feed-Anrisse",
                  "ohne Beleg ist wertlos", "statt einer erfundenen Zahl",
                  "viele beliebige"],
+    # RIS-05's acceptance in guard form: the four ranks and the citation rule
+    # live in one block, and the one prompt that prints Kennungen points at it.
+    # A prompt writing the order out again has forked the Quellenordnung the
+    # paper prints beside every supported sentence.
+    "quellenordnung": ["Nicht jeder Beleg wiegt gleich viel",
+                       "ist die obere die stärkere Seite",
+                       "Alles Übrige, etwa eine Behauptung in einer Zuschrift",
+                       "führst du sie nicht als gestützt"],
     "no_invention": ["Raten ist Erfinden", "Namensgleichheit",
                      "Nichts aus der Branche herleiten", "Was nicht dasteht, fehlt eben",
                      "Nie erfunden werden"],
