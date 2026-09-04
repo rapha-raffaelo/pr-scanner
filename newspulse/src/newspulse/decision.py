@@ -224,7 +224,9 @@ def _clean(text: str) -> str:
     return prose.plain((text or "").strip())
 
 
-def _anchor_issue(session: Session, *, issue: Issue | None, crisis: Crisis | None) -> Issue | None:
+def _anchor_issue(
+    session: Session, *, issue: Issue | None, crisis: Crisis | None
+) -> Issue | None:
     """The issue whose signals are this paper's coverage.
 
     For a crisis that is the issue it escalated out of, where there is one — the
@@ -712,6 +714,54 @@ def _template() -> Template:
     return Template(brain.compose(text))
 
 
+def _ask(
+    session: Session,
+    client: Client,
+    *,
+    lines: list[Line],
+    issue: Issue | None,
+    crisis: Crisis | None,
+    invoke,
+) -> tuple[PacketDraft, int]:
+    """Compose the prompt, spend the one call, and read the answer back.
+
+    The standards version is captured *here*, when the prompt is composed, and
+    not when the rows are saved: an edit landing while the model writes belongs
+    to the next paper and not to this one.
+    """
+    written_under = brain.version(session)
+    prompt = _template().substitute(
+        client_name=client.name,
+        occasion=_occasion_line(issue=issue, crisis=crisis) or "Keine Angabe gespeichert.",
+        material=_material_block(lines),
+    )
+    resolved_invoke = invoke if invoke is not None else invoke_with_fallback
+    return _parse(resolved_invoke(prompt, timeout=config.ANALYZER_TIMEOUT)), written_under
+
+
+def _opening(draft: PacketDraft, *, material: str, client_id: int) -> str:
+    """The paper's first paragraph, or the empty string where there is none.
+
+    Empty means nothing is stored at all. A paper that cannot say what happened
+    is not a paper, and one whose opening carries a figure the material never
+    held is worse than none: it is the sentence a reader takes into the room.
+    """
+    situation = _clean(draft.was_passiert_ist)
+    if situation and _unsupported_figures(situation, material):
+        _log.warning(
+            "the packet's opening carries a figure that stands in no named line; "
+            "the paper is not stored"
+        )
+        situation = ""
+    if not situation:
+        _log.warning(
+            "no decision packet was stored for client %d: the answer did not say "
+            "what happened",
+            client_id,
+        )
+    return situation
+
+
 def build(
     session: Session,
     client: Client,
@@ -736,32 +786,12 @@ def build(
     if (issue is None) == (crisis is None):
         raise ValueError("a decision packet hangs on exactly one occasion")
     lines = material_lines(session, client, issue=issue, crisis=crisis)
-    occasion = _occasion_line(issue=issue, crisis=crisis)
-    material = _figure_material(lines, occasion)
-    # Captured when the prompt is composed, not when the rows are saved: an edit
-    # landing while the model writes changes the next paper, not this one.
-    written_under = brain.version(session)
-    prompt = _template().substitute(
-        client_name=client.name,
-        occasion=occasion or "Keine Angabe gespeichert.",
-        material=_material_block(lines),
+    material = _figure_material(lines, _occasion_line(issue=issue, crisis=crisis))
+    draft, written_under = _ask(
+        session, client, lines=lines, issue=issue, crisis=crisis, invoke=invoke
     )
-    resolved_invoke = invoke if invoke is not None else invoke_with_fallback
-    draft = _parse(resolved_invoke(prompt, timeout=config.ANALYZER_TIMEOUT))
-
-    situation = _clean(draft.was_passiert_ist)
-    if situation and _unsupported_figures(situation, material):
-        _log.warning(
-            "the packet's opening carries a figure that stands in no named line; "
-            "the paper is not stored"
-        )
-        situation = ""
+    situation = _opening(draft, material=material, client_id=client.id)
     if not situation:
-        _log.warning(
-            "no decision packet was stored for client %d: the answer did not say "
-            "what happened",
-            client.id,
-        )
         return None
 
     offered = _by_token(lines)

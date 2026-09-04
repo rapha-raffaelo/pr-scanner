@@ -60,6 +60,7 @@ from newspulse.models import (
     GapKind,
     Issue,
     IssueSignal,
+    IssueStatus,
     MarketSignal,
     EscalationPotential,
     Outreach,
@@ -1335,3 +1336,46 @@ def test_the_seeded_paper_renders_exactly_the_golden_file(
         "no golden file; run NEWSPULSE_UPDATE_GOLDEN=1 pytest tests/test_decision.py"
     )
     assert body == GOLDEN.read_text("utf-8")
+
+
+# --- The second anchor, reached from the one page that offers the button -----------
+
+
+def test_an_escalated_issues_paper_hangs_on_the_crisis(session, mandate):
+    """The acceptance asks for a paper "zu einem Issue oder einer Krise". The
+    register row keeps its ``crisis_id`` from the handover, so the button on an
+    escalated row reaches the second anchor without a second button."""
+    from newspulse.web.routes import issues_view
+
+    issue = _issue(session, mandate)
+    standing = _crisis(session, mandate, _article(session, "Werk stoppt Produktion"))
+    issue.crisis_id = standing.id
+    session.commit()
+    anchor, crisis = issues_view._packet_occasion(session, issue)
+    assert anchor is None and crisis is standing
+
+
+def test_an_open_issues_paper_hangs_on_the_issue(session, mandate):
+    from newspulse.web.routes import issues_view
+
+    issue = _issue(session, mandate)
+    anchor, crisis = issues_view._packet_occasion(session, issue)
+    assert anchor is issue and crisis is None
+
+
+def test_the_register_lists_a_crisis_paper_on_the_row_it_was_written_from(
+    web, session, mandate
+):
+    """An escalated row's papers hang on the crisis; hiding them from the row
+    would make them unreachable from the one page that offers the button."""
+    issue = _issue(session, mandate)
+    standing = _crisis(session, mandate, _article(session, "Werk stoppt Produktion"))
+    issue.crisis_id = standing.id
+    issue.status = IssueStatus.ESKALIERT
+    session.commit()
+    packet = decision.build(
+        session, mandate, crisis=standing, by="lucas", invoke=_reply_with(), now=_NOW
+    )
+    assert packet is not None
+    body = web.get(f"/client/{mandate.id}/issues").text
+    assert f"/client/{mandate.id}/entscheidungspapier/{packet.id}" in body
