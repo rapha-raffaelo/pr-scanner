@@ -3579,7 +3579,489 @@ class ResponseOption(Base):
         Integer, nullable=True, default=None
     )
 
+
+# --- Das Entscheidungspapier (RIS-05) ----------------------------------------------
+
+
+class PacketSection(StrEnum):
+    """The parts a decision packet stands in, and the separation *is* the value.
+
+    ``BELEGT`` is the only one that carries weight, and it carries it because
+    every sentence under it resolves to a stored row. ``UNBESTAETIGT`` is where
+    a sentence lands that does not — said out loud rather than dropped, because
+    "we have heard this and cannot stand it up" is itself worth reading in the
+    hour a decision is made. ``OFFEN`` is the questions nobody has answered yet.
+
+    The fourth part, the contradictions, is :class:`DecisionContradiction` and
+    not a member here: it is not a sentence with a section, it is two named
+    sides and what stands between them, and a schema that let it be one row of
+    prose would let a contradiction be reported with only one side.
+    """
+
+    BELEGT = "belegt"
+    UNBESTAETIGT = "unbestätigt"
+    OFFEN = "offen"
+
+
+class EvidenceKind(StrEnum):
+    """The kinds of stored row a sentence of the packet may resolve to.
+
+    A closed set, and every member is a table in this schema: a piece of
+    coverage, its analysis, a profile field, a market signal, a reply in the
+    connected mailbox, and a text of our own that a person released. A
+    "Kennung" outside this set resolves to nothing, and the sentence that
+    carried it is not led as belegt — which is the whole safety argument of the
+    packet.
+    """
+
+    BEITRAG = "beitrag"
+    ANALYSE = "analyse"
+    PROFIL = "profil"
+    MARKTSIGNAL = "marktsignal"
+    MAIL = "mail"
+    TEXT = "text"
+
+
+class SourceRank(StrEnum):
+    """Die Quellenordnung: what outweighs what, in declaration order.
+
+    Fixed, and printed on the paper rather than kept in a module nobody opens:
+    a reader deciding under pressure has to be able to see that the sentence
+    they are about to act on rests on a confirmed internal statement and not on
+    a journalist's question in an inbox. The order here *is* the order — a
+    member's position in this enum is what :mod:`newspulse.decision` ranks by,
+    so re-ordering the four is a deliberate edit and never a side effect.
+    """
+
+    INTERN = "bestätigte interne Angabe"
+    BEHOERDE = "Behörde oder Originaldokument"
+    MEDIEN = "verifizierter Medienbericht"
+    UEBRIGES = "alles Übrige"
+
+
+class GapKind(StrEnum):
+    """The named gaps a packet reports, from a closed set.
+
+    A gap is the part a person under pressure does not assemble for themselves,
+    so it has to be a *named* line with a link to where it is closed and never a
+    blank space. Closed, because a gap the tool invented would send somebody
+    looking for a field that does not exist.
+
+    Three of them are found in the stored material when the paper is built and
+    are frozen onto it (:class:`DecisionGap`). The two that are properties of
+    the paper itself — the decider and the deadline — are read live off
+    :class:`DecisionPacket`, because naming them is what gets them filled in,
+    and a frozen row would keep saying they are missing after somebody had
+    supplied them.
+    """
+
+    SPRECHER = "sprecher"
+    KRISENKONTAKT = "krisenkontakt"
+    BETROFFENENZAHL = "betroffenenzahl"
+    ENTSCHEIDER = "entscheider"
+    FRIST = "frist"
+
+
+#: How much of a decider's name the paper keeps. The same ceiling
+#: :data:`CRISIS_DECLARED_BY_MAX` sets, and for the same reason: a long sign-in
+#: name costs its tail, never the record of who decided.
+DECISION_NAME_MAX = CRISIS_DECLARED_BY_MAX
+
+#: How much of one evidence line's label is kept on the paper. A copy rather
+#: than a pointer (see :class:`DecisionEvidence`), so the width is this table's
+#: business and not the archive's.
+EVIDENCE_LABEL_MAX = 300
+
+
+class DecisionPacket(Base):
+    """One decision paper: what is known, what is not, and who decides by when.
+
+    Written on a button press to an issue or to a crisis, and **never replaced**:
+    "ein neues Papier zum selben Issue ersetzt das alte nicht, sondern tritt
+    daneben" is the acceptance, so there is deliberately no UNIQUE over the
+    anchor and no upsert anywhere in :mod:`newspulse.decision`. Two papers a week
+    apart are the record of how the reading changed, which is exactly the
+    question asked afterwards.
+
+    The paper is stored **as it read**: every statement, every piece of evidence
+    and every contradiction is a row with its text copied rather than a pointer
+    resolved at render time. That is the opposite of what a *draft* report does
+    and the same thing a released one does, for the same reason — a piece of
+    coverage dismissed in October must not silently change what the September
+    paper says it said. The ids are kept beside the copies, so a reader can
+    still walk back to the row a sentence came from.
+
+    ``decision``/``decided_by``/``decided_at`` are the three the CHECK ties
+    together: afterwards the question is always what was decided, by whom, and
+    on what the decision rested, and a decision recorded without a name answers
+    two thirds of it.
+    """
+
+    __tablename__ = "decision_packets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The issue this paper was written to. CASCADE: a paper about an issue that
+    #: no longer exists explains nothing.
+    issue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    crisis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crises.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    #: What happened, in the packet's own words. Never empty: a paper that
+    #: cannot say what this is about is not stored at all.
+    situation: Mapped[str] = mapped_column(Text, nullable=False)
+    #: What is to be decided now. May be empty where the material supported no
+    #: sentence — an omission the paper names, never an invented question.
+    question: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    #: Who decides. Empty is a *named gap at the top of the paper*, never a
+    #: blank line, and it is set by a person: a decider this tool nominated
+    #: would be a name nobody agreed to.
+    decision_maker: Mapped[str] = mapped_column(
+        String(DECISION_NAME_MAX), nullable=False, default="", server_default=""
+    )
+    #: By when. NULL is the other named gap at the top.
+    deadline: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow
+    )
+    #: Who pressed the button: a user name where the tool has one, the
+    #: ``"mensch"`` token otherwise — the discipline every other row here keeps.
+    created_by: Mapped[str] = mapped_column(String(DECISION_NAME_MAX), nullable=False)
+
+    #: The decision that was taken, in the deciding person's own words. Empty
+    #: until one is recorded, and from then on the paper is closed.
+    decision: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
+    decided_by: Mapped[str] = mapped_column(
+        String(DECISION_NAME_MAX), nullable=False, default="", server_default=""
+    )
+    decided_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    #: The standards the prose on this paper was written under, captured when
+    #: the prompt was composed — the same terms as :attr:`Scenario.brain_version`.
+    brain_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+
+    statements: Mapped[list["DecisionStatement"]] = relationship(
+        back_populates="packet",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="DecisionStatement.position",
+    )
+    contradictions: Mapped[list["DecisionContradiction"]] = relationship(
+        back_populates="packet",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="DecisionContradiction.position",
+    )
+    stored_gaps: Mapped[list["DecisionGap"]] = relationship(
+        back_populates="packet",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="DecisionGap.position",
+    )
+
+    __table_args__ = (
+        # A paper hangs on exactly one occasion — an issue or a crisis. The same
+        # spelling ``stakeholder_selections`` uses, so the two read alike.
+        CheckConstraint(
+            "(issue_id IS NULL) <> (crisis_id IS NULL)",
+            name="ck_decision_packets_one_anchor",
+        ),
+        CheckConstraint("situation <> ''", name="ck_decision_packets_situation"),
+        # A recorded decision always carries its words and the person. Held at
+        # the schema because "what was decided, and by whom" is the question the
+        # paper exists to answer months later, and a future writer that filled
+        # only one of the three would leave it unanswerable.
+        CheckConstraint(
+            "decided_at IS NULL OR (decision <> '' AND decided_by <> '')",
+            name="ck_decision_packets_decision",
+        ),
+    )
+
+    @property
+    def is_decided(self) -> bool:
+        """Whether a decision has been recorded. The paper is closed from then on."""
+        return self.decided_at is not None
+
+
+class DecisionStatement(Base):
+    """One sentence of the paper, in the part it belongs to.
+
+    ``source_rank`` is the Quellenordnung made visible: a ``BELEGT`` sentence
+    carries the rank of the strongest line under it, and no other section
+    carries one at all. The CHECK holds both halves of that, so a future writer
+    cannot file an unconfirmed sentence under "bestätigte interne Angabe", nor
+    lead a sentence as belegt without saying where it sits in the order.
+
+    A ``BELEGT`` row without evidence is impossible by construction:
+    :mod:`newspulse.decision` moves a sentence whose Kennung resolves to nothing
+    into ``UNBESTAETIGT`` before anything is written. The rank column is what
+    makes that visible at the schema — no rank, no claim.
+    """
+
+    __tablename__ = "decision_statements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    packet_id: Mapped[int] = mapped_column(
+        ForeignKey("decision_packets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    section: Mapped[PacketSection] = mapped_column(
+        SAEnum(
+            PacketSection,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="packet_section",
+        ),
+        nullable=False,
+    )
+    #: The sentence as it is read. Never empty; see the CHECK.
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Where the strongest line under this sentence sits in the Quellenordnung.
+    #: NULL on every section but ``belegt``; see the CHECK.
+    source_rank: Mapped[SourceRank | None] = mapped_column(
+        SAEnum(
+            SourceRank,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="source_rank",
+        ),
+        nullable=True,
+    )
+    #: 1-based rank across the whole paper, so the order the sentences were
+    #: written in survives a re-read.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    packet: Mapped["DecisionPacket"] = relationship(back_populates="statements")
+    evidence: Mapped[list["DecisionEvidence"]] = relationship(
+        back_populates="statement",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="DecisionEvidence.id",
+    )
+
+    __table_args__ = (
+        CheckConstraint("text <> ''", name="ck_decision_statements_text"),
+        CheckConstraint("position >= 1", name="ck_decision_statements_position"),
+        # Belegt and only belegt carries a rank. Written as the two-sided
+        # equivalence it is, because either half alone would let the paper lie:
+        # a rank on an unconfirmed sentence claims an authority nobody gave it,
+        # and a belegt sentence without one hides where it sits in the order.
+        CheckConstraint(
+            "(section = 'belegt') = (source_rank IS NOT NULL)",
+            name="ck_decision_statements_rank",
+        ),
+        UniqueConstraint(
+            "packet_id", "position", name="uq_decision_statements_position"
+        ),
+    )
+
+
+class DecisionEvidence(Base):
+    """The stored row one belegt sentence resolves to — id kept, text copied.
+
+    ``kind`` and ``ref_id`` together are the "Kennung der Zeile" the acceptance
+    asks every belegt sentence to carry, and they are what a reader walks back
+    along. ``label``, ``source``, ``happened_at`` and ``url`` are copies of what
+    that row said *at the time*, because the paper is the record of what a
+    decision rested on: a headline re-titled or a piece of coverage dismissed
+    afterwards must not be able to change it.
+
+    Deliberately no foreign key to the six tables it can point into. A real FK
+    would need six nullable columns and would delete evidence out from under a
+    stored paper on a CASCADE — which is the one thing this table exists to
+    prevent.
+    """
+
+    __tablename__ = "decision_evidence"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    statement_id: Mapped[int] = mapped_column(
+        ForeignKey("decision_statements.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[EvidenceKind] = mapped_column(
+        SAEnum(
+            EvidenceKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="evidence_kind",
+        ),
+        nullable=False,
+    )
+    #: The stored row's own id. Half of the Kennung, and never resolved on
+    #: render — see the class docstring.
+    ref_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: What the row said: the headline, the profile field and its value, the
+    #: subject line. Never empty; see the CHECK.
+    label: Mapped[str] = mapped_column(String(EVIDENCE_LABEL_MAX), nullable=False)
+    #: Where it came from: the outlet, the publisher, the sender.
+    source: Mapped[str] = mapped_column(
+        String(EVIDENCE_LABEL_MAX), nullable=False, default="", server_default=""
+    )
+    happened_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+    #: The row's own external address, where it has one. Never a link back into
+    #: this application: the downloaded paper carries none of those.
+    url: Mapped[str] = mapped_column(
+        String(2048), nullable=False, default="", server_default=""
+    )
+
+    statement: Mapped["DecisionStatement"] = relationship(back_populates="evidence")
+
+    __table_args__ = (
+        CheckConstraint("label <> ''", name="ck_decision_evidence_label"),
+        # One line stands under one sentence once: a doubled Kennung is not two
+        # pieces of evidence, it is the same one counted twice.
+        UniqueConstraint(
+            "statement_id", "kind", "ref_id", name="uq_decision_evidence_once"
+        ),
+    )
+
+
+class DecisionContradiction(Base):
+    """One contradiction, with **both** sides named as stored rows.
+
+    The columns are doubled on purpose, and the NOT NULLs are the acceptance
+    itself: "ein Widerspruch mit nur einer Seite wird nicht gemeldet". A
+    reported contradiction that cannot name what it contradicts is worse than
+    no reported contradiction, because in a crisis it is believed — so a schema
+    that allowed one side to be absent would be the defect, not the code that
+    happened to fill both.
+
+    Both sides copy their line the way :class:`DecisionEvidence` does, and for
+    the same reason.
+    """
+
+    __tablename__ = "decision_contradictions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    packet_id: Mapped[int] = mapped_column(
+        ForeignKey("decision_packets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    #: What the contradiction consists of, in one sentence. Never empty.
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+
+    left_kind: Mapped[EvidenceKind] = mapped_column(
+        SAEnum(
+            EvidenceKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            # A name of its own rather than ``evidence_kind``: the CHECK an
+            # Enum emits is named after it, and two constraints of one name on
+            # one table is a schema nobody can alter later.
+            name="contradiction_left_kind",
+        ),
+        nullable=False,
+    )
+    left_ref_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    left_label: Mapped[str] = mapped_column(String(EVIDENCE_LABEL_MAX), nullable=False)
+    left_source: Mapped[str] = mapped_column(
+        String(EVIDENCE_LABEL_MAX), nullable=False, default="", server_default=""
+    )
+
+    right_kind: Mapped[EvidenceKind] = mapped_column(
+        SAEnum(
+            EvidenceKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="contradiction_right_kind",
+        ),
+        nullable=False,
+    )
+    right_ref_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    right_label: Mapped[str] = mapped_column(String(EVIDENCE_LABEL_MAX), nullable=False)
+    right_source: Mapped[str] = mapped_column(
+        String(EVIDENCE_LABEL_MAX), nullable=False, default="", server_default=""
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    packet: Mapped["DecisionPacket"] = relationship(back_populates="contradictions")
+
+    __table_args__ = (
+        CheckConstraint("note <> ''", name="ck_decision_contradictions_note"),
+        CheckConstraint(
+            "left_label <> '' AND right_label <> ''",
+            name="ck_decision_contradictions_sides",
+        ),
+        CheckConstraint("position >= 1", name="ck_decision_contradictions_position"),
+        UniqueConstraint(
+            "packet_id", "position", name="uq_decision_contradictions_position"
+        ),
+    )
+
+
+class DecisionGap(Base):
+    """One named gap the paper found in the stored material, frozen onto it.
+
+    Only the three gaps that are statements about the *material* live here —
+    the missing spokesperson, the missing crisis contact, the absence of any
+    confirmed internal figure. They are frozen because the paper is the record
+    of what was known at the time, and a profile filled in on Thursday must not
+    quietly remove Monday's gap from Monday's paper.
+
+    The decider and the deadline are deliberately *not* stored: they are
+    columns on :class:`DecisionPacket`, they are filled from the paper itself,
+    and a frozen row would keep reporting them missing after somebody supplied
+    them. :func:`newspulse.decision.gaps` puts both origins into one list.
+    """
+
+    __tablename__ = "decision_gaps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    packet_id: Mapped[int] = mapped_column(
+        ForeignKey("decision_packets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[GapKind] = mapped_column(
+        SAEnum(
+            GapKind,
+            values_callable=lambda enum: [m.value for m in enum],
+            create_constraint=True,
+            name="gap_kind",
+        ),
+        nullable=False,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    packet: Mapped["DecisionPacket"] = relationship(back_populates="stored_gaps")
+
+    __table_args__ = (
+        # The same gap is named once per paper: a second copy is not a second
+        # gap, it is the same one printed twice.
+        UniqueConstraint("packet_id", "kind", name="uq_decision_gaps_once"),
+        CheckConstraint("position >= 1", name="ck_decision_gaps_position"),
+    )
+
+
 __all__ = [
+    "DECISION_NAME_MAX",
+    "EVIDENCE_LABEL_MAX",
+    "DecisionContradiction",
+    "DecisionEvidence",
+    "DecisionGap",
+    "DecisionPacket",
+    "DecisionStatement",
+    "EvidenceKind",
+    "GapKind",
+    "PacketSection",
+    "SourceRank",
     "Scenario",
     "ScenarioKind",
     "ScenarioLikelihood",

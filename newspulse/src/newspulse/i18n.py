@@ -2404,6 +2404,107 @@ _EN: dict[str, str] = {
     "Erst die Szenarien: die Reaktionsoptionen werden gegen sie entwickelt.":
         "The scenarios come first: the response options are developed against "
         "them.",
+    # --- Das Entscheidungspapier (RIS-05) -------------------------------------
+    # "Anlass", "Erstellt am", "Frist", "Exportieren", "offen", "Empfehlung",
+    # "nicht reagieren", "Nutzen:", "Risiko:", "Eskalationspotenzial",
+    # "Reaktionsoptionen" and the six speeds are already in this table; the
+    # paper reuses them rather than restating them, which would silently
+    # re-translate the page that holds them.
+    "Entscheidungspapier": "Decision packet",
+    "Entscheidungspapiere": "Decision packets",
+    "Entscheidungspapier erstellen": "Write a decision packet",
+    "Noch kein Entscheidungspapier zu dieser Sache.":
+        "No decision packet on this matter yet.",
+    # The packet block fetches itself back while the call runs, so it says so
+    # in its own words: the Karte's sentence promises a map nobody asked for.
+    "Die Anfrage läuft — das Papier erscheint, sobald es steht.":
+        "The request is running; the packet appears as soon as it stands.",
+    "Papier vom": "Packet of",
+    "Zurück zum Register": "Back to the register",
+    # The four parts, and the separation between them is the whole value — so
+    # each heading has to be as unmistakable in English as it is in German.
+    "Was passiert ist": "What happened",
+    "Belegt": "Supported",
+    "Unbestätigt": "Unconfirmed",
+    "Offen": "Open",
+    "Widersprüche": "Contradictions",
+    "Nichts auf diesem Papier löst auf eine gespeicherte Zeile auf.":
+        "Nothing on this packet resolves to a stored row.",
+    "Nichts Unbestätigtes vermerkt.": "Nothing unconfirmed was recorded.",
+    "Keine offene Frage vermerkt.": "No open question was recorded.",
+    # Said as the rule rather than as an empty list: a reader is entitled to
+    # know that a contradiction with only one side is not reported at all.
+    "Kein Widerspruch, dessen beide Seiten als gespeicherte Zeilen benannt sind.":
+        "No contradiction whose two sides are both named as stored rows.",
+    # Die Quellenordnung. These four are *stored enum values* rendered as
+    # words, so they have to be words in both languages: the paper prints the
+    # order and marks every supported sentence with its rank.
+    "Die Quellenordnung": "The source order",
+    "bestätigte interne Angabe": "confirmed internal statement",
+    "Behörde oder Originaldokument": "authority or original document",
+    "verifizierter Medienbericht": "verified media report",
+    "alles Übrige": "everything else",
+    # The six kinds of stored line a sentence can resolve to, beside its
+    # Kennung. "Beitrag" and "Marktsignal" already stand in this table.
+    "Analyse": "Analysis",
+    "Profilfeld": "Profile field",
+    "Mail": "Mail",
+    "Freigegebener Text": "Released text",
+    # The named gaps, each a line with the link to where it is closed.
+    "Lücken": "Gaps",
+    "Keine benannte Lücke.": "No named gap.",
+    "nachtragen": "fill in",
+    "Im Profil steht kein Sprecher.": "The profile names no spokesperson.",
+    "Im Profil steht kein Krisenkontakt.": "The profile names no crisis contact.",
+    "Keine bestätigte Zahl auf diesem Papier: keine belegte Angabe aus einer bestätigten internen Quelle nennt eine Zahl.":
+        "No confirmed figure on this packet: no supported statement from a "
+        "confirmed internal source names a figure.",
+    "Auf diesem Papier steht kein Entscheider.": "This packet names no decider.",
+    "Auf diesem Papier steht keine Frist.": "This packet sets no deadline.",
+    # The two that stand at the top of the paper when they are missing.
+    "Dieses Papier trägt nicht, was eine Entscheidung braucht:":
+        "This packet does not carry what a decision needs:",
+    "Entscheider": "Decider",
+    "nicht benannt": "not named",
+    "nicht gesetzt": "not set",
+    "Was jetzt zu entscheiden ist": "What is to be decided now",
+    "Auf diesem Papier steht keine Entscheidungsfrage: es kam keine, die die gespeicherten Zeilen trägt.":
+        "No decision question stands on this packet: none arrived that the "
+        "stored rows carry.",
+    "Zu dieser Sache stehen keine Reaktionsoptionen.":
+        "No response options stand on this matter.",
+    # The decision itself, and the two forms that record it.
+    "Die Entscheidung": "The decision",
+    "Noch nicht entschieden.": "Not decided yet.",
+    "entschieden": "decided",
+    "Entschieden von": "Decided by",
+    "Wer entscheidet": "Who decides",
+    "Bis wann": "By when",
+    # "Eintragen" is not repeated here: it stands above, and a second entry
+    # would not add a translation — it would silently re-translate that one.
+    "Die getroffene Entscheidung": "The decision taken",
+    "Entscheidung festhalten": "Record the decision",
+    # The register's packet notes, written in Python and rendered as ``note`` —
+    # nothing that reads the templates for German strings can see them.
+    "Kein Entscheidungspapier gespeichert: die Antwort sagte nicht, was passiert ist.":
+        "No decision packet was stored: the answer did not say what happened.",
+    "Das Entscheidungspapier ist fehlgeschlagen. Die Einzelheiten stehen im Log.":
+        "The decision packet failed. The details are in the log.",
+    "Es läuft schon eine Anfrage für dieses Mandat. Das Papier wartet, bis sie durch ist.":
+        "A request for this mandate is already running. The packet waits until "
+        "it is through.",
+    "Das Papier ist entschieden und wird nicht mehr geändert. Ein neuer Stand ist ein neues Papier.":
+        "The packet is decided and is not changed any more. A new state is a new "
+        "packet.",
+    "Die Entscheidung wurde nicht vermerkt: es fehlt, was entschieden wurde.":
+        "The decision was not recorded: what was decided is missing.",
+    "Das Datum war nicht lesbar: die Frist blieb, wie sie war. Alles Übrige des Formulars wurde gespeichert.":
+        "The date could not be read, so the deadline stands as it was. The rest "
+        "of the form was saved.",
+    "Jeder als belegt geführte Satz auf diesem Papier löst auf eine gespeicherte Zeile auf; die Kennung steht dabei. Ein Satz ohne auflösbaren Beleg steht unter unbestätigt. Ein Widerspruch wird nur genannt, wenn beide Seiten benannt sind.":
+        "Every sentence led as supported on this packet resolves to a stored row, "
+        "and carries its identifier. A sentence without a resolvable source stands "
+        "under unconfirmed. A contradiction is named only when both sides are.",
 }
 
 _TABLES = {"de": {}, "en": _EN}

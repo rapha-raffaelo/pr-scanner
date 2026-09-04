@@ -39,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ... import assets as assets_mod
-from ... import config, crisis, profile, stakeholders
+from ... import config, crisis, decision, profile, stakeholders
 from ...db import get_session
 from ...models import (
     Analysis,
@@ -58,10 +58,10 @@ from ...outlets import normalize_outlet
 from ...stories import cluster
 from .. import spawn
 from ..app import get_db, templates
-from ..mandates import mandate_or_404
+from ..mandates import crisis_or_none, mandate_or_404
 from ..redirects import local_target
 from ..runlock import guard as _run_guard
-from . import stakeholder_ui
+from . import issues_view, stakeholder_ui
 from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
@@ -584,6 +584,38 @@ def _timeline(
     return sorted(events, key=lambda event: event.at)
 
 
+def _packet_block(
+    session: Session, client: Client, standing: Crisis
+) -> dict[str, object]:
+    """What ``partials/decision_packets.html`` needs for this crisis (RIS-05).
+
+    The papers written to this occasion, newest first, and this feature's own
+    note. The note is *popped here*, before ``_stakeholder_block`` takes
+    whatever is left: one channel across every model-backed button on the page
+    is what stops two clicks paying for two calls, but a paper's answer belongs
+    beside the paper's button and not inside the Stakeholder-Karte. The caller
+    keeps the two calls in that order for that reason.
+
+    The button hangs on the crisis rather than on an issue: a crisis declared
+    straight off an article has no register row, and it is the occasion a
+    decision paper exists for.
+    """
+    # One block on this page, and the sentence is taken only when it belongs to
+    # it: the same click may have come from the register's escalated row, whose
+    # answer is read there — and popped here it would be read nowhere.
+    clicked = issues_view.packet_click(
+        client.id,
+        running=stakeholder_ui.busy(client.id),
+        on_page={f"dpk-crisis-{standing.id}"},
+    )
+    return {
+        "packets_here": decision.packets_for(session, crisis=standing),
+        "packet_note": clicked.note,
+        "packet_running_anchor": clicked.running_anchor,
+        "packet_note_anchor": clicked.note_anchor,
+    }
+
+
 def _stakeholder_block(
     session: Session, client: Client, standing: Crisis
 ) -> dict[str, object]:
@@ -646,6 +678,9 @@ def crisis_page(
     contacts = _contacts(session, client)
 
     now = dt.datetime.now(dt.UTC)
+    # Before the card's block below, which is the page's catch-all for the
+    # shared note channel: a paper's sentence is read beside the paper.
+    packets = _packet_block(session, client, selected)
     return templates.TemplateResponse(
         request,
         "client_crisis.html",
@@ -690,6 +725,11 @@ def crisis_page(
             # progress rewrites it on its next sentence, so consuming a
             # mid-run reload costs nothing.
             "note": _last_note.pop(client.id, ""),
+            # Das Entscheidungspapier (RIS-05) at the second occasion the
+            # acceptance names. Read through ``decision.packets_for`` — one
+            # occasion, newest first — because a crisis declared straight off an
+            # article has no register row whose button could reach it.
+            **packets,
             # Die Stakeholder-Auswahl (RIS-03) at the other occasion the map
             # anchors; the block is the register's own partial.
             **_stakeholder_block(session, client, selected),
@@ -705,19 +745,6 @@ def crisis_page(
 # so the crisis page refuses the same input for the same reason.
 
 
-def _crisis_for(session: Session, crisis_id: int) -> Crisis | None:
-    """The crisis, or ``None`` for a stale id — never a 500 on a button.
-
-    A benchmark's crisis is ``None`` as well: :func:`mandate_or_404` keeps the
-    pages off a company nobody reports to, and a button that spends a model
-    call has to hold the same line.
-    """
-    standing = session.get(Crisis, crisis_id)
-    if standing is None or standing.client.is_competitor:
-        return None
-    return standing
-
-
 @router.post("/crisis/{crisis_id}/stakeholder/auswahl")
 def select_crisis_stakeholders(
     crisis_id: int,
@@ -730,12 +757,12 @@ def select_crisis_stakeholders(
     keeps it, order and all, because re-asking would clobber the order a
     person set in the hour it mattered.
     """
-    standing = _crisis_for(session, crisis_id)
+    standing = crisis_or_none(session, crisis_id)
     if standing is None:
         return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
     def _select(worker: Session) -> str:
-        subject = _crisis_for(worker, crisis_id)
+        subject = crisis_or_none(worker, crisis_id)
         if subject is None:
             return ""
         selected = stakeholders.select_for(worker, crisis=subject)
@@ -763,12 +790,12 @@ def top_up_crisis_stakeholders(
     card it is drawn from. The standing rows keep their reasons and their
     order, because that order is the call order somebody is working down.
     """
-    standing = _crisis_for(session, crisis_id)
+    standing = crisis_or_none(session, crisis_id)
     if standing is None:
         return RedirectResponse(local_target(redirect_to), status_code=_SEE_OTHER)
 
     def _top_up(worker: Session) -> str:
-        subject = _crisis_for(worker, crisis_id)
+        subject = crisis_or_none(worker, crisis_id)
         if subject is None:
             return ""
         added = stakeholders.add_to_selection(worker, crisis=subject)
@@ -796,7 +823,7 @@ def drop_crisis_stakeholder(
     every occasion at once, and the map outlives the incident. No model call —
     a person removing a group is a decision, not a question.
     """
-    standing = _crisis_for(session, crisis_id)
+    standing = crisis_or_none(session, crisis_id)
     if standing is not None:
         stakeholders.drop_from_selection(
             session, crisis=standing, selection_id=selection_id
@@ -822,7 +849,7 @@ def reorder_crisis_stakeholders(
     of which the tool sees only part — so the moment a person sorts the list,
     the "Empfehlung" marker ends and the stored order is theirs.
     """
-    standing = _crisis_for(session, crisis_id)
+    standing = crisis_or_none(session, crisis_id)
     if standing is not None:
         ordered, refusal = stakeholder_ui.ordered_ids(sid, pos)
         if refusal:
