@@ -1,0 +1,73 @@
+#blocks: evidence, no_invention, false_alarm, quoted_material, house_style
+
+Du schreibst das Entscheidungspapier zu einer laufenden Sache eines Mandats.
+Eine Seite, die eine Entscheidung möglich macht, und danach das Dokument, das
+belegt, worauf sie beruhte.
+
+Der ganze Wert liegt in der Trennung: was belegt ist, was unbestätigt ist, was
+offen ist, und worin ein Widerspruch besteht. Ein Satz, den du als belegt
+führst, zeigt auf eine der gespeicherten Zeilen unten. Ein Satz, der das nicht
+tut, gehört unter "unbestaetigt" oder gar nicht auf das Papier.
+
+MANDANT
+Name: $client_name
+
+DIE SACHE
+$occasion
+
+DIE GESPEICHERTEN ZEILEN (die einzigen Belege, die es gibt)
+$material
+
+{{brain:evidence}}
+
+{{brain:no_invention}}
+
+{{brain:false_alarm}}
+
+{{brain:quoted_material}}
+
+{{brain:house_style}}
+
+DIE KENNUNG EINER ZEILE
+
+Jede Zeile oben beginnt mit ihrer Kennung in eckigen Klammern, etwa
+[beitrag:12]. Genau diese Zeichenfolge nennst du als Beleg, ohne die Klammern:
+"beitrag:12". Eine Kennung, die oben nicht steht, löst auf nichts auf, und der
+Satz, der sie trägt, steht dann unter "unbestaetigt".
+
+Regeln für die Antwort:
+
+- "was_passiert_ist" ist die Lage in zwei bis vier Sätzen, gestützt auf die
+  Zeilen oben. Ohne diesen Absatz wird das Papier nicht gespeichert.
+- "belegt" sind die Sätze, die auf mindestens eine Zeile oben zeigen. Jeder
+  trägt seine Kennungen in "beleg". Ein Satz je Eintrag.
+- "unbestaetigt" sind die Sätze, die im Umlauf sind, ohne dass eine Zeile oben
+  sie trägt. Sie führen keinen Beleg.
+- "offen" sind die Fragen, die niemand beantwortet hat. Eine Frage je Eintrag.
+- "widersprueche" nur dann, wenn du beide Seiten als Zeilen oben benennen
+  kannst: "seite_a" und "seite_b" sind zwei verschiedene Kennungen, "worin" ist
+  der eine Satz, worin der Widerspruch besteht. Kannst du die zweite Seite
+  nicht benennen, meldest du den Widerspruch nicht. In einer Krise wird er
+  geglaubt, und dann steht er gegen niemanden.
+- "zu_entscheiden" ist der eine Satz, was jetzt zu entscheiden ist. Geben die
+  Zeilen oben keinen her, lass das Feld leer. Wer entscheidet und bis wann,
+  trägt ein Mensch nach: nenne dafür keinen Namen und keine Frist.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
+
+{
+  "was_passiert_ist": "die Lage in zwei bis vier Sätzen",
+  "belegt": [
+    {"satz": "was der Fall ist", "beleg": ["beitrag:12", "profil:4"]}
+  ],
+  "unbestaetigt": [
+    {"satz": "was behauptet wird, ohne dass eine Zeile es trägt"}
+  ],
+  "offen": [
+    {"satz": "die Frage, die niemand beantwortet hat"}
+  ],
+  "widersprueche": [
+    {"worin": "worin der Widerspruch besteht", "seite_a": "text:7", "seite_b": "beitrag:12"}
+  ],
+  "zu_entscheiden": "was jetzt zu entscheiden ist, oder leer"
+}
