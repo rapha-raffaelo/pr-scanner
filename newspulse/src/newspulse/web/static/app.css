@@ -26,35 +26,57 @@
 */
 
 :root {
-  /* Greys. The sidebar is the darkest plane, content sits lighter on top of it,
-     and cards are white — the macOS stacking, so depth comes from value rather
-     than from a shadow. */
-  --side-bg: #ebebf0;
-  --ground: #f7f7fa;
+  /* The planes. A dark sidebar under a light workspace: navigation is the one
+     surface that never changes while everything to its right does, and giving
+     it its own value makes that division legible before a single label is
+     read. Cards are white on a cool lavender-grey ground, so depth comes from
+     value first and a whisper of shadow second. */
+  --side-bg: #1c1f37;
+  --side-ink: rgba(255, 255, 255, 0.86);
+  --side-muted: rgba(255, 255, 255, 0.46);
+  --side-line: rgba(255, 255, 255, 0.09);
+  --side-hover: rgba(255, 255, 255, 0.07);
+  --ground: #f5f6fb;
   --card: #ffffff;
-  --fill: rgba(120, 120, 128, 0.12);
-  --fill-2: rgba(120, 120, 128, 0.07);
-  --fill-strong: rgba(120, 120, 128, 0.20);
+  --fill: rgba(60, 64, 96, 0.08);
+  --fill-2: rgba(60, 64, 96, 0.05);
+  --fill-strong: rgba(60, 64, 96, 0.14);
 
-  --ink: #1d1d1f;
-  --ink-2: rgba(29, 29, 31, 0.82);
-  --muted: rgba(60, 60, 67, 0.58);
-  --faint: rgba(60, 60, 67, 0.32);
-  --line: rgba(60, 60, 67, 0.12);
-  --line-strong: rgba(60, 60, 67, 0.22);
+  --ink: #171a2f;
+  --ink-2: rgba(23, 26, 47, 0.80);
+  --muted: rgba(60, 64, 96, 0.60);
+  --faint: rgba(60, 64, 96, 0.38);
+  --line: rgba(28, 31, 55, 0.10);
+  --line-strong: rgba(28, 31, 55, 0.20);
 
-  --tint: #0071e3;
-  --tint-wash: rgba(0, 113, 227, 0.10);
+  /* Indigo, not blue. It is the hue the brand palette already leads with
+     (branding._PALETTE[0]) and the one this file's own comments call "the
+     app's indigo" — the tint was the last place still on Apple's blue. */
+  --tint: #5b4de8;
+  --tint-deep: #4338ca;
+  --tint-wash: rgba(91, 77, 232, 0.11);
+  --tint-wash-2: rgba(91, 77, 232, 0.06);
   --accent: var(--tint);
-  --alert: #d70015;
-  --good: #248a3d;
-  --warn: #b25000;
+  --alert: #dc2626;
+  --good: #16a34a;
+  --warn: #d97706;
   /* The bar a company that is neither the mandate nor an alert is drawn in.
      Named because the KI-Sichtbarkeit ranking draws every other firm in it. */
   --neutral: #a1a1aa;
-  --purple: #8944ab;
-  --pink: #d30f45;
-  --teal: #0071a4;
+  --purple: #7c3aed;
+  --pink: #db2777;
+  --teal: #0e7490;
+
+  /* One wash per category, read by both tag vocabularies (Today's `t-<cat>`
+     and the archive's `tag--<cat>`), so a story wears the same colour in both
+     views and the hex literals that used to live on each rule are gone. */
+  --cat-produkt-ink: #1d4ed8;     --cat-produkt-wash: #e0e7ff;
+  --cat-personalie-ink: #6d28d9;  --cat-personalie-wash: #ede9fe;
+  --cat-wettbewerb-ink: #a21caf;  --cat-wettbewerb-wash: #fae8ff;
+  --cat-finanzen-ink: #15803d;    --cat-finanzen-wash: #dcfce7;
+  --cat-krise-ink: #b91c1c;       --cat-krise-wash: #fee2e2;
+  --cat-regulatorik-ink: #b45309; --cat-regulatorik-wash: #fef3c7;
+  --cat-sonstiges-ink: #4b5563;   --cat-sonstiges-wash: #eef0f5;
 
   /* The macOS type scale, one point up. Nothing outside this list. */
   --t-caption2: 10px;
@@ -71,10 +93,13 @@
   --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
 
-  --radius: 10px;
-  --radius-s: 6px;
+  --radius: 12px;
+  --radius-s: 8px;
   --radius-pill: 980px;
-  --shadow: none;
+  /* A hairline does the separating; the shadow only says the card is a step
+     above the ground, and at this strength it reads as depth, not as glow. */
+  --shadow: 0 1px 2px rgba(28, 31, 55, .05), 0 1px 3px rgba(28, 31, 55, .04);
+  --shadow-raised: 0 4px 12px rgba(28, 31, 55, .08), 0 1px 3px rgba(28, 31, 55, .05);
   --side-w: 232px;
   --col: 1120px;
 
@@ -84,17 +109,17 @@
   --surface: var(--card);
   --border: var(--line);
   --text: var(--ink);
-  --alertbg: rgba(215, 0, 21, .09);
+  --alertbg: rgba(220, 38, 38, .09);
   --alert-bg: var(--alertbg);
   --alert-wash: var(--alertbg);
-  --good-wash: rgba(36, 138, 61, .10);
-  --warn-wash: rgba(178, 80, 0, .10);
+  --good-wash: rgba(22, 163, 74, .10);
+  --warn-wash: rgba(217, 119, 6, .11);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   background: var(--ground);
   color: var(--ink);
   font-size: var(--t-body);
@@ -110,7 +135,8 @@ body {
 
 .side {
   background: var(--side-bg);
-  border-right: 1px solid var(--line);
+  color: var(--side-ink);
+  border-right: 1px solid var(--side-line);
   padding: var(--s5) var(--s3) var(--s4);
   display: flex; flex-direction: column; gap: var(--s5);
   position: sticky; top: 0; align-self: start; height: 100vh;
@@ -119,13 +145,14 @@ body {
 .side__brand {
   display: flex; align-items: center; gap: var(--s2);
   font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.02em;
-  color: var(--ink); padding: 0 var(--s2) 0 var(--s1);
+  color: #fff; padding: 0 var(--s2) 0 var(--s1);
 }
 .side__brand:hover { text-decoration: none; }
 .side__mark {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border-radius: var(--radius-s);
-  background: var(--tint); color: #fff;
+  width: 26px; height: 26px; border-radius: 7px;
+  background: linear-gradient(135deg, #7c6cf6, var(--tint)); color: #fff;
+  box-shadow: 0 2px 6px rgba(91, 77, 232, .45);
   font-size: var(--t-subhead); font-weight: 700; line-height: 1;
 }
 .side__nav { display: flex; flex-direction: column; gap: 1px; }
@@ -134,22 +161,23 @@ body {
 .side__sect {
   display: flex; align-items: baseline; gap: var(--s2);
   font-size: var(--t-caption); font-weight: 600; letter-spacing: 0.05em;
-  text-transform: uppercase; color: var(--faint);
+  text-transform: uppercase; color: var(--side-muted);
   padding: var(--s4) var(--s2) var(--s1);
 }
 .side__n { font-weight: 400; letter-spacing: 0; }
 .side__row {
   display: flex; align-items: center; gap: var(--s2);
   padding: 5px var(--s2); border-radius: var(--radius-s); min-height: 28px;
-  font-size: var(--t-subhead); font-weight: 400; color: var(--ink);
+  font-size: var(--t-subhead); font-weight: 500; color: var(--side-ink);
   white-space: nowrap;
 }
-.side__row:hover { background: rgba(255, 255, 255, .6); text-decoration: none; }
+.side__row:hover { background: var(--side-hover); color: #fff; text-decoration: none; }
 /* Selected is a filled row, the way a Finder sidebar does it: the tint carries
    the selection, not a left border or a bolder weight bolted onto grey. */
-.side__row.is-on { background: var(--tint); color: #fff; font-weight: 500; }
+.side__row.is-on { background: var(--tint); color: #fff; font-weight: 600;
+  box-shadow: 0 2px 8px rgba(91, 77, 232, .35); }
 .side__row.is-on:hover { background: var(--tint); }
-.side__row.is-off { opacity: .5; }
+.side__row.is-off { opacity: .45; }
 .side__dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .side__row.is-on .side__dot { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9); }
 .side__nm { overflow: hidden; text-overflow: ellipsis; }
@@ -161,7 +189,7 @@ body {
   font-size: var(--t-caption); font-weight: 600; line-height: 18px; text-align: center;
 }
 .side__row.is-on .side__badge { background: rgba(255, 255, 255, .28); }
-.side__foot { margin-top: auto; padding-top: var(--s3); border-top: 1px solid var(--line); }
+.side__foot { margin-top: auto; padding-top: var(--s3); border-top: 1px solid var(--side-line); }
 
 .main { display: flex; flex-direction: column; min-width: 0; }
 
@@ -172,7 +200,7 @@ body {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4);
   padding: var(--s5) var(--s7) var(--s3);
-  background: rgba(247, 247, 250, .82);
+  background: rgba(255, 255, 255, .86);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--line);
@@ -235,7 +263,7 @@ a:hover { text-decoration: underline; }
    value step does the separating. */
 .card, .panel, .sect {
   background: var(--card);
-  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: none;
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
   padding: 0; margin-bottom: var(--s5); overflow: hidden;
 }
 /* The panel's inset is applied to its children rather than to the panel itself,
@@ -628,17 +656,20 @@ a:hover { text-decoration: underline; }
 /* A caption in the system colour for its kind. Apple tints the *word*; a filled
    capsule around every one of them turns a headline into a row of stickers. */
 .tag, .tone {
-  font-size: var(--t-footnote); font-weight: 400; letter-spacing: -0.01em;
-  text-transform: none; padding: 0; border: 0; border-radius: 0;
-  background: transparent; color: var(--muted);
+  font-size: var(--t-caption); font-weight: 600; letter-spacing: 0;
+  text-transform: none; padding: 2px 9px; border: 0; border-radius: var(--radius-pill);
+  background: var(--fill-2); color: var(--muted); line-height: 16px;
 }
-.tag.t-krise       { color: var(--alert); font-weight: 600; }
-.tag.t-regulatorik { color: var(--warn); }
-.tag.t-produkt     { color: var(--tint); }
-.tag.t-personalie  { color: var(--purple); }
-.tag.t-finanzen    { color: var(--good); }
-.tag.t-wettbewerb  { color: var(--pink); }
-.tag.t-sonstiges   { color: var(--muted); }
+/* One story, one colour, in both views: these read the same tokens as the
+   archive's `tag--<cat>` below, and the hex literals both used to carry are gone. */
+.tag.t-krise       { color: var(--cat-krise-ink);       background: var(--cat-krise-wash); }
+.tag.t-regulatorik { color: var(--cat-regulatorik-ink); background: var(--cat-regulatorik-wash); }
+.tag.t-produkt     { color: var(--cat-produkt-ink);     background: var(--cat-produkt-wash); }
+.tag.t-personalie  { color: var(--cat-personalie-ink);  background: var(--cat-personalie-wash); }
+.tag.t-finanzen    { color: var(--cat-finanzen-ink);    background: var(--cat-finanzen-wash); }
+.tag.t-wettbewerb  { color: var(--cat-wettbewerb-ink);  background: var(--cat-wettbewerb-wash); }
+.tag.t-sonstiges   { color: var(--cat-sonstiges-ink);   background: var(--cat-sonstiges-wash); }
+.tone { background: transparent; padding: 0; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: var(--t-caption2); }
 .tone--positiv { color: var(--good); }
 .tone--negativ { color: var(--alert); }
 .tone--neutral { color: var(--muted); }
@@ -676,9 +707,9 @@ a:hover { text-decoration: underline; }
   font-size: var(--t-caption2);
   font-weight: 700;
   padding: 2px 8px;
-  border-radius: var(--radius);
-  background: #eef0fb;
-  color: var(--accent);
+  border-radius: var(--radius-pill);
+  background: var(--tint-wash);
+  color: var(--tint-deep);
 }
 .pickup-list { display: inline; }
 .pickup-list > summary {
@@ -748,16 +779,16 @@ a:hover { text-decoration: underline; }
 }
 /* Secondary: the same shape, so a row of actions lines up, without competing
    with the one button that does the thing. */
-.btn--ghost { background: var(--fill); color: var(--tint); }
+.btn--ghost { background: var(--tint-wash); color: var(--tint-deep); }
 /* The one filled button in the app that destroys something. */
 /* The day-fallback band: informative, not an error. */
-.notice--day { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; margin-bottom: 14px; }
+.notice--day { background: var(--tint-wash); border-color: rgba(91, 77, 232, .28); color: var(--tint-deep); margin-bottom: 14px; }
 .notice--day a { color: var(--accent); font-weight: 600; }
 .btn--danger { background: var(--alert); }
-.btn--danger:hover { background: #b91c1c; }
+.btn--danger:hover { background: var(--cat-krise-ink); }
 .btn--quiet { background: var(--fill); color: var(--ink-2); font-weight: 500; }
 .btn.secondary, .panel button.secondary { background: var(--card); color: var(--accent); }
-.btn.danger, .panel button.danger { background: var(--card); color: var(--alert); border-color: #fca5a5; }
+.btn.danger, .panel button.danger { background: var(--card); color: var(--alert); border-color: rgba(220, 38, 38, .35); }
 
 /* A control that reads as a link: row actions, and anything destructive enough
    that it must not look like the primary thing to click. Defined here rather
@@ -963,10 +994,10 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.04em; border-radius: var(--radius); padding: 2px 8px;
   border: 1px solid var(--line); color: var(--muted); background: var(--bg);
 }
-.state__badge--raus { color: #0b4f8a; background: rgba(0, 113, 227, 0.1); border-color: rgba(0, 113, 227, 0.28); }
-.state__badge--antwort { color: #14532d; background: rgba(36, 138, 61, 0.1); border-color: rgba(36, 138, 61, 0.3); }
-.state__badge--absage { color: #b25000; background: rgba(178, 80, 0, 0.1); border-color: rgba(178, 80, 0, 0.28); }
-.state__badge--veroeffentlicht { color: #14532d; background: rgba(36, 138, 61, 0.16); border-color: rgba(36, 138, 61, 0.4); }
+.state__badge--raus { color: var(--tint-deep); background: var(--tint-wash); border-color: rgba(91, 77, 232, 0.28); }
+.state__badge--antwort { color: var(--cat-finanzen-ink); background: var(--good-wash); border-color: rgba(22, 163, 74, 0.3); }
+.state__badge--absage { color: var(--cat-regulatorik-ink); background: var(--warn-wash); border-color: rgba(217, 119, 6, 0.28); }
+.state__badge--veroeffentlicht { color: var(--cat-finanzen-ink); background: var(--cat-finanzen-wash); border-color: rgba(22, 163, 74, 0.4); }
 /* The quiet second badge. Crosscheck-hold's amber — "worth a look", not an
    alarm — and distinct from the base grey, so a silent letter cannot be read
    as carrying a draft badge. */
@@ -1133,8 +1164,8 @@ input[type="file"]::file-selector-button:hover { border-color: var(--accent); }
 .actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.5rem; }
 
 .notice { border-radius: var(--radius); padding: 0.55rem 0.75rem; margin-bottom: 0.8rem; font-size: 0.85rem; }
-.notice--error { background: var(--alert-bg); border: 1px solid #fca5a5; color: #b91c1c; }
-.notice--ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #047857; }
+.notice--error { background: var(--alert-bg); border: 1px solid rgba(220, 38, 38, .35); color: var(--cat-krise-ink); }
+.notice--ok { background: var(--cat-finanzen-wash); border: 1px solid rgba(22, 163, 74, .4); color: var(--cat-finanzen-ink); }
 
 table.data { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 table.data th, table.data td {
@@ -1208,23 +1239,23 @@ table.data th { color: var(--muted); font-weight: 600; }
   border-top: 1px solid var(--line);
   background: transparent;
 }
-.feed-item--alert { border-color: #fecaca; }
+.feed-item--alert { border-color: rgba(220, 38, 38, .30); }
 .feed-item__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
 .feed-item__headline { font-size: var(--t-subhead); font-weight: 600; color: var(--ink); text-decoration: none; }
 .feed-item__headline:hover { text-decoration: underline; }
 .feed-item__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; font-size: var(--t-caption); color: var(--muted); }
-.feed-item__summary { font-size: var(--t-footnote); color: #40454f; margin-top: 5px; }
+.feed-item__summary { font-size: var(--t-footnote); color: var(--ink-2); margin-top: 5px; }
 .importance { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); }
 
 /* The archive names its category chips `tag--<category>`; same hues as the
    Today feed's `t-<category>` so one story reads identically in both views. */
-.tag--produkt { background: #e0f2fe; color: #0369a1; }
-.tag--personalie { background: #ede9fe; color: #6d28d9; }
-.tag--wettbewerb { background: #f3e8ff; color: #7e22ce; }
-.tag--finanzen { background: #dcfce7; color: #15803d; }
-.tag--krise { background: #fee2e2; color: #b91c1c; }
-.tag--regulatorik { background: #fef3c7; color: #a16207; }
-.tag--sonstiges { background: #eef0f3; color: #4b5563; }
+.tag--produkt { background: var(--cat-produkt-wash); color: var(--cat-produkt-ink); }
+.tag--personalie { background: var(--cat-personalie-wash); color: var(--cat-personalie-ink); }
+.tag--wettbewerb { background: var(--cat-wettbewerb-wash); color: var(--cat-wettbewerb-ink); }
+.tag--finanzen { background: var(--cat-finanzen-wash); color: var(--cat-finanzen-ink); }
+.tag--krise { background: var(--cat-krise-wash); color: var(--cat-krise-ink); }
+.tag--regulatorik { background: var(--cat-regulatorik-wash); color: var(--cat-regulatorik-ink); }
+.tag--sonstiges { background: var(--cat-sonstiges-wash); color: var(--cat-sonstiges-ink); }
 .tag--alert { background: var(--alert); color: #fff; text-transform: uppercase; letter-spacing: 0.03em; }
 
 .pagination { display: flex; align-items: center; gap: 14px; margin-top: 14px; font-size: var(--t-footnote); }
@@ -1444,12 +1475,15 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .subtabs__logo { width: 30px; height: 30px; border-radius: var(--radius); object-fit: contain; background: #fff; border: 1px solid var(--line); flex: none; }
 .subtabs__logo--mono { display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--t-caption); font-weight: 700; border: none; }
 .subtabs > a {
-  padding: 0; font-size: var(--t-footnote); font-weight: 500; color: var(--muted);
+  padding: 0; font-size: var(--t-subhead); font-weight: 500; color: var(--muted);
   text-decoration: none; border: 0; border-bottom: 2px solid transparent;
   padding-bottom: var(--s3); margin-bottom: calc(var(--s3) * -1 - 1px);
+  transition: color .12s ease;
 }
 .subtabs > a:hover { color: var(--ink); }
-.subtabs > a.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); background: transparent; }
+/* The selected tab is the tint, not a heavier grey: it is the one place on the
+   strip that says where you are, and the same hue the sidebar uses to say it. */
+.subtabs > a.active { color: var(--tint-deep); font-weight: 600; border-bottom-color: var(--tint); background: transparent; }
 /* A download, not a destination — so it sits apart and does not read as a tab
    that will paint a page. */
 .subtabs__dl {
@@ -1806,12 +1840,17 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   border: 0; padding: 0; margin: 0 0 var(--s5);
 }
 .subtabs > a {
-  padding: 4px 10px; min-height: 26px; display: inline-flex; align-items: center;
-  border: 0; border-radius: var(--radius-s); margin: 0;
-  color: var(--ink-2); font-size: var(--t-subhead); font-weight: 400;
+  padding: 6px 10px 9px; min-height: 26px; display: inline-flex; align-items: center;
+  border: 0; border-bottom: 2px solid transparent; border-radius: var(--radius-s) var(--radius-s) 0 0; margin: 0;
+  color: var(--muted); font-size: var(--t-subhead); font-weight: 500;
+  transition: color .12s ease, border-color .12s ease;
 }
 .subtabs > a:hover { background: var(--fill-2); color: var(--ink); text-decoration: none; }
-.subtabs > a.active { background: var(--fill); font-weight: 600; color: var(--ink); }
+/* Where you are, said in the tint: indigo text over an indigo rule, the same hue
+   the sidebar row and the toolbar button use to mean "this one". This is the
+   live rule — an earlier block above defines the same selector and is kept in
+   step, so the two can never disagree about what a selected tab looks like. */
+.subtabs > a.active { background: transparent; border-bottom-color: var(--tint); font-weight: 600; color: var(--tint-deep); }
 .subtabs__id { display: none; }
 .subtabs__dl { margin-left: auto; font-size: var(--t-footnote); color: var(--tint); }
 .subtabs__dl:hover { text-decoration: underline; }
@@ -2493,3 +2532,69 @@ button:disabled { opacity: .55; cursor: default; }
    maintained — the crisis page selects from the card and never edits it. */
 .ssel__missing { font-size: var(--t-caption); color: var(--muted); }
 .ssel__missing a { font-weight: 600; }
+
+
+/* --- Shared primitives of the Kommandozentrale screens ------------------- */
+/* Base rules only, at class specificity, for the vocabulary the opportunity
+   pages introduce: a page that draws its own version in a <style> block wins,
+   and one that does not still gets the house look instead of the browser's. */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px; border-radius: var(--radius-pill);
+  font-size: var(--t-caption); font-weight: 600; line-height: 18px;
+  background: var(--fill-2); color: var(--ink-2); white-space: nowrap;
+}
+.pill--good { background: var(--good-wash); color: var(--cat-finanzen-ink); }
+.pill--warn { background: var(--warn-wash); color: var(--cat-regulatorik-ink); }
+.pill--none { background: var(--fill-2); color: var(--muted); }
+.pill--tint { background: var(--tint-wash); color: var(--tint-deep); }
+
+.chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 11px; border-radius: var(--radius-pill);
+  font-size: var(--t-caption); font-weight: 500; line-height: 18px;
+  background: var(--card); color: var(--ink-2); border: 1px solid var(--line);
+}
+.chip--warn { background: var(--warn-wash); color: var(--cat-regulatorik-ink); border-color: transparent; }
+.chip--tint { background: var(--tint-wash); color: var(--tint-deep); border-color: transparent; }
+
+/* The score: one large number and its ceiling, in a raised card. */
+.score__n { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.03em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.score__w { font-size: var(--t-caption); color: var(--muted); }
+
+/* An engine row: an icon square in the engine's colour, a title, a verdict. */
+.ev {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: var(--s3);
+  align-items: start; padding: var(--s3) var(--s4);
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--card);
+  box-shadow: var(--shadow);
+}
+.ev--us { border-color: rgba(91, 77, 232, .35); background: var(--tint-wash-2); }
+.ev__b {
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--tint-wash); color: var(--tint-deep); font-weight: 700; font-size: var(--t-caption);
+}
+.ev__t { font-size: var(--t-subhead); font-weight: 600; color: var(--ink); }
+.ev__w { font-size: var(--t-caption); color: var(--muted); margin-top: 2px; }
+
+/* The activity stream: a horizontal strip of small timestamped cards. */
+.stream { display: flex; gap: var(--s3); overflow-x: auto; padding-bottom: var(--s1); }
+.stream__row {
+  flex: none; min-width: 148px; padding: var(--s3);
+  border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--card);
+  font-size: var(--t-caption); color: var(--ink-2); box-shadow: var(--shadow);
+}
+
+/* A timeline: a hairline rail with a dot per event. */
+.tl { list-style: none; margin: 0; padding: 0; position: relative; }
+.tl::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 1px; background: var(--line-strong); }
+.tl > li, .tl__b { position: relative; padding-left: var(--s5); margin-bottom: var(--s3); font-size: var(--t-footnote); color: var(--ink-2); }
+.tl > li::before, .tl__b::before {
+  content: ""; position: absolute; left: 0; top: 4px; width: 11px; height: 11px;
+  border-radius: 50%; background: var(--card); border: 2px solid var(--line-strong);
+}
+.tl > li.is-on::before, .tl__b.is-on::before, .tl > li.is-us::before { border-color: var(--tint); background: var(--tint); }
+.tl__t { display: block; font-size: var(--t-caption); color: var(--muted); }
+
