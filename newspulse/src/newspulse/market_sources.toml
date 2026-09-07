@@ -81,7 +81,15 @@ kind = "regulierung"
 # which is a thinner answer than the other two get and worth saying out loud
 # rather than papering over with sources that 404.
 
-[[sources]]
-name = "DIW Berlin Veranstaltungen"
-url = "https://www.diw.de/de/rss_events.xml"  # 20 Einträge, geprüft 2026-08-26
-kind = "veranstaltung"
+# No curated Veranstaltung source. There was one — DIW Berlin's event feed — and
+# it was a mistake made while repairing dead links: it answered, so it was kept,
+# without asking whether what it carries is an occasion for anybody here. It is
+# an economics institute's seminar calendar, and every curated source reaches
+# every mandate (`sources_for` filters only the per-mandate field search), so a
+# fashion retailer's editorial plan filled up with "Berlin Macro Seminar" and a
+# "PhD Winter School". Measured before removal: 161 of 193 stored Veranstaltung
+# signals came from this one feed, for all seven mandates alike.
+#
+# The class leans on the per-mandate field search instead, which is thinner and
+# honest: a trade fair a mandate's own field turns up is an occasion, an
+# institute's colloquium is not.

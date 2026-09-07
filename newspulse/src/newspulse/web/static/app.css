@@ -189,6 +189,18 @@ body {
   font-size: var(--t-caption); font-weight: 600; line-height: 18px; text-align: center;
 }
 .side__row.is-on .side__badge { background: rgba(255, 255, 255, .28); }
+/* The one row in the roster that adds to it rather than opening one. Quieter
+   than a mandate — it is a door, not a destination — and the plus does the
+   saying, so the label stays a noun. */
+.side__new { color: var(--side-muted); }
+.side__new:hover { color: #fff; }
+.side__newl { overflow: hidden; text-overflow: ellipsis; }
+.side__plus {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 8px; height: 8px; flex: none; font-size: 14px; line-height: 1;
+}
+/* The anchored panel opens on arrival, so the link lands on an open form. */
+.add-client-toggle:target { }
 .side__foot { margin-top: auto; padding-top: var(--s3); border-top: 1px solid var(--side-line); }
 
 .main { display: flex; flex-direction: column; min-width: 0; }

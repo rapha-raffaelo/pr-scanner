@@ -519,7 +519,7 @@
 
       {# Collapsed by default: adding is occasional, reading the portfolio is
          constant, so the six add-fields must not sit permanently above the table. #}
-      <details class="add-client-toggle"{% if client_error and not edit_id %} open{% endif %}>
+      <details class="add-client-toggle" id="neuer-mandant"{% if client_error and not edit_id %} open{% endif %}>
         <summary>{{ t("+ Mandant hinzufügen") }}</summary>
         <form method="post" action="/settings/clients" class="add-client">
           <div class="import-fields">
