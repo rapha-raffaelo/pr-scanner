@@ -1072,6 +1072,8 @@ _EN: dict[str, str] = {
     "Freigabe eintragen": "Record approval",
     #: The sidebar row that adds to the roster it sits under.
     "Neuer Mandant": "New client",
+    #: The portfolio page's own version, without the plus the markup draws.
+    "Mandant hinzufügen": "Add client",
     "Vom Mandanten freigegeben": "Approved by the client",
     "Vom Mandanten freigegeben: %(who)s": "Approved by the client: %(who)s",
     "Noch nicht mit dem Mandanten abgestimmt.": "Not yet agreed with the client.",

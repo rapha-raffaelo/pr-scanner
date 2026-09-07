@@ -1092,3 +1092,62 @@ def test_the_migrated_schema_refuses_the_same_wording_twice_for_one_mandate(
 
         with pytest.raises(IntegrityError):
             open_session.commit()
+
+
+# --- Seeding a mandate nobody picked questions for --------------------------------
+#
+# "KI sichtbarkeit ist auch nicht ausgefüllt. hier sollte eigentlich alles
+# automatisch gemessen werden im hintergrund."
+#
+# Measured in production: five of seven mandates had zero accepted questions and
+# zero measurement runs. `due` answers False without one, so the page they were
+# meant to read stood empty for months while the machinery behind it worked.
+
+
+def test_a_mandate_with_no_questions_is_seeded_and_becomes_measurable(session, mandate, monkeypatch, no_visibility_seeding):
+    monkeypatch.setattr(visibility, "seed", no_visibility_seeding)
+    assert visibility.due(session, mandate) is False, "nothing to measure yet"
+
+    taken = visibility.seed(
+        session,
+        mandate,
+        invoke=_panel(
+            ("Ist Enpal seriös?", "marke"),
+            ("Welche Anbieter für Solaranlagen gibt es?", "auswahl"),
+            ("Worauf muss ich bei einer Solaranlage achten?", "kategorie"),
+        ),
+    )
+
+    assert [q.text for q in taken] == [
+        "Ist Enpal seriös?",
+        "Welche Anbieter für Solaranlagen gibt es?",
+        "Worauf muss ich bei einer Solaranlage achten?",
+    ]
+    assert visibility.due(session, mandate) is True
+
+
+def test_seeding_stops_at_the_cap(session, mandate, monkeypatch, no_visibility_seeding):
+    """Unreviewed questions: enough to have a measurement, not enough to spend
+    the whole budget before a person has looked."""
+    monkeypatch.setattr(visibility, "seed", no_visibility_seeding)
+    many = tuple(
+        (f"Frage {n}?", "kategorie") for n in range(visibility.SEED_QUESTIONS + 4)
+    )
+
+    taken = visibility.seed(session, mandate, invoke=_panel(*many))
+
+    assert len(taken) == visibility.SEED_QUESTIONS
+
+
+def test_a_set_a_person_curated_is_never_reseeded(session, mandate, monkeypatch, no_visibility_seeding):
+    """The rule that protects a hand-typed profile field, here: what a
+    consultant decided is not something the tool revisits."""
+    monkeypatch.setattr(visibility, "seed", no_visibility_seeding)
+    visibility.accept(session, mandate, "Meine eigene Frage?", "kategorie")
+
+    taken = visibility.seed(session, mandate, invoke=_never_called)
+
+    assert taken == []
+    assert [q.text for q in visibility.accepted(session, mandate)] == [
+        "Meine eigene Frage?"
+    ]

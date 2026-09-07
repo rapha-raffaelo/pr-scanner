@@ -571,7 +571,14 @@ def test_the_sweep_measures_a_mandate_whose_window_is_open(session, mandate, mon
 
 
 def test_the_sweep_spends_nothing_on_a_mandate_that_is_not_due(session, mandate, monkeypatch):
-    """A mandate with no accepted question is not due, and no call is spent on it."""
+    """A mandate that still has no question after seeding is not due, and no
+    call is spent on it.
+
+    Seeding is what changed under this test: a mandate with no questions used to
+    stay unmeasurable forever, and now the sweep gives it a first set. The case
+    this still guards is the one seeding cannot fix — nothing proposed, or a set
+    a person retired — where a measurement would be spent on nothing.
+    """
     monkeypatch.setattr(
         visibility,
         "measure",
@@ -579,6 +586,38 @@ def test_the_sweep_spends_nothing_on_a_mandate_that_is_not_due(session, mandate,
     )
 
     assert job._measure_visibility(session, [mandate], now=_NOW) == 0
+
+
+def test_the_sweep_seeds_a_mandate_nobody_picked_questions_for(
+    session, mandate, monkeypatch, no_visibility_seeding
+):
+    """"hier sollte eigentlich alles automatisch gemessen werden im hintergrund."
+
+    Measured in production: five of seven mandates had zero accepted questions
+    and zero runs, because `due` answers False without one and accepting was a
+    click nobody made. The sweep seeds first now, so the page has a subject.
+    """
+    monkeypatch.setattr(visibility, "seed", no_visibility_seeding)
+    monkeypatch.setattr(
+        visibility,
+        "propose",
+        lambda session, client, **kw: [
+            visibility.Proposal(text="Welche Anbieter gibt es?", band=VisibilityBand.AUSWAHL)
+        ],
+    )
+    measured: list[str] = []
+
+    def _measure(open_session, client, *, now):
+        measured.append(client.name)
+        return VisibilityRun(client_id=client.id, ran_at=now, providers_asked=[_CLAUDE])
+
+    monkeypatch.setattr(visibility, "measure", _measure)
+
+    assert job._measure_visibility(session, [mandate], now=_NOW) == 1
+    assert measured == ["Enpal"]
+    assert [q.text for q in visibility.accepted(session, mandate)] == [
+        "Welche Anbieter gibt es?"
+    ]
 
 
 def test_the_sweep_leaves_a_benchmark_unmeasured(session, mandate, monkeypatch):

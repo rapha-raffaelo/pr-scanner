@@ -1203,6 +1203,16 @@ def _measure_visibility(
         # there is a fresh SELECT — on exactly the connection that just failed.
         name = client.name
         try:
+            # A mandate nobody picked questions for has nothing to measure, and
+            # `due` says so — which is how five of seven stood at zero runs for
+            # months. Seed it once, here, so the background measurement the page
+            # promises actually has a subject. Never for a set a person has
+            # touched: `seed` returns immediately then.
+            try:
+                visibility.seed(session, client, now=now)
+            except Exception:  # noqa: BLE001 — a seed is not worth a failed sweep
+                session.rollback()
+                _log.exception("seeding visibility questions for %r failed", name)
             if not visibility.due(session, client, now=now):
                 continue
             if measured >= _VISIBILITY_PER_SWEEP or time.monotonic() >= until:

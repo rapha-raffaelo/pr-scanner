@@ -16,7 +16,7 @@
 {% if entries %}
   <nav class="rail" aria-label="{{ t('Impulse') }}">
     {% for e in entries %}
-      <div class="rail__e{% if e.active %} is-on{% endif %}">
+      <div class="rail__e rail__e--{{ e.kind }}{% if e.active %} is-on{% endif %}">
         <a class="rail__a" href="{{ e.href }}"{% if e.active %} aria-current="page"{% endif %}>
           <span class="rail__k">{{ t("Anlass") if e.kind == "anlass" else t("Zeitraum") }}</span>
           <span class="rail__w">{{ e.when }}</span>

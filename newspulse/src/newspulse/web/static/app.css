@@ -192,6 +192,7 @@ body {
 /* The one row in the roster that adds to it rather than opening one. Quieter
    than a mandate — it is a door, not a destination — and the plus does the
    saying, so the label stays a noun. */
+.clients__add { margin-top: var(--s4); }
 .side__new { color: var(--side-muted); }
 .side__new:hover { color: #fff; }
 .side__newl { overflow: hidden; text-overflow: ellipsis; }
@@ -1886,6 +1887,17 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .rail__confirm p strong { color: var(--ink); }
 .rail__confirm .confirm__row { margin-top: var(--s2); }
 .rail__e.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--ink); }
+/* A period is a different kind of thing from an occasion, and the rail used to
+   say so in one small word while drawing the two identically. Read along a row
+   the report then looked like a fourth impulse. It keeps its place — the merge
+   of Impulse and Berichte was the point — and stops pretending to be one:
+   a tinted ground, a rule down its leading edge, and a label in the accent. */
+.rail__e--zeitraum {
+  background: var(--fill-2);
+  border-left: 3px solid var(--line-strong);
+}
+.rail__e--zeitraum .rail__k { color: var(--ink-2); }
+.rail__e--zeitraum.is-on { border-left-color: var(--accent); }
 .rail__k {
   font-size: var(--t-caption2); text-transform: uppercase; letter-spacing: 0.07em;
   font-weight: 700; color: var(--faint);

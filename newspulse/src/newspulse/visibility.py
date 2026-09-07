@@ -1045,6 +1045,54 @@ def _is_due(standing: VisibilityRun, *, now: dt.datetime | None = None) -> bool:
     return _reference(now) - standing.ran_at >= dt.timedelta(days=every)
 
 
+#: How many questions a mandate is seeded with when nobody has picked any.
+#: Well under :data:`MAX_QUESTIONS`, because these are unreviewed: the point is
+#: to have a measurement at all, not to spend the whole budget before a person
+#: has looked.
+SEED_QUESTIONS = 6
+
+
+def seed(
+    session: Session,
+    client: Client,
+    *,
+    invoke=None,
+    now: dt.datetime | None = None,
+) -> list[VisibilityQuestion]:
+    """Give a mandate its first question set, so there is something to measure.
+
+    "KI sichtbarkeit ist auch nicht ausgefüllt. hier sollte eigentlich alles
+    automatisch gemessen werden im hintergrund."
+
+    It was not measured because :func:`due` answers False without an accepted
+    question, and accepting one was a click nobody had made: five of seven
+    mandates had zero questions and zero runs, so the page they were meant to
+    read stood empty for months while the machinery behind it worked.
+
+    Only ever for a mandate with none at all. The moment a person has curated
+    the set — accepted, rejected, retired one — this returns immediately and
+    never touches it again, the same rule that protects a hand-typed profile
+    field: what a consultant decided is not something the tool revisits.
+
+    The first :data:`SEED_QUESTIONS` proposals in the order the proposer
+    returned them, which is its own ranking. Unreviewed, and the page says so by
+    showing them as the ordinary accepted set a person can retire.
+    """
+    if accepted(session, client):
+        return []
+    proposals = propose(session, client, invoke=invoke) if invoke else propose(session, client)
+    taken: list[VisibilityQuestion] = []
+    for proposal in proposals[:SEED_QUESTIONS]:
+        taken.append(accept(session, client, proposal.text, proposal.band, now=now))
+    if taken:
+        _log.info(
+            "seeded %d visibility question(s) for %r; nobody had picked any",
+            len(taken),
+            client.name,
+        )
+    return taken
+
+
 def due(session: Session, client: Client, *, now: dt.datetime | None = None) -> bool:
     """Whether this mandate may be measured again yet.
 

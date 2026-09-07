@@ -367,3 +367,28 @@ def no_industry_settling(monkeypatch):
 
     monkeypatch.setattr(industry, "settle", _stub)
     return original
+
+
+@pytest.fixture(autouse=True)
+def no_visibility_seeding(monkeypatch):
+    """Stop the sweep from proposing visibility questions in a test run.
+
+    The same reason ``no_theme_settling`` and ``no_industry_settling`` exist,
+    found the same way: ``job._measure_visibility`` now gives a mandate with no
+    questions its first set, and that is a model call. Most fixtures here create
+    mandates with no questions at all, so without this one test file took 37
+    seconds and was shelling out to `claude`.
+
+    Yields the real function for the tests that are about it.
+    """
+    from newspulse import visibility
+
+    original = visibility.seed
+
+    def _stub(session, client, *, invoke=None, now=None) -> list:
+        """The real signature, so a change to it breaks the suite rather than
+        production: ``lambda *a, **k`` would have accepted anything."""
+        return []
+
+    monkeypatch.setattr(visibility, "seed", _stub)
+    return original
