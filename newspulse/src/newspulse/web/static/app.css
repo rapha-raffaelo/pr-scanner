@@ -26,26 +26,45 @@
 */
 
 :root {
-  /* Greys. The sidebar is the darkest plane, content sits lighter on top of it,
-     and cards are white — the macOS stacking, so depth comes from value rather
-     than from a shadow. */
-  --side-bg: #ebebf0;
-  --ground: #f7f7fa;
-  --card: #ffffff;
-  --fill: rgba(120, 120, 128, 0.12);
-  --fill-2: rgba(120, 120, 128, 0.07);
-  --fill-strong: rgba(120, 120, 128, 0.20);
+  /* --- The accent, and the only line that carries it ----------------------
+     DEC-4 repaints the whole tool violet, and the point of doing it in tokens
+     is that the next repaint is not another week: the hue is written once,
+     here, and every violet on every page is derived from it — the flat colour,
+     the two washes, the two hairlines, the sidebar's selected row, the tab
+     underline. Changing the accent is changing the next line and nothing else.
 
-  --ink: #1d1d1f;
-  --ink-2: rgba(29, 29, 31, 0.82);
-  --muted: rgba(60, 60, 67, 0.58);
-  --faint: rgba(60, 60, 67, 0.32);
-  --line: rgba(60, 60, 67, 0.12);
-  --line-strong: rgba(60, 60, 67, 0.22);
+     An unbracketed rgb triple rather than a hex, because the alphas have to be
+     derived from it: rgb() with a slash accepts a custom property, and there is
+     no arithmetic over a hex that every browser this runs in supports. The
+     triple below is #6d4aff. */
+  --accent-rgb: 109 74 255;
 
-  --tint: #0071e3;
-  --tint-wash: rgba(0, 113, 227, 0.10);
+  --tint: rgb(var(--accent-rgb));
+  --tint-wash: rgb(var(--accent-rgb) / .10);
+  --tint-wash-soft: rgb(var(--accent-rgb) / .05);
+  --tint-line: rgb(var(--accent-rgb) / .20);
+  --tint-line-strong: rgb(var(--accent-rgb) / .30);
   --accent: var(--tint);
+
+  /* Greys. The sidebar is the darkest plane, content sits lighter on top of
+     it, and cards are white — the macOS stacking, so depth comes from value
+     first and the hairline plus a whisper of shadow second. They carry a trace
+     of the accent's hue, so the ground sits *under* a violet interface rather
+     than beside it. */
+  --side-bg: #eceaf4;
+  --ground: #f7f6fb;
+  --card: #ffffff;
+  --fill: rgba(78, 74, 110, 0.10);
+  --fill-2: rgba(78, 74, 110, 0.06);
+  --fill-strong: rgba(78, 74, 110, 0.18);
+
+  --ink: #1b1a26;
+  --ink-2: rgba(27, 26, 38, 0.82);
+  --muted: rgba(58, 56, 78, 0.60);
+  --faint: rgba(58, 56, 78, 0.36);
+  --line: rgba(30, 28, 48, 0.11);
+  --line-strong: rgba(30, 28, 48, 0.20);
+
   --alert: #d70015;
   --good: #248a3d;
   --warn: #b25000;
@@ -71,12 +90,30 @@
   --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
 
-  --radius: 10px;
-  --radius-s: 6px;
+  /* Softer corners than the macOS 10px, and a shadow that exists at all. The
+     hairline still does the separating; the shadow only says a card sits one
+     step above the ground, which at this strength reads as depth and not as
+     glow. */
+  --radius: 12px;
+  --radius-s: 8px;
   --radius-pill: 980px;
-  --shadow: none;
+  --shadow: 0 1px 2px rgba(30, 28, 48, .05), 0 1px 3px rgba(30, 28, 48, .04);
+  --shadow-raised: 0 4px 12px rgba(30, 28, 48, .09), 0 1px 3px rgba(30, 28, 48, .05);
   --side-w: 232px;
   --col: 1120px;
+  /* The ground, translucent: what the two sticky bars are drawn on so the page
+     blurs through them. Same colour as --ground, and a token because two rules
+     need it and two literals drift. */
+  --veil: rgba(247, 246, 251, .82);
+  /* Fixed, not derived: the toolbar sticks *below* the top bar, and "below"
+     needs a number. Two sticky bars both pinned to 0 land on each other. */
+  --topbar-h: 48px;
+
+  /* How much darker a filled accent control goes when pressed or hovered. A
+     brightness filter rather than a second stored colour: a stored one is a
+     second place the accent lives, and it would drift the first time the line
+     above changes. */
+  --press: 0.90;
 
   --paper: var(--card);
   --bg: var(--ground);
@@ -89,16 +126,29 @@
   --alert-wash: var(--alertbg);
   --good-wash: rgba(36, 138, 61, .10);
   --warn-wash: rgba(178, 80, 0, .10);
-  /* The hairlines and the fainter ground that go with the two washes above. A
-     wash needs a border of its own or the tinted box floats: --line is a grey
-     and reads as a seam on a coloured plane. Three tint alphas in the mock
-     (.18, .20, .25) collapse to two here — the eye cannot separate .18 from
-     .20, and a palette with a third near-identical entry is a palette nobody
-     keeps consistent. */
-  --tint-line: rgba(0, 113, 227, .18);
-  --tint-line-strong: rgba(0, 113, 227, .25);
-  --tint-wash-soft: rgba(0, 113, 227, .05);
+  /* The hairline that goes with the warn wash. A wash needs a border of its
+     own or the tinted box floats: --line is a grey and reads as a seam on a
+     coloured plane. */
   --warn-line: rgba(178, 80, 0, .25);
+
+  /* Captain Comms keeps his own palette — deep green and gold, not the accent —
+     so the assistant reads as a distinct presence inside a violet interface.
+     Declared here rather than in a second :root beside his own rules: one block
+     holds every value in this file, which is what makes the accent above a
+     one-line change instead of a search. */
+  --cc-deep: #14523c;
+  --cc-mid: #22815f;
+  --cc-gold: #f2b32e;
+
+  /* The plan's hook classes: the four source classes its mock names, plus the
+     fifth (a theme with measured resonance) that is a hook class in the engine
+     and needs a swatch of its own rather than being folded into one of the
+     four. Same reason as above for living here and not beside the plan rules. */
+  --hook-study: #5856d6;
+  --hook-reg: var(--warn);
+  --hook-event: var(--tint);
+  --hook-thema: var(--teal);
+  --hook-archiv: var(--good);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -148,16 +198,21 @@ body {
   padding: var(--s4) var(--s2) var(--s1);
 }
 .side__n { font-weight: 400; letter-spacing: 0; }
+/* Structure unchanged from the pass before (DEC-4 repaints the sidebar, it does
+   not rebuild it): the same rows in the same order. What moved is the colour,
+   the breathing room around a row, and what "selected" looks like. */
 .side__row {
   display: flex; align-items: center; gap: var(--s2);
-  padding: 5px var(--s2); border-radius: var(--radius-s); min-height: 28px;
+  padding: 6px var(--s3); border-radius: var(--radius-s); min-height: 30px;
   font-size: var(--t-subhead); font-weight: 400; color: var(--ink);
   white-space: nowrap;
 }
-.side__row:hover { background: rgba(255, 255, 255, .6); text-decoration: none; }
+.side__row:hover { background: rgba(255, 255, 255, .7); text-decoration: none; }
 /* Selected is a filled row, the way a Finder sidebar does it: the tint carries
    the selection, not a left border or a bolder weight bolted onto grey. */
-.side__row.is-on { background: var(--tint); color: #fff; font-weight: 500; }
+/* The selected row is the accent, filled — the one place in the navigation that
+   carries it, so where you are is legible before a label is read. */
+.side__row.is-on { background: var(--tint); color: #fff; font-weight: 600; box-shadow: var(--shadow); }
 .side__row.is-on:hover { background: var(--tint); }
 .side__row.is-off { opacity: .5; }
 .side__dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
@@ -179,10 +234,10 @@ body {
 /* Sticky and translucent, because it is a toolbar: it stays with the window, not
    with the document that scrolls under it. */
 .tbar {
-  position: sticky; top: 0; z-index: 20;
+  position: sticky; top: var(--topbar-h); z-index: 20;
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4);
   padding: var(--s5) var(--s7) var(--s3);
-  background: rgba(247, 247, 250, .82);
+  background: var(--veil);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--line);
@@ -221,6 +276,86 @@ body {
   box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
 }
 
+/* --- The bar above the content (GEL-03, DEC-4) ----------------------------
+   Path on the left, search and the assistant on the right. Three controls, and
+   every one of them goes somewhere that already exists: the crumbs are the
+   pages the sidebar already lists, the field is the archive's own ?q=, and the
+   button is the drawer that has been in the layout all along. The template
+   holds no fourth control, because a button in this bar with nothing behind it
+   is worse than a bar without it. */
+.topbar {
+  position: sticky; top: 0; z-index: 21;
+  display: flex; align-items: center; gap: var(--s4);
+  height: var(--topbar-h);
+  padding: var(--s2) var(--s7);
+  background: var(--veil);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--line);
+}
+
+/* The path. Small, quiet, and the last crumb is the page you are on, so it is
+   ink and carries no link. */
+.crumbs {
+  display: flex; align-items: center; gap: var(--s2); min-width: 0;
+  font-size: var(--t-footnote); color: var(--muted); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.crumbs a { color: var(--muted); }
+.crumbs a:hover { color: var(--tint); text-decoration: none; }
+.crumbs__here { color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.crumbs__sep { color: var(--faint); }
+
+.topbar__r { margin-left: auto; display: flex; align-items: center; gap: var(--s2); flex: none; }
+
+/* The field. A filled track with the glass inside it, the way a search field is
+   drawn everywhere else — not a bordered box, which would read as a form. */
+.topsearch { display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--s3); height: 30px; min-width: 0;
+  background: var(--fill-2); border: 1px solid var(--line); border-radius: var(--radius-pill);
+}
+.topsearch:focus-within { border-color: var(--tint-line-strong); background: var(--card); }
+.topsearch__ico { width: 14px; height: 14px; flex: none; color: var(--faint); }
+.topsearch__in {
+  font: inherit; font-size: var(--t-footnote); color: var(--ink);
+  border: 0; background: transparent; outline: none;
+  width: 160px; max-width: 34vw; min-width: 0;
+}
+.topsearch__in::placeholder { color: var(--faint); }
+/* No submit button: Enter submits the form, and a magnifier that is also a
+   button is two affordances for one action. Kept in the markup for keyboards
+   and screen readers, out of the layout for everyone else. */
+.topsearch__go {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* Ask RAUTE: the accent, filled, because it is the one thing in this bar that
+   starts something rather than going somewhere. */
+.askraute {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  height: 30px; padding: 0 var(--s3);
+  border: 0; border-radius: var(--radius-pill);
+  background: var(--tint); color: #fff;
+  font-size: var(--t-footnote); font-weight: 600; white-space: nowrap;
+}
+.askraute:hover { filter: brightness(var(--press)); text-decoration: none; color: #fff; }
+.askraute__ico { width: 14px; height: 14px; flex: none; }
+
+/* The icon set, drawn once as symbols in the layout and referenced by <use>.
+   Stroked in currentColor, so an icon is the colour of the text beside it and
+   the accent reaches it through the same token as everything else. */
+.ico {
+  fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.ico-sprite { display: none; }
+
+@media (max-width: 900px) {
+  .topbar { padding-left: var(--s4); padding-right: var(--s4); flex-wrap: wrap; }
+  .topsearch__in { width: 110px; }
+}
+
 .content { padding: var(--s6) var(--s7) var(--s8); max-width: calc(var(--col) + 2 * var(--s7)); width: 100%; }
 
 h1, h2, h3 { letter-spacing: -0.02em; color: var(--ink); }
@@ -241,11 +376,13 @@ h3 { font-size: var(--t-title3); font-weight: 600; }
 a { color: var(--tint); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-/* A card is a white plane on the ground, cornered and hairlined. No shadow: the
-   value step does the separating. */
+/* A card is a white plane on the ground, cornered and hairlined. The hairline
+   still does the separating; --shadow only says the plane sits one step above
+   the ground (DEC-4's "weicherer Radius und feiner Schatten"), which at this
+   strength reads as depth and not as glow. */
 .card, .panel, .sect {
   background: var(--card);
-  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: none;
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
   padding: 0; margin-bottom: var(--s5); overflow: hidden;
 }
 /* The panel's inset is applied to its children rather than to the panel itself,
@@ -270,6 +407,9 @@ a:hover { text-decoration: underline; }
 
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
+  /* The top bar wraps at this width, so its height is no longer --topbar-h and
+     the offset the toolbar sticks at would be wrong. Neither bar sticks. */
+  .topbar, .tbar { position: static; }
   .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; overflow: visible; }
   .side__nav { flex-direction: row; flex-wrap: wrap; }
   .side__sect { padding: 0 var(--s1); }
@@ -973,7 +1113,7 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.04em; border-radius: var(--radius); padding: 2px 8px;
   border: 1px solid var(--line); color: var(--muted); background: var(--bg);
 }
-.state__badge--raus { color: #0b4f8a; background: rgba(0, 113, 227, 0.1); border-color: rgba(0, 113, 227, 0.28); }
+.state__badge--raus { color: var(--tint); background: var(--tint-wash); border-color: var(--tint-line-strong); }
 .state__badge--antwort { color: #14532d; background: rgba(36, 138, 61, 0.1); border-color: rgba(36, 138, 61, 0.3); }
 .state__badge--absage { color: #b25000; background: rgba(178, 80, 0, 0.1); border-color: rgba(178, 80, 0, 0.28); }
 .state__badge--veroeffentlicht { color: #14532d; background: rgba(36, 138, 61, 0.16); border-color: rgba(36, 138, 61, 0.4); }
@@ -1444,39 +1584,10 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .drawer__title { display: inline-flex; align-items: center; gap: 8px; }
 .drawer__a:empty { display: none; }
 
-/* --- Client sub-navigation ------------------------------------------------ */
-.subtabs {
-  display: flex; align-items: center; gap: var(--s5); flex-wrap: wrap;
-  margin: 0 0 var(--s6); padding-bottom: var(--s3); border-bottom: 1px solid var(--line);
-}
-.subtabs__id { display: flex; align-items: center; gap: var(--s3); margin-right: var(--s4); }
-.subtabs__id a { font-size: var(--t-title3); font-weight: 600; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
-.subtabs__logo { width: 30px; height: 30px; border-radius: var(--radius); object-fit: contain; background: #fff; border: 1px solid var(--line); flex: none; }
-.subtabs__logo--mono { display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--t-caption); font-weight: 700; border: none; }
-.subtabs > a {
-  padding: 0; font-size: var(--t-footnote); font-weight: 500; color: var(--muted);
-  text-decoration: none; border: 0; border-bottom: 2px solid transparent;
-  padding-bottom: var(--s3); margin-bottom: calc(var(--s3) * -1 - 1px);
-}
-.subtabs > a:hover { color: var(--ink); }
-.subtabs > a.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); background: transparent; }
-/* A download, not a destination — so it sits apart and does not read as a tab
-   that will paint a page. */
-.subtabs__dl {
-  margin-left: auto; color: var(--accent) !important;
-  border-bottom-color: transparent !important; font-size: var(--t-footnote);
-}
-.subtabs__dl:hover { text-decoration: underline; }
-
-
 /* --- Captain Comms drawer -------------------------------------------------- */
-/* His own palette (deep green, gold) rather than the app's indigo, so the
-   assistant reads as a distinct presence inside an otherwise indigo UI. */
-:root {
-  --cc-deep: #14523c;
-  --cc-mid: #22815f;
-  --cc-gold: #f2b32e;
-}
+/* He wears deep green and gold rather than the accent, so the assistant reads
+   as a distinct presence inside an otherwise violet interface. The three values
+   are declared with every other value in this file, at the top. */
 
 .drawer-open {
   position: fixed; right: var(--s5); bottom: var(--s5); z-index: 40;
@@ -1762,7 +1873,6 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 
 /* Client identity, wherever it appears: the same circle, the same colour. */
 .plogo, .plogo--mono, .mono-badge, .cflogo, .cflogo--mono,
-.subtabs__logo, .subtabs__logo--mono { border-radius: 50%; }
 .plogo, .plogo--mono { width: 26px; height: 26px; flex: none; font-size: var(--t-caption); font-weight: 700; }
 .plogo--mono { display: flex; align-items: center; justify-content: center; color: #fff; border: 0; }
 
@@ -1810,20 +1920,43 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 
 /* --- The workspace strip -------------------------------------------------- */
 /* A row of quiet links under the title. The mandate's own name is not repeated
-   here: the toolbar says it and the sidebar keeps saying it. */
+   here: the toolbar says it, the sidebar keeps saying it, and the path in the
+   top bar now says it a third time.
+
+   The one declaration of the strip. There used to be two, 350 lines apart, and
+   the second won on source order — so the first one's underline was dead code
+   and the tab that was meant to be underlined wore a grey lozenge instead.
+   DEC-4 gives the strip icons and the accent under the selected tab; the names,
+   the order and the hrefs are untouched, which is the whole of the promise. */
 .subtabs {
-  display: flex; align-items: center; flex-wrap: wrap; gap: var(--s1);
-  border: 0; padding: 0; margin: 0 0 var(--s5);
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2);
+  border: 0; border-bottom: 1px solid var(--line);
+  padding: 0; margin: 0 0 var(--s5);
 }
 .subtabs > a {
-  padding: 4px 10px; min-height: 26px; display: inline-flex; align-items: center;
-  border: 0; border-radius: var(--radius-s); margin: 0;
-  color: var(--ink-2); font-size: var(--t-subhead); font-weight: 400;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; min-height: 30px; margin-bottom: -1px;
+  border: 0; border-bottom: 2px solid transparent; border-radius: var(--radius-s) var(--radius-s) 0 0;
+  color: var(--muted); font-size: var(--t-subhead); font-weight: 400;
 }
 .subtabs > a:hover { background: var(--fill-2); color: var(--ink); text-decoration: none; }
-.subtabs > a.active { background: var(--fill); font-weight: 600; color: var(--ink); }
+/* The new selected state: ink, weighted, and the accent underneath. The colour
+   comes through --tint, so the strip repaints with the one line at the top of
+   this file rather than with a rule of its own. */
+.subtabs > a.active {
+  background: transparent; color: var(--ink); font-weight: 600;
+  border-bottom-color: var(--tint);
+}
+/* The tab's symbol. Inherits the row's colour, so it is muted, ink on hover and
+   ink again when selected without a rule per state. */
+.subtabs__ico { width: 15px; height: 15px; flex: none; opacity: .85; }
+.subtabs > a.active .subtabs__ico { opacity: 1; color: var(--tint); }
 .subtabs__id { display: none; }
-.subtabs__dl { margin-left: auto; font-size: var(--t-footnote); color: var(--tint); }
+.subtabs__logo { width: 30px; height: 30px; border-radius: 50%; object-fit: contain; background: #fff; border: 1px solid var(--line); flex: none; }
+.subtabs__logo--mono { display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--t-caption); font-weight: 700; border: none; }
+/* A download, not a destination — so it sits apart and does not read as a tab
+   that will paint a page. */
+.subtabs__dl { margin-left: auto; font-size: var(--t-footnote); color: var(--tint); border-bottom-color: transparent; }
 .subtabs__dl:hover { text-decoration: underline; }
 
 /* --- Buttons -------------------------------------------------------------- */
@@ -1838,7 +1971,7 @@ button:hover, .btn:hover { background: var(--fill-2); text-decoration: none; }
 button:disabled { opacity: .55; cursor: default; }
 /* The one filled button in the chrome: the action the whole app exists to run. */
 .btn--go { background: var(--tint); border-color: transparent; color: #fff; font-weight: 600; }
-.btn--go:hover { background: #0060c0; }
+.btn--go:hover { background: var(--tint); filter: brightness(var(--press)); }
 .btn--busy { display: inline-flex; align-items: center; gap: var(--s2); }
 
 /* Notices read as a tinted row, not a web alert box. */
@@ -1855,7 +1988,7 @@ button:disabled { opacity: .55; cursor: default; }
   padding: 10px 18px; font-size: var(--t-subhead); font-weight: 600;
   box-shadow: 0 4px 16px rgba(0, 0, 0, .20);
 }
-.drawer-open:hover { background: #0060c0; }
+.drawer-open:hover { background: var(--tint); filter: brightness(var(--press)); }
 .cc-icon { width: 17px; height: 17px; display: block; }
 .cc-icon--lg { width: 24px; height: 24px; }
 .drawer__title { display: inline-flex; align-items: center; gap: var(--s2); }
@@ -2056,14 +2189,8 @@ button:disabled { opacity: .55; cursor: default; }
    The classes the mock declares, in the mock's own colours — the four source
    classes it names, plus the fifth (a theme with measured resonance) that is a
    hook class in the engine and needs a swatch of its own rather than being
-   folded into one of the four. */
-:root {
-  --hook-study: #5856d6;
-  --hook-reg: var(--warn);
-  --hook-event: var(--tint);
-  --hook-thema: var(--teal);
-  --hook-archiv: var(--good);
-}
+   folded into one of the four. The five swatches are declared with every other
+   value in this file, at the top. */
 
 .planhead { display: flex; align-items: flex-start; gap: var(--s4); flex-wrap: wrap; margin-bottom: var(--s5); }
 .planhead__d { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s1); max-width: 64ch; }
