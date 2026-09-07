@@ -98,7 +98,6 @@
   --radius-s: 8px;
   --radius-pill: 980px;
   --shadow: 0 1px 2px rgba(30, 28, 48, .05), 0 1px 3px rgba(30, 28, 48, .04);
-  --shadow-raised: 0 4px 12px rgba(30, 28, 48, .09), 0 1px 3px rgba(30, 28, 48, .05);
   --side-w: 232px;
   --col: 1120px;
   /* The ground, translucent: what the two sticky bars are drawn on so the page
