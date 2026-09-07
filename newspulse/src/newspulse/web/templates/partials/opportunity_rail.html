@@ -131,7 +131,7 @@
             <div class="know__res">{{ t("Dieses Mandat wurde noch nie gemessen.") }}</div>
           {% endif %}
 
-        {% else %}
+        {% elif tile.key.value == 'intelligence' %}
           {% if tile.measured %}
             {# ``| capitalize`` the way the band's own tile does it, so the word
                reads the same in both places. #}
@@ -142,7 +142,9 @@
           {% else %}
             <div class="know__res">{{ t("Für dieses Mandat liegt noch keine Reputationsmessung vor. „Ruhig“ wäre eine Messung, und diese gibt es nicht.") }}</div>
           {% endif %}
-        {% endif %}
+        {% endif %}{# A key with no branch renders its frame and no sentence,
+           which is a visible hole rather than a template error on a page Lucas
+           opens four times on a closing morning. #}
 
         <a class="know__l" href="{{ tile.href }}">{{ t(tile.link) }} →</a>
       </div>
