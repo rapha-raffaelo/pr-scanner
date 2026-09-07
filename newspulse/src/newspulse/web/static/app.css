@@ -1823,27 +1823,41 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
    the cross sits on top of it in the corner and is the one thing that is not. */
 .rail__a {
   display: flex; flex-direction: column; gap: 2px; padding: var(--s2) var(--s3);
-  padding-right: 30px; color: inherit; text-decoration: none; border-radius: inherit;
+  padding-right: 28px; color: inherit; text-decoration: none; border-radius: inherit;
 }
 .rail__a:hover { text-decoration: none; color: var(--ink); }
+/* The close button as macOS draws one, and the reason it is drawn that way: a
+   row of cards each wearing a permanent cross reads as a row of things asking
+   to be deleted. In the Finder sidebar, in a Safari tab, on a window's traffic
+   light, the affordance is not there until the pointer is on the thing it
+   belongs to — the resting state is the content, and the control appears when
+   it can be used.
+
+   Hidden with opacity rather than display:none so it keeps its place in the
+   layout and stays reachable by keyboard, and it is revealed on
+   :focus-within too, or a Tab user would be pressing something invisible. */
 .rail__x { position: absolute; top: 5px; right: 5px; }
 .rail__x > summary { list-style: none; cursor: pointer; }
 .rail__x > summary::-webkit-details-marker { display: none; }
-/* The close affordance every application draws the same way: a quiet glyph
-   that only grows a background under the pointer, so a row of cards is not a
-   row of buttons shouting to be pressed. 26px is the touch target; the icon
-   inside it is 13. */
 .rail__xb {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border-radius: var(--radius-s);
-  color: var(--faint); background: transparent;
-  transition: color .12s ease, background .12s ease;
+  width: 18px; height: 18px; border-radius: 50%;
+  color: var(--ink-2); background: var(--fill-strong);
+  opacity: 0; transition: opacity .12s ease, background .12s ease, color .12s ease;
 }
-.rail__e:hover .rail__xb { color: var(--muted); }
-.rail__xb:hover { color: var(--alert); background: var(--alert-wash); }
-/* Keyboard reaches it too, and must see where it is. */
-.rail__xb:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; color: var(--alert); }
-.rail__x[open] > .rail__xb { color: var(--alert); background: var(--alert-wash); }
+.rail__e:hover .rail__xb,
+.rail__e:focus-within .rail__xb,
+.rail__x[open] > .rail__xb { opacity: 1; }
+/* Red only once the pointer is on the button itself, the way the traffic
+   light's glyph only appears under the cursor: the card says "you may close
+   me", the button says "this closes it". */
+.rail__xb:hover { background: var(--alert); color: #fff; }
+.rail__x[open] > .rail__xb { background: var(--alert); color: #fff; }
+.rail__xb:focus-visible { opacity: 1; outline: 2px solid var(--tint); outline-offset: 2px; }
+/* Touch has no hover, so there the control is simply always there. */
+@media (hover: none) {
+  .rail__xb { opacity: 1; }
+}
 /* The question opens *inside* the card and the card grows to hold it. Not a
    popover: the rail scrolls sideways (overflow-x: auto), and a scrolling box
    clips anything absolutely positioned past its edge — the first build put the
