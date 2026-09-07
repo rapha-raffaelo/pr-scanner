@@ -45,6 +45,7 @@ from newspulse.models import (
     Contact,
     NewsjackOpportunity,
     Outreach,
+    OutreachReply,
     Stakeholder,
     StakeholderLevel,
     Standing,
@@ -666,6 +667,76 @@ def test_the_trail_merges_the_market_and_our_own_steps_in_time_order(
     assert "Anlass geöffnet" in what
     assert "pressemitteilung v1" in what
     assert all(e.who for e in events), "every entry names who it came from"
+
+
+def test_the_trail_carries_released_letters_and_the_replies_that_came_back(
+    session, mandate
+):
+    """A draft letter is not in the trail and a released one is: the trail is
+    what happened, and a draft has not happened yet."""
+    row = _opportunity(session, mandate)
+    angle = _occasion(session, row)
+    out = dt.datetime.now(dt.UTC) - dt.timedelta(hours=2)
+    released = Outreach(
+        angle_id=angle.id,
+        client_id=mandate.id,
+        journalist="Michael Bröcker",
+        outlet="Handelsblatt",
+        message="Ein Brief.",
+        released_at=out,
+        released_by="mensch",
+    )
+    draft = Outreach(
+        angle_id=angle.id,
+        client_id=mandate.id,
+        journalist="Jana Wolf",
+        outlet="DVZ",
+        message="Ein Entwurf.",
+    )
+    session.add_all([released, draft])
+    session.commit()
+    session.add(
+        OutreachReply(
+            outreach_id=released.id,
+            gmail_message_id="m-1",
+            from_name="Michael Bröcker",
+            from_email="m.broecker@example.de",
+            received_at=out + dt.timedelta(hours=1),
+            body="Danke, schauen wir uns an.",
+        )
+    )
+    session.commit()
+
+    events = opportunity.trail(
+        session,
+        row,
+        opportunity.sources(session, row),
+        angle,
+        opportunity.texts(session, angle),
+        [released, draft],
+    )
+
+    what = [e.what for e in events]
+    assert "Brief an Michael Bröcker freigegeben" in what
+    assert "Antwort" in what
+    assert not any("Jana Wolf" in entry for entry in what), "a draft never happened"
+    reply = next(e for e in events if e.what == "Antwort")
+    assert reply.who == "Michael Bröcker"
+    assert reply.ours is False
+
+
+def test_the_dismissal_is_the_last_line_of_the_trail(session, mandate):
+    """The record of what was known when it ended, which is the whole reason a
+    concluded opportunity keeps its page."""
+    ended = dt.datetime.now(dt.UTC)
+    row = _opportunity(session, mandate, dismissed_at=ended)
+
+    events = opportunity.trail(
+        session, row, opportunity.sources(session, row), None, [], []
+    )
+
+    assert events[-1].what == "Gelegenheit verworfen"
+    assert events[-1].who == "Mensch"
 
 
 def test_the_trail_names_the_standards_the_standing_was_checked_against(
