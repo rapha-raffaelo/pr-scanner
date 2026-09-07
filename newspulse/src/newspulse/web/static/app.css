@@ -1814,11 +1814,42 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   margin: 0 0 var(--s5); border-bottom: 1px solid var(--line);
 }
 .rail__e {
-  flex: 0 0 auto; max-width: 260px; display: flex; flex-direction: column; gap: 2px;
-  padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--radius);
-  background: var(--card); color: var(--ink-2); text-decoration: none;
+  flex: 0 0 auto; max-width: 260px; position: relative;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); color: var(--ink-2); box-shadow: var(--shadow);
 }
-.rail__e:hover { border-color: var(--line-strong); color: var(--ink); text-decoration: none; }
+.rail__e:hover { border-color: var(--line-strong); color: var(--ink); }
+/* The link fills the card, so the whole box is the click target it always was;
+   the cross sits on top of it in the corner and is the one thing that is not. */
+.rail__a {
+  display: flex; flex-direction: column; gap: 2px; padding: var(--s2) var(--s3);
+  padding-right: 30px; color: inherit; text-decoration: none; border-radius: inherit;
+}
+.rail__a:hover { text-decoration: none; color: var(--ink); }
+.rail__x { position: absolute; top: 6px; right: 6px; }
+.rail__x > summary { list-style: none; cursor: pointer; }
+.rail__x > summary::-webkit-details-marker { display: none; }
+.rail__xb {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  font-size: 15px; line-height: 1; color: var(--faint); background: transparent;
+}
+.rail__xb:hover, .rail__x[open] > .rail__xb { color: var(--alert); background: var(--alert-wash); }
+/* The question opens *inside* the card and the card grows to hold it. Not a
+   popover: the rail scrolls sideways (overflow-x: auto), and a scrolling box
+   clips anything absolutely positioned past its edge — the first build put the
+   sentence half under the next card. In flow, nothing can clip it, nothing
+   needs a z-index, and it works with the script turned off. */
+.rail__x[open] { position: static; }
+.rail__x[open] > .rail__xb { position: absolute; top: 6px; right: 6px; }
+.rail__e:has(.rail__x[open]) { max-width: 340px; border-color: var(--alert); box-shadow: var(--shadow-raised); }
+.rail__confirm {
+  margin: 0 var(--s3) var(--s3); padding: var(--s3);
+  border-color: rgba(220, 38, 38, .3); background: var(--alert-wash);
+}
+.rail__confirm p { margin: 0 0 var(--s2); font-size: var(--t-footnote); color: var(--ink-2); max-width: none; }
+.rail__confirm p strong { color: var(--ink); }
+.rail__confirm .confirm__row { margin-top: var(--s2); }
 .rail__e.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--ink); }
 .rail__k {
   font-size: var(--t-caption2); text-transform: uppercase; letter-spacing: 0.07em;
@@ -2533,6 +2564,20 @@ button:disabled { opacity: .55; cursor: default; }
 .ssel__missing { font-size: var(--t-caption); color: var(--muted); }
 .ssel__missing a { font-weight: 600; }
 
+
+
+/* --- The two-click question ----------------------------------------------- */
+/* One box, wherever something is about to be removed or sent: the send
+   confirmation on a letter, and the cross on a rail card. It was declared
+   inside advice.html's own <style>, which was true while advice.html was the
+   only page drawing it; the rail partial draws it too now, and a class two
+   pages share cannot live in one of them. */
+.confirm {
+  margin-top: 10px; padding: 12px; border-radius: var(--radius);
+  border: 1px solid rgba(220, 38, 38, .3); background: var(--alert-wash);
+}
+.confirm p { font-size: var(--t-footnote); color: var(--cat-krise-ink); margin-bottom: 10px; max-width: 64ch; }
+.confirm__row { display: flex; gap: 10px; align-items: center; }
 
 /* --- Shared primitives of the Kommandozentrale screens ------------------- */
 /* Base rules only, at class specificity, for the vocabulary the opportunity

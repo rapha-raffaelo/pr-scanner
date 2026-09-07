@@ -392,3 +392,33 @@ def test_the_impulse_sheet_covers_the_period_it_claims(session, portfolio):
 
     assert len(subjects) == 8, "every impulse in the period, not the newest five"
     assert "Zu alt" not in subjects, "and nothing from outside it"
+
+
+def test_the_impulse_sheet_still_lists_a_draft_a_person_declined(session):
+    """A draft written in the period was written in it. The rail hides a
+    declined occasion; the report must not, or the "Vorliegende Impulse" figure
+    shrinks whenever somebody tidies a list — a KPI that is not a measurement."""
+    from newspulse.models import Angle
+    from openpyxl import load_workbook
+
+    mandate = Client(name="Arrakis", aliases=[], keywords=[], alert_topics=[])
+    session.add(mandate)
+    session.flush()
+    now = dt.datetime.now(dt.UTC)
+    kept = Angle(
+        client_id=mandate.id, subject="Der Anlass, der bleibt", message="A",
+        context="", generated_at=now - dt.timedelta(days=2),
+    )
+    declined = Angle(
+        client_id=mandate.id, subject="Der Anlass, der verworfen wurde", message="B",
+        context="", generated_at=now - dt.timedelta(days=3),
+        dismissed_at=now - dt.timedelta(days=1),
+    )
+    session.add_all([kept, declined])
+    session.commit()
+
+    book = load_workbook(io.BytesIO(client_workbook(session, mandate, days=30)))
+    subjects = [row[1] for row in book["Impulse"].iter_rows(min_row=2, values_only=True)]
+
+    assert "Der Anlass, der bleibt" in subjects
+    assert "Der Anlass, der verworfen wurde" in subjects

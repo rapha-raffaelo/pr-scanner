@@ -99,6 +99,13 @@ def _page_context(
         "last_written_days": _days_since_last(history),
         "state_labels": outreach.STATE_LABELS,
         "prefill_name": prefill_name,
+        # The split the form should show, made here and never written to the
+        # database: an entry from a byline has a full name and no parts, and a
+        # guess a person can see and correct is not the same thing as a guess
+        # stored as a fact. ``editing`` wins where it already has them.
+        "name_parts": contacts.split_name(
+            (editing.name if editing is not None else prefill_name) or ""
+        ),
         "prefill_outlet": prefill_outlet,
         "came_from_pitch": came_from_pitch,
         "last_run": _fetch_last_run(session),
@@ -174,7 +181,9 @@ def contact_book(
 def save_contact(
     request: Request,
     contact_id: str = Form(""),
-    name: str = Form(...),
+    first_name: str = Form(""),
+    last_name: str = Form(""),
+    name: str = Form(""),
     outlet: str = Form(""),
     email: str = Form(""),
     phone: str = Form(""),
@@ -196,6 +205,8 @@ def save_contact(
             session,
             contact_id=int(contact_id) if contact_id.strip().isdigit() else None,
             name=name,
+            first_name=first_name,
+            last_name=last_name,
             outlet=outlet,
             email=email,
             phone=phone,
@@ -209,7 +220,7 @@ def save_contact(
             "contacts.html",
             _page_context(
                 session,
-                prefill_name=name,
+                prefill_name=contacts.full_name(first_name, last_name, name),
                 prefill_outlet=outlet,
                 error=str(exc),
             ),

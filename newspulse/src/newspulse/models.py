@@ -848,7 +848,22 @@ class Contact(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    #: The whole name, and the key everything else joins on. A byline arrives
+    #: from a feed as one string — ``contacts.find(session, row.journalist, …)``
+    #: matches against exactly this — so it stays, and stays authoritative.
+    #: Composed from the two parts below whenever a person fills the form.
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    #: "vor und nachname trennen". The parts, so a salutation can say "Sehr
+    #: geehrter Herr Kröner" and a roster can sort by surname — neither of which
+    #: a single string can do without guessing at the point of use.
+    #:
+    #: Both may be empty, and that is not a defect: a contact created from a
+    #: byline has a full name and no split, because splitting "Anna Maria von
+    #: der Leyen" is a guess and a guess in a salutation is worse than none.
+    #: :func:`newspulse.contacts.split_name` makes that guess exactly once, when
+    #: a person opens the form and can correct it, never behind their back.
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     #: The masthead they wrote under. Empty is allowed — a freelancer known by
     #: name is still worth keeping.
     outlet: Mapped[str] = mapped_column(String(200), nullable=False, default="")
@@ -1272,6 +1287,24 @@ class Angle(Base):
         ForeignKey("plan_hooks.id", ondelete="SET NULL"),
         nullable=True,
         default=None,
+    )
+    #: When a person waved this occasion away, or NULL while it stands.
+    #:
+    #: "hier wäre es gut wenn du ein Update machst wo kreuze zum schliessen und
+    #: verwerfen der vorschläge sind." The rail is a row of proposals, and a
+    #: proposal a consultant has looked at and declined must leave the row —
+    #: otherwise the third-oldest impulse is scrolled past every morning for a
+    #: month.
+    #:
+    #: Same shape and the same reasoning as :attr:`Analysis.dismissed_at`:
+    #: marked, never deleted. The texts written from this occasion hang on it
+    #: (:class:`Asset`, :class:`Outreach`), and a released press release must not
+    #: vanish because its occasion was tidied away. Hidden from the rail and the
+    #: page through :func:`newspulse.angles.for_client`; the client report asks
+    #: for these rows back, because a draft written in a period was written in
+    #: that period whether or not it was later declined.
+    dismissed_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, default=None
     )
     #: The newsjack opportunity this occasion was opened from (UHR-05), on the
     #: same terms as :attr:`plan_hook_id`: a person clicked "Text schreiben" on

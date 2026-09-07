@@ -160,10 +160,24 @@
              same view. #}
           <input type="hidden" name="redirect_to" value="{{ here }}">
           <div class="import-fields">
+            {# Two fields, not one. The form asked for "Name" and a consultant
+               typing a journalist into it produced "Kröner" — a surname in a
+               field the whole tool reads as a full name, from which no
+               salutation can be built and by which no roster can sort.
+
+               An entry that has never been split shows the suggestion
+               ``split_name`` makes, so the reader corrects it rather than
+               retyping it; nothing is written until Speichern. Only the
+               surname is required: a byline is often just that. #}
             <div>
-              <label for="c-name">{{ t("Name") }}*</label>
-              <input type="text" id="c-name" name="name" required
-                     value="{{ editing.name if editing else prefill_name }}">
+              <label for="c-first">{{ t("Vorname") }}</label>
+              <input type="text" id="c-first" name="first_name"
+                     value="{{ editing.first_name or name_parts[0] if editing else name_parts[0] }}">
+            </div>
+            <div>
+              <label for="c-last">{{ t("Nachname") }}*</label>
+              <input type="text" id="c-last" name="last_name" required
+                     value="{{ editing.last_name or name_parts[1] if editing else name_parts[1] }}">
             </div>
             <div>
               <label for="c-outlet">{{ t("Medium") }}</label>

@@ -530,6 +530,42 @@ def _run_outreach(client_id: int, angle_id: int, journalist: str, outlet: str) -
         _writing.release()
 
 
+@router.post("/client/{client_id}/impulse/{angle_id}/dismiss")
+def dismiss_impulse(
+    request: Request,
+    client_id: int,
+    angle_id: int,
+    session: Session = Depends(get_db),
+) -> Response:
+    """Decline one occasion: it leaves the rail and the page, and stays on record.
+
+    Behind two clicks in the card — the cross opens a question, and only "Ja,
+    verwerfen" posts here — because the row it removes is the one the reader
+    is looking at, and a cross beside a scroll target is pressed by accident.
+    The question is markup (``<details>``), not a script, for the same reason
+    the send confirmation is: the one control that removes something must not
+    depend on JavaScript having loaded.
+
+    Marked, never deleted, exactly like ``dismiss_coverage``: the texts written
+    from this occasion hang on it, and a released one must not vanish with it.
+
+    The mandate is checked as well as the id — an angle id is a small integer
+    in a URL, and without this a guessed one would decline another client's
+    occasion. Redirects to the tab with no entry named, so the page falls back
+    to the newest occasion that still stands rather than to the one just hidden.
+    """
+    _refuse_foreign_origin(request)
+    client = mandate_or_404(session, client_id)
+    angle = session.get(Angle, angle_id)
+    if angle is None or angle.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Impulse not found")
+    if angle.dismissed_at is None:
+        angle.dismissed_at = dt.datetime.now(dt.UTC)
+        session.commit()
+        _log.info("impulse %d of %r declined from the rail", angle.id, client.name)
+    return RedirectResponse(f"/client/{client_id}/advice", status_code=_SEE_OTHER)
+
+
 @router.post("/client/{client_id}/impulse/{angle_id}/message")
 def write_message(
     client_id: int,
