@@ -1,0 +1,335 @@
+{# Das Dossier zur Gelegenheit (GEL-01), built against
+   features/mocks/gelegenheit-kommandozentrale.html — DEC-1 A.
+
+   Everything from the back-link down belongs to this story: the head with its
+   urgency badge and the derived status, the provenance bar, the tab strip, the
+   six tiles in two rows, and the trail at the bottom. The sidebar, the toolbar
+   and the mandate's own tab strip are the existing shell; how they look is
+   GEL-03's business and their names stay the tool's.
+
+   Two rules this page keeps that a prettier one would not:
+
+   * Nothing here is computed in the template. Every number arrives from
+     ``newspulse.opportunity`` already derived from stored rows, so the page and
+     a test can never disagree about what a figure means.
+   * An absence is written out. A tile with nothing behind it says what is
+     missing and where it would come from — never a zero, never a placeholder,
+     because a 0 that means "never measured" and a 0 that means "measured and
+     empty" read identically and only one of them is a problem. #}
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Gelegenheit") }} · {{ client.name }} · RauteOS{% endblock %}
+
+{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{% set active = 'heute' %}
+{% include '_client_tabs.html' %}
+
+<a class="back" href="/client/{{ client.id }}/heute">← {{ t("Zurück zu Heute") }}</a>
+
+{# --- The head: what this is, how urgent, and what state it is in ------------ #}
+<div class="dhd">
+  <div class="dhd__l">
+    <h1 class="dhd__t">{{ opp.article.title }}</h1>
+    <div class="chips">
+      <span class="chip">{{ client.name }}</span>
+      {# The state the picker shows follows from the rows that exist — it is not
+         a stored column, and "Aktivieren" is the same act as "Text schreiben"
+         on the card, not a second one beside it. #}
+      <span class="chip chip--state" data-status="{{ status.value }}">
+        {% if status.value == 'offen' %}{{ t("Offen") }}
+        {% elif status.value == 'aktiv' %}{{ t("Aktiv") }}
+        {% elif status.value == 'ausgelaufen' %}{{ t("Ausgelaufen") }}
+        {% else %}{{ t("Verworfen") }}{% endif %}
+      </span>
+      {% if not concluded %}
+        <span class="chip chip--warn">
+          {% if score.hours_left > 0 %}{{ t("Noch") }} {{ score.hours_left }} {{ t("Std im Fenster") }}
+          {% else %}{{ t("Fenster läuft aus") }}{% endif %}
+        </span>
+      {% endif %}
+      <span class="chip">{{ t("Erkannt") }} {{ opp.created_at | de_when }}</span>
+    </div>
+  </div>
+  <div class="dhd__r">
+    {# The badge shows the number alone, as the mock does; the three addends
+       stand under it and again in the provenance bar, so it can be re-derived
+       by hand. #}
+    <div class="score" title="{{ t('Verbreitung, Frist und Stehen, zusammengezählt') }}">
+      <div class="score__n">{{ score.total }}<small> / 100</small></div>
+      <div class="score__w">
+        {{ t("Verbreitung") }} {{ score.reach }} · {{ t("Frist") }} {{ score.deadline }} · {{ t("Stehen") }} {{ score.standing }}<br>
+        {{ score.media }} {{ t("Medien") }}, {{ score.hours_left }} {{ t("von") }} {{ score.hours_total }} {{ t("Std übrig") }}
+      </div>
+    </div>
+    {% if concluded %}
+      {# No buttons on a concluded opportunity — and the line that replaces them
+         is the answer to the only question asked afterwards: when did this end,
+         and on what. #}
+      <p class="dhd__end">
+        {% if opp.dismissed_at %}
+          {{ t("Verworfen am") }} {{ opp.dismissed_at | de_datetime }} · {{ t("von Hand abgeräumt") }}
+        {% else %}
+          {{ t("Abgelaufen am") }} {{ opp.window_ends_at | de_datetime }} ·
+          {{ t("das Fenster ab dem Ursprungsbeitrag ist zugelaufen") }}
+        {% endif %}
+      </p>
+    {% else %}
+      {# "Aktivieren" is the existing act, posted at the existing endpoint: it
+         opens the occasion, exactly as the card on Heute does. #}
+      <form method="post" action="/client/{{ client.id }}/gelegenheit/{{ opp.id }}/text">
+        <button type="submit" class="btn">
+          {% if occasion %}{{ t("Texte ansehen") }}{% else %}{{ t("Text schreiben") }}{% endif %}
+        </button>
+      </form>
+      <form method="post" action="/gelegenheit/{{ opp.id }}/verwerfen">
+        <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/heute">
+        <button type="submit" class="btn btn--ghost">{{ t("Verwerfen") }}</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{# --- The provenance bar: where each figure on this page came from ----------- #}
+<div class="dprov">
+  <div class="dprov__i">
+    <div class="dprov__h">{{ t("Erkannt durch") }}</div>
+    <div class="dprov__v">{{ provenance.detected }}</div>
+  </div>
+  <div class="dprov__i">
+    <div class="dprov__h">{{ t("Dringlichkeit gerechnet aus") }}</div>
+    <div class="dprov__v">{{ provenance.scored }}</div>
+  </div>
+  <div class="dprov__i">
+    <div class="dprov__h">{{ t("Stehen geprüft gegen") }}</div>
+    <div class="dprov__v">{{ provenance.checked_against }}</div>
+  </div>
+</div>
+
+{# --- The strip on the page. Only tabs that land somewhere. ------------------ #}
+<nav class="dtabs" aria-label="{{ t('Gelegenheit') }}">
+  {% for tab in tabs %}
+    {% if tab.here %}
+      <span class="is-on" aria-current="page">{{ t(tab.label) }}</span>
+    {% else %}
+      <a href="{{ tab.href }}">{{ t(tab.label) }}</a>
+    {% endif %}
+  {% endfor %}
+</nav>
+
+<div class="grid3">
+  {# --- Column one: the situation, and who is carrying it -------------------- #}
+  <div>
+    <div class="card">
+      <div class="card__h">{{ t("Die Lage") }}</div>
+      {% if opp.article.summary_text %}
+        <p class="p">{{ opp.article.summary_text }}</p>
+      {% else %}
+        <p class="p empty">{{ t("Zu diesem Beitrag ist keine Kurzfassung gespeichert. Die Quelle steht unten.") }}</p>
+      {% endif %}
+      <p class="p dcard__link">
+        <a href="{{ opp.article.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ t("Ursprungsbeitrag öffnen") }} →</a>
+      </p>
+    </div>
+    <div class="card">
+      <div class="card__h">{{ t("Quellen") }} <span>{{ sources | length }} {{ t("Beiträge") }}</span></div>
+      {# Oldest first, so the story reads in the order it happened; the origin
+         is marked because the window and the whole row hang on it. #}
+      <ul class="quell">
+        {% for source in sources %}
+          <li>
+            <span class="quell__n">{{ source.outlet }}</span>
+            {% if source.is_origin %}<span class="pill pill--good">{{ t("Ursprung") }}</span>{% endif %}
+            {# The byline as the feed stored it, or the named gap. Never a
+               guess: most German feeds carry none at all. #}
+            <span class="quell__a">
+              {% if source.author %}{{ source.author }}
+              {% else %}<i>{{ t("kein Autor im Beitrag") }}</i>{% endif %}
+            </span>
+            <span class="quell__t">{{ source.published_at | de_datetime }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  {# --- Column two: what we would say, and why now --------------------------- #}
+  <div>
+    <div class="card">
+      <div class="card__h">{{ t("Vorgeschlagene Storyline") }} <span>{{ t("vom Werkzeug") }}</span></div>
+      {% if standing_reason %}
+        <p class="pull">{{ standing_reason }}</p>
+      {% else %}
+        <p class="pull empty">{{ t("Die Prüfung hat keinen Satz hinterlassen. Das Stehen gilt, die Begründung fehlt.") }}</p>
+      {% endif %}
+      <div class="tagline">{{ t("Stehen belegt") }}</div>
+      {# DEC-6 A: the mandate's own stakeholder groups, in the order its map
+         keeps them. Stored rows, never a list written into this template — and
+         an empty map is said out loud with the link to where it is kept. #}
+      <div class="chips dchips">
+        {% for audience in audiences %}
+          <span class="chip" data-level="{{ audience.level }}">{{ audience.group }}</span>
+        {% else %}
+          <span class="dempty">
+            {{ t("Für dieses Mandat sind keine Anspruchsgruppen hinterlegt.") }}
+            <a href="/client/{{ client.id }}/issues">{{ t("Karte pflegen") }} →</a>
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card__h">{{ t("Warum jetzt") }}</div>
+      <ul class="facts">
+        <li>{{ sources | length }} {{ t("Medien tragen die Story, das erste am") }} {{ sources[0].published_at | de_datetime }}</li>
+        {% if concluded %}
+          <li>{{ t("Das Fenster ab dem Ursprungsbeitrag ist zugelaufen am") }} {{ opp.window_ends_at | de_datetime }}</li>
+        {% else %}
+          <li>{{ t("Das Fenster ab dem Ursprungsbeitrag läuft aus in") }} {{ score.hours_left }} {{ t("Std") }}</li>
+        {% endif %}
+        <li>{{ t("Das Mandat wird in keinem der Beiträge genannt — sonst wäre es Berichterstattung, keine Gelegenheit") }}</li>
+      </ul>
+    </div>
+  </div>
+
+  {# --- Column three: what is expected to come (DEC-3) ----------------------- #}
+  <div class="card">
+    <div class="card__h">{{ t("Wie es weitergeht") }} <span>{{ t("Einschätzung") }}</span></div>
+    {% if outlook.exists %}
+      {# Carried visibly as an estimate, with the moment it was made, so it is
+         never read like the evidenced lines beside it. Written once at
+         detection and stored — this page only reads it. #}
+      <p class="dest">
+        {{ t("Einschätzung bei der Erkennung am") }} {{ outlook.made_at | de_datetime }}. {{ t("Keine belegte Zeile.") }}
+      </p>
+      <ul class="tl">
+        {% for entry in outlook.entries %}
+          <li><div class="tl__t">{{ entry.when }}</div><div class="tl__b">{{ entry.what }}</div></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="p empty">
+        {{ t("Zu dieser Gelegenheit wurde bei der Erkennung keine Vorschau geschrieben. Was belegt ist, steht in der Spur unten.") }}
+      </p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid3 grid3--second">
+  {# --- The next step, read off the state ------------------------------------ #}
+  <div class="card">
+    <div class="card__h">{{ t("Empfohlene nächste Schritte") }}</div>
+    {% if steps %}
+      {% set now_step = steps[0] %}
+      <div class="step">
+        <div>
+          <div class="step__n">
+            {{ t(now_step.label) }}
+            <span class="pill {% if now_step.weight == 'hoch' %}pill--warn{% endif %}">{{ t(now_step.weight) }}</span>
+          </div>
+          <div class="step__b">{{ now_step.why }}</div>
+        </div>
+      </div>
+      <ul class="later">
+        {% for later in steps[1:] %}
+          <li><b>{{ t("danach") }}</b> {{ t(later.label) }} <span class="pill">{{ t(later.weight) }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="p empty">{{ t("Aus den gespeicherten Zeilen folgt kein nächster Schritt: es hängt ein geprüfter Text daran und ein Brief ist heraus.") }}</p>
+    {% endif %}
+  </div>
+
+  {# --- Who to approach (DEC-5) ---------------------------------------------- #}
+  <div class="card">
+    <div class="card__h">
+      {{ t("Wen ansprechen") }}
+      <a href="/client/{{ client.id }}/map">{{ t("Medienbild") }} →</a>
+    </div>
+    {% if recipients %}
+      <ul class="rows">
+        {% for person in recipients %}
+          <li>
+            <div class="rows__m">
+              <div class="rows__n">{{ person.name }}</div>
+              {# Where the recommendation comes from, in pitch.py's own words —
+                 never a derived address, which this tool does not hold and
+                 will not invent. #}
+              <div class="rows__s">{{ person.outlet }} · {{ person.reason }}</div>
+              {% if person.already_pitched_at %}
+                <div class="rows__s rows__warn">{{ t("Zu diesem Anlass bereits angeschrieben am") }} {{ person.already_pitched_at | de_date }}</div>
+              {% endif %}
+            </div>
+            <div class="rows__r">
+              <span class="rows__fit" title="{{ t('Eigene Meldung, Präsenz im Feld, hinterlegter Kontakt') }}">{{ person.fit }}</span>
+              {% if person.has_contact %}
+                <span class="pill pill--good">{{ t("Kontakt da") }}</span>
+              {% else %}
+                <span class="pill pill--none">{{ t("kein Kontakt") }}</span>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="p empty">
+        {{ t("In den Beiträgen dieser Story und im Feld der letzten 90 Tage ist kein Autor gespeichert. Deutsche Feeds liefern selten einen.") }}
+        <a href="/contacts">{{ t("Kontaktbuch") }} →</a>
+      </p>
+    {% endif %}
+  </div>
+
+  {# --- The texts on the occasion -------------------------------------------- #}
+  <div class="card">
+    <div class="card__h">
+      {{ t("Texte zu dieser Gelegenheit") }}
+      {% if occasion %}<a href="/client/{{ client.id }}/advice?eintrag=anlass-{{ occasion.id }}#impulse-{{ occasion.id }}">{{ t("Alle") }} →</a>{% endif %}
+    </div>
+    {% if texts %}
+      <ul class="rows">
+        {% for text in texts %}
+          <li>
+            <div class="rows__m">
+              <div class="rows__n">{{ text.kind }}</div>
+              <div class="rows__s">v{{ text.version }} · {{ text.generated_at | de_datetime }}</div>
+            </div>
+            <div class="rows__r">
+              {# Three states and not two: "nothing objected" and "nothing
+                 looked" must never render alike. #}
+              {% if text.check_state.value == 'geprueft' %}
+                <span class="pill pill--good">{{ t("geprüft") }}</span>
+              {% elif text.check_state.value == 'einwand' %}
+                <span class="pill pill--warn">{{ t("Einwand") }}</span>
+              {% else %}
+                <span class="pill pill--none">{{ t("ungeprüft") }}</span>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% elif occasion %}
+      <p class="p empty">{{ t("Der Anlass steht, es hängt noch kein Text daran.") }}</p>
+    {% else %}
+      <p class="p empty">{{ t("Zu dieser Gelegenheit ist noch kein Anlass angelegt. Ein Text entsteht über den Knopf oben.") }}</p>
+    {% endif %}
+  </div>
+</div>
+
+{# --- The trail: the market's pieces and our own steps, in one row ----------- #}
+<div class="stream">
+  <div class="card__h">{{ t("Entscheidungsspur") }} <span>{{ t("was passiert ist und was wir getan haben") }}</span></div>
+  <div class="stream__row">
+    {% for event in trail %}
+      <div class="ev{% if event.ours %} ev--us{% endif %}">
+        <div class="ev__t">{{ event.at | de_datetime }}</div>
+        <div class="ev__w">{{ event.what }}</div>
+        <div class="ev__b">{{ event.who }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<p class="note">
+  {{ t("Jede Zahl auf dieser Seite steht in einer gespeicherten Zeile: die Medien sind gezählte Beiträge, die Stunden sind das Fenster ab dem Ursprungsbeitrag, und die Dringlichkeit ist aus diesen beiden plus dem Stehen gerechnet und oben ausgeschrieben. Diese Seite liest nur — sie legt keinen Anlass an und ruft kein Modell.") }}
+</p>
+{% endblock %}

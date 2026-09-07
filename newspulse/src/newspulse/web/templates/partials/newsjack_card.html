@@ -18,7 +18,11 @@
     </span>
     <span class="clichip">{{ opp.client_name }}</span>
   </div>
-  <div class="hl"><a href="{{ opp.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ opp.headline }}</a></div>
+  {# The headline goes to the dossier, not to the feed: the card is the
+     ten-second decision and the dossier is everything behind it, which is the
+     click a consultant actually wants from here. The origin piece itself is one
+     line down on that page. #}
+  <div class="hl"><a href="/client/{{ opp.client_id }}/gelegenheit/{{ opp.id }}">{{ opp.headline }}</a></div>
   <div class="meta">
     {{ t("Zuerst bei") }} {{ opp.source }}
     <span class="dot">·</span> {{ opp.published_at.strftime('%d.%m. %H:%M') }}
@@ -39,6 +43,7 @@
       <input type="hidden" name="redirect_to" value="{{ request.url.path }}?{{ request.url.query }}">
       <button type="submit" class="triage-btn">{{ t("Verwerfen") }}</button>
     </form>
+    <a class="njack__texts" href="/client/{{ opp.client_id }}/gelegenheit/{{ opp.id }}">{{ t("Dossier") }} →</a>
     {% if opp.angle_id and opp.texts %}
       {# What makes a written text findable *from* the opportunity: the link to
          the package hanging on the occasion this card was opened as. #}

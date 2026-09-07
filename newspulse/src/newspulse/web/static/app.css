@@ -2493,3 +2493,180 @@ button:disabled { opacity: .55; cursor: default; }
    maintained — the crisis page selects from the card and never edits it. */
 .ssel__missing { font-size: var(--t-caption); color: var(--muted); }
 .ssel__missing a { font-weight: 600; }
+
+/* --- Das Dossier zur Gelegenheit (GEL-01, DEC-1 A) ------------------------- */
+/* Built against features/mocks/gelegenheit-kommandozentrale.html. Every value
+   below resolves to a variable already declared at the top of this file — the
+   mock and this stylesheet were drawn from the same scale, so the dossier needs
+   no palette of its own, and GEL-03's repaint reaches it by changing one token
+   rather than this block. */
+
+.back { font-size: var(--t-footnote); color: var(--muted); display: inline-block; margin-bottom: var(--s4); }
+.back:hover { color: var(--tint); }
+
+/* The head: headline left, the badge and the two acts right. */
+.dhd { display: flex; align-items: flex-start; gap: var(--s4); margin-bottom: var(--s3); flex-wrap: wrap; }
+.dhd__l { min-width: 0; flex: 1 1 24ch; }
+.dhd__t { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.025em; max-width: 32ch; }
+.dhd__r { margin-left: auto; display: flex; gap: var(--s2); align-items: flex-start; flex-wrap: wrap; }
+/* Replaces the buttons once the opportunity has ended. Deliberately a sentence
+   and not a badge: the question afterwards is when and on what it ended. */
+.dhd__end { font-size: var(--t-caption); color: var(--muted); max-width: 34ch; line-height: 1.4; }
+
+/* The badge shows the number; the three addends sit under it, so the score can
+   be re-derived without leaving the page. */
+.score {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s2) var(--s3); background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--radius); min-width: 190px;
+}
+.score__n { font-size: var(--t-title2); font-weight: 700; letter-spacing: -0.02em; }
+.score__n small { font-size: var(--t-footnote); font-weight: 600; color: var(--faint); }
+.score__w { font-size: var(--t-caption); color: var(--muted); line-height: 1.35; }
+
+.chips { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+.chip {
+  font-size: var(--t-caption); color: var(--muted); background: var(--fill-2);
+  border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 3px 10px;
+}
+.chip--warn { color: var(--warn); border-color: rgba(178, 80, 0, 0.25); background: var(--warn-wash); }
+/* The derived state, not a stored column — coloured only where it means the
+   opportunity has ended, so an open one reads as the quiet default. */
+.chip--state[data-status="aktiv"] { color: var(--good); border-color: rgba(36, 138, 61, 0.25); background: var(--good-wash); }
+.chip--state[data-status="ausgelaufen"],
+.chip--state[data-status="verworfen"] { color: var(--faint); border-style: dashed; }
+.dchips { margin-top: var(--s3); }
+
+/* The provenance bar: three sentences naming where the page's figures came
+   from. Above the tiles because it qualifies all of them. */
+.dprov {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3);
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--s3); margin-bottom: var(--s4);
+}
+.dprov__h {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--faint); margin-bottom: 4px;
+}
+.dprov__v { font-size: var(--t-footnote); color: var(--ink-2); line-height: 1.45; }
+
+/* The strip on the page. Every entry here leads somewhere — a tab that does not
+   is left out of the markup, not greyed out. */
+.dtabs {
+  display: flex; gap: var(--s4); border-bottom: 1px solid var(--line);
+  margin-bottom: var(--s4); overflow-x: auto;
+}
+.dtabs a, .dtabs span {
+  font-size: var(--t-subhead); color: var(--muted); padding: 0 0 10px;
+  border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.dtabs a:hover { text-decoration: none; color: var(--ink-2); }
+.dtabs .is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--tint); }
+
+/* Two rows of three. The tiles stack before they squeeze: a source list at
+   200px wide is a column of wrapped outlet names. */
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); align-items: start; }
+.grid3--second { margin-top: var(--s4); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s4); }
+.card + .card { margin-top: var(--s4); }
+.card__h { font-size: var(--t-subhead); font-weight: 700; margin-bottom: var(--s3); display: flex; align-items: baseline; gap: var(--s2); }
+.card__h span { font-weight: 400; font-size: var(--t-caption); color: var(--faint); }
+.card__h a { margin-left: auto; font-size: var(--t-caption); font-weight: 600; }
+.p { font-size: var(--t-subhead); color: var(--ink-2); line-height: 1.5; }
+.dcard__link { margin-top: var(--s2); font-size: var(--t-caption); }
+/* A named absence. Italic rather than grey-on-grey, because it is a sentence
+   worth reading, not a disabled state. */
+.p.empty, .dempty { font-style: italic; color: var(--muted); font-size: var(--t-caption); }
+.dempty a, .p.empty a { font-style: normal; font-weight: 600; }
+
+.quell { list-style: none; display: flex; flex-direction: column; }
+.quell li {
+  display: flex; align-items: baseline; gap: var(--s2); padding: 7px 0;
+  border-top: 1px solid var(--line); font-size: var(--t-footnote); flex-wrap: wrap;
+}
+.quell li:first-child { border-top: 0; }
+.quell__n { font-weight: 600; color: var(--ink-2); }
+.quell__a { color: var(--muted); min-width: 0; }
+.quell__a i { color: var(--faint); }
+.quell__t { margin-left: auto; color: var(--faint); white-space: nowrap; }
+
+.tagline {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--good); margin-top: var(--s3);
+}
+.pull {
+  background: var(--tint-wash); border: 1px solid rgba(0, 113, 227, 0.18);
+  border-radius: var(--radius-s); padding: var(--s3);
+  font-size: var(--t-subhead); color: var(--ink); line-height: 1.5;
+}
+.pull.empty { background: var(--fill-2); border-color: var(--line); }
+
+.facts { list-style: none; margin-top: var(--s3); display: flex; flex-direction: column; gap: 6px; }
+.facts li { font-size: var(--t-footnote); color: var(--ink-2); padding-left: 14px; position: relative; }
+.facts li:before {
+  content: ""; position: absolute; left: 0; top: 7px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--faint);
+}
+
+/* The forward look. Marked as an estimate in words, not only in colour: the
+   evidenced tiles beside it look the same, and colour alone is not a claim. */
+.dest { font-size: var(--t-caption); color: var(--warn); margin-bottom: var(--s3); line-height: 1.4; }
+.tl { list-style: none; position: relative; padding-left: var(--s4); }
+.tl:before { content: ""; position: absolute; left: 4px; top: 6px; bottom: 6px; width: 1px; background: var(--line-strong); }
+.tl li { position: relative; padding: 0 0 var(--s3); }
+.tl li:last-child { padding-bottom: 0; }
+.tl li:before {
+  content: ""; position: absolute; left: calc(-1 * var(--s4) + 1px); top: 5px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--card); border: 2px solid var(--line-strong);
+}
+.tl__t { font-size: var(--t-caption); color: var(--faint); }
+.tl__b { font-size: var(--t-footnote); color: var(--ink-2); }
+
+/* The next step. One box, because there is exactly one next move — the rest of
+   the chain is the quiet list under it. */
+.step {
+  display: flex; gap: var(--s3); align-items: flex-start; padding: var(--s3);
+  border: 1px solid rgba(0, 113, 227, 0.25); background: rgba(0, 113, 227, 0.05);
+  border-radius: var(--radius-s);
+}
+.step__n { font-size: var(--t-subhead); font-weight: 700; color: var(--tint); display: flex; align-items: center; gap: var(--s2); }
+.step__b { font-size: var(--t-footnote); color: var(--ink-2); margin-top: 2px; }
+.later { list-style: none; margin-top: var(--s3); display: flex; flex-direction: column; gap: 6px; }
+.later li { font-size: var(--t-footnote); color: var(--muted); display: flex; gap: var(--s2); align-items: center; }
+.later li b { color: var(--faint); font-weight: 600; }
+
+.rows { list-style: none; }
+.rows li { display: flex; align-items: flex-start; gap: var(--s3); padding: 9px 0; border-top: 1px solid var(--line); }
+.rows li:first-child { border-top: 0; }
+.rows__m { min-width: 0; }
+.rows__n { font-size: var(--t-footnote); font-weight: 600; }
+.rows__s { font-size: var(--t-caption); color: var(--muted); margin-top: 1px; }
+.rows__warn { color: var(--warn); }
+.rows__r { margin-left: auto; text-align: right; white-space: nowrap; display: flex; align-items: center; gap: var(--s2); }
+/* DEC-5's fit. A number, because seventeen names need an order a person does
+   not hold in their head — and it is arithmetic over stored rows, never a
+   model's opinion about a person. */
+.rows__fit { font-size: var(--t-footnote); font-weight: 700; color: var(--ink-2); }
+
+.pill { font-size: var(--t-caption2); font-weight: 700; padding: 2px 7px; border-radius: var(--radius-pill); background: var(--fill); color: var(--muted); }
+.pill--good { background: var(--good-wash); color: var(--good); }
+.pill--warn { background: var(--warn-wash); color: var(--warn); }
+/* Dashed and uncoloured: a missing contact is a gap, not a failure, and it must
+   not read like the green beside it. */
+.pill--none { background: transparent; color: var(--faint); border: 1px dashed var(--line-strong); }
+
+/* The trail. Horizontal, so the market's pieces and our own steps read as one
+   sequence rather than two lists that have to be interleaved by eye. */
+.stream { margin-top: var(--s4); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s4); }
+.stream__row { display: flex; gap: var(--s2); overflow-x: auto; padding-bottom: var(--s1); }
+.ev { flex: none; min-width: 160px; border: 1px solid var(--line); border-radius: var(--radius-s); padding: var(--s2) var(--s3); background: var(--fill-2); }
+.ev__t { font-size: var(--t-caption2); color: var(--faint); }
+.ev__w { font-size: var(--t-caption); font-weight: 600; margin-top: 2px; }
+.ev__b { font-size: var(--t-caption); color: var(--muted); }
+.ev--us { background: var(--tint-wash); border-color: rgba(0, 113, 227, 0.2); }
+
+.note { margin-top: var(--s5); font-size: var(--t-caption); color: var(--faint); max-width: 80ch; line-height: 1.5; }
+
+@media (max-width: 1180px) { .grid3, .dprov { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 860px) { .grid3, .dprov { grid-template-columns: 1fr; } }

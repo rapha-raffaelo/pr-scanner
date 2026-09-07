@@ -162,7 +162,9 @@
     <div class="njarch">
       {% for opp in opportunities %}
         <div class="njarch__row">
-          <div class="njarch__hl"><a href="{{ opp.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ opp.headline }}</a></div>
+          {# To the dossier, which stays readable after the window closed — the
+             question afterwards is always what was known at the time. #}
+          <div class="njarch__hl"><a href="/client/{{ client.id }}/gelegenheit/{{ opp.id }}">{{ opp.headline }}</a></div>
           <div class="njarch__meta">
             {{ t("Zuerst bei") }} {{ opp.source }}
             <span class="dot">·</span> {{ opp.published_at.strftime('%d.%m.%Y %H:%M') }}

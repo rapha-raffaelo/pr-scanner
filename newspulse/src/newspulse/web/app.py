@@ -331,6 +331,7 @@ def create_app() -> FastAPI:
         advisory, archive, assets_view, assistant, client, contacts,
         crisis_view, guide_routes, issues_view,
         language, login, onboarding as onboarding_routes,
+        opportunity_view,
         plan_view, profile as profile_routes, report as report_routes,
         rivals_view, runstatus, settings, today, triage, visibility_view,
     )
@@ -377,6 +378,11 @@ def create_app() -> FastAPI:
     # The long clock: six months of evidenced hooks, and the document a retainer
     # conversation is held over (DEC-5).
     app.include_router(plan_view.router)
+    # One page per fast-lane opportunity (GEL-01): everything stored about one
+    # story for one mandate, in one place. A read-only route — it is the page a
+    # consultant opens repeatedly while a window closes, so looking at it must
+    # cost nothing and leave nothing behind.
+    app.include_router(opportunity_view.router)
     return app
 
 

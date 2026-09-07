@@ -2093,6 +2093,103 @@ _EN: dict[str, str] = {
     "Verworfen am": "Waved off on",
     "Abgelaufen am": "Expired on",
     "Kein Text entstanden.": "No text came of it.",
+    # --- Das Dossier zur Gelegenheit (GEL-01, DEC-1 A) -----------------------
+    # The page behind the card. Chrome only, as everywhere: the standing's
+    # sentence, an outlet's name, a stored byline and the model's forward look
+    # are data and stay in the language they were written in.
+    "Dossier": "Dossier",
+    "Zurück zu Heute": "Back to Today",
+    "Aktiv": "Active",
+    "Ausgelaufen": "Expired",
+    "Noch": "Still",
+    "Std im Fenster": "hrs left in the window",
+    "Fenster läuft aus": "The window is closing",
+    "Erkannt": "Detected",
+    "Verbreitung": "Reach",
+    "Std übrig": "hrs left",
+    "Verbreitung, Frist und Stehen, zusammengezählt":
+        "Reach, deadline and standing, added up",
+    "von Hand abgeräumt": "waved off by hand",
+    "das Fenster ab dem Ursprungsbeitrag ist zugelaufen":
+        "the window running from the origin piece has closed",
+    "Texte ansehen": "View the texts",
+    # The provenance bar: where every figure on the page came from.
+    "Erkannt durch": "Detected by",
+    "Dringlichkeit gerechnet aus": "Urgency calculated from",
+    "Stehen geprüft gegen": "Standing checked against",
+    # The strip on the page. Only tabs that land on a route this app serves —
+    # Performance and Historie are deliberately absent, not greyed out.
+    "Situation": "Situation",
+    "Assets": "Assets",
+    "Quality": "Quality",
+    "GEO & AI Visibility": "GEO & AI Visibility",
+    # The tiles.
+    "Die Lage": "The situation",
+    "Zu diesem Beitrag ist keine Kurzfassung gespeichert. Die Quelle steht unten.":
+        "No summary is stored for this piece. The source is listed below.",
+    "Ursprungsbeitrag öffnen": "Open the origin piece",
+    "Ursprung": "Origin",
+    "kein Autor im Beitrag": "no byline stored",
+    "Vorgeschlagene Storyline": "Proposed storyline",
+    "vom Werkzeug": "from the tool",
+    "Die Prüfung hat keinen Satz hinterlassen. Das Stehen gilt, die Begründung fehlt.":
+        "The check left no sentence behind. The standing holds; the grounds are missing.",
+    "Stehen belegt": "Standing supported",
+    "Für dieses Mandat sind keine Anspruchsgruppen hinterlegt.":
+        "No stakeholder groups are on file for this mandate.",
+    "Karte pflegen": "Maintain the map",
+    "Warum jetzt": "Why now",
+    "Medien tragen die Story, das erste am": "outlets carry the story, the first on",
+    "Das Fenster ab dem Ursprungsbeitrag ist zugelaufen am":
+        "The window running from the origin piece closed on",
+    "Das Fenster ab dem Ursprungsbeitrag läuft aus in":
+        "The window running from the origin piece closes in",
+    "Das Mandat wird in keinem der Beiträge genannt — sonst wäre es Berichterstattung, keine Gelegenheit":
+        "The mandate is named in none of the pieces — otherwise this would be "
+        "coverage, not an opening",
+    # DEC-3's forward look: an estimate, and it says so in words rather than in
+    # colour, because the evidenced tiles beside it look the same.
+    "Wie es weitergeht": "What comes next",
+    "Einschätzung": "An estimate",
+    "Einschätzung bei der Erkennung am": "Estimated at detection on",
+    "Keine belegte Zeile.": "Not an evidenced row.",
+    "Zu dieser Gelegenheit wurde bei der Erkennung keine Vorschau geschrieben. Was belegt ist, steht in der Spur unten.":
+        "No look-ahead was written for this opportunity at detection. What is "
+        "evidenced stands in the trail below.",
+    # The next step, read off the stored rows rather than guessed.
+    "Empfohlene nächste Schritte": "Recommended next steps",
+    "Format wählen": "Pick a format",
+    "Prüfung starten": "Start the check",
+    "Senden": "Send",
+    "danach": "then",
+    "Aus den gespeicherten Zeilen folgt kein nächster Schritt: es hängt ein geprüfter Text daran und ein Brief ist heraus.":
+        "The stored rows call for no next step: a checked text hangs on this and "
+        "a letter has gone out.",
+    # DEC-5's media list. The fit is arithmetic over stored rows, never a model.
+    "Medienbild": "Media picture",
+    "Eigene Meldung, Präsenz im Feld, hinterlegter Kontakt":
+        "Wrote this story, presence in the field, contact on file",
+    "Zu diesem Anlass bereits angeschrieben am": "Already written to on this occasion on",
+    "Kontakt da": "Contact on file",
+    "kein Kontakt": "no contact",
+    "In den Beiträgen dieser Story und im Feld der letzten 90 Tage ist kein Autor gespeichert. Deutsche Feeds liefern selten einen.":
+        "No byline is stored on this story's pieces or in the field over the last "
+        "90 days. German feeds rarely carry one.",
+    "Texte zu dieser Gelegenheit": "Texts on this opportunity",
+    "geprüft": "checked",
+    "ungeprüft": "unchecked",
+    "Der Anlass steht, es hängt noch kein Text daran.":
+        "The occasion stands; no text hangs on it yet.",
+    "Zu dieser Gelegenheit ist noch kein Anlass angelegt. Ein Text entsteht über den Knopf oben.":
+        "No occasion has been opened for this opportunity. A text starts with the "
+        "button above.",
+    "Entscheidungsspur": "Decision trail",
+    "was passiert ist und was wir getan haben": "what happened and what we did",
+    "Jede Zahl auf dieser Seite steht in einer gespeicherten Zeile: die Medien sind gezählte Beiträge, die Stunden sind das Fenster ab dem Ursprungsbeitrag, und die Dringlichkeit ist aus diesen beiden plus dem Stehen gerechnet und oben ausgeschrieben. Diese Seite liest nur — sie legt keinen Anlass an und ruft kein Modell.":
+        "Every figure on this page stands in a stored row: the outlets are counted "
+        "pieces, the hours are the window running from the origin piece, and the "
+        "urgency is calculated from those two plus the standing and written out "
+        "above. This page only reads — it opens no occasion and calls no model.",
     # The calendar. Spelled out rather than taken from ``locale``, for the reason
     # ``web.app`` spells them out: a de_DE locale is absent from most containers
     # and setlocale is process-global.
