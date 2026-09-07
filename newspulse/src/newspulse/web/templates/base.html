@@ -132,9 +132,13 @@
           {# A real link, not a button: without JavaScript it lands on this same
              page with the drawer already open (the layout reads ?assistant
              below), and with it the click is caught and the drawer opens in
-             place. Which also makes it a href a test can call. #}
-          {% set here_query = request.url.query %}
-          <a class="askraute" href="{{ request.url.path }}?{% if here_query %}{{ here_query }}&amp;{% endif %}assistant=1" data-drawer-open>
+             place. Which also makes it a href a test can call.
+
+             include_query_params, not an append: it keeps the filters the
+             reader was looking at, and *sets* rather than adds ?assistant, so
+             pressing it on a page that already carries it does not grow the
+             URL a &assistant=1 at a time. #}
+          <a class="askraute" href="{{ request.url.path }}?{{ request.url.include_query_params(assistant=1).query }}" data-drawer-open>
             <svg class="ico askraute__ico" aria-hidden="true"><use href="#ico-raute"></use></svg>{{ t("Ask RAUTE") }}</a>
         </div>
       </div>

@@ -358,6 +358,16 @@ def test_ask_raute_keeps_the_page_it_was_pressed_on(web, mandate):
     assert "q=Netzentgelte" in target
 
 
+def test_ask_raute_does_not_stack_up_when_it_is_pressed_twice(web, mandate):
+    """Without JavaScript the link lands on a page that already carries
+    ?assistant, where the bar renders the link again. It has to *set* the flag
+    rather than append it, or the URL grows one &assistant=1 per press."""
+    page = web.get("/archive", params={"q": "Netzentgelte", "assistant": "1"}).text
+    target = next(url for url in _links(_topbar(page)) if "assistant=1" in url)
+    assert target.count("assistant=1") == 1, target
+    assert "q=Netzentgelte" in target, "and it still keeps the filter underneath"
+
+
 # --- The tab strip ----------------------------------------------------------------
 
 
