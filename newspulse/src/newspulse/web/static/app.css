@@ -350,11 +350,6 @@ body {
 }
 .ico-sprite { display: none; }
 
-@media (max-width: 900px) {
-  .topbar { padding-left: var(--s4); padding-right: var(--s4); flex-wrap: wrap; }
-  .topsearch__in { width: 110px; }
-}
-
 .content { padding: var(--s6) var(--s7) var(--s8); max-width: calc(var(--col) + 2 * var(--s7)); width: 100%; }
 
 h1, h2, h3 { letter-spacing: -0.02em; color: var(--ink); }
@@ -407,13 +402,17 @@ a:hover { text-decoration: underline; }
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
   /* The top bar wraps at this width, so its height is no longer --topbar-h and
-     the offset the toolbar sticks at would be wrong. Neither bar sticks. */
+     the offset the toolbar sticks at would be wrong. Neither bar sticks. The
+     wrap and the unsticking stay in one block on purpose: they are one
+     decision, and apart it is easy to change the first and miss the second. */
+  .topbar { flex-wrap: wrap; }
+  .topsearch__in { width: 110px; }
   .topbar, .tbar { position: static; }
   .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; overflow: visible; }
   .side__nav { flex-direction: row; flex-wrap: wrap; }
   .side__sect { padding: 0 var(--s1); }
   .side__foot { margin: 0; border: 0; padding: 0; }
-  .tbar, .content { padding-left: var(--s4); padding-right: var(--s4); }
+  .topbar, .tbar, .content { padding-left: var(--s4); padding-right: var(--s4); }
 }
 
 /* --- A sweep in progress -------------------------------------------------- */
