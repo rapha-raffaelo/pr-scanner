@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from importlib import resources
 from string import Template
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -84,6 +84,11 @@ _MAX_ARCHIVE = 12
 #: pickup count on the row still counts every outlet.
 _MAX_STORY_LINES = 10
 
+#: How many decision points the stored forward look keeps (DEC-3). Four, the
+#: number the mock's tile shows: a look-ahead that needs scrolling is a
+#: forecast, and this is meant to answer "wie lange habe ich noch" in a glance.
+_MAX_OUTLOOK = 4
+
 
 @dataclass(frozen=True, slots=True)
 class _Radar:
@@ -110,12 +115,28 @@ class _Radar:
 
 
 class StandingVerdict(BaseModel):
-    """The model's answer: one of three standings, and what it rests on."""
+    """The model's answer: one of three standings, what it rests on, and the
+    forward look DEC-3 puts on the dossier.
+
+    ``outlook`` rides on *this* call rather than buying a second one. DEC-3
+    budgeted a model call per opportunity for the look-ahead and DEC-6 said to
+    bundle it; bundling it here spends none at all, because the answer already
+    has the story and the mandate in front of it. It defaults to empty, so an
+    answer in the old two-field shape stays a perfectly good verdict — the
+    standing question is what the call is for, and the look-ahead is what the
+    same reading can volunteer.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     standing: str
     reason: str = ""
+    #: ``[{"when": ..., "what": ...}]``, which is the shape ``_outlook`` reduces
+    #: it to and the shape the tile renders. A ``default_factory`` rather than a
+    #: bare ``[]``: Pydantic deep-copies literal defaults so there is no shared
+    #: list here, but the reader has to know that to know it is safe, and the
+    #: factory says it without being known.
+    outlook: list[dict[str, str]] = Field(default_factory=list)
 
 
 #: The spellings a model plausibly answers with, folded onto the closed set.
@@ -129,12 +150,40 @@ _STANDING_SPELLINGS = {
 }
 
 
-def _parse(raw: str) -> tuple[Standing, str]:
+def _outlook(entries: list[dict]) -> list[dict[str, str]]:
+    """The forward look, reduced to the pairs that can actually be shown.
+
+    An entry is worth storing only when it carries both halves: the span and
+    what falls in it. Half a pair renders as "2 bis 7 Tage: " under a heading
+    that says an estimate — which is the one thing an estimate must not be,
+    namely unreadable. Everything else the model volunteered is dropped, and a
+    value that is not a list at all is no forward look rather than an error:
+    the standing verdict is what the call was for, and it must not be lost to
+    a malformed extra.
+    """
+    if not isinstance(entries, list):
+        return []
+    pairs: list[dict[str, str]] = []
+    for entry in entries[:_MAX_OUTLOOK]:
+        if not isinstance(entry, dict):
+            continue
+        when = prose.plain(str(entry.get("when") or "").strip())
+        what = prose.plain(str(entry.get("what") or "").strip())
+        if when and what:
+            pairs.append({"when": when, "what": what})
+    return pairs
+
+
+def _parse(raw: str) -> tuple[Standing, str, list[dict[str, str]]]:
     """The verdict out of the model's answer, or :class:`ParseError`.
 
     A fourth answer is refused rather than filed under one of the three: a
     misfiled standing either spends a consultant's morning or silences a real
     opening, and a refused parse merely costs one retry on the next scan.
+
+    The forward look is the opposite posture: unusable means empty, never a
+    refusal. It is an estimate the dossier labels as one, and losing a good
+    standing verdict to a malformed extra would be the expensive mistake.
     """
     try:
         payload = json.loads(strip_code_fence(raw))
@@ -147,7 +196,7 @@ def _parse(raw: str) -> tuple[Standing, str]:
     standing = _STANDING_SPELLINGS.get(verdict.standing.strip().casefold())
     if standing is None:
         raise ParseError(f"not a standing: {verdict.standing!r}")
-    return standing, prose.plain(verdict.reason.strip())
+    return standing, prose.plain(verdict.reason.strip()), _outlook(verdict.outlook)
 
 
 # --- Reading the radar ------------------------------------------------------------
@@ -271,7 +320,7 @@ def _check_standing(
     members: tuple[_Radar, ...],
     origin: _Radar,
     invoke,
-) -> tuple[Standing, str] | None:
+) -> tuple[Standing, str, list[dict[str, str]]] | None:
     """One model call: does this mandate have standing on this story?
 
     ``None`` means the check could not be read — nothing is stored, so the next
@@ -314,6 +363,59 @@ def _reference(now: dt.datetime | None) -> dt.datetime:
 def window(*, hours: int | None = None) -> dt.timedelta:
     """The configured newsjack window, as a timedelta."""
     return dt.timedelta(hours=config.newsjack_window_hours() if hours is None else hours)
+
+
+def _row_for(
+    client: Client,
+    story: stories.Story,
+    origin: _Radar,
+    *,
+    ends: dt.datetime,
+    reference: dt.datetime,
+    standing: Standing,
+    reason: str,
+    outlook: list[dict[str, str]],
+    written_under: int | None,
+) -> NewsjackOpportunity:
+    """The verdict, as the row that records it. Constructed, never stored here."""
+    return NewsjackOpportunity(
+        client_id=client.id,
+        article_id=origin.article.id,
+        standing=standing,
+        reason=reason,
+        pickup_count=story.pickup_count,
+        window_ends_at=ends,
+        created_at=reference,
+        brain_version=brain.stamp(written_under, what="a newsjack verdict"),
+        outlook=outlook,
+        # Stamped only when there is something to stamp, so an empty look reads
+        # as "none was made" rather than as one made and forgotten.
+        outlook_at=reference if outlook else None,
+    )
+
+
+def _store(
+    session: Session, row: NewsjackOpportunity, origin: _Radar, client: Client
+) -> bool:
+    """Commit one verdict; ``False`` when a concurrent scan got there first.
+
+    ``uq_newsjack_client_article`` is the arbiter. Two scans weighing the same
+    story is not an error state — it is two runs doing their job — and the one
+    that lost simply keeps the other's verdict rather than raising into the
+    caller's loop.
+    """
+    session.add(row)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        _log.info(
+            "a concurrent scan weighed %r for %r first; keeping its verdict",
+            origin.headline,
+            client.name,
+        )
+        return False
+    return True
 
 
 def scan(
@@ -366,29 +468,19 @@ def scan(
         verdict = _check_standing(session, client, members, origin, resolved_invoke)
         if verdict is None:
             continue
-        standing, reason = verdict
-        row = NewsjackOpportunity(
-            client_id=client.id,
-            article_id=origin.article.id,
+        standing, reason, outlook = verdict
+        row = _row_for(
+            client,
+            story,
+            origin,
+            ends=ends,
+            reference=reference,
             standing=standing,
             reason=reason,
-            pickup_count=story.pickup_count,
-            window_ends_at=ends,
-            created_at=reference,
-            brain_version=brain.stamp(written_under, what="a newsjack verdict"),
+            outlook=outlook,
+            written_under=written_under,
         )
-        session.add(row)
-        try:
-            session.commit()
-        except IntegrityError:
-            # ``uq_newsjack_client_article`` fired: a concurrent scan weighed
-            # the same story first. Its verdict is the verdict.
-            session.rollback()
-            _log.info(
-                "a concurrent scan weighed %r for %r first; keeping its verdict",
-                origin.headline,
-                client.name,
-            )
+        if not _store(session, row, origin, client):
             continue
         created.append(row)
         _log.info(

@@ -71,10 +71,17 @@ Regeln für die Antwort:
   das konkrete Profilfeld, die Guide-Zeile oder die eigene Berichterstattung
   aus den Abschnitten oben. Bei "duenn" und "keins" benennt er, was fehlt.
   Ein "reason", der auf nichts oben zeigt, trägt kein "belegt".
+- "outlook" ist die Vorschau: welche Entscheidungspunkte in dieser Sache noch
+  kommen. Je Eintrag ein Zeitraum ("2 bis 7 Tage") und was dann ansteht
+  ("Verbände positionieren sich"), höchstens vier, in zeitlicher Reihenfolge.
+  Das ist ausdrücklich eine Einschätzung und wird auch so angezeigt. Wenn sich
+  aus der Geschichte oben nichts über den weiteren Verlauf sagen lässt, gib
+  eine leere Liste zurück — eine erfundene Frist ist schlechter als keine.
 
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
 {
   "standing": "belegt",
-  "reason": "worauf das Stehen beruht, oder was fehlt"
+  "reason": "worauf das Stehen beruht, oder was fehlt",
+  "outlook": [{"when": "2 bis 7 Tage", "what": "was dann ansteht"}]
 }

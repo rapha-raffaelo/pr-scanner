@@ -1,0 +1,166 @@
+{# RAUTE Intelligence: the six tiles beside the dossier (GEL-02).
+
+   The template's engine tiles — coloured symbol field, coloured result line, a
+   mark at the right edge — with the one rule the submitted design did not have:
+   every tile stands on a stored row, names that row's state, and links to the
+   page it was written on.
+
+   Nothing is decided here. Which mark a tile wears, and whether anything is
+   behind it at all, is ``newspulse.dossier_rail``'s answer; this file turns it
+   into the sentence. That split is deliberate: a test pins ``tile.signal``
+   without parsing German, and the green tick can be proved unreachable for an
+   absent run in one place rather than in six branches of markup.
+
+   ``tile.measured`` is false for exactly one reason — nothing ran — and the
+   ``{% else %}`` of every block below is therefore a sentence saying what is
+   missing and where it would come from, never a zero. A 0 that means "nie
+   gemessen" and a 0 that means "gemessen und nichts gefunden" are two different
+   mornings, and only the second one is a finding about the mandate.
+
+   Expects ``rail`` (a list of ``dossier_rail.Tile``) and ``client``. #}
+{% set t = translator(request) %}
+{% set marks = {'ohne-einwand': '✓', 'einwand': '!', 'nichts': '–'} %}
+{% set mark_words = {
+     'ohne-einwand': 'Gelaufen, ohne Einwand',
+     'einwand': 'Gelaufen, mit Einwand',
+     'nichts': 'Dazu ist noch nichts gelaufen',
+   } %}
+{# Keyed on the stored enum value and never on a translated word, the same
+   mapping the KI-Sichtbarkeit page keeps: a band the reader's language invented
+   would name a different measurement. #}
+{% set band_names = {
+     'marke': t("Marke"),
+     'auswahl': t("Auswahl"),
+     'kategorie': t("Kategorie"),
+     'problem': t("Problem"),
+   } %}
+<aside>
+  <div class="card">
+    <div class="card__h">{{ t("Was RauteOS zum Mandat weiß") }}</div>
+    <div class="know">
+
+      {% for tile in rail %}
+      {% set f = tile.figures %}
+      <div class="know__i know__i--{{ tile.key.value }} know__i--{{ tile.signal.value }}">
+
+        <div class="know__top">
+          <span class="know__ico" aria-hidden="true">
+            <svg class="ico"><use href="#{{ tile.icon }}"></use></svg>
+          </span>
+          <span class="know__h">{{ tile.title }}</span>
+          {# The mark at the right edge. Three glyphs for three states, and the
+             tick is reachable from one of them only. The word behind it is on
+             the element rather than in the glyph, so a screen reader gets the
+             state and not a punctuation mark. #}
+          <span class="know__sign know__sign--{{ tile.signal.value }}"
+                title="{{ t(mark_words[tile.signal.value]) }}"
+                aria-label="{{ t(mark_words[tile.signal.value]) }}"
+                role="img">{{ marks[tile.signal.value] }}</span>
+        </div>
+
+        {% if tile.key.value == 'positioning' %}
+          {% if tile.measured %}
+            {# The freshness is the result — a positioning nobody has confirmed
+               in a fortnight is the tile's whole finding — and the stored line
+               below it stays verbatim, because it is data. #}
+            <div class="know__res">
+              {% with checked = f.checked %}{% include "partials/profile_checked.html" %}{% endwith %}
+            </div>
+            <div class="know__v">„{{ f.value }}“ · {{ t("aus dem Profil") }}</div>
+          {% else %}
+            <div class="know__res">{{ t("Im Profil steht keine Positionierung. Ein Text zu dieser Gelegenheit hat dann nichts, wogegen er sich abgrenzt.") }}</div>
+          {% endif %}
+
+        {% elif tile.key.value == 'media' %}
+          {% if tile.measured %}
+            {# Two numbers and not a share: the gap between them is what decides
+               whether this list is an address book or a wish. #}
+            <div class="know__res"><b>{{ f.reach.with_contact }} {{ t("von") }} {{ f.reach.named }}</b>
+              {{ t("vorgeschlagenen Bylines haben einen hinterlegten Kontakt.") }}</div>
+            {% if f.lead %}
+              <div class="know__v">{{ t("Bestplatziert") }}: <b>{{ f.lead.name }}</b>,
+                {{ f.lead.outlet }} · {{ f.lead.reason }}</div>
+            {% endif %}
+          {% else %}
+            <div class="know__res">{{ t("Zu dieser Gelegenheit schlägt das Werkzeug niemanden vor: im Feld ist kein Autor gespeichert.") }}</div>
+          {% endif %}
+
+        {% elif tile.key.value == 'asset' %}
+          {% if tile.measured %}
+            {# Counts as labelled figures rather than as a sentence with a
+               number in it: "1 Texte" is what a German sentence built around a
+               variable count reads like half the time. #}
+            <div class="know__res">{{ t("Texte am Anlass:") }} <b>{{ f.texts }}</b> ·
+              {{ t("davon geprüft:") }} <b>{{ f.checked }}</b></div>
+          {% else %}
+            <div class="know__res">{{ t("An dieser Gelegenheit hängt noch kein Text. Er entsteht auf der Texte-Seite.") }}</div>
+          {% endif %}
+
+        {% elif tile.key.value == 'quality' %}
+          {% if tile.measured %}
+            {# Three counts and never a percentage: "geprüft" and "nichts hat
+               hingeschaut" are the two states the stored check keeps apart, and
+               a share would fold them back together. #}
+            <div class="know__res">{{ t("Mit Einwand:") }} <b>{{ f.objected }}</b> ·
+              {{ t("ungeprüft:") }} <b>{{ f.unchecked }}</b></div>
+            <div class="know__v">{{ t("Geprüft und ohne Einwand:") }}
+              {{ f.checked }} {{ t("von") }} {{ f.texts }}</div>
+          {% elif f.texts %}
+            {# Texts on file and no check on any of them. Not a clean bill: the
+               tile says so, and its mark stays the one for a run that never
+               happened. #}
+            <div class="know__res">{{ t("An den Texten dieser Gelegenheit hat bisher keine Prüfung stattgefunden.") }}</div>
+          {% else %}
+            <div class="know__res">{{ t("An dieser Gelegenheit hängt noch kein Text, also auch keine Prüfung.") }}</div>
+          {% endif %}
+
+        {% elif tile.key.value == 'visibility' %}
+          {% if tile.measured and f.run.answers %}
+            <div class="know__res"><b>{{ f.run.named_in }} {{ t("von") }} {{ f.run.answers }}</b>
+              {{ t("Antworten nennen das Mandat, gemessen am") }} {{ f.run.measured_at | de_date }}.</div>
+            <div class="know__v">
+              {% if f.band %}{{ t("Band") }}: {{ band_names[f.band.value] }}.{% endif %}
+              {% if f.run.best_position %}{{ t("Beste Position") }} {{ f.run.best_position }}.{% endif %}
+            </div>
+          {% elif tile.measured %}
+            {# A run that cost the providers and produced nothing readable is not
+               the same statement as "das Mandat wurde nicht genannt". #}
+            <div class="know__res">{{ t("Die letzte Messung am") }} {{ f.run.measured_at | de_date }}
+              {{ t("hat keine lesbare Antwort zurückgebracht.") }}</div>
+          {% else %}
+            <div class="know__res">{{ t("Dieses Mandat wurde noch nie gemessen.") }}</div>
+          {% endif %}
+
+        {% elif tile.key.value == 'intelligence' %}
+          {% if tile.measured %}
+            {# ``| capitalize`` the way the band's own tile does it, so the word
+               reads the same in both places. #}
+            <div class="know__res">{{ t("Band") }} <b>{{ t(f.state.value) | capitalize }}</b>,
+              {{ t(f.direction.value) }}</div>
+            <div class="know__v">{{ f.articles }} {{ t("Beiträge, davon") }}
+              {{ f.negative }} {{ t("negativ, gelesen am") }} {{ f.day.strftime("%d.%m.%Y") }}</div>
+          {% else %}
+            <div class="know__res">{{ t("Für dieses Mandat liegt noch keine Reputationsmessung vor. „Ruhig“ wäre eine Messung, und diese gibt es nicht.") }}</div>
+          {% endif %}
+        {% endif %}{# A key with no branch renders its frame and no sentence,
+           which is a visible hole rather than a template error on a page Lucas
+           opens four times on a closing morning. The correspondence between the
+           keys and the branches above is held by a test that counts one
+           ``know__res`` per member of ``TileKey``, so a seventh tile fails
+           there rather than shipping blank. #}
+
+        {# The age, on the two tiles that stand on a scheduled sweep and only
+           once it is past ``dossier_rail._STALE_AFTER``. The mark above already
+           says the measurement is not current; without the number beside it the
+           reader is told there is a problem and not how big it is. #}
+        {% if tile.stale_days is not none %}
+          <div class="know__v">{{ t("Zuletzt gemessen vor %(days)s Tagen.") | format(days=tile.stale_days) }}</div>
+        {% endif %}
+
+        <a class="know__l" href="{{ tile.href }}">{{ t(tile.link) }} →</a>
+      </div>
+      {% endfor %}
+
+    </div>
+  </div>
+</aside>
