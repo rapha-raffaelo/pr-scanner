@@ -2128,6 +2128,30 @@ class NewsjackOpportunity(Base):
     brain_version: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
+    #: The forward look (DEC-3 B): the decision points the standing check
+    #: expected to come, as ``[{"when": …, "what": …}]`` — "2 bis 7 Tage:
+    #: Verbände positionieren sich". The one estimate on the dossier, and the
+    #: reason it is a *column* rather than something the page works out: a
+    #: dossier is opened four times a morning, and a look-ahead recomputed on
+    #: every view would charge a model call for looking. Written once, with the
+    #: verdict that created the row, and never touched again.
+    #:
+    #: Empty list is the ordinary value: the model volunteered nothing usable,
+    #: or the row predates the column. The tile then says so rather than
+    #: inventing a calendar.
+    outlook: Mapped[list[dict]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+    #: When the forward look was written — which is when the opportunity was
+    #: detected, never when it was read. Shown beside the tile, because an
+    #: estimate whose age is invisible gets read like the evidenced rows next
+    #: to it. NULL exactly while :attr:`outlook` is empty.
+    outlook_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, default=None
+    )
 
     client: Mapped["Client"] = relationship(lazy="selectin")
     article: Mapped["Article"] = relationship(lazy="selectin")

@@ -26,57 +26,54 @@
 */
 
 :root {
-  /* The planes. A dark sidebar under a light workspace: navigation is the one
-     surface that never changes while everything to its right does, and giving
-     it its own value makes that division legible before a single label is
-     read. Cards are white on a cool lavender-grey ground, so depth comes from
-     value first and a whisper of shadow second. */
-  --side-bg: #1c1f37;
-  --side-ink: rgba(255, 255, 255, 0.86);
-  --side-muted: rgba(255, 255, 255, 0.46);
-  --side-line: rgba(255, 255, 255, 0.09);
-  --side-hover: rgba(255, 255, 255, 0.07);
-  --ground: #f5f6fb;
-  --card: #ffffff;
-  --fill: rgba(60, 64, 96, 0.08);
-  --fill-2: rgba(60, 64, 96, 0.05);
-  --fill-strong: rgba(60, 64, 96, 0.14);
+  /* --- The accent, and the only line that carries it ----------------------
+     DEC-4 repaints the whole tool violet, and the point of doing it in tokens
+     is that the next repaint is not another week: the hue is written once,
+     here, and every violet on every page is derived from it — the flat colour,
+     the two washes, the two hairlines, the sidebar's selected row, the tab
+     underline. Changing the accent is changing the next line and nothing else.
 
-  --ink: #171a2f;
-  --ink-2: rgba(23, 26, 47, 0.80);
-  --muted: rgba(60, 64, 96, 0.60);
-  --faint: rgba(60, 64, 96, 0.38);
-  --line: rgba(28, 31, 55, 0.10);
-  --line-strong: rgba(28, 31, 55, 0.20);
+     An unbracketed rgb triple rather than a hex, because the alphas have to be
+     derived from it: rgb() with a slash accepts a custom property, and there is
+     no arithmetic over a hex that every browser this runs in supports. The
+     triple below is #6d4aff. */
+  --accent-rgb: 109 74 255;
 
-  /* Indigo, not blue. It is the hue the brand palette already leads with
-     (branding._PALETTE[0]) and the one this file's own comments call "the
-     app's indigo" — the tint was the last place still on Apple's blue. */
-  --tint: #5b4de8;
-  --tint-deep: #4338ca;
-  --tint-wash: rgba(91, 77, 232, 0.11);
-  --tint-wash-2: rgba(91, 77, 232, 0.06);
+  --tint: rgb(var(--accent-rgb));
+  --tint-wash: rgb(var(--accent-rgb) / .10);
+  --tint-wash-soft: rgb(var(--accent-rgb) / .05);
+  --tint-line: rgb(var(--accent-rgb) / .20);
+  --tint-line-strong: rgb(var(--accent-rgb) / .30);
   --accent: var(--tint);
-  --alert: #dc2626;
-  --good: #16a34a;
-  --warn: #d97706;
+
+  /* Greys. The sidebar is the darkest plane, content sits lighter on top of
+     it, and cards are white — the macOS stacking, so depth comes from value
+     first and the hairline plus a whisper of shadow second. They carry a trace
+     of the accent's hue, so the ground sits *under* a violet interface rather
+     than beside it. */
+  --side-bg: #eceaf4;
+  --ground: #f7f6fb;
+  --card: #ffffff;
+  --fill: rgba(78, 74, 110, 0.10);
+  --fill-2: rgba(78, 74, 110, 0.06);
+  --fill-strong: rgba(78, 74, 110, 0.18);
+
+  --ink: #1b1a26;
+  --ink-2: rgba(27, 26, 38, 0.82);
+  --muted: rgba(58, 56, 78, 0.60);
+  --faint: rgba(58, 56, 78, 0.36);
+  --line: rgba(30, 28, 48, 0.11);
+  --line-strong: rgba(30, 28, 48, 0.20);
+
+  --alert: #d70015;
+  --good: #248a3d;
+  --warn: #b25000;
   /* The bar a company that is neither the mandate nor an alert is drawn in.
      Named because the KI-Sichtbarkeit ranking draws every other firm in it. */
   --neutral: #a1a1aa;
-  --purple: #7c3aed;
-  --pink: #db2777;
-  --teal: #0e7490;
-
-  /* One wash per category, read by both tag vocabularies (Today's `t-<cat>`
-     and the archive's `tag--<cat>`), so a story wears the same colour in both
-     views and the hex literals that used to live on each rule are gone. */
-  --cat-produkt-ink: #1d4ed8;     --cat-produkt-wash: #e0e7ff;
-  --cat-personalie-ink: #6d28d9;  --cat-personalie-wash: #ede9fe;
-  --cat-wettbewerb-ink: #a21caf;  --cat-wettbewerb-wash: #fae8ff;
-  --cat-finanzen-ink: #15803d;    --cat-finanzen-wash: #dcfce7;
-  --cat-krise-ink: #b91c1c;       --cat-krise-wash: #fee2e2;
-  --cat-regulatorik-ink: #b45309; --cat-regulatorik-wash: #fef3c7;
-  --cat-sonstiges-ink: #4b5563;   --cat-sonstiges-wash: #eef0f5;
+  --purple: #8944ab;
+  --pink: #d30f45;
+  --teal: #0071a4;
 
   /* The macOS type scale, one point up. Nothing outside this list. */
   --t-caption2: 10px;
@@ -93,15 +90,29 @@
   --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 24px; --s7: 32px; --s8: 48px;
 
+  /* Softer corners than the macOS 10px, and a shadow that exists at all. The
+     hairline still does the separating; the shadow only says a card sits one
+     step above the ground, which at this strength reads as depth and not as
+     glow. */
   --radius: 12px;
   --radius-s: 8px;
   --radius-pill: 980px;
-  /* A hairline does the separating; the shadow only says the card is a step
-     above the ground, and at this strength it reads as depth, not as glow. */
-  --shadow: 0 1px 2px rgba(28, 31, 55, .05), 0 1px 3px rgba(28, 31, 55, .04);
-  --shadow-raised: 0 4px 12px rgba(28, 31, 55, .08), 0 1px 3px rgba(28, 31, 55, .05);
+  --shadow: 0 1px 2px rgba(30, 28, 48, .05), 0 1px 3px rgba(30, 28, 48, .04);
   --side-w: 232px;
   --col: 1120px;
+  /* The ground, translucent: what the two sticky bars are drawn on so the page
+     blurs through them. Same colour as --ground, and a token because two rules
+     need it and two literals drift. */
+  --veil: rgba(247, 246, 251, .82);
+  /* Fixed, not derived: the toolbar sticks *below* the top bar, and "below"
+     needs a number. Two sticky bars both pinned to 0 land on each other. */
+  --topbar-h: 48px;
+
+  /* How much darker a filled accent control goes when pressed or hovered. A
+     brightness filter rather than a second stored colour: a stored one is a
+     second place the accent lives, and it would drift the first time the line
+     above changes. */
+  --press: 0.90;
 
   --paper: var(--card);
   --bg: var(--ground);
@@ -109,17 +120,40 @@
   --surface: var(--card);
   --border: var(--line);
   --text: var(--ink);
-  --alertbg: rgba(220, 38, 38, .09);
+  --alertbg: rgba(215, 0, 21, .09);
   --alert-bg: var(--alertbg);
   --alert-wash: var(--alertbg);
-  --good-wash: rgba(22, 163, 74, .10);
-  --warn-wash: rgba(217, 119, 6, .11);
+  --good-wash: rgba(36, 138, 61, .10);
+  --warn-wash: rgba(178, 80, 0, .10);
+  /* The hairline that goes with the warn wash. A wash needs a border of its
+     own or the tinted box floats: --line is a grey and reads as a seam on a
+     coloured plane. */
+  --warn-line: rgba(178, 80, 0, .25);
+
+  /* Captain Comms keeps his own palette — deep green and gold, not the accent —
+     so the assistant reads as a distinct presence inside a violet interface.
+     Declared here rather than in a second :root beside his own rules: one block
+     holds every value in this file, which is what makes the accent above a
+     one-line change instead of a search. */
+  --cc-deep: #14523c;
+  --cc-mid: #22815f;
+  --cc-gold: #f2b32e;
+
+  /* The plan's hook classes: the four source classes its mock names, plus the
+     fifth (a theme with measured resonance) that is a hook class in the engine
+     and needs a swatch of its own rather than being folded into one of the
+     four. Same reason as above for living here and not beside the plan rules. */
+  --hook-study: #5856d6;
+  --hook-reg: var(--warn);
+  --hook-event: var(--tint);
+  --hook-thema: var(--teal);
+  --hook-archiv: var(--good);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
   background: var(--ground);
   color: var(--ink);
   font-size: var(--t-body);
@@ -135,8 +169,7 @@ body {
 
 .side {
   background: var(--side-bg);
-  color: var(--side-ink);
-  border-right: 1px solid var(--side-line);
+  border-right: 1px solid var(--line);
   padding: var(--s5) var(--s3) var(--s4);
   display: flex; flex-direction: column; gap: var(--s5);
   position: sticky; top: 0; align-self: start; height: 100vh;
@@ -145,14 +178,13 @@ body {
 .side__brand {
   display: flex; align-items: center; gap: var(--s2);
   font-size: var(--t-title3); font-weight: 700; letter-spacing: -0.02em;
-  color: #fff; padding: 0 var(--s2) 0 var(--s1);
+  color: var(--ink); padding: 0 var(--s2) 0 var(--s1);
 }
 .side__brand:hover { text-decoration: none; }
 .side__mark {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border-radius: 7px;
-  background: linear-gradient(135deg, #7c6cf6, var(--tint)); color: #fff;
-  box-shadow: 0 2px 6px rgba(91, 77, 232, .45);
+  width: 24px; height: 24px; border-radius: var(--radius-s);
+  background: var(--tint); color: #fff;
   font-size: var(--t-subhead); font-weight: 700; line-height: 1;
 }
 .side__nav { display: flex; flex-direction: column; gap: 1px; }
@@ -161,23 +193,27 @@ body {
 .side__sect {
   display: flex; align-items: baseline; gap: var(--s2);
   font-size: var(--t-caption); font-weight: 600; letter-spacing: 0.05em;
-  text-transform: uppercase; color: var(--side-muted);
+  text-transform: uppercase; color: var(--faint);
   padding: var(--s4) var(--s2) var(--s1);
 }
 .side__n { font-weight: 400; letter-spacing: 0; }
+/* Structure unchanged from the pass before (DEC-4 repaints the sidebar, it does
+   not rebuild it): the same rows in the same order. What moved is the colour,
+   the breathing room around a row, and what "selected" looks like. */
 .side__row {
   display: flex; align-items: center; gap: var(--s2);
-  padding: 5px var(--s2); border-radius: var(--radius-s); min-height: 28px;
-  font-size: var(--t-subhead); font-weight: 500; color: var(--side-ink);
+  padding: 6px var(--s3); border-radius: var(--radius-s); min-height: 30px;
+  font-size: var(--t-subhead); font-weight: 400; color: var(--ink);
   white-space: nowrap;
 }
-.side__row:hover { background: var(--side-hover); color: #fff; text-decoration: none; }
+.side__row:hover { background: rgba(255, 255, 255, .7); text-decoration: none; }
 /* Selected is a filled row, the way a Finder sidebar does it: the tint carries
    the selection, not a left border or a bolder weight bolted onto grey. */
-.side__row.is-on { background: var(--tint); color: #fff; font-weight: 600;
-  box-shadow: 0 2px 8px rgba(91, 77, 232, .35); }
+/* The selected row is the accent, filled — the one place in the navigation that
+   carries it, so where you are is legible before a label is read. */
+.side__row.is-on { background: var(--tint); color: #fff; font-weight: 600; box-shadow: var(--shadow); }
 .side__row.is-on:hover { background: var(--tint); }
-.side__row.is-off { opacity: .45; }
+.side__row.is-off { opacity: .5; }
 .side__dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .side__row.is-on .side__dot { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9); }
 .side__nm { overflow: hidden; text-overflow: ellipsis; }
@@ -189,19 +225,7 @@ body {
   font-size: var(--t-caption); font-weight: 600; line-height: 18px; text-align: center;
 }
 .side__row.is-on .side__badge { background: rgba(255, 255, 255, .28); }
-/* The one row in the roster that adds to it rather than opening one. Quieter
-   than a mandate — it is a door, not a destination — and the plus does the
-   saying, so the label stays a noun. */
-.side__new { color: var(--side-muted); }
-.side__new:hover { color: #fff; }
-.side__newl { overflow: hidden; text-overflow: ellipsis; }
-.side__plus {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 8px; height: 8px; flex: none; font-size: 14px; line-height: 1;
-}
-/* The anchored panel opens on arrival, so the link lands on an open form. */
-.add-client-toggle:target { }
-.side__foot { margin-top: auto; padding-top: var(--s3); border-top: 1px solid var(--side-line); }
+.side__foot { margin-top: auto; padding-top: var(--s3); border-top: 1px solid var(--line); }
 
 .main { display: flex; flex-direction: column; min-width: 0; }
 
@@ -209,10 +233,10 @@ body {
 /* Sticky and translucent, because it is a toolbar: it stays with the window, not
    with the document that scrolls under it. */
 .tbar {
-  position: sticky; top: 0; z-index: 20;
+  position: sticky; top: var(--topbar-h); z-index: 20;
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4);
   padding: var(--s5) var(--s7) var(--s3);
-  background: rgba(255, 255, 255, .86);
+  background: var(--veil);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--line);
@@ -251,6 +275,81 @@ body {
   box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
 }
 
+/* --- The bar above the content (GEL-03, DEC-4) ----------------------------
+   Path on the left, search and the assistant on the right. Three controls, and
+   every one of them goes somewhere that already exists: the crumbs are the
+   pages the sidebar already lists, the field is the archive's own ?q=, and the
+   button is the drawer that has been in the layout all along. The template
+   holds no fourth control, because a button in this bar with nothing behind it
+   is worse than a bar without it. */
+.topbar {
+  position: sticky; top: 0; z-index: 21;
+  display: flex; align-items: center; gap: var(--s4);
+  height: var(--topbar-h);
+  padding: var(--s2) var(--s7);
+  background: var(--veil);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--line);
+}
+
+/* The path. Small, quiet, and the last crumb is the page you are on, so it is
+   ink and carries no link. */
+.crumbs {
+  display: flex; align-items: center; gap: var(--s2); min-width: 0;
+  font-size: var(--t-footnote); color: var(--muted); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.crumbs a { color: var(--muted); }
+.crumbs a:hover { color: var(--tint); text-decoration: none; }
+.crumbs__here { color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.crumbs__sep { color: var(--faint); }
+
+.topbar__r { margin-left: auto; display: flex; align-items: center; gap: var(--s2); flex: none; }
+
+/* The field. A filled track with the glass inside it, the way a search field is
+   drawn everywhere else — not a bordered box, which would read as a form. */
+.topsearch { display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--s3); height: 30px; min-width: 0;
+  background: var(--fill-2); border: 1px solid var(--line); border-radius: var(--radius-pill);
+}
+.topsearch:focus-within { border-color: var(--tint-line-strong); background: var(--card); }
+.topsearch__ico { width: 14px; height: 14px; flex: none; color: var(--faint); }
+.topsearch__in {
+  font: inherit; font-size: var(--t-footnote); color: var(--ink);
+  border: 0; background: transparent; outline: none;
+  width: 160px; max-width: 34vw; min-width: 0;
+}
+.topsearch__in::placeholder { color: var(--faint); }
+/* No submit button: Enter submits the form, and a magnifier that is also a
+   button is two affordances for one action. Kept in the markup for keyboards
+   and screen readers, out of the layout for everyone else. */
+.topsearch__go {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* Ask RAUTE: the accent, filled, because it is the one thing in this bar that
+   starts something rather than going somewhere. */
+.askraute {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  height: 30px; padding: 0 var(--s3);
+  border: 0; border-radius: var(--radius-pill);
+  background: var(--tint); color: #fff;
+  font-size: var(--t-footnote); font-weight: 600; white-space: nowrap;
+}
+.askraute:hover { filter: brightness(var(--press)); text-decoration: none; color: #fff; }
+.askraute__ico { width: 14px; height: 14px; flex: none; }
+
+/* The icon set, drawn once as symbols in the layout and referenced by <use>.
+   Stroked in currentColor, so an icon is the colour of the text beside it and
+   the accent reaches it through the same token as everything else. */
+.ico {
+  fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.ico-sprite { display: none; }
+
 .content { padding: var(--s6) var(--s7) var(--s8); max-width: calc(var(--col) + 2 * var(--s7)); width: 100%; }
 
 h1, h2, h3 { letter-spacing: -0.02em; color: var(--ink); }
@@ -271,8 +370,10 @@ h3 { font-size: var(--t-title3); font-weight: 600; }
 a { color: var(--tint); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-/* A card is a white plane on the ground, cornered and hairlined. No shadow: the
-   value step does the separating. */
+/* A card is a white plane on the ground, cornered and hairlined. The hairline
+   still does the separating; --shadow only says the plane sits one step above
+   the ground (DEC-4's "weicherer Radius und feiner Schatten"), which at this
+   strength reads as depth and not as glow. */
 .card, .panel, .sect {
   background: var(--card);
   border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
@@ -300,11 +401,18 @@ a:hover { text-decoration: underline; }
 
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
+  /* The top bar wraps at this width, so its height is no longer --topbar-h and
+     the offset the toolbar sticks at would be wrong. Neither bar sticks. The
+     wrap and the unsticking stay in one block on purpose: they are one
+     decision, and apart it is easy to change the first and miss the second. */
+  .topbar { flex-wrap: wrap; }
+  .topsearch__in { width: 110px; }
+  .topbar, .tbar { position: static; }
   .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; overflow: visible; }
   .side__nav { flex-direction: row; flex-wrap: wrap; }
   .side__sect { padding: 0 var(--s1); }
   .side__foot { margin: 0; border: 0; padding: 0; }
-  .tbar, .content { padding-left: var(--s4); padding-right: var(--s4); }
+  .topbar, .tbar, .content { padding-left: var(--s4); padding-right: var(--s4); }
 }
 
 /* --- A sweep in progress -------------------------------------------------- */
@@ -668,20 +776,17 @@ a:hover { text-decoration: underline; }
 /* A caption in the system colour for its kind. Apple tints the *word*; a filled
    capsule around every one of them turns a headline into a row of stickers. */
 .tag, .tone {
-  font-size: var(--t-caption); font-weight: 600; letter-spacing: 0;
-  text-transform: none; padding: 2px 9px; border: 0; border-radius: var(--radius-pill);
-  background: var(--fill-2); color: var(--muted); line-height: 16px;
+  font-size: var(--t-footnote); font-weight: 400; letter-spacing: -0.01em;
+  text-transform: none; padding: 0; border: 0; border-radius: 0;
+  background: transparent; color: var(--muted);
 }
-/* One story, one colour, in both views: these read the same tokens as the
-   archive's `tag--<cat>` below, and the hex literals both used to carry are gone. */
-.tag.t-krise       { color: var(--cat-krise-ink);       background: var(--cat-krise-wash); }
-.tag.t-regulatorik { color: var(--cat-regulatorik-ink); background: var(--cat-regulatorik-wash); }
-.tag.t-produkt     { color: var(--cat-produkt-ink);     background: var(--cat-produkt-wash); }
-.tag.t-personalie  { color: var(--cat-personalie-ink);  background: var(--cat-personalie-wash); }
-.tag.t-finanzen    { color: var(--cat-finanzen-ink);    background: var(--cat-finanzen-wash); }
-.tag.t-wettbewerb  { color: var(--cat-wettbewerb-ink);  background: var(--cat-wettbewerb-wash); }
-.tag.t-sonstiges   { color: var(--cat-sonstiges-ink);   background: var(--cat-sonstiges-wash); }
-.tone { background: transparent; padding: 0; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: var(--t-caption2); }
+.tag.t-krise       { color: var(--alert); font-weight: 600; }
+.tag.t-regulatorik { color: var(--warn); }
+.tag.t-produkt     { color: var(--tint); }
+.tag.t-personalie  { color: var(--purple); }
+.tag.t-finanzen    { color: var(--good); }
+.tag.t-wettbewerb  { color: var(--pink); }
+.tag.t-sonstiges   { color: var(--muted); }
 .tone--positiv { color: var(--good); }
 .tone--negativ { color: var(--alert); }
 .tone--neutral { color: var(--muted); }
@@ -719,9 +824,9 @@ a:hover { text-decoration: underline; }
   font-size: var(--t-caption2);
   font-weight: 700;
   padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--tint-wash);
-  color: var(--tint-deep);
+  border-radius: var(--radius);
+  background: #eef0fb;
+  color: var(--accent);
 }
 .pickup-list { display: inline; }
 .pickup-list > summary {
@@ -791,16 +896,16 @@ a:hover { text-decoration: underline; }
 }
 /* Secondary: the same shape, so a row of actions lines up, without competing
    with the one button that does the thing. */
-.btn--ghost { background: var(--tint-wash); color: var(--tint-deep); }
+.btn--ghost { background: var(--fill); color: var(--tint); }
 /* The one filled button in the app that destroys something. */
 /* The day-fallback band: informative, not an error. */
-.notice--day { background: var(--tint-wash); border-color: rgba(91, 77, 232, .28); color: var(--tint-deep); margin-bottom: 14px; }
+.notice--day { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; margin-bottom: 14px; }
 .notice--day a { color: var(--accent); font-weight: 600; }
 .btn--danger { background: var(--alert); }
-.btn--danger:hover { background: var(--cat-krise-ink); }
+.btn--danger:hover { background: #b91c1c; }
 .btn--quiet { background: var(--fill); color: var(--ink-2); font-weight: 500; }
 .btn.secondary, .panel button.secondary { background: var(--card); color: var(--accent); }
-.btn.danger, .panel button.danger { background: var(--card); color: var(--alert); border-color: rgba(220, 38, 38, .35); }
+.btn.danger, .panel button.danger { background: var(--card); color: var(--alert); border-color: #fca5a5; }
 
 /* A control that reads as a link: row actions, and anything destructive enough
    that it must not look like the primary thing to click. Defined here rather
@@ -1006,10 +1111,10 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.04em; border-radius: var(--radius); padding: 2px 8px;
   border: 1px solid var(--line); color: var(--muted); background: var(--bg);
 }
-.state__badge--raus { color: var(--tint-deep); background: var(--tint-wash); border-color: rgba(91, 77, 232, 0.28); }
-.state__badge--antwort { color: var(--cat-finanzen-ink); background: var(--good-wash); border-color: rgba(22, 163, 74, 0.3); }
-.state__badge--absage { color: var(--cat-regulatorik-ink); background: var(--warn-wash); border-color: rgba(217, 119, 6, 0.28); }
-.state__badge--veroeffentlicht { color: var(--cat-finanzen-ink); background: var(--cat-finanzen-wash); border-color: rgba(22, 163, 74, 0.4); }
+.state__badge--raus { color: var(--tint); background: var(--tint-wash); border-color: var(--tint-line-strong); }
+.state__badge--antwort { color: #14532d; background: rgba(36, 138, 61, 0.1); border-color: rgba(36, 138, 61, 0.3); }
+.state__badge--absage { color: #b25000; background: rgba(178, 80, 0, 0.1); border-color: rgba(178, 80, 0, 0.28); }
+.state__badge--veroeffentlicht { color: #14532d; background: rgba(36, 138, 61, 0.16); border-color: rgba(36, 138, 61, 0.4); }
 /* The quiet second badge. Crosscheck-hold's amber — "worth a look", not an
    alarm — and distinct from the base grey, so a silent letter cannot be read
    as carrying a draft badge. */
@@ -1176,8 +1281,8 @@ input[type="file"]::file-selector-button:hover { border-color: var(--accent); }
 .actions { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.5rem; }
 
 .notice { border-radius: var(--radius); padding: 0.55rem 0.75rem; margin-bottom: 0.8rem; font-size: 0.85rem; }
-.notice--error { background: var(--alert-bg); border: 1px solid rgba(220, 38, 38, .35); color: var(--cat-krise-ink); }
-.notice--ok { background: var(--cat-finanzen-wash); border: 1px solid rgba(22, 163, 74, .4); color: var(--cat-finanzen-ink); }
+.notice--error { background: var(--alert-bg); border: 1px solid #fca5a5; color: #b91c1c; }
+.notice--ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #047857; }
 
 table.data { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 table.data th, table.data td {
@@ -1251,23 +1356,23 @@ table.data th { color: var(--muted); font-weight: 600; }
   border-top: 1px solid var(--line);
   background: transparent;
 }
-.feed-item--alert { border-color: rgba(220, 38, 38, .30); }
+.feed-item--alert { border-color: #fecaca; }
 .feed-item__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
 .feed-item__headline { font-size: var(--t-subhead); font-weight: 600; color: var(--ink); text-decoration: none; }
 .feed-item__headline:hover { text-decoration: underline; }
 .feed-item__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; font-size: var(--t-caption); color: var(--muted); }
-.feed-item__summary { font-size: var(--t-footnote); color: var(--ink-2); margin-top: 5px; }
+.feed-item__summary { font-size: var(--t-footnote); color: #40454f; margin-top: 5px; }
 .importance { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); }
 
 /* The archive names its category chips `tag--<category>`; same hues as the
    Today feed's `t-<category>` so one story reads identically in both views. */
-.tag--produkt { background: var(--cat-produkt-wash); color: var(--cat-produkt-ink); }
-.tag--personalie { background: var(--cat-personalie-wash); color: var(--cat-personalie-ink); }
-.tag--wettbewerb { background: var(--cat-wettbewerb-wash); color: var(--cat-wettbewerb-ink); }
-.tag--finanzen { background: var(--cat-finanzen-wash); color: var(--cat-finanzen-ink); }
-.tag--krise { background: var(--cat-krise-wash); color: var(--cat-krise-ink); }
-.tag--regulatorik { background: var(--cat-regulatorik-wash); color: var(--cat-regulatorik-ink); }
-.tag--sonstiges { background: var(--cat-sonstiges-wash); color: var(--cat-sonstiges-ink); }
+.tag--produkt { background: #e0f2fe; color: #0369a1; }
+.tag--personalie { background: #ede9fe; color: #6d28d9; }
+.tag--wettbewerb { background: #f3e8ff; color: #7e22ce; }
+.tag--finanzen { background: #dcfce7; color: #15803d; }
+.tag--krise { background: #fee2e2; color: #b91c1c; }
+.tag--regulatorik { background: #fef3c7; color: #a16207; }
+.tag--sonstiges { background: #eef0f3; color: #4b5563; }
 .tag--alert { background: var(--alert); color: #fff; text-transform: uppercase; letter-spacing: 0.03em; }
 
 .pagination { display: flex; align-items: center; gap: 14px; margin-top: 14px; font-size: var(--t-footnote); }
@@ -1477,42 +1582,10 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .drawer__title { display: inline-flex; align-items: center; gap: 8px; }
 .drawer__a:empty { display: none; }
 
-/* --- Client sub-navigation ------------------------------------------------ */
-.subtabs {
-  display: flex; align-items: center; gap: var(--s5); flex-wrap: wrap;
-  margin: 0 0 var(--s6); padding-bottom: var(--s3); border-bottom: 1px solid var(--line);
-}
-.subtabs__id { display: flex; align-items: center; gap: var(--s3); margin-right: var(--s4); }
-.subtabs__id a { font-size: var(--t-title3); font-weight: 600; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
-.subtabs__logo { width: 30px; height: 30px; border-radius: var(--radius); object-fit: contain; background: #fff; border: 1px solid var(--line); flex: none; }
-.subtabs__logo--mono { display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--t-caption); font-weight: 700; border: none; }
-.subtabs > a {
-  padding: 0; font-size: var(--t-subhead); font-weight: 500; color: var(--muted);
-  text-decoration: none; border: 0; border-bottom: 2px solid transparent;
-  padding-bottom: var(--s3); margin-bottom: calc(var(--s3) * -1 - 1px);
-  transition: color .12s ease;
-}
-.subtabs > a:hover { color: var(--ink); }
-/* The selected tab is the tint, not a heavier grey: it is the one place on the
-   strip that says where you are, and the same hue the sidebar uses to say it. */
-.subtabs > a.active { color: var(--tint-deep); font-weight: 600; border-bottom-color: var(--tint); background: transparent; }
-/* A download, not a destination — so it sits apart and does not read as a tab
-   that will paint a page. */
-.subtabs__dl {
-  margin-left: auto; color: var(--accent) !important;
-  border-bottom-color: transparent !important; font-size: var(--t-footnote);
-}
-.subtabs__dl:hover { text-decoration: underline; }
-
-
 /* --- Captain Comms drawer -------------------------------------------------- */
-/* His own palette (deep green, gold) rather than the app's indigo, so the
-   assistant reads as a distinct presence inside an otherwise indigo UI. */
-:root {
-  --cc-deep: #14523c;
-  --cc-mid: #22815f;
-  --cc-gold: #f2b32e;
-}
+/* He wears deep green and gold rather than the accent, so the assistant reads
+   as a distinct presence inside an otherwise violet interface. The three values
+   are declared with every other value in this file, at the top. */
 
 .drawer-open {
   position: fixed; right: var(--s5); bottom: var(--s5); z-index: 40;
@@ -1797,8 +1870,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .pcard .ptags, .pcard .ptopics, .pnotags, .pcard .pcounts { display: none; }
 
 /* Client identity, wherever it appears: the same circle, the same colour. */
-.plogo, .plogo--mono, .mono-badge, .cflogo, .cflogo--mono,
-.subtabs__logo, .subtabs__logo--mono { border-radius: 50%; }
+.plogo, .plogo--mono, .mono-badge, .cflogo, .cflogo--mono { border-radius: 50%; }
 .plogo, .plogo--mono { width: 26px; height: 26px; flex: none; font-size: var(--t-caption); font-weight: 700; }
 .plogo--mono { display: flex; align-items: center; justify-content: center; color: #fff; border: 0; }
 
@@ -1826,65 +1898,11 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   margin: 0 0 var(--s5); border-bottom: 1px solid var(--line);
 }
 .rail__e {
-  flex: 0 0 auto; max-width: 260px; position: relative;
-  border: 1px solid var(--line); border-radius: var(--radius);
-  background: var(--card); color: var(--ink-2); box-shadow: var(--shadow);
+  flex: 0 0 auto; max-width: 260px; display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); color: var(--ink-2); text-decoration: none;
 }
-.rail__e:hover { border-color: var(--line-strong); color: var(--ink); }
-/* The link fills the card, so the whole box is the click target it always was;
-   the cross sits on top of it in the corner and is the one thing that is not. */
-.rail__a {
-  display: flex; flex-direction: column; gap: 2px; padding: var(--s2) var(--s3);
-  padding-right: 28px; color: inherit; text-decoration: none; border-radius: inherit;
-}
-.rail__a:hover { text-decoration: none; color: var(--ink); }
-/* The close button as macOS draws one, and the reason it is drawn that way: a
-   row of cards each wearing a permanent cross reads as a row of things asking
-   to be deleted. In the Finder sidebar, in a Safari tab, on a window's traffic
-   light, the affordance is not there until the pointer is on the thing it
-   belongs to — the resting state is the content, and the control appears when
-   it can be used.
-
-   Hidden with opacity rather than display:none so it keeps its place in the
-   layout and stays reachable by keyboard, and it is revealed on
-   :focus-within too, or a Tab user would be pressing something invisible. */
-.rail__x { position: absolute; top: 5px; right: 5px; }
-.rail__x > summary { list-style: none; cursor: pointer; }
-.rail__x > summary::-webkit-details-marker { display: none; }
-.rail__xb {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; border-radius: 50%;
-  color: var(--ink-2); background: var(--fill-strong);
-  opacity: 0; transition: opacity .12s ease, background .12s ease, color .12s ease;
-}
-.rail__e:hover .rail__xb,
-.rail__e:focus-within .rail__xb,
-.rail__x[open] > .rail__xb { opacity: 1; }
-/* Red only once the pointer is on the button itself, the way the traffic
-   light's glyph only appears under the cursor: the card says "you may close
-   me", the button says "this closes it". */
-.rail__xb:hover { background: var(--alert); color: #fff; }
-.rail__x[open] > .rail__xb { background: var(--alert); color: #fff; }
-.rail__xb:focus-visible { opacity: 1; outline: 2px solid var(--tint); outline-offset: 2px; }
-/* Touch has no hover, so there the control is simply always there. */
-@media (hover: none) {
-  .rail__xb { opacity: 1; }
-}
-/* The question opens *inside* the card and the card grows to hold it. Not a
-   popover: the rail scrolls sideways (overflow-x: auto), and a scrolling box
-   clips anything absolutely positioned past its edge — the first build put the
-   sentence half under the next card. In flow, nothing can clip it, nothing
-   needs a z-index, and it works with the script turned off. */
-.rail__x[open] { position: static; }
-.rail__x[open] > .rail__xb { position: absolute; top: 6px; right: 6px; }
-.rail__e:has(.rail__x[open]) { max-width: 340px; border-color: var(--alert); box-shadow: var(--shadow-raised); }
-.rail__confirm {
-  margin: 0 var(--s3) var(--s3); padding: var(--s3);
-  border-color: rgba(220, 38, 38, .3); background: var(--alert-wash);
-}
-.rail__confirm p { margin: 0 0 var(--s2); font-size: var(--t-footnote); color: var(--ink-2); max-width: none; }
-.rail__confirm p strong { color: var(--ink); }
-.rail__confirm .confirm__row { margin-top: var(--s2); }
+.rail__e:hover { border-color: var(--line-strong); color: var(--ink); text-decoration: none; }
 .rail__e.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--ink); }
 .rail__k {
   font-size: var(--t-caption2); text-transform: uppercase; letter-spacing: 0.07em;
@@ -1900,25 +1918,43 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 
 /* --- The workspace strip -------------------------------------------------- */
 /* A row of quiet links under the title. The mandate's own name is not repeated
-   here: the toolbar says it and the sidebar keeps saying it. */
+   here: the toolbar says it, the sidebar keeps saying it, and the path in the
+   top bar now says it a third time.
+
+   The one declaration of the strip. There used to be two, 350 lines apart, and
+   the second won on source order — so the first one's underline was dead code
+   and the tab that was meant to be underlined wore a grey lozenge instead.
+   DEC-4 gives the strip icons and the accent under the selected tab; the names,
+   the order and the hrefs are untouched, which is the whole of the promise. */
 .subtabs {
-  display: flex; align-items: center; flex-wrap: wrap; gap: var(--s1);
-  border: 0; padding: 0; margin: 0 0 var(--s5);
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2);
+  border: 0; border-bottom: 1px solid var(--line);
+  padding: 0; margin: 0 0 var(--s5);
 }
 .subtabs > a {
-  padding: 6px 10px 9px; min-height: 26px; display: inline-flex; align-items: center;
-  border: 0; border-bottom: 2px solid transparent; border-radius: var(--radius-s) var(--radius-s) 0 0; margin: 0;
-  color: var(--muted); font-size: var(--t-subhead); font-weight: 500;
-  transition: color .12s ease, border-color .12s ease;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; min-height: 30px; margin-bottom: -1px;
+  border: 0; border-bottom: 2px solid transparent; border-radius: var(--radius-s) var(--radius-s) 0 0;
+  color: var(--muted); font-size: var(--t-subhead); font-weight: 400;
 }
 .subtabs > a:hover { background: var(--fill-2); color: var(--ink); text-decoration: none; }
-/* Where you are, said in the tint: indigo text over an indigo rule, the same hue
-   the sidebar row and the toolbar button use to mean "this one". This is the
-   live rule — an earlier block above defines the same selector and is kept in
-   step, so the two can never disagree about what a selected tab looks like. */
-.subtabs > a.active { background: transparent; border-bottom-color: var(--tint); font-weight: 600; color: var(--tint-deep); }
+/* The new selected state: ink, weighted, and the accent underneath. The colour
+   comes through --tint, so the strip repaints with the one line at the top of
+   this file rather than with a rule of its own. */
+.subtabs > a.active {
+  background: transparent; color: var(--ink); font-weight: 600;
+  border-bottom-color: var(--tint);
+}
+/* The tab's symbol. Inherits the row's colour, so it is muted, ink on hover and
+   ink again when selected without a rule per state. */
+.subtabs__ico { width: 15px; height: 15px; flex: none; opacity: .85; }
+.subtabs > a.active .subtabs__ico { opacity: 1; color: var(--tint); }
 .subtabs__id { display: none; }
-.subtabs__dl { margin-left: auto; font-size: var(--t-footnote); color: var(--tint); }
+.subtabs__logo { width: 30px; height: 30px; border-radius: 50%; object-fit: contain; background: #fff; border: 1px solid var(--line); flex: none; }
+.subtabs__logo--mono { display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--t-caption); font-weight: 700; border: none; }
+/* A download, not a destination — so it sits apart and does not read as a tab
+   that will paint a page. */
+.subtabs__dl { margin-left: auto; font-size: var(--t-footnote); color: var(--tint); border-bottom-color: transparent; }
 .subtabs__dl:hover { text-decoration: underline; }
 
 /* --- Buttons -------------------------------------------------------------- */
@@ -1933,7 +1969,7 @@ button:hover, .btn:hover { background: var(--fill-2); text-decoration: none; }
 button:disabled { opacity: .55; cursor: default; }
 /* The one filled button in the chrome: the action the whole app exists to run. */
 .btn--go { background: var(--tint); border-color: transparent; color: #fff; font-weight: 600; }
-.btn--go:hover { background: #0060c0; }
+.btn--go:hover { background: var(--tint); filter: brightness(var(--press)); }
 .btn--busy { display: inline-flex; align-items: center; gap: var(--s2); }
 
 /* Notices read as a tinted row, not a web alert box. */
@@ -1950,7 +1986,7 @@ button:disabled { opacity: .55; cursor: default; }
   padding: 10px 18px; font-size: var(--t-subhead); font-weight: 600;
   box-shadow: 0 4px 16px rgba(0, 0, 0, .20);
 }
-.drawer-open:hover { background: #0060c0; }
+.drawer-open:hover { background: var(--tint); filter: brightness(var(--press)); }
 .cc-icon { width: 17px; height: 17px; display: block; }
 .cc-icon--lg { width: 24px; height: 24px; }
 .drawer__title { display: inline-flex; align-items: center; gap: var(--s2); }
@@ -2151,14 +2187,8 @@ button:disabled { opacity: .55; cursor: default; }
    The classes the mock declares, in the mock's own colours — the four source
    classes it names, plus the fifth (a theme with measured resonance) that is a
    hook class in the engine and needs a swatch of its own rather than being
-   folded into one of the four. */
-:root {
-  --hook-study: #5856d6;
-  --hook-reg: var(--warn);
-  --hook-event: var(--tint);
-  --hook-thema: var(--teal);
-  --hook-archiv: var(--good);
-}
+   folded into one of the four. The five swatches are declared with every other
+   value in this file, at the top. */
 
 .planhead { display: flex; align-items: flex-start; gap: var(--s4); flex-wrap: wrap; margin-bottom: var(--s5); }
 .planhead__d { font-size: var(--t-footnote); color: var(--muted); margin-top: var(--s1); max-width: 64ch; }
@@ -2599,107 +2629,402 @@ button:disabled { opacity: .55; cursor: default; }
 .ssel__missing { font-size: var(--t-caption); color: var(--muted); }
 .ssel__missing a { font-weight: 600; }
 
+/* --- Das Dossier zur Gelegenheit (GEL-01, DEC-1 A) ------------------------- */
+/* Built against features/mocks/gelegenheit-kommandozentrale.html. Every value
+   below resolves to a variable declared at the top of this file — the mock and
+   this stylesheet were drawn from the same scale, so the dossier needs no
+   palette of its own, and GEL-03's repaint reaches it by changing one token
+   rather than this block. The mock's tinted borders and its two soft washes
+   were the exception and are now --tint-line, --tint-line-strong,
+   --tint-wash-soft and --warn-line, beside the washes that were already there.
+
+   Every selector is scoped to .dossier, the wrapper the page puts around its
+   own content, and that is not tidiness. The mock names its boxes .card,
+   .score, .note, .pill, .rows, .tl, .chip, .p — words this stylesheet and half
+   the other templates already use for something else. Unscoped, the .card rule
+   down here would win on source order over the .card, .panel, .sect rule at the
+   top and repad every panel in the tool, and .note would restyle the four pages
+   that already carry the class and were never drawn for it. The prefix is what
+   lets the dossier keep the mock's own names without taking them app-wide. */
+
+.dossier .back { font-size: var(--t-footnote); color: var(--muted); display: inline-block; margin-bottom: var(--s4); }
+.dossier .back:hover { color: var(--tint); }
+
+/* The head: headline left, the badge and the two acts right. */
+.dossier .dhd { display: flex; align-items: flex-start; gap: var(--s4); margin-bottom: var(--s3); flex-wrap: wrap; }
+.dossier .dhd__l { min-width: 0; flex: 1 1 24ch; }
+.dossier .dhd__t { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.025em; max-width: 32ch; }
+.dossier .dhd__r { margin-left: auto; display: flex; gap: var(--s2); align-items: flex-start; flex-wrap: wrap; }
+/* Replaces the buttons once the opportunity has ended. Deliberately a sentence
+   and not a badge: the question afterwards is when and on what it ended. */
+.dossier .dhd__end { font-size: var(--t-caption); color: var(--muted); max-width: 34ch; line-height: 1.4; }
+
+/* The badge shows the number; the three addends sit under it, so the score can
+   be re-derived without leaving the page. */
+.dossier .score {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s2) var(--s3); background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--radius); min-width: 190px;
+  /* The four resets are the price of keeping the mock's class name: the feed's
+     own .score is a 30x30 circle with centred 700-weight tinted text, and a
+     badge that inherited its box would be a two-line calculation squeezed into
+     thirty pixels of height. Scoping stops this rule leaking out; these stop
+     that one leaking in. */
+  width: auto; height: auto; align-items: stretch; justify-content: flex-start;
+  color: var(--ink); font-weight: 400; font-size: var(--t-body);
+}
+.dossier .score__n { font-size: var(--t-title2); font-weight: 700; letter-spacing: -0.02em; }
+.dossier .score__n small { font-size: var(--t-footnote); font-weight: 600; color: var(--faint); }
+.dossier .score__w { font-size: var(--t-caption); color: var(--muted); line-height: 1.35; }
+
+.dossier .chips { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+.dossier .chip {
+  font-size: var(--t-caption); color: var(--muted); background: var(--fill-2);
+  border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 3px 10px;
+}
+.dossier .chip--warn { color: var(--warn); border-color: var(--warn-line); background: var(--warn-wash); }
+.dossier .dchips { margin-top: var(--s3); }
+
+/* The status control: four states read off the rows, the current one marked.
+   Drawn as a segmented control because that is what it is — but only the one
+   transition a person can make is a button, and it sits beside this rather than
+   inside it. A segment offering "ausgelaufen" would be offering to move a clock. */
+.dossier .dstate {
+  display: flex; align-items: stretch; align-self: flex-start;
+  border: 1px solid var(--line); border-radius: var(--radius-s);
+  background: var(--fill-2); overflow: hidden;
+}
+.dossier .dstate__s {
+  font-size: var(--t-caption); color: var(--faint); padding: 5px 9px; white-space: nowrap;
+  border-right: 1px solid var(--line);
+}
+.dossier .dstate__s:last-child { border-right: 0; }
+.dossier .dstate__s.is-on { color: var(--ink); font-weight: 600; background: var(--card); }
+.dossier .dstate__s.is-on[data-status="aktiv"] { color: var(--good); }
+.dstate__s.is-on[data-status="ausgelaufen"],
+.dossier .dstate__s.is-on[data-status="verworfen"] { color: var(--warn); }
+
+/* The provenance bar: three sentences naming where the page's figures came
+   from. Above the tiles because it qualifies all of them. */
+.dossier .dprov {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3);
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--s3); margin-bottom: var(--s4);
+}
+.dossier .dprov__h {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--faint); margin-bottom: 4px;
+}
+.dossier .dprov__v { font-size: var(--t-footnote); color: var(--ink-2); line-height: 1.45; }
+
+/* The strip on the page. Every entry here leads somewhere — a tab that does not
+   is left out of the markup, not greyed out. */
+.dossier .dtabs {
+  display: flex; gap: var(--s4); border-bottom: 1px solid var(--line);
+  margin-bottom: var(--s4); overflow-x: auto;
+}
+.dossier .dtabs a, .dossier .dtabs span {
+  font-size: var(--t-subhead); color: var(--muted); padding: 0 0 10px;
+  border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.dossier .dtabs a:hover { text-decoration: none; color: var(--ink-2); }
+.dossier .dtabs .is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--tint); }
+
+/* DEC-1 A's two columns: the tiles left, the rail right. The rail is a fixed
+   column rather than a share of the width — every line in it is one short
+   sentence, and a proportional column would set them across the page at 700px
+   and wrap them to four lines at 300px. */
+.dossier .rail { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--s4); align-items: start; }
+
+/* Two rows of three. The tiles stack before they squeeze: a source list at
+   200px wide is a column of wrapped outlet names. */
+.dossier .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); align-items: start; }
+.dossier .grid3--second { margin-top: var(--s4); }
+/* Same story as .score: the app-wide .card, .panel, .sect rule sets padding 0,
+   a 20px bottom margin and overflow hidden, and all three are wrong for a tile
+   in this grid — the margin would stack with the 16px below to make an uneven
+   36px, and the hidden overflow clips nothing here but hides a mistake later. */
+.dossier .card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--s4);
+  margin-bottom: 0; overflow: visible;
+}
+.dossier .card + .card { margin-top: var(--s4); }
+.dossier .card__h { font-size: var(--t-subhead); font-weight: 700; margin-bottom: var(--s3); display: flex; align-items: baseline; gap: var(--s2); }
+.dossier .card__h span { font-weight: 400; font-size: var(--t-caption); color: var(--faint); }
+.dossier .card__h a { margin-left: auto; font-size: var(--t-caption); font-weight: 600; }
+.dossier .p { font-size: var(--t-subhead); color: var(--ink-2); line-height: 1.5; }
+.dossier .dcard__link { margin-top: var(--s2); font-size: var(--t-caption); }
+/* A named absence. Italic rather than grey-on-grey, because it is a sentence
+   worth reading, not a disabled state. */
+.dossier .p.empty, .dossier .dempty { font-style: italic; color: var(--muted); font-size: var(--t-caption); }
+.dossier .dempty a, .dossier .p.empty a { font-style: normal; font-weight: 600; }
+
+.dossier .quell { list-style: none; display: flex; flex-direction: column; }
+.dossier .quell li {
+  display: flex; align-items: baseline; gap: var(--s2); padding: 7px 0;
+  border-top: 1px solid var(--line); font-size: var(--t-footnote); flex-wrap: wrap;
+}
+.dossier .quell li:first-child { border-top: 0; }
+.dossier .quell__n { font-weight: 600; color: var(--ink-2); }
+.dossier .quell__a { color: var(--muted); min-width: 0; }
+.dossier .quell__a i { color: var(--faint); }
+.dossier .quell__t { margin-left: auto; color: var(--faint); white-space: nowrap; }
+
+.dossier .tagline {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--good); margin-top: var(--s3);
+}
+/* The standing's tagline heads its own tile, so it has nothing above it to be
+   spaced from — and the sentence it announces sits below it instead. */
+.dossier .tagline--first { margin-top: 0; margin-bottom: var(--s2); }
+.dossier .pull {
+  background: var(--tint-wash); border: 1px solid var(--tint-line);
+  border-radius: var(--radius-s); padding: var(--s3);
+  font-size: var(--t-subhead); color: var(--ink); line-height: 1.5;
+}
+.dossier .pull.empty { background: var(--fill-2); border-color: var(--line); }
+
+.dossier .facts { list-style: none; margin-top: var(--s3); display: flex; flex-direction: column; gap: 6px; }
+.dossier .facts li { font-size: var(--t-footnote); color: var(--ink-2); padding-left: 14px; position: relative; }
+.dossier .facts li:before {
+  content: ""; position: absolute; left: 0; top: 7px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--faint);
+}
+
+/* The forward look. Marked as an estimate in words, not only in colour: the
+   evidenced tiles beside it look the same, and colour alone is not a claim. */
+.dossier .dest { font-size: var(--t-caption); color: var(--warn); margin-bottom: var(--s3); line-height: 1.4; }
+.dossier .tl { list-style: none; position: relative; padding-left: var(--s4); }
+.dossier .tl:before { content: ""; position: absolute; left: 4px; top: 6px; bottom: 6px; width: 1px; background: var(--line-strong); }
+.dossier .tl li { position: relative; padding: 0 0 var(--s3); }
+.dossier .tl li:last-child { padding-bottom: 0; }
+.dossier .tl li:before {
+  content: ""; position: absolute; left: calc(-1 * var(--s4) + 1px); top: 5px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--card); border: 2px solid var(--line-strong);
+}
+.dossier .tl__t { font-size: var(--t-caption); color: var(--faint); }
+.dossier .tl__b { font-size: var(--t-footnote); color: var(--ink-2); }
+
+/* The next step. One box, because there is exactly one next move — the rest of
+   the chain is the quiet list under it. */
+.dossier .step {
+  display: flex; gap: var(--s3); align-items: flex-start; padding: var(--s3);
+  border: 1px solid var(--tint-line-strong); background: var(--tint-wash-soft);
+  border-radius: var(--radius-s);
+}
+.dossier .step__n { font-size: var(--t-subhead); font-weight: 700; color: var(--tint); display: flex; align-items: center; gap: var(--s2); }
+.dossier .step__b { font-size: var(--t-footnote); color: var(--ink-2); margin-top: 2px; }
+.dossier .later { list-style: none; margin-top: var(--s3); display: flex; flex-direction: column; gap: 6px; }
+.dossier .later li { font-size: var(--t-footnote); color: var(--muted); display: flex; gap: var(--s2); align-items: center; }
+.dossier .later li b { color: var(--faint); font-weight: 600; }
+
+.dossier .rows { list-style: none; }
+.dossier .rows li { display: flex; align-items: flex-start; gap: var(--s3); padding: 9px 0; border-top: 1px solid var(--line); }
+.dossier .rows li:first-child { border-top: 0; }
+.dossier .rows__m { min-width: 0; }
+.dossier .rows__n { font-size: var(--t-footnote); font-weight: 600; }
+.dossier .rows__s { font-size: var(--t-caption); color: var(--muted); margin-top: 1px; }
+.dossier .rows__warn { color: var(--warn); }
+.dossier .rows__r { margin-left: auto; text-align: right; white-space: nowrap; display: flex; align-items: center; gap: var(--s2); }
+/* DEC-5's fit. A number, because seventeen names need an order a person does
+   not hold in their head — and it is arithmetic over stored rows, never a
+   model's opinion about a person. */
+.dossier .rows__fit { font-size: var(--t-footnote); font-weight: 700; color: var(--ink-2); }
+
+.dossier .pill { font-size: var(--t-caption2); font-weight: 700; padding: 2px 7px; border-radius: var(--radius-pill); background: var(--fill); color: var(--muted); }
+.dossier .pill--good { background: var(--good-wash); color: var(--good); }
+.dossier .pill--warn { background: var(--warn-wash); color: var(--warn); }
+/* Dashed and uncoloured: a missing contact is a gap, not a failure, and it must
+   not read like the green beside it. */
+.dossier .pill--none { background: transparent; color: var(--faint); border: 1px dashed var(--line-strong); }
+
+/* The trail. Horizontal, so the market's pieces and our own steps read as one
+   sequence rather than two lists that have to be interleaved by eye. */
+.dossier .stream { margin-top: var(--s4); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s4); }
+.dossier .stream__row { display: flex; gap: var(--s2); overflow-x: auto; padding-bottom: var(--s1); }
+.dossier .ev { flex: none; min-width: 160px; border: 1px solid var(--line); border-radius: var(--radius-s); padding: var(--s2) var(--s3); background: var(--fill-2); }
+.dossier .ev__t { font-size: var(--t-caption2); color: var(--faint); }
+.dossier .ev__w { font-size: var(--t-caption); font-weight: 600; margin-top: 2px; }
+.dossier .ev__b { font-size: var(--t-caption); color: var(--muted); }
+.dossier .ev--us { background: var(--tint-wash); border-color: var(--tint-line); }
+
+/* RAUTE Intelligence, the six tiles beside the case (GEL-02). A tinted inset
+   rather than a card of its own: this is one card's contents, and six nested
+   white boxes on a white box is a stack of borders nobody reads as a group.
+
+   Each tile wears the template's engine shape — coloured symbol field, coloured
+   result line, a mark at the right edge — and the colour is never decoration.
+   The hue on the symbol field says which area the tile reads; the colour on the
+   result line and the mark says what came back, and it is driven by one class
+   from ``dossier_rail.Signal`` so a green result and a red mark cannot appear on
+   the same tile. */
+.dossier .know { display: flex; flex-direction: column; gap: var(--s3); }
+.dossier .know__i {
+  padding: var(--s3); border: 1px solid var(--line);
+  border-radius: var(--radius-s); background: var(--fill-2);
+  /* The tile's own hue, overridden per key below. Declared here so a key this
+     stylesheet has not been told about still draws in the accent rather than
+     inheriting whatever stands above it. */
+  --tile: var(--tint);
+}
+.dossier .know__top { display: flex; align-items: center; gap: var(--s2); margin-bottom: 6px; }
+/* The coloured symbol field. A wash of the tile's hue, the glyph in it solid,
+   so six tiles are told apart by colour before a word is read. */
+.dossier .know__ico {
+  flex: none; width: 22px; height: 22px; border-radius: var(--radius-s);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--tile) 12%, transparent); color: var(--tile);
+}
+.dossier .know__ico .ico { width: 14px; height: 14px; }
+.dossier .know__i--positioning { --tile: var(--tint); }
+.dossier .know__i--media { --tile: var(--teal); }
+.dossier .know__i--asset { --tile: var(--purple); }
+.dossier .know__i--quality { --tile: var(--good); }
+.dossier .know__i--visibility { --tile: var(--pink); }
+.dossier .know__i--intelligence { --tile: var(--warn); }
+.dossier .know__h {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--faint); min-width: 0;
+}
+/* The mark at the right edge. Three states and three treatments — and the
+   dashed ring on the third is deliberate: an absent run must not read as a
+   quiet pass, so it is drawn as an outline nobody mistakes for a tick. */
+.dossier .know__sign {
+  margin-left: auto; flex: none; width: 18px; height: 18px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--t-caption); font-weight: 700; line-height: 1; cursor: default;
+}
+.dossier .know__sign--ohne-einwand { background: var(--good-wash); color: var(--good); }
+.dossier .know__sign--einwand { background: var(--warn-wash); color: var(--warn); }
+.dossier .know__sign--nichts { color: var(--faint); border: 1px dashed var(--line-strong); }
+/* The result line: what came back, in the colour of what came back. */
+.dossier .know__res { font-size: var(--t-footnote); line-height: 1.45; color: var(--ink-2); }
+.dossier .know__res b { font-weight: 700; }
+.dossier .know__i--ohne-einwand .know__res { color: var(--good); }
+.dossier .know__i--einwand .know__res { color: var(--warn); }
+/* Same rule as everywhere else on this page: a named absence is italic, not
+   grey-on-grey, because it is a sentence worth reading. */
+.dossier .know__i--nichts .know__res { color: var(--muted); font-style: italic; }
+.dossier .know__v { font-size: var(--t-footnote); color: var(--ink-2); line-height: 1.45; margin-top: 3px; }
+.dossier .know__v b { font-weight: 600; }
+.dossier .know__l { font-size: var(--t-caption); margin-top: 6px; display: inline-block; font-weight: 600; }
+
+.dossier .note { margin-top: var(--s5); font-size: var(--t-caption); color: var(--faint); max-width: 80ch; line-height: 1.5; }
+
+/* The rail drops under the tiles before the tiles start squeezing: a 300px
+   column beside two columns of tiles is the layout that breaks first. */
+@media (max-width: 1180px) {
+  .dossier .rail { grid-template-columns: minmax(0, 1fr); }
+  .dossier .grid3, .dossier .dprov { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 860px) { .dossier .grid3, .dossier .dprov { grid-template-columns: 1fr; } }
 
 
+/* --- Controls that arrived with the letter flow ---------------------------
+   Kept through the DEC-4 repaint rather than re-invented: these are behaviour,
+   not palette, and every colour in them is a token this file already defines.
+   They are here and not in a page's own <style> because more than one template
+   draws them — the rule test_styles.py enforces. */
 
-/* --- The mandate's sign-off ------------------------------------------------ */
-/* The step before either release control, and drawn instead of them: a letter
-   the client has not seen has no "send" to offer, only the question that comes
-   first. Full width of the state row, because it is a question and a question
-   squeezed beside two badges reads as a footnote. */
+.side__new { color: var(--side-muted); }
+
+.side__new:hover { color: #fff; }
+
+.side__newl { overflow: hidden; text-overflow: ellipsis; }
+
+.side__plus {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 8px; height: 8px; flex: none; font-size: 14px; line-height: 1;
+}
+
+/* The link fills the card, so the whole box is the click target it always was;
+   the cross sits on top of it in the corner and is the one thing that is not. */
+.rail__a {
+  display: flex; flex-direction: column; gap: 2px; padding: var(--s2) var(--s3);
+  padding-right: 28px; color: inherit; text-decoration: none; border-radius: inherit;
+}
+
+.rail__a:hover { text-decoration: none; color: var(--ink); }
+
+.rail__x { position: absolute; top: 5px; right: 5px; }
+
+.rail__x > summary { list-style: none; cursor: pointer; }
+
+.rail__x > summary::-webkit-details-marker { display: none; }
+
+.rail__xb {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  color: var(--ink-2); background: var(--fill-strong);
+  opacity: 0; transition: opacity .12s ease, background .12s ease, color .12s ease;
+}
+
+.rail__x[open] > .rail__xb { opacity: 1; }
+
+.rail__xb:hover { background: var(--alert); color: #fff; }
+
+.rail__x[open] > .rail__xb { background: var(--alert); color: #fff; }
+
+.rail__xb:focus-visible { opacity: 1; outline: 2px solid var(--tint); outline-offset: 2px; }
+
+  .rail__xb { opacity: 1; }
+
+.rail__x[open] { position: static; }
+
+.rail__x[open] > .rail__xb { position: absolute; top: 6px; right: 6px; }
+
+.rail__e:has(.rail__x[open]) { max-width: 340px; border-color: var(--alert); box-shadow: var(--shadow-raised); }
+
 .signoff {
   flex: 1 1 100%; display: flex; align-items: center; gap: var(--s2);
   margin-top: var(--s2); padding: var(--s3);
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--fill-2);
 }
-/* The client's agreement, stated beside the badges: green because it is a
-   condition that has been met, and quiet because it is a precondition and not
-   the outcome. */
+
 .state__ok {
   font-size: var(--t-caption); font-weight: 600; color: var(--cat-finanzen-ink);
 }
+
 .signoff__l { font-size: var(--t-footnote); font-weight: 600; color: var(--ink-2); }
+
 .signoff__in {
   flex: 1 1 auto; min-width: 0; padding: 6px 10px;
   border: 1px solid var(--line); border-radius: var(--radius-s);
   background: var(--card); color: var(--ink); font: inherit; font-size: var(--t-footnote);
 }
+
 .signoff__in:focus { outline: 2px solid var(--tint); outline-offset: 1px; }
 
-/* --- The two-click question ----------------------------------------------- */
-/* One box, wherever something is about to be removed or sent: the send
-   confirmation on a letter, and the cross on a rail card. It was declared
-   inside advice.html's own <style>, which was true while advice.html was the
-   only page drawing it; the rail partial draws it too now, and a class two
-   pages share cannot live in one of them. */
 .confirm {
   margin-top: 10px; padding: 12px; border-radius: var(--radius);
   border: 1px solid rgba(220, 38, 38, .3); background: var(--alert-wash);
 }
+
 .confirm p { font-size: var(--t-footnote); color: var(--cat-krise-ink); margin-bottom: 10px; max-width: 64ch; }
+
 .confirm__row { display: flex; gap: 10px; align-items: center; }
 
-/* --- Shared primitives of the Kommandozentrale screens ------------------- */
-/* Base rules only, at class specificity, for the vocabulary the opportunity
-   pages introduce: a page that draws its own version in a <style> block wins,
-   and one that does not still gets the house look instead of the browser's. */
-.pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 2px 10px; border-radius: var(--radius-pill);
-  font-size: var(--t-caption); font-weight: 600; line-height: 18px;
-  background: var(--fill-2); color: var(--ink-2); white-space: nowrap;
-}
-.pill--good { background: var(--good-wash); color: var(--cat-finanzen-ink); }
-.pill--warn { background: var(--warn-wash); color: var(--cat-regulatorik-ink); }
-.pill--none { background: var(--fill-2); color: var(--muted); }
-.pill--tint { background: var(--tint-wash); color: var(--tint-deep); }
-
-.chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
-.chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 3px 11px; border-radius: var(--radius-pill);
-  font-size: var(--t-caption); font-weight: 500; line-height: 18px;
-  background: var(--card); color: var(--ink-2); border: 1px solid var(--line);
-}
-.chip--warn { background: var(--warn-wash); color: var(--cat-regulatorik-ink); border-color: transparent; }
-.chip--tint { background: var(--tint-wash); color: var(--tint-deep); border-color: transparent; }
-
-/* The score: one large number and its ceiling, in a raised card. */
-.score__n { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.03em; color: var(--ink); font-variant-numeric: tabular-nums; }
-.score__w { font-size: var(--t-caption); color: var(--muted); }
-
-/* An engine row: an icon square in the engine's colour, a title, a verdict. */
-.ev {
-  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: var(--s3);
-  align-items: start; padding: var(--s3) var(--s4);
-  border: 1px solid var(--line); border-radius: var(--radius); background: var(--card);
-  box-shadow: var(--shadow);
-}
-.ev--us { border-color: rgba(91, 77, 232, .35); background: var(--tint-wash-2); }
-.ev__b {
-  width: 30px; height: 30px; border-radius: 8px; flex: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--tint-wash); color: var(--tint-deep); font-weight: 700; font-size: var(--t-caption);
-}
-.ev__t { font-size: var(--t-subhead); font-weight: 600; color: var(--ink); }
-.ev__w { font-size: var(--t-caption); color: var(--muted); margin-top: 2px; }
-
-/* The activity stream: a horizontal strip of small timestamped cards. */
-.stream { display: flex; gap: var(--s3); overflow-x: auto; padding-bottom: var(--s1); }
-.stream__row {
-  flex: none; min-width: 148px; padding: var(--s3);
-  border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--card);
-  font-size: var(--t-caption); color: var(--ink-2); box-shadow: var(--shadow);
+@media (hover: none) {
+  .rail__xb { opacity: 1; }
 }
 
-/* A timeline: a hairline rail with a dot per event. */
-.tl { list-style: none; margin: 0; padding: 0; position: relative; }
-.tl::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 1px; background: var(--line-strong); }
-.tl > li, .tl__b { position: relative; padding-left: var(--s5); margin-bottom: var(--s3); font-size: var(--t-footnote); color: var(--ink-2); }
-.tl > li::before, .tl__b::before {
-  content: ""; position: absolute; left: 0; top: 4px; width: 11px; height: 11px;
-  border-radius: 50%; background: var(--card); border: 2px solid var(--line-strong);
-}
-.tl > li.is-on::before, .tl__b.is-on::before, .tl > li.is-us::before { border-color: var(--tint); background: var(--tint); }
-.tl__t { display: block; font-size: var(--t-caption); color: var(--muted); }
-
+/* The address a letter's recipient is missing, asked for on the card. The
+   markup has been shipping for days with no rule behind it at all: advice.html
+   names .addr six times and the stylesheet defined none of them, so the field
+   rendered as raw browser default in production. */
+.addr { flex: 1 1 100%; margin-top: 8px; padding: 12px;
+        border: 1px solid var(--line); border-radius: var(--radius);
+        background: var(--fill); }
+.addr__lab { display: block; font-size: var(--t-caption); font-weight: 600;
+             color: var(--ink-2); margin-bottom: 6px; }
+.addr__row { display: flex; gap: 8px; align-items: center; }
+.addr__in { flex: 1 1 auto; min-width: 0; padding: 7px 10px;
+            border: 1px solid var(--line); border-radius: var(--radius);
+            background: var(--card); color: var(--ink); font: inherit;
+            font-size: var(--t-footnote); }
+.addr__in:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.addr__note { margin-top: 6px; font-size: var(--t-caption); color: var(--muted); }
+.addr__bad { margin-top: 6px; font-size: var(--t-caption); color: var(--alert);
+             font-weight: 600; }
