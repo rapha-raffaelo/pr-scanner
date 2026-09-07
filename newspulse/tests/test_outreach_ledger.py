@@ -96,8 +96,16 @@ def _mandate(session) -> tuple[Client, Angle]:
     return client, angle
 
 
-def _write(session, client, angle, target=_TARGET, message: str = "Erster Versuch.") -> Outreach:
-    """One drafted letter, through the real ``draft``/``store`` path."""
+def _write(
+    session, client, angle, target=_TARGET, message: str = "Erster Versuch.",
+    client_ok: bool = True,
+) -> Outreach:
+    """One drafted letter, through the real ``draft``/``store`` path.
+
+    Signed off by the mandate unless a test says otherwise: nothing leaves the
+    house before the client has agreed, so that is the state a letter is in by
+    the time these tests are about releasing it.
+    """
     written = outreach.draft(
         session,
         client,
@@ -111,7 +119,12 @@ def _write(session, client, angle, target=_TARGET, message: str = "Erster Versuc
             }
         ),
     )
-    return outreach.store(session, client, angle, written, target)
+    row = outreach.store(session, client, angle, written, target)
+    if client_ok:
+        row.client_ok_at = dt.datetime.now(dt.UTC)
+        row.client_ok_by = "Frau Berg"
+        session.commit()
+    return row
 
 
 # --- Releasing -------------------------------------------------------------------

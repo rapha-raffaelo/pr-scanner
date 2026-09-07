@@ -794,7 +794,27 @@ def test_the_shipped_source_list_is_well_formed_and_unique():
     sources = market_sources.load_sources()
 
     assert len(sources) >= 6, "the curated list should not silently shrink"
-    assert {s.kind for s in sources} == set(SignalKind), "every class needs a source"
+    # Studie and Regulierung get curated sources; Veranstaltung deliberately
+    # does not, and the difference is not an oversight.
+    #
+    # Every curated source reaches every mandate — `sources_for` filters only
+    # the per-mandate field search — which is defensible for a new EU regulation
+    # or an ifo study and false for an event. An event is an occasion for its
+    # field and for no other, so a general one fills every plan with somebody
+    # else's calendar. There was such a source: DIW Berlin's event feed, kept
+    # while repairing dead links because it answered, and 161 of 193 stored
+    # Veranstaltung signals came from it — a fashion retailer's editorial plan
+    # carried "Berlin Macro Seminar" and a "PhD Winter School".
+    #
+    # So this class is served by the field search alone, which is thinner and
+    # true. Adding a curated Veranstaltung source means answering first: for
+    # which mandate is this an occasion, and why is it one for all the others.
+    curated = {s.kind for s in sources}
+    assert SignalKind.STUDIE in curated
+    assert SignalKind.REGULIERUNG in curated
+    assert SignalKind.VERANSTALTUNG not in curated, (
+        "an event is an occasion for its own field only; see the comment above"
+    )
     urls = [s.url for s in sources]
     assert len(set(urls)) == len(urls), "duplicate source URL in the curated list"
     for source in sources:

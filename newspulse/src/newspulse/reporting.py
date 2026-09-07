@@ -239,7 +239,11 @@ def _impulse_frame(
     really min(total, 5).
     """
     since = (now or dt.datetime.now(dt.UTC)) - dt.timedelta(days=days)
-    drafts = angles.for_client(session, client.id, limit=None, since=since)
+    # With the declined ones: this is a count of what was drafted in the period,
+    # and a draft a person later waved off the rail was still drafted.
+    drafts = angles.for_client(
+        session, client.id, limit=None, since=since, include_dismissed=True
+    )
     return pd.DataFrame(
         [
             {

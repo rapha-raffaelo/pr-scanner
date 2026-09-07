@@ -451,6 +451,13 @@ class RivalSuggestion(BaseModel):
     reason: str = ""
     website: str = ""
     industry: str = ""
+    #: How the press actually writes the name. A competitor is matched on its
+    #: name and its aliases and nothing else, so a single stored spelling is a
+    #: single chance to match: "TradeRepublic" was accepted from a proposal as
+    #: one word, the German press writes "Trade Republic", and the row scored
+    #: zero articles in three months while its own Wettbewerb chart rendered an
+    #: empty half. Empty is fine — a name with one spelling has one.
+    aliases: list[str] = Field(default_factory=list, max_length=8)
 
 
 class RivalSuggestions(BaseModel):

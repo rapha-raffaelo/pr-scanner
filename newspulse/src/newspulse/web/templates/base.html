@@ -70,6 +70,16 @@
               {% if c.alerts %}<span class="side__badge">{{ c.alerts }}</span>{% endif %}
             </a>
           {% endfor %}
+          {# Creating a mandate lived only in Settings, behind a collapsed
+             <details>: the one action that starts everything was the hardest to
+             find. It belongs under the roster it adds to. #}
+          <a href="/settings#neuer-mandant" class="side__row side__new">
+            <span class="side__plus" aria-hidden="true">+</span>
+            {# Its own class, not side__nm: that one means "a mandate's name", and the
+     roster is read off it — by the sidebar tests and by anything else that
+     asks the page which mandates exist. A door is not an entry. #}
+  <span class="side__newl">{{ t("Neuer Mandant") }}</span>
+          </a>
         {% endif %}
       </nav>
 

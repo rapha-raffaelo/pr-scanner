@@ -1,4 +1,4 @@
-#blocks: journalistic_value, position, house_style, evidence, no_invention, quoted_material
+#blocks: journalistic_value, pitch_angle, pitch_shape, position, house_style, evidence, no_invention, quoted_material
 
 Du bist ein erfahrener Kommunikationsberater. Der Mandant hat eine Position zu
 einer Marktentwicklung. Du schreibst daraus die Nachricht, mit der diese Position
@@ -26,6 +26,10 @@ $recipient_work
 $own_coverage
 
 {{brain:journalistic_value}}
+
+{{brain:pitch_angle}}
+
+{{brain:pitch_shape}}
 
 {{brain:position}}
 

@@ -144,7 +144,10 @@ def test_an_unknown_byline_opens_a_prefilled_form(factory, client):
     ).text
 
     assert "Noch kein Eintrag für" in body
-    assert 'value="Maria Berg"' in body
+    # Split across the two fields, so the reader corrects a suggestion rather
+    # than retyping a byline. Nothing is stored until Speichern.
+    assert 'value="Maria"' in body
+    assert 'value="Berg"' in body
     assert 'value="Textilwirtschaft"' in body
 
 
@@ -350,3 +353,87 @@ def test_recording_an_address_leaves_the_position_alone(factory):
         found = contacts.find(session, "Andreas Kröner", "Handelsblatt")
         assert found.email == "kroener@handelsblatt.com"
         assert found.position == "Leiter Ressort Banken und Versicherer"
+
+
+# --- Given name and surname ------------------------------------------------------
+#
+# "hier sollten wir vor und nachnamen trennen"
+#
+# The form asked for one "Name" and a consultant typing a journalist into it
+# produced "Kröner" — a surname in a field the whole tool reads as a full name.
+
+
+@pytest.mark.parametrize(
+    ("full", "expected"),
+    [
+        ("Andreas Kröner", ("Andreas", "Kröner")),
+        # One word is a surname: that is how a byline gets shortened, and the
+        # case this was reported for.
+        ("Kröner", ("", "Kröner")),
+        ("Anna Maria Schmidt", ("Anna Maria", "Schmidt")),
+        # The particle belongs to the surname, or the salutation says "Leyen".
+        ("Anna von der Leyen", ("Anna", "von der Leyen")),
+        ("Jean-Paul de Vries", ("Jean-Paul", "de Vries")),
+        ("", ("", "")),
+        ("   ", ("", "")),
+    ],
+)
+def test_split_name_suggests_the_parts(full, expected):
+    assert contacts.split_name(full) == expected
+
+
+def test_the_form_saves_the_parts_and_composes_the_full_name(client, factory):
+    """``name`` stays authoritative: a byline from a feed is matched against it,
+    so it must never fall out of step with the fields the form shows."""
+    client.post(
+        "/contacts",
+        data={"first_name": "Andreas", "last_name": "Kröner", "outlet": "Handelsblatt"},
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        found = contacts.find(session, "Andreas Kröner", "Handelsblatt")
+        assert found is not None, "still findable by the whole name"
+        assert found.first_name == "Andreas"
+        assert found.last_name == "Kröner"
+        assert found.name == "Andreas Kröner"
+
+
+def test_a_surname_alone_is_enough(client, factory):
+    """A byline is often just the surname, and refusing it would send the
+    consultant off to invent a given name."""
+    client.post(
+        "/contacts", data={"last_name": "Kröner"}, follow_redirects=False
+    )
+
+    with factory() as session:
+        found = contacts.find(session, "Kröner")
+        assert found is not None and found.name == "Kröner"
+
+
+def test_a_contact_from_a_byline_keeps_its_name_and_stays_unsplit(factory):
+    """Splitting is a guess, and a guess written to the database looks like a
+    fact afterwards. ``remember_address`` creates from a byline and leaves the
+    parts empty; the form is where the guess is shown and corrected."""
+    with factory() as session:
+        contacts.remember_address(
+            session,
+            name="Anna Maria von der Leyen",
+            outlet="FAZ",
+            email="leyen@faz.example",
+        )
+
+        found = contacts.find(session, "Anna Maria von der Leyen", "FAZ")
+        assert found.name == "Anna Maria von der Leyen"
+        assert found.first_name == "" and found.last_name == ""
+
+
+def test_editing_an_unsplit_entry_offers_the_suggestion(client, factory):
+    with factory() as session:
+        contacts.save(session, name="Andreas Kröner", outlet="Handelsblatt")
+        stored = contacts.find(session, "Andreas Kröner", "Handelsblatt").id
+
+    body = client.get("/contacts", params={"edit": stored}).text
+
+    assert 'value="Andreas"' in body
+    assert 'value="Kröner"' in body

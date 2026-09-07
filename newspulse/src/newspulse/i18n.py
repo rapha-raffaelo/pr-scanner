@@ -933,6 +933,10 @@ _EN: dict[str, str] = {
     #: differently. "Position" reads the same in both languages; the placeholder
     #: does not.
     "Position": "Position",
+    #: Two fields where there was one: a salutation needs the surname on its
+    #: own, and a roster sorts by it.
+    "Vorname": "First name",
+    "Nachname": "Last name",
     "Leiter Ressort Banken": "Head of banking desk",
     "Notizen": "Notes",
     "Löschen": "Delete",
@@ -1062,6 +1066,23 @@ _EN: dict[str, str] = {
     # mandate, whether it hangs off an occasion or off a month.
     "Texte": "Drafts",
     "Anlass": "Occasion",
+    #: The cross on a rail card, and the question behind it. Two clicks by
+    #: design: the row it removes is the one the reader is looking at.
+    "Vorschlag verwerfen": "Decline proposal",
+    "Sind Sie sicher, dass Sie diesen Vorschlag verwerfen wollen?":
+        "Are you sure you want to decline this proposal?",
+    "Er verschwindet aus dieser Liste und von der Seite. Texte, die daraus entstanden sind, bleiben erhalten.":
+        "It leaves this list and the page. Texts written from it are kept.",
+    "Ja, verwerfen": "Yes, decline",
+    #: The mandate signs a letter off before the journalist sees it.
+    "Mit dem Mandanten abgestimmt?": "Agreed with the client?",
+    "Wer hat zugestimmt": "Who agreed",
+    "Freigabe eintragen": "Record approval",
+    #: The sidebar row that adds to the roster it sits under.
+    "Neuer Mandant": "New client",
+    "Vom Mandanten freigegeben": "Approved by the client",
+    "Vom Mandanten freigegeben: %(who)s": "Approved by the client: %(who)s",
+    "Noch nicht mit dem Mandanten abgestimmt.": "Not yet agreed with the client.",
     "Anderer Zeitraum": "Another period",
     "Der Fragensatz wird vorgeschlagen — die Seite aktualisiert sich, sobald er steht.":
         "The question set is being proposed — the page refreshes as soon as it "

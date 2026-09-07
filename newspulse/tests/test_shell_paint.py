@@ -50,7 +50,9 @@ _CSS = (
 #: (UHR-03), and this file's fixture never does.
 _TABS: tuple[tuple[str, str, str], ...] = (
     ("Heute", "/heute", "ico-heute"),
-    ("Texte", "/advice", "ico-texte"),
+    # Renamed on main while this branch was open: the page under it is headed
+    # "Impulse", and a tab that names its page is easier to find.
+    ("Impulse", "/advice", "ico-texte"),
     ("Issues", "/issues", "ico-issues"),
     ("Plan", "/plan", "ico-plan"),
     ("Wettbewerb", "/wettbewerb", "ico-wettbewerb"),

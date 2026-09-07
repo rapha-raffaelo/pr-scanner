@@ -317,8 +317,8 @@ def test_the_report_is_reachable_from_the_texte_tab_not_a_tab_of_its_own(http, s
 
     They were two, and read as two products doing the same thing at different
     rhythms — RauteOS drafts, the consultant keeps or discards, what is left is
-    handed over. The strip now carries "Texte", and the rail on that page is
-    where an occasion or a month is chosen. So the report is one click further
+    handed over. The strip now carries "Impulse" — the name of the page it
+    opens — and the rail on that page is where an occasion or a month is chosen. So the report is one click further
     away from the guide page and no click further from the work.
     """
     client_id = seeded["client_id"]
@@ -328,7 +328,7 @@ def test_the_report_is_reachable_from_the_texte_tab_not_a_tab_of_its_own(http, s
     strip = http.get(f"/client/{client_id}/guide").text
     tabs = strip.split('class="subtabs"', 1)[1].split("</nav>", 1)[0]
     assert f'/client/{client_id}/berichte' not in tabs, "no tab of its own any more"
-    assert ">Texte<" in tabs
+    assert ">Impulse<" in tabs
     assert f'/client/{client_id}/advice' in tabs
 
     rail = http.get(f"/client/{client_id}/advice").text

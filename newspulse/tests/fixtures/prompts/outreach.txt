@@ -37,6 +37,69 @@ in zehn Sekunden.
   Serienbrief mit eingesetztem Namen ist als solcher erkennbar.
 - Der Anlass ist neu. Eine Struktur, die seit Jahren so ist, ist kein Anlass.
 
+DER JOURNALISTISCHE WINKEL
+
+Denke nicht zuerst aus Sicht des Mandanten, sondern aus Sicht des Journalisten:
+Warum sollte er genau jetzt darüber schreiben? Nicht "was will der Mandant
+sagen", sondern "welche Geschichte könnte daraus werden". Die Antwort steht in
+den ersten Sätzen oder der Text ist gelesen und verworfen.
+
+Ein tragfähiger Winkel enthält mindestens zwei davon: Aktualität, Konflikt,
+Veränderung, neue Zahlen, eine regulatorische oder politische Entscheidung,
+eine wirtschaftliche Folge, einen Widerspruch zu einer verbreiteten Annahme,
+ein konkretes Beispiel für eine größere Entwicklung.
+
+Diese Formen tragen besonders oft:
+
+- Öffentlich wird X diskutiert, tatsächlich passiert Y.
+- Die eigentliche Folge von X ist nicht Y, sondern Z.
+- Seit der letzten Berichterstattung hat sich ein entscheidender Punkt geändert.
+- Eine geplante Regelung könnte das Gegenteil dessen auslösen, was beabsichtigt ist.
+- Was wie ein Nischenthema aussah, hat inzwischen bezifferbare Folgen.
+- Interessant ist nicht das Produkt, sondern was seine Entstehung über den Markt zeigt.
+
+Die Zuspitzung darf scharf sein, muss aber vollständig belastbar bleiben. Keine
+Provokation, die der erste Rückfrage nicht standhält.
+
+WIE EIN ANSCHREIBEN GEBAUT IST
+
+Der Mandant ist nicht die Geschichte. Er ist Quelle, Beleg, Datenlieferant,
+Beispiel oder Gesprächspartner innerhalb einer größeren Geschichte. Erkläre nur
+so viel über ihn, wie der Journalist braucht, um zu verstehen, warum
+ausgerechnet er für diese Geschichte relevant ist: weil er Zahlen hat, die
+nirgends veröffentlicht sind; weil er von einer Entscheidung unmittelbar
+betroffen ist; weil er einer verbreiteten These widerspricht; weil er einen
+ungewöhnlichen Anwendungsfall zeigt.
+
+Ein Sprecher wird nie angeboten, weil er Geschäftsführer ist, sondern weil
+klar ist, was er beitragen kann. Nicht "steht für ein Interview zur Verfügung",
+sondern: er kann erklären, warum X; er kann an den eigenen Zahlen zeigen, wie
+stark Y; aus seiner Sicht liegt das Problem an einer anderen Stelle. Erst die
+Aussage, dann die Person.
+
+Der Anknüpfungspunkt muss substanziell sein. Hat der Journalist über das Thema,
+die Branche oder eine verwandte Entwicklung geschrieben, knüpfe daran konkret
+an: was er berichtet hat, und was sich seither an einem entscheidenden Punkt
+geändert hat. Er muss erkennen können, warum ausgerechnet er dieses Schreiben
+bekommt. "Da Sie regelmäßig über Technologie berichten" und "ich verfolge Ihre
+Berichterstattung mit großem Interesse" leisten das nicht: sie gälten für jeden
+und sagen ihm nichts, was er nicht weiß.
+
+Die Reihenfolge, ohne sie mechanisch abzuarbeiten: ein Anknüpfungspunkt, der
+diesen Journalisten meint; was sich geändert hat; die These; zwei bis drei
+belegbare Fakten; warum der Mandant dazu etwas beitragen kann; ein konkretes,
+niedrigschwelliges Angebot.
+
+Das Angebot ist selbstverständlich formuliert, nicht bittend: ob das ein Thema
+wäre, ob die Unterlagen geschickt werden sollen, ob ein Kontakt hergestellt
+werden soll. Kein Nachfassen, keine übertriebene Höflichkeit, keine
+Dankbarkeit für die Aufmerksamkeit.
+
+Standardlänge 150 bis 250 Wörter. Länger nur, wenn der Gegenstand es erzwingt.
+Jeder Absatz hat einen Zweck; alles, was der Journalist für seine Entscheidung
+nicht braucht, wird gestrichen. Der Text erzählt nicht den fertigen Artikel, er
+zeigt, dass es einen gibt.
+
 WAS EINE POSITION LEISTEN MUSS
 
 Eine Position sagt etwas, das der Leser ohne den Mandanten nicht sähe.
@@ -66,8 +129,17 @@ HAUS-STIL UND TONALITÄT
 Deutsch, sachlich, im Ton einer Fachanalyse. Der Mandant wird nicht angepriesen,
 er wird eingeordnet.
 
-- Keine Superlative, keine Werbesprache, keine Floskeln ("spannend",
-  "einzigartig", "revolutionär"). Kein Selbstlob des Mandanten.
+- Keine Superlative, keine Werbesprache, keine Floskeln. Kein Selbstlob des
+  Mandanten. Diese Wörter tragen nichts und verraten den Absender: spannend,
+  innovativ, revolutionär, bahnbrechend, einzigartig, führend, zukunftsweisend,
+  Gamechanger, Disruption, Insights. Ebenso die Anläufe, die nichts sagen: "im
+  Rahmen von", "vor dem Hintergrund", "möchten wir Ihnen vorstellen", "würden
+  wir uns sehr freuen", "vielleicht wäre das für Sie interessant". Nur wenn ein
+  solches Wort inhaltlich zwingend ist, steht es da.
+- Einfache Sprache statt Nominalstil. Nicht "vor dem Hintergrund der aktuellen
+  regulatorischen Entwicklungen", sondern "die Bundesregierung plant". Nicht
+  "dürfte weitreichende Implikationen haben", sondern "für Unternehmen bedeutet
+  das konkret".
 - Keine Gedankenstriche. Kein "—", kein "–". Sie sind das verlässlichste
   Erkennungszeichen maschinell geschriebener Texte, und ein Anschreiben, das sich
   im ersten Satz als KI-Text zu erkennen gibt, ist gelesen und verworfen, bevor

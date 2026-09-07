@@ -6,17 +6,52 @@
    scrolling past two, and reports were a different tab entirely. The rail marks
    the entry on screen and puts every other one click away, which is what
    "buttons to scroll through the list" asked for and what merging the two tabs
-   needs to be usable at all. #}
+   needs to be usable at all.
+
+   Each card is a box with a link inside it rather than a link, because an
+   occasion also carries a cross — "kreuze zum schliessen und verwerfen der
+   vorschläge" — and a form cannot live inside an anchor. The cross opens a
+   question in place; only the answer posts. A month has no cross: it is not a
+   proposal anyone declines, it is a period that ended. #}
 {% if entries %}
-  <nav class="rail" aria-label="{{ t('Texte') }}">
+  <nav class="rail" aria-label="{{ t('Impulse') }}">
     {% for e in entries %}
-      <a class="rail__e{% if e.active %} is-on{% endif %}" href="{{ e.href }}"
-         {%- if e.active %} aria-current="page"{% endif %}>
-        <span class="rail__k">{{ t("Anlass") if e.kind == "anlass" else t("Zeitraum") }}</span>
-        <span class="rail__w">{{ e.when }}</span>
-        <span class="rail__l">{{ e.label }}</span>
-        {% if e.note %}<span class="rail__n">{{ t(e.note) }}</span>{% endif %}
-      </a>
+      <div class="rail__e{% if e.active %} is-on{% endif %}">
+        <a class="rail__a" href="{{ e.href }}"{% if e.active %} aria-current="page"{% endif %}>
+          <span class="rail__k">{{ t("Anlass") if e.kind == "anlass" else t("Zeitraum") }}</span>
+          <span class="rail__w">{{ e.when }}</span>
+          <span class="rail__l">{{ e.label }}</span>
+          {% if e.note %}<span class="rail__n">{{ t(e.note) }}</span>{% endif %}
+        </a>
+        {% if e.kind == "anlass" %}
+          {# Two clicks, no script: the same details/summary the send button
+             uses, because the one control that removes something must not
+             depend on JavaScript having loaded. #}
+          <details class="rail__x">
+            {# An SVG, not the "×" character. A text glyph is whatever weight
+               and proportion the running face gives it — thin, off-centre, and
+               a different shape on every platform. Two stroked lines with a
+               round cap are the same everywhere, and the button is 26px so it
+               is reachable on a touch screen. #}
+            <summary class="rail__xb" title="{{ t('Vorschlag verwerfen') }}" aria-label="{{ t('Vorschlag verwerfen') }}">
+              <svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true" focusable="false">
+                <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor"
+                      stroke-width="2.2" stroke-linecap="round"/>
+              </svg>
+            </summary>
+            <div class="confirm rail__confirm">
+              <p><strong>{{ t("Sind Sie sicher, dass Sie diesen Vorschlag verwerfen wollen?") }}</strong></p>
+              <p>{{ t("Er verschwindet aus dieser Liste und von der Seite. Texte, die daraus entstanden sind, bleiben erhalten.") }}</p>
+              <div class="confirm__row">
+                <form method="post" action="/client/{{ client.id }}/impulse/{{ e.key | replace('anlass-', '') }}/dismiss">
+                  <button type="submit" class="btn btn--danger btn--sm">{{ t("Ja, verwerfen") }}</button>
+                </form>
+                <button type="button" class="linkbtn" data-close-confirm>{{ t("Abbrechen") }}</button>
+              </div>
+            </div>
+          </details>
+        {% endif %}
+      </div>
     {% endfor %}
   </nav>
 {% endif %}

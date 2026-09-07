@@ -15,7 +15,13 @@ this revision carries ``[]`` and NULL, and the tile says the look-ahead is not
 on file rather than inventing a calendar.
 
 Revision ID: 0051_newsjack_outlook
-Revises: 0050_issue_signal_stamp
+Revises: 0053_client_signoff
+
+Renumbered from 0051 on merge: main had grown three revisions (0051 to 0053)
+while this branch was open, and two revisions naming 0050 as their parent give
+alembic two heads and make `upgrade head` fail. Safe to renumber because this
+one has never been deployed — nothing carries its old id in an alembic_version
+column anywhere.
 Create Date: 2026-09-07
 """
 from __future__ import annotations
@@ -25,8 +31,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0051_newsjack_outlook"
-down_revision: str | None = "0050_issue_signal_stamp"
+revision: str = "0054_newsjack_outlook"
+down_revision: str | None = "0053_client_signoff"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

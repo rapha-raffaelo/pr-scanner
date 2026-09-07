@@ -367,6 +367,7 @@ def for_client(
     *,
     limit: int | None = 5,
     since: dt.datetime | None = None,
+    include_dismissed: bool = False,
 ) -> list[Angle]:
     """This client's recent drafts, newest first.
 
@@ -378,8 +379,17 @@ def for_client(
     written. Both exist for the client report, which states a period in its own
     heading and so may not answer with "the newest five" — a KPI that is
     structurally capped is not a measurement.
+
+    ``include_dismissed`` is for that report too, and only for it. A person
+    declined an occasion from the rail; it must leave the rail and the page,
+    which is what the default does. It must *not* leave a KPI that counts what
+    was drafted in a period — that draft was written, and a measurement that
+    shrinks when somebody tidies a list is the kind of number this function's
+    docstring already refuses to produce.
     """
     query = select(Angle).where(Angle.client_id == client_id)
+    if not include_dismissed:
+        query = query.where(Angle.dismissed_at.is_(None))
     if since is not None:
         query = query.where(Angle.generated_at >= since)
     query = query.order_by(Angle.generated_at.desc(), Angle.id.desc())

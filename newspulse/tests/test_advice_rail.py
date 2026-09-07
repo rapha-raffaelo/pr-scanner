@@ -105,3 +105,123 @@ def test_a_nonsense_entry_falls_back_to_the_newest(web, factory):
 
     assert body.count('<article class="impulse"') == 1
     assert "Der neuere Anlass" in body
+
+
+# --- Declining an occasion -------------------------------------------------------
+#
+# "hier wäre es gut wenn du ein Update machst wo kreuze zum schliessen und
+# verwerfen der vorschläge sind. also mit einem doppelten bestätigugngs fesnter"
+#
+# The rail is a row of proposals. One a consultant has looked at and rejected
+# must leave the row, and it must take two clicks to make it leave: the card it
+# removes is the one the reader is looking at.
+
+
+def test_an_occasion_card_carries_the_cross_and_its_question(web, factory):
+    client_id, older, newer = _mandate_with_two_occasions(factory)
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert f"/client/{client_id}/impulse/{newer}/dismiss" in body
+    assert "Sind Sie sicher, dass Sie diesen Vorschlag verwerfen wollen?" in body
+    # Both answers, and the one that acts is a form: no script between the
+    # reader and the thing that removes a row.
+    assert "Ja, verwerfen" in body and "Abbrechen" in body
+
+
+def test_a_month_carries_no_cross(web, factory):
+    """A period is not a proposal anyone declines; it is a month that ended."""
+    from newspulse.models import Report
+
+    client_id, _older, _newer = _mandate_with_two_occasions(factory)
+    with factory() as session:
+        session.add(
+            Report(
+                client_id=client_id,
+                period_start=dt.datetime(2026, 7, 1, tzinfo=dt.UTC),
+                period_end=dt.datetime(2026, 8, 1, tzinfo=dt.UTC),
+                generated_at=dt.datetime(2026, 8, 3, tzinfo=dt.UTC),
+            )
+        )
+        session.commit()
+
+    body = web.get(f"/client/{client_id}/advice").text
+
+    zeitraum = body.split('class="rail__k">Zeitraum', 1)[1].split("</div>", 1)[0]
+    assert "/dismiss" not in zeitraum
+
+
+def test_declining_removes_the_occasion_from_the_rail_and_the_page(web, factory):
+    client_id, older, newer = _mandate_with_two_occasions(factory)
+
+    answer = web.post(
+        f"/client/{client_id}/impulse/{newer}/dismiss", follow_redirects=False
+    )
+    body = web.get(f"/client/{client_id}/advice").text
+
+    assert answer.status_code == 303
+    assert "Der neuere Anlass" not in body
+    assert "Der ältere Anlass" in body, "the other one stays"
+
+
+def test_declining_the_card_on_screen_lands_on_the_next_one(web, factory):
+    """The redirect names no entry, so the page falls back to the newest that
+    still stands — never to the one just hidden, and never to an empty page
+    while another occasion exists."""
+    client_id, older, newer = _mandate_with_two_occasions(factory)
+
+    answer = web.post(
+        f"/client/{client_id}/impulse/{newer}/dismiss", follow_redirects=False
+    )
+    body = web.get(answer.headers["location"]).text
+
+    assert body.count('<article class="impulse"') == 1
+    assert "Der ältere Anlass" in body
+
+
+def test_declining_is_a_mark_and_the_row_stays_on_record(factory, web):
+    """Marked, never deleted: texts written from the occasion hang on it."""
+    client_id, older, newer = _mandate_with_two_occasions(factory)
+
+    web.post(f"/client/{client_id}/impulse/{newer}/dismiss", follow_redirects=False)
+
+    with factory() as session:
+        row = session.get(Angle, newer)
+        assert row is not None
+        assert row.dismissed_at is not None
+
+
+def test_a_guessed_id_cannot_decline_another_mandates_occasion(web, factory):
+    client_id, older, newer = _mandate_with_two_occasions(factory)
+    with factory() as session:
+        other = Client(name="Beta", aliases=[], keywords=[], alert_topics=[])
+        session.add(other)
+        session.commit()
+        other_id = other.id
+
+    answer = web.post(
+        f"/client/{other_id}/impulse/{newer}/dismiss", follow_redirects=False
+    )
+
+    assert answer.status_code == 404
+    with factory() as session:
+        assert session.get(Angle, newer).dismissed_at is None
+
+
+def test_the_client_report_still_counts_a_declined_draft(factory):
+    """A draft written in a period was written in it. A KPI that shrinks when
+    somebody tidies a list is not a measurement."""
+    from newspulse import angles
+
+    client_id, older, newer = _mandate_with_two_occasions(factory)
+    with factory() as session:
+        session.get(Angle, newer).dismissed_at = dt.datetime.now(dt.UTC)
+        session.commit()
+
+        shown = angles.for_client(session, client_id, limit=None)
+        counted = angles.for_client(
+            session, client_id, limit=None, include_dismissed=True
+        )
+
+    assert [a.id for a in shown] == [older]
+    assert {a.id for a in counted} == {older, newer}

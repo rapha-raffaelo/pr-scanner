@@ -1310,4 +1310,12 @@ def test_every_curated_source_is_named_once_and_classified(factory):
     assert all(s.url.startswith("https://") for s in sources)
     # Every class the sweep runs has at least one curated source, or it leans
     # entirely on the per-mandate search without saying so anywhere.
-    assert {s.kind for s in sources} == set(SignalKind)
+    # Studie and Regulierung are curated; Veranstaltung is served by the
+    # per-mandate field search alone. Every curated source reaches every
+    # mandate, which is right for a regulation and wrong for an event: an event
+    # is an occasion for its own field and for nobody else's. The reasoning and
+    # the measurement that produced it are in test_market_sources.py, beside the
+    # same assertion.
+    curated = {s.kind for s in sources}
+    assert SignalKind.STUDIE in curated and SignalKind.REGULIERUNG in curated
+    assert SignalKind.VERANSTALTUNG not in curated

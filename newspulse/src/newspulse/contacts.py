@@ -134,6 +134,44 @@ def _link_released_letters(session: Session, contact: Contact) -> int:
     return linked
 
 
+def split_name(full: str) -> tuple[str, str]:
+    """A full name as (given, surname). Best effort, and only ever a suggestion.
+
+    The last whitespace-separated token is the surname and everything before it
+    the given name, with the German nobiliary particles kept on the surname —
+    "Anna von der Leyen" is von der Leyen, not Leyen.
+
+    That rule is right for most German bylines and wrong for some: a double
+    surname without a hyphen, a name in a culture that writes the family name
+    first. So this is used to *fill a form*, where a person sees the split and
+    corrects it before saving, and never to write the database behind their
+    back. A contact created from a byline keeps its full name and no parts.
+    """
+    parts = (full or "").split()
+    if not parts:
+        return "", ""
+    if len(parts) == 1:
+        # One word: a surname, which is how a byline is usually shortened, and
+        # the case the form was reported for ("Kröner").
+        return "", parts[0]
+    particles = {"von", "van", "de", "der", "den", "dem", "du", "di", "da", "zu", "zur", "ter"}
+    cut = len(parts) - 1
+    while cut > 1 and parts[cut - 1].casefold() in particles:
+        cut -= 1
+    return " ".join(parts[:cut]), " ".join(parts[cut:])
+
+
+def full_name(first: str, last: str, fallback: str = "") -> str:
+    """The two parts as one name, or ``fallback`` when they are both empty.
+
+    The composed form is what ``name`` stores, because ``name`` is what a feed's
+    byline is matched against — the parts are for a salutation and a sort, not
+    for the join.
+    """
+    joined = " ".join(part for part in ((first or "").strip(), (last or "").strip()) if part)
+    return joined or (fallback or "").strip()
+
+
 def _looks_like_address(value: str) -> bool:
     """Whether this could be a mailbox: one ``@`` with something either side, a
     dot in the domain, and no whitespace.
@@ -186,7 +224,9 @@ def save(
     session: Session,
     *,
     contact_id: int | None = None,
-    name: str,
+    name: str = "",
+    first_name: str = "",
+    last_name: str = "",
     outlet: str = "",
     email: str = "",
     phone: str = "",
@@ -200,7 +240,10 @@ def save(
     same person twice from two different pitch lists cannot split them into two
     half-filled rows.
     """
-    cleaned = (name or "").strip()
+    # The parts win where they are given, and ``name`` is what they compose:
+    # every lookup in this module and every byline match outside it reads
+    # ``name``, so it must never fall out of step with the fields the form shows.
+    cleaned = full_name(first_name, last_name, name)
     if not cleaned:
         raise ValueError("Ein Kontakt braucht einen Namen.")
     house = (outlet or "").strip()
@@ -208,6 +251,8 @@ def save(
     contact = _entry_for(session, cleaned, house, contact_id)
 
     contact.name = cleaned
+    contact.first_name = (first_name or "").strip()
+    contact.last_name = (last_name or "").strip()
     contact.outlet = house or contact.outlet
     contact.email = (email or "").strip()
     contact.phone = (phone or "").strip()
@@ -273,4 +318,14 @@ def delete(session: Session, contact_id: int) -> bool:
     return True
 
 
-__all__ = ["Contact", "delete", "find", "for_outlet", "list_all", "save"]
+__all__ = [
+    "Contact",
+    "delete",
+    "find",
+    "for_outlet",
+    "full_name",
+    "list_all",
+    "remember_address",
+    "save",
+    "split_name",
+]
