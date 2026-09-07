@@ -2850,20 +2850,65 @@ button:disabled { opacity: .55; cursor: default; }
 .dossier .ev__b { font-size: var(--t-caption); color: var(--muted); }
 .dossier .ev--us { background: var(--tint-wash); border-color: var(--tint-line); }
 
-/* The rail's items. A tinted inset rather than a card of its own: this is one
-   card's contents, and five nested white boxes on a white box is a stack of
-   borders nobody reads as a group. */
+/* RAUTE Intelligence, the six tiles beside the case (GEL-02). A tinted inset
+   rather than a card of its own: this is one card's contents, and six nested
+   white boxes on a white box is a stack of borders nobody reads as a group.
+
+   Each tile wears the template's engine shape — coloured symbol field, coloured
+   result line, a mark at the right edge — and the colour is never decoration.
+   The hue on the symbol field says which area the tile reads; the colour on the
+   result line and the mark says what came back, and it is driven by one class
+   from ``dossier_rail.Signal`` so a green result and a red mark cannot appear on
+   the same tile. */
 .dossier .know { display: flex; flex-direction: column; gap: var(--s3); }
-.dossier .know__i { padding: var(--s3); border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--fill-2); }
+.dossier .know__i {
+  padding: var(--s3); border: 1px solid var(--line);
+  border-radius: var(--radius-s); background: var(--fill-2);
+  /* The tile's own hue, overridden per key below. Declared here so a key this
+     stylesheet has not been told about still draws in the accent rather than
+     inheriting whatever stands above it. */
+  --tile: var(--tint);
+}
+.dossier .know__top { display: flex; align-items: center; gap: var(--s2); margin-bottom: 6px; }
+/* The coloured symbol field. A wash of the tile's hue, the glyph in it solid,
+   so six tiles are told apart by colour before a word is read. */
+.dossier .know__ico {
+  flex: none; width: 22px; height: 22px; border-radius: var(--radius-s);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--tile) 12%, transparent); color: var(--tile);
+}
+.dossier .know__ico .ico { width: 14px; height: 14px; }
+.dossier .know__i--positioning { --tile: var(--tint); }
+.dossier .know__i--media { --tile: var(--teal); }
+.dossier .know__i--asset { --tile: var(--purple); }
+.dossier .know__i--quality { --tile: var(--good); }
+.dossier .know__i--visibility { --tile: var(--pink); }
+.dossier .know__i--intelligence { --tile: var(--warn); }
 .dossier .know__h {
   font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.05em; color: var(--faint); margin-bottom: 4px;
+  letter-spacing: 0.05em; color: var(--faint); min-width: 0;
 }
-.dossier .know__v { font-size: var(--t-footnote); color: var(--ink-2); line-height: 1.45; }
-.dossier .know__v b { font-weight: 600; }
+/* The mark at the right edge. Three states and three treatments — and the
+   dashed ring on the third is deliberate: an absent run must not read as a
+   quiet pass, so it is drawn as an outline nobody mistakes for a tick. */
+.dossier .know__sign {
+  margin-left: auto; flex: none; width: 18px; height: 18px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--t-caption); font-weight: 700; line-height: 1; cursor: default;
+}
+.dossier .know__sign--ohne-einwand { background: var(--good-wash); color: var(--good); }
+.dossier .know__sign--einwand { background: var(--warn-wash); color: var(--warn); }
+.dossier .know__sign--nichts { color: var(--faint); border: 1px dashed var(--line-strong); }
+/* The result line: what came back, in the colour of what came back. */
+.dossier .know__res { font-size: var(--t-footnote); line-height: 1.45; color: var(--ink-2); }
+.dossier .know__res b { font-weight: 700; }
+.dossier .know__i--ohne-einwand .know__res { color: var(--good); }
+.dossier .know__i--einwand .know__res { color: var(--warn); }
 /* Same rule as everywhere else on this page: a named absence is italic, not
    grey-on-grey, because it is a sentence worth reading. */
-.dossier .know__v.dempty { font-size: var(--t-footnote); }
+.dossier .know__i--nichts .know__res { color: var(--muted); font-style: italic; }
+.dossier .know__v { font-size: var(--t-footnote); color: var(--ink-2); line-height: 1.45; margin-top: 3px; }
+.dossier .know__v b { font-weight: 600; }
 .dossier .know__l { font-size: var(--t-caption); margin-top: 6px; display: inline-block; font-weight: 600; }
 
 .dossier .note { margin-top: var(--s5); font-size: var(--t-caption); color: var(--faint); max-width: 80ch; line-height: 1.5; }

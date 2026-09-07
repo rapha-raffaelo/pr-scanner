@@ -2203,22 +2203,39 @@ _EN: dict[str, str] = {
     "Zu dieser Gelegenheit ist noch kein Anlass angelegt. Ein Text entsteht über den Knopf oben.":
         "No occasion has been opened for this opportunity. A text starts with the "
         "button above.",
-    # The rail on the right (DEC-1 A): five stored answers from five other pages
-    # of this tool, and a named absence wherever the row behind one is missing.
+    # RAUTE Intelligence, the rail on the right (GEL-02): six stored answers
+    # from six other pages of this tool, and a named absence wherever the row
+    # behind one is missing.
     "Was RauteOS zum Mandat weiß": "What RauteOS knows about this mandate",
+    # The three marks at a tile's right edge. Only the first is a green tick,
+    # and no empty state in ``dossier_rail`` can reach it: a tick behind which
+    # nothing ran is the most expensive kind of trust there is.
+    "Gelaufen, ohne Einwand": "Ran, no objection",
+    "Gelaufen, mit Einwand": "Ran, with an objection",
+    "Dazu ist noch nichts gelaufen": "Nothing has run on this yet",
     "Im Profil steht keine Positionierung. Ein Text zu dieser Gelegenheit hat dann nichts, wogegen er sich abgrenzt.":
         "No positioning is on file. A text on this opportunity then has nothing "
         "to set itself apart from.",
+    "aus dem Profil": "from the profile",
     "Profil ansehen": "Open the profile",
     "vorgeschlagenen Bylines haben einen hinterlegten Kontakt.":
         "suggested bylines have a contact on file.",
+    "Bestplatziert": "Best placed",
     "Zu dieser Gelegenheit schlägt das Werkzeug niemanden vor: im Feld ist kein Autor gespeichert.":
         "The tool suggests nobody for this opportunity: no byline is stored in "
         "the field.",
-    "Qualität": "Quality of the texts",
-    "Texten sind ohne Einwand geprüft.": "texts are checked with no objection.",
-    "mit Einwand.": "with an objection.",
-    "hat noch niemand gelesen.": "has been read by nobody yet.",
+    # Counts as labelled figures rather than as sentences with a number in them:
+    # a German sentence built around a variable count reads as "1 Texte" half
+    # the time, and there is no plural rule a template can apply for it.
+    "Texte am Anlass:": "Texts on the occasion:",
+    "davon geprüft:": "of those checked:",
+    "An dieser Gelegenheit hängt noch kein Text. Er entsteht auf der Texte-Seite.":
+        "No text hangs on this opportunity yet. One starts on the Texts page.",
+    "Mit Einwand:": "With an objection:",
+    "ungeprüft:": "unchecked:",
+    "Geprüft und ohne Einwand:": "Checked with no objection:",
+    "An den Texten dieser Gelegenheit hat bisher keine Prüfung stattgefunden.":
+        "No check has run on this opportunity's texts yet.",
     "An dieser Gelegenheit hängt noch kein Text, also auch keine Prüfung.":
         "No text hangs on this opportunity yet, so no check does either.",
     "Antworten nennen das Mandat, gemessen am":
