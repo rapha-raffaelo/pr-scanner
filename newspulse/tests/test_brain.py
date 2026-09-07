@@ -466,14 +466,25 @@ ADDED_IN_MIGRATION = {
     # unsupported claims but never named invented quotes as the failure.
     "coach.txt": {"no_invention", "quoted_material"},
     "analysis.txt": {"quoted_material"},
-    "angle.txt": {"quoted_material"},
+    # pitch_angle beside it: Lucas's own pitch standards, given to us as one long
+    # brief and put where every engine reads from rather than into a CLAUDE.md,
+    # which governs the coding agent and never reaches `claude -p` at all.
+    # angle.txt gets the angle alone — it finds the position a mandate can take
+    # and writes no letter, so pitch_shape's spokesperson offer, its closing ask
+    # and its word count would govern nothing here.
+    "angle.txt": {"quoted_material", "pitch_angle"},
     "crosscheck.txt": set(),
     # quoted_material also on the distillation: its whole input is material —
     # uploaded brand books, and since the record-derived draft, press coverage.
     # Sources are fenced per file in guide.distill.
     "guide.txt": {"quoted_material"},
     "industry.txt": set(),
-    "outreach.txt": {"quoted_material"},
+    # Both pitch blocks: outreach.txt is the only prompt that writes a letter to
+    # a named journalist, so the angle (why would he write about this now) and
+    # the letter's shape (the mandate as source and not subject, a spokesperson
+    # offered for what he can say, a CTA that does not beg, 150-250 words) are
+    # both about exactly what it produces.
+    "outreach.txt": {"quoted_material", "pitch_angle", "pitch_shape"},
     "rivals.txt": set(),
     "themes.txt": set(),
     # The panel emits the questions a *buyer* would type about this market, which

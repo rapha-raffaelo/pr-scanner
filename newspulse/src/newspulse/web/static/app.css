@@ -1826,15 +1826,24 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   padding-right: 30px; color: inherit; text-decoration: none; border-radius: inherit;
 }
 .rail__a:hover { text-decoration: none; color: var(--ink); }
-.rail__x { position: absolute; top: 6px; right: 6px; }
+.rail__x { position: absolute; top: 5px; right: 5px; }
 .rail__x > summary { list-style: none; cursor: pointer; }
 .rail__x > summary::-webkit-details-marker { display: none; }
+/* The close affordance every application draws the same way: a quiet glyph
+   that only grows a background under the pointer, so a row of cards is not a
+   row of buttons shouting to be pressed. 26px is the touch target; the icon
+   inside it is 13. */
 .rail__xb {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; border-radius: 50%;
-  font-size: 15px; line-height: 1; color: var(--faint); background: transparent;
+  width: 26px; height: 26px; border-radius: var(--radius-s);
+  color: var(--faint); background: transparent;
+  transition: color .12s ease, background .12s ease;
 }
-.rail__xb:hover, .rail__x[open] > .rail__xb { color: var(--alert); background: var(--alert-wash); }
+.rail__e:hover .rail__xb { color: var(--muted); }
+.rail__xb:hover { color: var(--alert); background: var(--alert-wash); }
+/* Keyboard reaches it too, and must see where it is. */
+.rail__xb:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; color: var(--alert); }
+.rail__x[open] > .rail__xb { color: var(--alert); background: var(--alert-wash); }
 /* The question opens *inside* the card and the card grows to hold it. Not a
    popover: the rail scrolls sideways (overflow-x: auto), and a scrolling box
    clips anything absolutely positioned past its edge — the first build put the

@@ -220,6 +220,10 @@
                                  summit. #}
                               <input type="hidden" name="website" value="{{ rival.website }}">
                               <input type="hidden" name="industry" value="{{ rival.industry }}">
+                              {# Newline-separated: a competitor matches on its
+                                 name and its aliases only, so one stored
+                                 spelling is one chance to match. #}
+                              <input type="hidden" name="aliases" value="{{ rival.aliases | join('\n') }}">
                               <input type="hidden" name="redirect_to" value="/settings?edit={{ client.id }}">
                               <button type="submit" class="rival" title="{{ rival.reason }}">
                                 <span class="rival__name">+ {{ rival.name }}</span>

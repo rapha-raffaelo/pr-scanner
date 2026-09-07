@@ -29,6 +29,14 @@ Regeln für diese Liste:
 - "website" ist die Domain des Unternehmens, ohne Protokoll, etwa
   "beispiel.de". Kennst du sie nicht sicher, lass das Feld leer. Eine geratene
   Domain ist schlechter als keine.
+- "aliases" sind die Schreibweisen, unter denen die Presse das Unternehmen
+  nennt, ohne den Namen selbst zu wiederholen: die getrennte oder
+  zusammengeschriebene Form, die Rechtsform, eine geläufige Abkürzung, die
+  Muttergesellschaft. Für "TradeRepublic" etwa "Trade Republic" und "Trade
+  Republic Bank GmbH". Höchstens acht, und nur Schreibweisen, die tatsächlich
+  vorkommen: ein erfundener Alias trifft fremde Artikel und verfälscht den
+  Vergleich, den diese Liste ermöglichen soll. Kennst du keine, lass die Liste
+  leer.
 - "industry" ist das Feld, in dem das Unternehmen tatsächlich tätig ist, in
   wenigen Worten. Das ist das Feld, an dem später entschieden wird, ob eine
   Meldung dieses Unternehmen überhaupt betrifft: Ein Name allein ist oft
@@ -39,6 +47,6 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück. Kein weiterer Text, kein Markdown.
 
 {
   "rivals": [
-    {"name": "Firmenname wie er in der Presse steht", "reason": "worin sie konkurrieren", "website": "beispiel.de", "industry": "das Feld, in dem sie tätig sind"}
+    {"name": "Firmenname wie er in der Presse steht", "reason": "worin sie konkurrieren", "website": "beispiel.de", "industry": "das Feld, in dem sie tätig sind", "aliases": ["weitere Schreibweise", "Rechtsform-Variante"]}
   ]
 }

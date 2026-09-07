@@ -1394,6 +1394,7 @@ def accept_rival_route(
     name: str = Form(...),
     website: str = Form(""),
     industry: str = Form(""),
+    aliases: str = Form(""),
     redirect_to: str = Form(""),
     session: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -1437,8 +1438,20 @@ def accept_rival_route(
         # create_client owns the name/uniqueness rules; the role is a separate
         # field it does not take, so it is set immediately after — before the
         # company can appear anywhere as a mandate.
+        # The spellings the proposal knew, carried in as a newline-separated
+        # field. Without them a competitor matches its own name and nothing
+        # else, which is how "TradeRepublic" scored zero articles in three
+        # months: the press writes "Trade Republic".
+        spellings = [
+            line.strip()
+            for line in (aliases or "").splitlines()
+            if line.strip() and line.strip().casefold() != proposed.casefold()
+        ]
         other = create_client(
-            session, name=proposed, industry=(industry or "").strip() or None
+            session,
+            name=proposed,
+            industry=(industry or "").strip() or None,
+            aliases=spellings or None,
         )
         # Through the same normaliser the operator's own typed website goes
         # through, so a proposal that answers "g20.group" and a person who pastes

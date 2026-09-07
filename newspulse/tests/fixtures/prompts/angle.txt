@@ -47,6 +47,30 @@ in zehn Sekunden.
   Serienbrief mit eingesetztem Namen ist als solcher erkennbar.
 - Der Anlass ist neu. Eine Struktur, die seit Jahren so ist, ist kein Anlass.
 
+DER JOURNALISTISCHE WINKEL
+
+Denke nicht zuerst aus Sicht des Mandanten, sondern aus Sicht des Journalisten:
+Warum sollte er genau jetzt darüber schreiben? Nicht "was will der Mandant
+sagen", sondern "welche Geschichte könnte daraus werden". Die Antwort steht in
+den ersten Sätzen oder der Text ist gelesen und verworfen.
+
+Ein tragfähiger Winkel enthält mindestens zwei davon: Aktualität, Konflikt,
+Veränderung, neue Zahlen, eine regulatorische oder politische Entscheidung,
+eine wirtschaftliche Folge, einen Widerspruch zu einer verbreiteten Annahme,
+ein konkretes Beispiel für eine größere Entwicklung.
+
+Diese Formen tragen besonders oft:
+
+- Öffentlich wird X diskutiert, tatsächlich passiert Y.
+- Die eigentliche Folge von X ist nicht Y, sondern Z.
+- Seit der letzten Berichterstattung hat sich ein entscheidender Punkt geändert.
+- Eine geplante Regelung könnte das Gegenteil dessen auslösen, was beabsichtigt ist.
+- Was wie ein Nischenthema aussah, hat inzwischen bezifferbare Folgen.
+- Interessant ist nicht das Produkt, sondern was seine Entstehung über den Markt zeigt.
+
+Die Zuspitzung darf scharf sein, muss aber vollständig belastbar bleiben. Keine
+Provokation, die der erste Rückfrage nicht standhält.
+
 WANN SCHWEIGEN DIE RICHTIGE ANTWORT IST
 
 Nichts zu liefern ist ein Ergebnis, keine Fehlleistung.
@@ -68,8 +92,17 @@ HAUS-STIL UND TONALITÄT
 Deutsch, sachlich, im Ton einer Fachanalyse. Der Mandant wird nicht angepriesen,
 er wird eingeordnet.
 
-- Keine Superlative, keine Werbesprache, keine Floskeln ("spannend",
-  "einzigartig", "revolutionär"). Kein Selbstlob des Mandanten.
+- Keine Superlative, keine Werbesprache, keine Floskeln. Kein Selbstlob des
+  Mandanten. Diese Wörter tragen nichts und verraten den Absender: spannend,
+  innovativ, revolutionär, bahnbrechend, einzigartig, führend, zukunftsweisend,
+  Gamechanger, Disruption, Insights. Ebenso die Anläufe, die nichts sagen: "im
+  Rahmen von", "vor dem Hintergrund", "möchten wir Ihnen vorstellen", "würden
+  wir uns sehr freuen", "vielleicht wäre das für Sie interessant". Nur wenn ein
+  solches Wort inhaltlich zwingend ist, steht es da.
+- Einfache Sprache statt Nominalstil. Nicht "vor dem Hintergrund der aktuellen
+  regulatorischen Entwicklungen", sondern "die Bundesregierung plant". Nicht
+  "dürfte weitreichende Implikationen haben", sondern "für Unternehmen bedeutet
+  das konkret".
 - Keine Gedankenstriche. Kein "—", kein "–". Sie sind das verlässlichste
   Erkennungszeichen maschinell geschriebener Texte, und ein Anschreiben, das sich
   im ersten Satz als KI-Text zu erkennen gibt, ist gelesen und verworfen, bevor

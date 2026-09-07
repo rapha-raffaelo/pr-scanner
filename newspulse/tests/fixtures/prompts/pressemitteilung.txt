@@ -93,8 +93,17 @@ HAUS-STIL UND TONALITÄT
 Deutsch, sachlich, im Ton einer Fachanalyse. Der Mandant wird nicht angepriesen,
 er wird eingeordnet.
 
-- Keine Superlative, keine Werbesprache, keine Floskeln ("spannend",
-  "einzigartig", "revolutionär"). Kein Selbstlob des Mandanten.
+- Keine Superlative, keine Werbesprache, keine Floskeln. Kein Selbstlob des
+  Mandanten. Diese Wörter tragen nichts und verraten den Absender: spannend,
+  innovativ, revolutionär, bahnbrechend, einzigartig, führend, zukunftsweisend,
+  Gamechanger, Disruption, Insights. Ebenso die Anläufe, die nichts sagen: "im
+  Rahmen von", "vor dem Hintergrund", "möchten wir Ihnen vorstellen", "würden
+  wir uns sehr freuen", "vielleicht wäre das für Sie interessant". Nur wenn ein
+  solches Wort inhaltlich zwingend ist, steht es da.
+- Einfache Sprache statt Nominalstil. Nicht "vor dem Hintergrund der aktuellen
+  regulatorischen Entwicklungen", sondern "die Bundesregierung plant". Nicht
+  "dürfte weitreichende Implikationen haben", sondern "für Unternehmen bedeutet
+  das konkret".
 - Keine Gedankenstriche. Kein "—", kein "–". Sie sind das verlässlichste
   Erkennungszeichen maschinell geschriebener Texte, und ein Anschreiben, das sich
   im ersten Satz als KI-Text zu erkennen gibt, ist gelesen und verworfen, bevor

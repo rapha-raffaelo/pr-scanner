@@ -28,7 +28,17 @@
              uses, because the one control that removes something must not
              depend on JavaScript having loaded. #}
           <details class="rail__x">
-            <summary class="rail__xb" title="{{ t('Vorschlag verwerfen') }}" aria-label="{{ t('Vorschlag verwerfen') }}">×</summary>
+            {# An SVG, not the "×" character. A text glyph is whatever weight
+               and proportion the running face gives it — thin, off-centre, and
+               a different shape on every platform. Two stroked lines with a
+               round cap are the same everywhere, and the button is 26px so it
+               is reachable on a touch screen. #}
+            <summary class="rail__xb" title="{{ t('Vorschlag verwerfen') }}" aria-label="{{ t('Vorschlag verwerfen') }}">
+              <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
+                <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor"
+                      stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </summary>
             <div class="confirm rail__confirm">
               <p><strong>{{ t("Sind Sie sicher, dass Sie diesen Vorschlag verwerfen wollen?") }}</strong></p>
               <p>{{ t("Er verschwindet aus dieser Liste und von der Seite. Texte, die daraus entstanden sind, bleiben erhalten.") }}</p>
