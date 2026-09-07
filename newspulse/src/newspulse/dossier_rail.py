@@ -27,6 +27,11 @@ Three properties this module exists to hold:
 * Figures live in the dataclasses here, sentences live in the template. A test
   can then pin a number without parsing German, and
   :func:`newspulse.i18n.translate` can still reach every word on the page.
+* A stored row is not evidence forever. The two tiles that stand on a scheduled
+  sweep are bounded by :data:`_STALE_AFTER`, because "die neueste Zeile" and
+  "eine aktuelle Messung" stop being the same sentence the moment a sweep is
+  switched off — and the tile that keeps its green tick for a measurement from
+  2023 is exactly the cheap trust the rest of this module refuses.
 
 The five stored answers themselves come from :func:`newspulse.opportunity
 .intelligence`, which GEL-01 already reads them with. This module splits them
@@ -43,6 +48,7 @@ from enum import StrEnum
 
 from sqlalchemy.orm import Session
 
+from . import config
 from . import opportunity as dossier
 from . import visibility
 from .models import Client, ReputationState, VisibilityBand
@@ -128,7 +134,11 @@ def _hrefs(client_id: int) -> dict[TileKey, str]:
         TileKey.ASSET: f"/client/{client_id}/advice",
         TileKey.QUALITY: f"/client/{client_id}/guide",
         TileKey.VISIBILITY: f"/client/{client_id}/ki",
-        TileKey.INTELLIGENCE: "/today",
+        # Filtered to this mandate, and not the bare page: ``today_view`` builds
+        # the band over the roster it is showing, so an unfiltered /today answers
+        # with the portfolio's standing — a different measurement from the one
+        # this tile just printed, reached by clicking the tile that printed it.
+        TileKey.INTELLIGENCE: f"/today?client={client_id}",
     }
 
 
@@ -187,6 +197,11 @@ class Tile:
     #: German label for that link, translated where it is rendered.
     link: str
     figures: Figures
+    #: How many days old the row behind this tile is, once it is old enough that
+    #: the rail refuses to call it current (:data:`_STALE_AFTER`). ``None`` on a
+    #: fresh tile and on the four whose value is not a dated sweep — so the
+    #: template prints the age exactly where it changes what the tile means.
+    stale_days: int | None = None
 
     @property
     def measured(self) -> bool:
@@ -198,6 +213,49 @@ class Tile:
         mark that says it went well.
         """
         return self.signal is not Signal.NICHTS
+
+
+# --- How old a stored answer may be ------------------------------------------------
+
+#: How old the newest row of a scheduled sweep may be before this rail stops
+#: calling it current. Two of the tiles — the visibility measurement and the
+#: reputation reading — stand on runs that happen on a timer, and neither
+#: ``visibility.latest_run`` nor ``reputation.history`` has a recency bound: the
+#: newest row *is* the answer however old it is. Without this the tile of a
+#: mandate whose sweep was switched off in 2023 wears a green tick today, which
+#: is the same untrue sentence as a tick over a run that never happened.
+#:
+#: Thirty days because both sweeps are far quicker than that: the visibility set
+#: runs every :data:`newspulse.config.VISIBILITY_EVERY_DAYS` days (seven by
+#: default) and the reputation reading is written daily. Past a month the honest
+#: statement is not "ruhig" but "das misst hier niemand mehr". One constant for
+#: both, so the rail cannot call the same age stale on one tile and current on
+#: the next; the Positioning tile keeps :data:`newspulse.profile.AGE_AFTER`
+#: because it must not disagree with the profile page about the same stamp.
+_STALE_AFTER = dt.timedelta(days=30)
+
+
+def _stale_days(at: dt.date | dt.datetime | None, *, now: dt.datetime) -> int | None:
+    """The age of a stored sweep row in days, once it is past :data:`_STALE_AFTER`.
+
+    ``None`` twice over, for two different reasons the caller does not have to
+    tell apart: there is no row at all (that is :attr:`Signal.NICHTS`'s business,
+    decided from the figure itself), or the row is still inside the window and
+    its age is not worth a sentence.
+
+    Counted in calendar days in the reader's zone, the way
+    :func:`newspulse.profile.checked` counts them, and a stamp from the future —
+    a clock skew on a restored backup — counts as today rather than as a
+    negative age. Takes both a date and a datetime because the two rows behind
+    it are stored differently: a measurement carries an instant, a reputation
+    reading carries the day it read.
+    """
+    if at is None:
+        return None
+    zone = config.local_zone()
+    day = at.astimezone(zone).date() if isinstance(at, dt.datetime) else at
+    days = max(0, (now.astimezone(zone).date() - day).days)
+    return days if days >= _STALE_AFTER.days else None
 
 
 # --- The six marks ----------------------------------------------------------------
@@ -224,25 +282,39 @@ def _positioning_signal(figures: dossier.Positioning) -> Signal:
 
 
 def _media_signal(figures: MediaFigures) -> Signal:
-    """A list of names nobody can be reached at is a finding, not an empty list."""
+    """A name without an address is the objection, and one address is not none.
+
+    The tick asks for the whole list and not for a first hit. One contact out of
+    seventeen was passing here, and the tile then printed "1 von 17" in green
+    beside a check mark — a list sixteen names short of being usable, marked as
+    though it were done. There is no fraction that would be honest either: what
+    the reader has to act on is the gap, so the mark carries the gap and the two
+    numbers under it say how wide it is.
+    """
     if not figures.reach.named:
         return Signal.NICHTS
-    if not figures.reach.with_contact:
+    if figures.reach.with_contact < figures.reach.named:
         return Signal.EINWAND
     return Signal.OHNE_EINWAND
 
 
 def _asset_signal(figures: dossier.Quality) -> Signal:
-    """Did anything get written, and is the set finished?
+    """Did anything get written, and did anybody object to it?
 
-    "Gelaufen" here is: texts hang on the occasion. The objection is a set that
-    is not through yet — something is written and cannot be released — which is
-    a different sentence from the Quality tile's, where the objection is a
-    checker that said no.
+    "Gelaufen" here is: texts hang on the occasion. The mark's own word is the
+    constraint on the rest — :attr:`Signal.EINWAND` renders as "Gelaufen, mit
+    Einwand" in a tooltip and in an ``aria-label``, so it may only stand where a
+    checker actually said no. An unfinished set used to reach it, which made
+    this tile assert an objection nobody had raised, one line above the Quality
+    tile printing "Mit Einwand: 0" about the same three texts.
+
+    So "unfertig" belongs to the Quality tile, which is the one that reads the
+    checks, and this tile answers only its own question. The two share
+    :class:`newspulse.opportunity.Quality` and read different fields of it.
     """
     if not figures.texts:
         return Signal.NICHTS
-    if figures.checked < figures.texts:
+    if figures.objected:
         return Signal.EINWAND
     return Signal.OHNE_EINWAND
 
@@ -254,40 +326,54 @@ def _quality_signal(figures: dossier.Quality) -> Signal:
     on top of each other — "0 Einwände" out of three unchecked texts reads as
     clean and is the exact opposite — so the run is counted as the checks that
     actually happened, and no check at all is :attr:`Signal.NICHTS`.
+
+    The partial case is the common one and needs the same refusal: Lucas has the
+    pitch checked and leaves the Statement and the Q&A, and one clean check out
+    of three used to be enough for the tick. It stood directly above this tile's
+    own result line, "Mit Einwand: 0 · ungeprüft: 2", painted green. So the tick
+    asks for the whole set — a text nobody has read is not a text that passed.
     """
     if figures.checked + figures.objected == 0:
         return Signal.NICHTS
-    if figures.objected:
+    if figures.objected or figures.unchecked:
         return Signal.EINWAND
     return Signal.OHNE_EINWAND
 
 
-def _visibility_signal(figures: VisibilityFigures) -> Signal:
+def _visibility_signal(figures: VisibilityFigures, *, stale: bool) -> Signal:
     """Never measured, measured and not named, measured and named — three states.
 
     The middle one is the reason the rail is built this way at all: a run that
     was paid for and named the mandate nowhere shows the same 0 as a mandate the
     sweep has never touched, and only one of them is something to act on.
+
+    ``stale`` is the fourth reading of the same row and folds into the second:
+    a measurement past :data:`_STALE_AFTER` did happen, so it is not
+    :attr:`Signal.NICHTS`, but a sweep that has not run for a month is not a
+    current answer about the mandate either — it is a thing to go and look at.
     """
     run = figures.run
     if run.measured_at is None:
         return Signal.NICHTS
-    if run.answers == 0 or run.named_in == 0:
+    if stale or run.answers == 0 or run.named_in == 0:
         return Signal.EINWAND
     return Signal.OHNE_EINWAND
 
 
-def _reputation_signal(figures: dossier.Reputation) -> Signal:
-    """``ruhig`` is a reading. No reading is not ``ruhig``.
+def _reputation_signal(figures: dossier.Reputation, *, stale: bool) -> Signal:
+    """``ruhig`` is a reading. No reading is not ``ruhig``, and an old one is not either.
 
     Printing the reassuring word for an absent measurement is the worst sentence
-    this rail could carry, so the absence gets its own mark and its own sentence.
+    this rail could carry, so the absence gets its own mark and its own sentence
+    — and a reading from two years ago is the same sentence wearing a date:
+    ``reputation.history`` hands back the newest row whatever its day, so
+    without ``stale`` the tick outlives the sweep that earned it.
     """
     if figures.state is None:
         return Signal.NICHTS
-    if figures.state is ReputationState.RUHIG:
-        return Signal.OHNE_EINWAND
-    return Signal.EINWAND
+    if stale or figures.state is not ReputationState.RUHIG:
+        return Signal.EINWAND
+    return Signal.OHNE_EINWAND
 
 
 # --- The two reads GEL-01's value does not already carry --------------------------
@@ -305,15 +391,26 @@ _BAND_ORDER: tuple[VisibilityBand, ...] = (
 )
 
 
-def _best_band(session: Session, client: Client) -> VisibilityBand | None:
+def _best_band(
+    session: Session, client: Client, *, measured: dt.datetime | None
+) -> VisibilityBand | None:
     """The furthest-from-the-brand band the newest run named the mandate in.
 
     Read here rather than folded into :class:`newspulse.opportunity.Visibility`
     because that value is GEL-01's and its shape is pinned by GEL-01's tests.
-    The cost is one further indexed select for the same run on a page that is
-    already reading nine tables, and the alternative — a second counting of the
-    answers in this module — is the duplication the module docstring refuses.
+    The alternative — a second counting of the answers in this module — is the
+    duplication the module docstring refuses.
+
+    ``measured`` is the ``measured_at`` of the value ``intelligence`` just
+    returned, and it is passed in so a mandate that has never been measured —
+    every mandate on its first morning — reaches no database at all here.
+    Where there is a run, the row, its answers and (through the ``selectin`` on
+    :attr:`newspulse.models.VisibilityAnswer.question`) their questions are
+    already in this session's identity map from ``opportunity._visibility``, so
+    what is left is one indexed lookup and no further loading.
     """
+    if measured is None:
+        return None
     run = visibility.latest_run(session, client)
     if run is None:
         return None
@@ -340,7 +437,12 @@ def _lead(people: list[dossier.Recipient]) -> dossier.Recipient | None:
 
 
 def _tile(
-    key: TileKey, figures: Figures, signal: Signal, hrefs: dict[TileKey, str]
+    key: TileKey,
+    figures: Figures,
+    signal: Signal,
+    hrefs: dict[TileKey, str],
+    *,
+    stale_days: int | None = None,
 ) -> Tile:
     """One tile, with the four constants that belong to its key."""
     return Tile(
@@ -351,6 +453,7 @@ def _tile(
         href=hrefs[key],
         link=_LINK_WORDS[key],
         figures=figures,
+        stale_days=stale_days,
     )
 
 
@@ -372,7 +475,15 @@ def rail(
     intel = dossier.intelligence(session, client, people, stored_texts, now=reference)
     hrefs = _hrefs(client.id)
     media = MediaFigures(reach=intel.media, lead=_lead(people))
-    seen = VisibilityFigures(run=intel.visibility, band=_best_band(session, client))
+    seen = VisibilityFigures(
+        run=intel.visibility,
+        band=_best_band(session, client, measured=intel.visibility.measured_at),
+    )
+    # The two ages the rail bounds, read once and handed to both the mark and
+    # the sentence: a tile that marks itself stale and does not say how old it
+    # is has told the reader there is a problem and hidden its size.
+    seen_age = _stale_days(intel.visibility.measured_at, now=reference)
+    read_age = _stale_days(intel.reputation.day, now=reference)
     return [
         _tile(
             TileKey.POSITIONING,
@@ -383,12 +494,19 @@ def rail(
         _tile(TileKey.MEDIA, media, _media_signal(media), hrefs),
         _tile(TileKey.ASSET, intel.quality, _asset_signal(intel.quality), hrefs),
         _tile(TileKey.QUALITY, intel.quality, _quality_signal(intel.quality), hrefs),
-        _tile(TileKey.VISIBILITY, seen, _visibility_signal(seen), hrefs),
+        _tile(
+            TileKey.VISIBILITY,
+            seen,
+            _visibility_signal(seen, stale=seen_age is not None),
+            hrefs,
+            stale_days=seen_age,
+        ),
         _tile(
             TileKey.INTELLIGENCE,
             intel.reputation,
-            _reputation_signal(intel.reputation),
+            _reputation_signal(intel.reputation, stale=read_age is not None),
             hrefs,
+            stale_days=read_age,
         ),
     ]
 

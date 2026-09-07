@@ -2252,6 +2252,10 @@ _EN: dict[str, str] = {
         "No reputation reading is on file for this mandate. \u201cQuiet\u201d would "
         "be a reading, and there is none.",
     "Reputationsband": "Reputation band",
+    # Printed on the two tiles that stand on a scheduled sweep, and only once the
+    # newest row is past ``dossier_rail._STALE_AFTER``: the mark says the answer
+    # is not current, and this says by how much.
+    "Zuletzt gemessen vor %(days)s Tagen.": "Last measured %(days)s days ago.",
     # The card and the archive line: the headline goes to the dossier now, so
     # the piece the story was found in gets a link of its own.
     "Ursprungsbeitrag": "Origin piece",

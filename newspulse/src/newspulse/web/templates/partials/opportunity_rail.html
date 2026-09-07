@@ -144,7 +144,18 @@
           {% endif %}
         {% endif %}{# A key with no branch renders its frame and no sentence,
            which is a visible hole rather than a template error on a page Lucas
-           opens four times on a closing morning. #}
+           opens four times on a closing morning. The correspondence between the
+           keys and the branches above is held by a test that counts one
+           ``know__res`` per member of ``TileKey``, so a seventh tile fails
+           there rather than shipping blank. #}
+
+        {# The age, on the two tiles that stand on a scheduled sweep and only
+           once it is past ``dossier_rail._STALE_AFTER``. The mark above already
+           says the measurement is not current; without the number beside it the
+           reader is told there is a problem and not how big it is. #}
+        {% if tile.stale_days is not none %}
+          <div class="know__v">{{ t("Zuletzt gemessen vor %(days)s Tagen.") | format(days=tile.stale_days) }}</div>
+        {% endif %}
 
         <a class="know__l" href="{{ tile.href }}">{{ t(tile.link) }} →</a>
       </div>
