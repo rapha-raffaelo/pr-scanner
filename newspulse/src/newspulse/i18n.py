@@ -2139,7 +2139,10 @@ _EN: dict[str, str] = {
         "No stakeholder groups are on file for this mandate.",
     "Karte pflegen": "Maintain the map",
     "Warum jetzt": "Why now",
-    "Medien tragen die Story, das erste am": "outlets carry the story, the first on",
+    "Beitrag/Beiträge belegen die Story, der erste am":
+        "piece(s) evidence the story, the first on",
+    "Medien trugen sie, als das Stehen geprüft wurde":
+        "outlets carried it when the standing was checked",
     "Das Fenster ab dem Ursprungsbeitrag ist zugelaufen am":
         "The window running from the origin piece closed on",
     "Das Fenster ab dem Ursprungsbeitrag läuft aus in":

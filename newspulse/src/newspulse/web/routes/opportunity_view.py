@@ -41,6 +41,7 @@ from ... import opportunity as dossier
 from ...models import Client, NewsjackOpportunity, Standing
 from ..app import get_db, templates
 from ..mandates import mandate_or_404
+from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
 
@@ -151,6 +152,10 @@ def page_context(
         # The one sentence the model wrote about this mandate's standing. Data,
         # so it stays in the language it was written in.
         "standing_reason": row.reason.strip(),
+        # What the shared header renders on every page: the reader's day and the
+        # last sweep. Two reads, and neither of them writes.
+        "last_run": _fetch_last_run(session),
+        "header_date": now.astimezone(_local_tz()).date(),
     }
 
 

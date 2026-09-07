@@ -181,7 +181,11 @@
     <div class="card">
       <div class="card__h">{{ t("Warum jetzt") }}</div>
       <ul class="facts">
-        <li>{{ sources | length }} {{ t("Medien tragen die Story, das erste am") }} {{ sources[0].published_at | de_datetime }}</li>
+        {# Two counts, and they are not interchangeable: the badge's number is the
+           outlets counted at the verdict and frozen on the row, this one is the
+           pieces still readable. The provenance bar names both. #}
+        <li>{{ sources | length }} {{ t("Beitrag/Beiträge belegen die Story, der erste am") }} {{ sources[0].published_at | de_datetime }}</li>
+        <li>{{ score.media }} {{ t("Medien trugen sie, als das Stehen geprüft wurde") }}</li>
         {% if concluded %}
           <li>{{ t("Das Fenster ab dem Ursprungsbeitrag ist zugelaufen am") }} {{ opp.window_ends_at | de_datetime }}</li>
         {% else %}

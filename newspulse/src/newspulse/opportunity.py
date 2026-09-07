@@ -759,14 +759,24 @@ class Provenance:
 
 
 def provenance(
-    opportunity: NewsjackOpportunity, score: Urgency, media_count: int
+    opportunity: NewsjackOpportunity, score: Urgency, pieces: int
 ) -> Provenance:
-    """The three sentences under which every figure on the page was produced."""
+    """The three sentences under which every figure on the page was produced.
+
+    Two counts appear here and they are deliberately not the same number.
+    ``score.media`` is the distinct *outlets* counted when the verdict was
+    written and frozen on the row — that is the score's input, so the bar has
+    to name it or the badge cannot be checked. ``pieces`` is how many articles
+    of the story are still readable today, which is what the sources list can
+    actually show. They diverge when radar rows age past the lookback, and a
+    page printing one under the other's name would be lying about both.
+    """
     version = opportunity.brain_version
     return Provenance(
         detected=(
-            f"Schnelle Spur: {media_count} Medien tragen die Story, "
-            f"zuerst bei {opportunity.article.source}."
+            f"Schnelle Spur: {score.media} Medien trugen die Story bei der "
+            f"Prüfung, zuerst bei {opportunity.article.source}; "
+            f"{pieces} Beitrag/Beiträge davon sind gespeichert."
         ),
         scored=(
             f"Verbreitung {score.reach} ({score.media} Medien, gedeckelt bei "
