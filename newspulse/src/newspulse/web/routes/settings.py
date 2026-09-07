@@ -1552,6 +1552,76 @@ def remove_competitor_route(
     return RedirectResponse(back, status_code=_SEE_OTHER)
 
 
+def _mask_context(
+    *, name: str = "", website: str = "", country: str = "DE", error: str = ""
+) -> dict:
+    """The creation mask's context, plus the one thing the shell asks of every
+    page: ``header_date``, which the toolbar's run meta prints."""
+    return {
+        "prefill_name": name,
+        "prefill_website": website,
+        "prefill_country": country,
+        "error": error,
+        "header_date": dt.datetime.now(config.local_zone()).date(),
+    }
+
+
+@router.get("/mandant/neu", response_class=HTMLResponse)
+def new_client_form(request: Request) -> Response:
+    """The mask for creating a mandate.
+
+    "das linked direkt zu den Einstellungen nicht aber zu einer Maske die uns
+    hilft daten zum neuen Mandanten einzugeben." The sidebar's button pointed at
+    a collapsed <details> in Settings, which is a settings row and not a way in.
+
+    Three fields, because onboarding now does the rest: it settles the industry,
+    proposes and measures the themes, reads the profile off the website, fetches
+    the archive and drafts the first impulse. Asking for the search terms and
+    the alert topics here would be asking the consultant to do work the tool has
+    already been taught to do, and to do it before he has seen a single article.
+    """
+    return templates.TemplateResponse(
+        request, "client_new.html", _mask_context()
+    )
+
+
+@router.post("/mandant/neu")
+def create_client_from_mask(
+    request: Request,
+    name: str = Form(...),
+    website: str = Form(""),
+    country: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Create the mandate and land on it, not back in a settings table.
+
+    The redirect is the difference that makes this a way in rather than a form:
+    the consultant arrives on the mandate he just created, where the onboarding
+    he started is visibly running.
+    """
+    try:
+        fields = _parse_client_form(
+            name=name, aliases="", industry="", country=country,
+            keywords="", alert_topics="",
+        )
+        created = create_client(session, **fields)
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "client_new.html",
+            _mask_context(name=name, website=website, country=country, error=str(exc)),
+        )
+    site = normalize_website(website)
+    if site:
+        created.website = site
+        # Best-effort and inline, as the settings form does it: a new mandate
+        # should look finished at once, and the monogram covers a miss.
+        created.logo_url = fetch_logo(site)
+        session.commit()
+    _start_onboarding(created.id, created.name)
+    return RedirectResponse(f"/client/{created.id}/heute", status_code=_SEE_OTHER)
+
+
 @router.post("/settings/clients")
 def add_client_route(
     request: Request,

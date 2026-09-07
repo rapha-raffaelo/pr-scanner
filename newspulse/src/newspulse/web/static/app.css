@@ -192,6 +192,32 @@ body {
 /* The one row in the roster that adds to it rather than opening one. Quieter
    than a mandate — it is a door, not a destination — and the plus does the
    saying, so the label stays a noun. */
+/* --- The new-mandate mask -------------------------------------------------- */
+/* Two columns: the three fields that have to be typed, and what the tool will
+   do with them. The second column is not decoration — it is the answer to "what
+   am I signing up for" that a settings row could never give. */
+.newc { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--s7); align-items: start; }
+.newc__form { display: flex; flex-direction: column; gap: var(--s5); max-width: 34rem; }
+.newc__field { display: flex; flex-direction: column; gap: 6px; }
+.newc__field--short input { max-width: 6rem; }
+.newc__field label { font-size: var(--t-subhead); font-weight: 600; color: var(--ink); }
+.newc__field input {
+  padding: 10px 12px; font: inherit; font-size: var(--t-body);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); color: var(--ink);
+}
+.newc__field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.newc__hint { font-size: var(--t-footnote); color: var(--muted); max-width: 46ch; }
+.newc__act { display: flex; align-items: center; gap: var(--s4); margin-top: var(--s2); }
+.newc__next {
+  padding: var(--s5); border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); box-shadow: var(--shadow);
+}
+.newc__steps { margin: var(--s3) 0 0; padding-left: var(--s5); display: flex; flex-direction: column; gap: var(--s2); }
+.newc__steps li { font-size: var(--t-footnote); color: var(--ink-2); }
+.newc__note { margin-top: var(--s4); font-size: var(--t-caption); color: var(--muted); }
+@media (max-width: 900px) { .newc { grid-template-columns: 1fr; } }
+
 .clients__add { margin-top: var(--s4); }
 .side__new { color: var(--side-muted); }
 .side__new:hover { color: #fff; }

@@ -1074,6 +1074,31 @@ _EN: dict[str, str] = {
     "Neuer Mandant": "New client",
     #: The portfolio page's own version, without the plus the markup draws.
     "Mandant hinzufügen": "Add client",
+    #: The creation mask. Three fields and a list of what onboarding does with
+    #: them — the settings form asked for six and explained none.
+    "Name des Unternehmens": "Company name",
+    "Wie die Presse es nennt": "As the press writes it",
+    "So, wie er in einer Schlagzeile stünde. Danach wird gesucht.":
+        "As it would appear in a headline. This is what is searched for.",
+    "Woraus das Profil gelesen wird: Geschäftsfeld, Führung, Zahlen. Ohne sie bleibt das Profil leer, bis jemand es tippt.":
+        "What the profile is read from: the business, the leadership, the figures. "
+        "Without it the profile stays empty until somebody types it.",
+    "Entscheidet, welche Presse durchsucht wird.": "Decides which press is searched.",
+    "Anlegen und einrichten": "Create and set up",
+    "Was danach von selbst passiert": "What happens on its own",
+    "Die Branche wird bestimmt und an der echten Suche geprüft.":
+        "The industry is determined and checked against the real search.",
+    "Themen für den Radar werden vorgeschlagen und gemessen.":
+        "Topics for the radar are proposed and measured.",
+    "Die Berichterstattung der letzten Wochen wird geholt und analysiert.":
+        "The last weeks of coverage are fetched and analysed.",
+    "Das Profil wird von der Website gelesen und eingetragen.":
+        "The profile is read from the website and filled in.",
+    "Ein erster Impuls und ein Anschreiben dazu entstehen.":
+        "A first impulse and a letter to go with it are drafted.",
+    "Das dauert ein paar Minuten. Alles davon lässt sich danach von Hand ändern, und was Sie ändern, fasst die Recherche nie wieder an.":
+        "This takes a few minutes. All of it can be changed by hand afterwards, "
+        "and what you change the research never touches again.",
     "Vom Mandanten freigegeben": "Approved by the client",
     "Vom Mandanten freigegeben: %(who)s": "Approved by the client: %(who)s",
     "Noch nicht mit dem Mandanten abgestimmt.": "Not yet agreed with the client.",
