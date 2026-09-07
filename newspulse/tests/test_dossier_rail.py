@@ -385,10 +385,11 @@ def test_a_measurement_from_years_ago_is_not_a_clean_bill(session, mandate, now)
     row whatever its day, so without a bound a sweep switched off in 2023 keeps
     its green tick forever — the same untrue mark as a tick over a run that
     never happened, wearing a date."""
+    long_ago = dt.datetime(2023, 1, 4, tzinfo=dt.UTC)
     row = _opportunity(session, mandate)
-    _measurement(session, mandate, named=(True,), position=1)
-    session.query(VisibilityRun).update({"ran_at": dt.datetime(2023, 1, 4, tzinfo=dt.UTC)})
-    _reading(session, mandate, day=dt.date(2023, 1, 4))
+    run = _measurement(session, mandate, named=(True,), position=1)
+    run.ran_at = long_ago
+    _reading(session, mandate, day=long_ago.date())
     session.commit()
 
     tiles = _rail(session, mandate, row, now=now)
