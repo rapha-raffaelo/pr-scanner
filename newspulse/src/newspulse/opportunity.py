@@ -1059,7 +1059,7 @@ def provenance(
         detected=(
             f"Schnelle Spur: {score.media} Medien trugen die Story bei der "
             f"Prüfung, zuerst bei {opportunity.article.source}; "
-            f"{pieces} Beitrag/Beiträge der Story sind heute gespeichert."
+            f"{pieces} Beitrag/Beiträge davon sind gespeichert."
         ),
         scored=(
             f"Verbreitung {score.reach} ({score.media} Medien, gedeckelt bei "

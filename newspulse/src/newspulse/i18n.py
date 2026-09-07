@@ -1041,7 +1041,10 @@ _EN: dict[str, str] = {
     "Welche Botschaft sollten wir diese Woche setzen?":
         "What message should we set this week?",
     "Was übersehen wir gerade?": "What are we missing?",
-    "Portfolio": "Portfolio",
+    #: "Clients" in English, "Portfolio" in German: the roster is the list of
+    #: the people this tool is for, and the mockup names it that way. The crumb
+    #: reuses the sidebar's own label, so both move together.
+    "Portfolio": "Clients",
     "Profil": "Profile",
     "Mit KI ausfüllen": "Fill with AI",
     "Liest das offene Netz und schlägt Werte vor — mit Quelle, und ohne etwas zu speichern. Was hier steht, entscheiden Sie.":
