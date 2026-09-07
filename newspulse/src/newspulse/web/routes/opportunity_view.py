@@ -134,6 +134,11 @@ def page_context(
         "tabs": page_tabs(client.id, row.id),
         "occasion": occasion,
         "status": state,
+        # The four segments as (state, word) pairs off the enum. The template
+        # renders what it is given rather than re-typing the four names as
+        # string literals, which is a set of values it cannot be kept in step
+        # with — a renamed member would leave every segment silently unmarked.
+        "states": dossier.STATUS_LABELS,
         "concluded": dossier.is_concluded(state),
         "score": score,
         "provenance": dossier.provenance(row, score, len(story)),
@@ -141,7 +146,11 @@ def page_context(
         "audiences": dossier.audiences(session, client),
         "outlook": dossier.outlook(row),
         "texts": stored_texts,
-        "letters": stored_letters,
+        # ``stored_letters`` deliberately does not reach the template. The
+        # letters are on the page through ``steps`` and ``trail``; handing the
+        # rendering layer the live ``Outreach`` rows as well would put a
+        # recipient's address one attribute away on a page whose rule is that a
+        # derived address is never shown.
         "steps": dossier.steps(occasion, stored_texts, stored_letters),
         "recipients": dossier.recipients(
             session, client, occasion, bylines, now=now

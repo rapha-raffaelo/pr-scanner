@@ -26,6 +26,13 @@
 {% set active = 'heute' %}
 {% include '_client_tabs.html' %}
 
+{# Everything below is the dossier, and the wrapper is load-bearing rather than
+   decorative: the mock names its boxes ``card``, ``score``, ``note``, ``pill``,
+   ``rows``, ``tl`` — words the rest of this tool already uses for other things.
+   ``app.css`` scopes the whole GEL-01 block to this class, so the page can keep
+   the mock's names without redefining them for every other template. #}
+<div class="dossier">
+
 <a class="back" href="/client/{{ client.id }}/heute">← {{ t("Zurück zu Heute") }}</a>
 
 {# --- The head: what this is, how urgent, and what state it is in ------------ #}
@@ -50,12 +57,11 @@
        actually make is a control; the rest are marks. A picker offering
        "ausgelaufen" would be offering to move a clock. #}
     <div class="dstate" role="group" aria-label="{{ t('Zustand') }}">
-      {% for name, label in [('offen', t("Offen")), ('aktiv', t("Aktiv")),
-                             ('ausgelaufen', t("Ausgelaufen")), ('verworfen', t("Verworfen"))] %}
-        {% if status.value == name %}
-          <span class="dstate__s is-on" data-status="{{ name }}" aria-current="true">{{ label }}</span>
+      {% for state, label in states %}
+        {% if status == state %}
+          <span class="dstate__s is-on" data-status="{{ state.value }}" aria-current="true">{{ t(label) }}</span>
         {% else %}
-          <span class="dstate__s" data-status="{{ name }}">{{ label }}</span>
+          <span class="dstate__s" data-status="{{ state.value }}">{{ t(label) }}</span>
         {% endif %}
       {% endfor %}
     </div>
@@ -166,13 +172,19 @@
   {# --- Column two: what we would say, and why now --------------------------- #}
   <div>
     <div class="card">
-      <div class="card__h">{{ t("Vorgeschlagene Storyline") }} <span>{{ t("vom Werkzeug") }}</span></div>
+      {# The mock heads this tile "Vorgeschlagene Storyline" and puts the
+         standing's sentence below the tagline. This tool has no stored
+         storyline — the angle is written when the occasion is opened, not when
+         the opportunity is detected — and a heading promising one over the
+         standing's grounds would be the page's one mislabelled row. So the
+         tile is named for what the row holds. #}
+      <div class="card__h">{{ t("Worauf das Stehen beruht") }} <span>{{ t("aus der Prüfung") }}</span></div>
+      <div class="tagline tagline--first">{{ t("Stehen belegt") }}</div>
       {% if standing_reason %}
         <p class="pull">{{ standing_reason }}</p>
       {% else %}
         <p class="pull empty">{{ t("Die Prüfung hat keinen Satz hinterlassen. Das Stehen gilt, die Begründung fehlt.") }}</p>
       {% endif %}
-      <div class="tagline">{{ t("Stehen belegt") }}</div>
       {# DEC-6 A: the mandate's own stakeholder groups, in the order its map
          keeps them. Stored rows, never a list written into this template — and
          an empty map is said out loud with the link to where it is kept. #}
@@ -212,8 +224,16 @@
       {# Carried visibly as an estimate, with the moment it was made, so it is
          never read like the evidenced lines beside it. Written once at
          detection and stored — this page only reads it. #}
+      {# The stamp and the entries are meant to be written together, and the
+         scan writes them together — but nothing in the schema makes them
+         inseparable, and a backfill or a hand-edit that leaves one behind must
+         cost a sentence, not the page. #}
       <p class="dest">
-        {{ t("Einschätzung bei der Erkennung am") }} {{ outlook.made_at | de_datetime }}. {{ t("Keine belegte Zeile.") }}
+        {% if outlook.made_at %}
+          {{ t("Einschätzung bei der Erkennung am") }} {{ outlook.made_at | de_datetime }}. {{ t("Keine belegte Zeile.") }}
+        {% else %}
+          {{ t("Einschätzung bei der Erkennung, ohne vermerkten Zeitpunkt. Keine belegte Zeile.") }}
+        {% endif %}
       </p>
       <ul class="tl">
         {% for entry in outlook.entries %}
@@ -345,4 +365,6 @@
 <p class="note">
   {{ t("Jede Zahl auf dieser Seite steht in einer gespeicherten Zeile: die Medien sind gezählte Beiträge, die Stunden sind das Fenster ab dem Ursprungsbeitrag, und die Dringlichkeit ist aus diesen beiden plus dem Stehen gerechnet und oben ausgeschrieben. Diese Seite liest nur — sie legt keinen Anlass an und ruft kein Modell.") }}
 </p>
+
+</div>
 {% endblock %}

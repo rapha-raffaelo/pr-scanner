@@ -75,11 +75,16 @@ _STANDING_POINTS = 20
 
 
 def _half_up(value: float) -> int:
-    """Round half away from zero, not to even.
+    """Round half up. Only ever called on a non-negative value.
 
     Python's ``round`` is banker's rounding, so ``round(17.5)`` and
     ``round(18.5)`` differ in a way nobody re-deriving the badge on paper would
     predict. The number on this page has to survive being checked by hand.
+
+    Half *up* and not half away from zero, which are the same rule until the
+    argument is negative: ``int(-2.5 + 0.5)`` is ``-2``. Both callers here feed
+    it a share of a cap, so neither can, and the name says what it does rather
+    than what a sign convention nobody exercises would do.
     """
     return int(value + 0.5)
 
@@ -160,6 +165,26 @@ class Status(StrEnum):
     VERWORFEN = "verworfen"
 
 
+#: The word each state wears in the head's control. A mapping rather than
+#: ``value.capitalize()``, because the two are different kinds of thing: the
+#: value is what the markup and the tests pin, the word is chrome GEL-03 may
+#: reword without touching a state machine.
+_STATUS_WORDS: dict[Status, str] = {
+    Status.OFFEN: "Offen",
+    Status.AKTIV: "Aktiv",
+    Status.AUSGELAUFEN: "Ausgelaufen",
+    Status.VERWORFEN: "Verworfen",
+}
+
+#: The four segments in the order the control draws them, built by walking the
+#: enum — so a fifth state cannot be added without either giving it a word here
+#: or failing at import, which is the whole reason the template no longer types
+#: the four names out as strings.
+STATUS_LABELS: tuple[tuple[Status, str], ...] = tuple(
+    (state, _STATUS_WORDS[state]) for state in Status
+)
+
+
 def status(
     opportunity: NewsjackOpportunity,
     occasion: Angle | None,
@@ -208,10 +233,19 @@ def _story_members(
 ) -> list[Article]:
     """Every article carrying this story, oldest first.
 
-    The row anchors the origin piece only, so the pickups are re-derived by
-    clustering the mandate's stored radar exactly the way the scan did when the
-    verdict was written — same lookback, same retrieval order, same clusterer.
-    A pure read; nothing about it can write or fetch.
+    The row anchors the origin piece only, so the pickups are re-derived here:
+    the mandate's stored radar, run back through the same retrieval and the same
+    clusterer the scan used. A pure read; nothing about it can write or fetch.
+
+    Re-derived is not the same as reproduced, and the difference is worth saying
+    out loud rather than claiming parity. ``newsjack.scan`` reads back twice the
+    window from *scan time*; this reads back twice the window from the *origin*,
+    because scan time is not on the row. The origin can sit anywhere inside the
+    scan's reach, so this window can hold radar rows that one did not, and a
+    greedy clusterer fed a different row set can answer with a different set of
+    members. What the badge counts is therefore the outlet count frozen on the
+    row at the verdict, never ``len()`` of this — and the provenance bar names
+    both numbers for exactly that reason.
 
     The origin is always in the answer, even when the radar rows it was
     clustered from have since aged out of the lookback: an opportunity whose
@@ -770,13 +804,18 @@ def provenance(
     of the story are still readable today, which is what the sources list can
     actually show. They diverge when radar rows age past the lookback, and a
     page printing one under the other's name would be lying about both.
+
+    Which is also why the sentence does not say "davon": four articles can come
+    off three mastheads, so the pieces are not a subset of the outlets and a
+    partitive would read as a contradiction on the one bar whose job is to keep
+    the two apart.
     """
     version = opportunity.brain_version
     return Provenance(
         detected=(
             f"Schnelle Spur: {score.media} Medien trugen die Story bei der "
             f"Prüfung, zuerst bei {opportunity.article.source}; "
-            f"{pieces} Beitrag/Beiträge davon sind gespeichert."
+            f"{pieces} Beitrag/Beiträge der Story sind heute gespeichert."
         ),
         scored=(
             f"Verbreitung {score.reach} ({score.media} Medien, gedeckelt bei "
@@ -792,6 +831,7 @@ def provenance(
 
 
 __all__ = [
+    "STATUS_LABELS",
     "Audience",
     "Event",
     "Outlook",
