@@ -1871,7 +1871,7 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
 .pcard .ptags, .pcard .ptopics, .pnotags, .pcard .pcounts { display: none; }
 
 /* Client identity, wherever it appears: the same circle, the same colour. */
-.plogo, .plogo--mono, .mono-badge, .cflogo, .cflogo--mono,
+.plogo, .plogo--mono, .mono-badge, .cflogo, .cflogo--mono { border-radius: 50%; }
 .plogo, .plogo--mono { width: 26px; height: 26px; flex: none; font-size: var(--t-caption); font-weight: 700; }
 .plogo--mono { display: flex; align-items: center; justify-content: center; color: #fff; border: 0; }
 
