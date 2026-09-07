@@ -9,6 +9,7 @@ for the process-wide engine at import time.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import re
 import urllib.parse
 from collections.abc import Iterator
@@ -285,6 +286,35 @@ templates.env.globals["signed_in_as"] = lambda request: request.scope.get("user_
 templates.env.globals["google_login_active"] = google_auth.is_configured
 templates.env.filters["monogram"] = branding.monogram
 templates.env.filters["brand_colour"] = branding.colour
+
+
+def asset_version(name: str) -> str:
+    """A short fingerprint of one file in ``static/``, for the URL that links it.
+
+    Without it a stylesheet change ships and nobody sees it. The static mount
+    answers with an ETag and no ``Cache-Control``, so the browser is left to its
+    own heuristics and keeps the copy it has — measured the day this was added:
+    the new close button was in the commit, on main, and being served by
+    production, and the consultant looking at the page still had the old one.
+    "why the heck was the mac os like closing button not merged here."
+
+    The content hash rather than a deploy timestamp: a redeploy that changed
+    nothing must not force every client to re-download, and a file that did
+    change must be re-fetched even if two deploys land in the same second.
+
+    Falls back to an empty string when the file cannot be read, which leaves the
+    URL exactly as it was — a missing fingerprint must never break the page.
+    """
+    try:
+        digest = hashlib.blake2b(
+            (_STATIC_DIR / name).read_bytes(), digest_size=6
+        ).hexdigest()
+    except OSError:  # noqa: BLE001 — an unreadable asset is not a broken page
+        return ""
+    return digest
+
+
+templates.env.globals["asset_version"] = asset_version
 # A list answer in the questionnaire is one text column, one entry per line. The
 # split lives in ``onboarding`` rather than in the template so the chip a reader
 # deletes and the entry the route removes are indexed by the same rule.

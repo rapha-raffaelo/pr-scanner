@@ -54,6 +54,7 @@ from ... import (
     job,
     outreach,
     pitch,
+    profile_refresh,
     radar_cleanup,
     rivals,
     themes,
@@ -244,6 +245,8 @@ def _onboard(client_id: int, name: str) -> None:
                 themes.settle(session, client)
                 stored = job.backfill_client(session, client)
                 _log.info("onboarding fetch for %r stored %d article(s)", name, stored)
+                _onboarding[client_id] = "profil"
+                _research_profile(session, client)
                 _onboarding[client_id] = "entwürfe"
                 _first_drafts(session, client)
                 _onboarding[client_id] = f"fertig:{stored}"
@@ -251,6 +254,35 @@ def _onboard(client_id: int, name: str) -> None:
         # A failed setup must not read as "this mandate simply has no press".
         _onboarding[client_id] = f"fehler:{exc}"
         _log.exception("onboarding fetch for %r failed", name)
+
+
+def _research_profile(session: Session, client: Client) -> None:
+    """Read the mandate's profile once, here, and write in what it found.
+
+    "der gesamte Content bereits beim Onboarding gescraped." It used to wait for
+    the nightly pass's own clock: a mandate created on a Tuesday had a blank
+    profile until it came round, and every text written in between was written
+    off nothing. The consultant creating it is standing there — that is the
+    moment to spend the call.
+
+    Written in, not merely proposed, under the same rule the portfolio pass
+    uses: only sourced values, and never over something a person typed.
+
+    Guarded and swallowed like the two steps above it. A mandate must still be
+    onboarded when the research is unavailable, and an empty profile is a
+    smaller problem than a half-created client.
+    """
+    try:
+        profile_refresh.refresh(session, client, now=dt.datetime.now(dt.UTC))
+        written = profile_refresh.adopt(
+            session, client, proposed_by=config.review_model()
+        )
+        _log.info(
+            "onboarding profile for %r: %d field(s) filled", client.name, len(written)
+        )
+    except Exception as exc:  # noqa: BLE001 — onboarding must not depend on it
+        session.rollback()
+        _log.warning("onboarding profile research for %r failed: %s", client.name, exc)
 
 
 def _settle_industry(session: Session, client: Client) -> None:
@@ -1518,6 +1550,76 @@ def remove_competitor_route(
             client.competitors.remove(other)
             session.commit()
     return RedirectResponse(back, status_code=_SEE_OTHER)
+
+
+def _mask_context(
+    *, name: str = "", website: str = "", country: str = "DE", error: str = ""
+) -> dict:
+    """The creation mask's context, plus the one thing the shell asks of every
+    page: ``header_date``, which the toolbar's run meta prints."""
+    return {
+        "prefill_name": name,
+        "prefill_website": website,
+        "prefill_country": country,
+        "error": error,
+        "header_date": dt.datetime.now(config.local_zone()).date(),
+    }
+
+
+@router.get("/mandant/neu", response_class=HTMLResponse)
+def new_client_form(request: Request) -> Response:
+    """The mask for creating a mandate.
+
+    "das linked direkt zu den Einstellungen nicht aber zu einer Maske die uns
+    hilft daten zum neuen Mandanten einzugeben." The sidebar's button pointed at
+    a collapsed <details> in Settings, which is a settings row and not a way in.
+
+    Three fields, because onboarding now does the rest: it settles the industry,
+    proposes and measures the themes, reads the profile off the website, fetches
+    the archive and drafts the first impulse. Asking for the search terms and
+    the alert topics here would be asking the consultant to do work the tool has
+    already been taught to do, and to do it before he has seen a single article.
+    """
+    return templates.TemplateResponse(
+        request, "client_new.html", _mask_context()
+    )
+
+
+@router.post("/mandant/neu")
+def create_client_from_mask(
+    request: Request,
+    name: str = Form(...),
+    website: str = Form(""),
+    country: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Create the mandate and land on it, not back in a settings table.
+
+    The redirect is the difference that makes this a way in rather than a form:
+    the consultant arrives on the mandate he just created, where the onboarding
+    he started is visibly running.
+    """
+    try:
+        fields = _parse_client_form(
+            name=name, aliases="", industry="", country=country,
+            keywords="", alert_topics="",
+        )
+        created = create_client(session, **fields)
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "client_new.html",
+            _mask_context(name=name, website=website, country=country, error=str(exc)),
+        )
+    site = normalize_website(website)
+    if site:
+        created.website = site
+        # Best-effort and inline, as the settings form does it: a new mandate
+        # should look finished at once, and the monogram covers a miss.
+        created.logo_url = fetch_logo(site)
+        session.commit()
+    _start_onboarding(created.id, created.name)
+    return RedirectResponse(f"/client/{created.id}/heute", status_code=_SEE_OTHER)
 
 
 @router.post("/settings/clients")

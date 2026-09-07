@@ -570,34 +570,38 @@ def test_the_facts_of_a_broken_client_are_untouched(session):
 # --- The wiring: it has to actually run every morning --------------------------
 
 
-def test_the_daily_sweep_reaches_the_refresh(session, monkeypatch, no_sweep_profile_refresh):
-    """The gap that lets a feature be "built" and still never happen.
+def test_the_daily_sweep_adopts_and_does_not_research(session, monkeypatch, no_sweep_profile_refresh):
+    """The gap that lets a feature be "built" and still never happen, and the
+    line the sweep now stops at.
 
-    A mandate whose profile was never checked must come out of an ordinary sweep
-    with the field filled and a check date on the client. Filled, not merely
-    proposed: the unattended pass adopts what nobody has to be asked about, and a
-    sweep that only piled up proposals is what left the profile as empty as the
-    day the mandate was created.
+    A proposal already on file must come out of an ordinary sweep written into
+    the profile — filled, not merely piled up, which is what left six of seven
+    mandates at 0 of 18 fields. And the sweep must *not* read the web again:
+    "dann nurnoch durch einen Button 'aktualisieren' neu gescraped werden kann."
+    A profile is read when the mandate is created and when a person asks; a
+    sixty-day clock nobody set is not a person asking.
 
     Puts back the real helper the suite-wide fixture stubs out — otherwise this
-    test would pass against a sweep that had been silently disconnected, which is
-    the exact failure it exists to catch.
+    would pass against a sweep that had been silently disconnected, which is the
+    exact failure it exists to catch.
     """
     from newspulse import job
 
     monkeypatch.setattr(job, "_refresh_profiles", no_sweep_profile_refresh)
+    # Never checked, so the old sixty-day rule would call this one due and read
+    # the web for it: that is exactly what must no longer happen.
     client = _client(session, checked=None)
+    profile_refresh.refresh(
+        session, client, now=_YESTERDAY, generate=_answer(sitz="Paris")
+    )
+    assert profile_refresh.outstanding(session, client.id)
+
     monkeypatch.setattr(
         profiles,
         "research",
-        # With a source, because a proposal without one is not stored and not
-        # shown: it is a machine asserting something it cannot back up.
-        lambda c, *, generate=None: [
-            profiles.Proposal(
-                key="sitz", value="Paris", source_url="https://qonto.com/ueber-uns",
-                source_title="Qonto",
-            )
-        ],
+        lambda c, *, generate=None: pytest.fail(
+            "the sweep must not read the web; the button does that"
+        ),
     )
 
     class _Analyzer:
@@ -606,20 +610,15 @@ def test_the_daily_sweep_reaches_the_refresh(session, monkeypatch, no_sweep_prof
 
     report = job.run(
         session,
-        feeds=[],  # no fetching: the point is what the sweep does with the archive
+        feeds=[],
         fetch=lambda *a, **k: [],
         analyzer=_Analyzer(),
         now=lambda: _NOW,
     )
 
     assert report.status.value != "failed"
-    stored = profiles.stored(session, client.id)
-    assert stored["sitz"].value == "Paris"
-    # Under the model's name, never "mensch": the page must not imply somebody
-    # vouched for it, and a hand-filled value would forbid the next correction.
-    assert stored["sitz"].filled_by != profiles.BY_HAND
+    assert profiles.stored(session, client.id)["sitz"].value == "Paris"
     assert profile_refresh.outstanding(session, client.id) == []
-    assert session.get(Client, client.id).profile_checked_at == _NOW
 
 
 def test_a_broken_refresh_never_fails_the_sweep(
@@ -639,7 +638,7 @@ def test_a_broken_refresh_never_fails_the_sweep(
     def _explode(*args, **kwargs):
         raise RuntimeError("die Datenbank ist weg")
 
-    monkeypatch.setattr(job.profile_refresh, "run", _explode)
+    monkeypatch.setattr(job.profile_refresh, "adopt_all", _explode)
 
     with caplog.at_level(logging.ERROR, logger="newspulse.job"):
         assert no_sweep_profile_refresh(session, _NOW) == 0
@@ -1338,3 +1337,26 @@ def test_a_backlog_is_adopted_even_when_nothing_is_due_for_a_read(session):
 
     assert profiles.stored(session, client.id)["sitz"].value == "Paris"
     assert profile_refresh.outstanding(session, client.id) == []
+
+
+def test_a_hand_typed_field_survives_every_automatic_pass(session):
+    """"Die Einträge die ein Nutzer anlegt sind hardcoded und können von der KI
+    nicht überschrieben werden."
+
+    The rule stated end to end rather than at the one function that enforces it:
+    a person's answer goes in, the machine reads something else, the sweep runs,
+    and what the person typed is still there — byte for byte, authorship intact.
+    """
+    client = _client(session, checked=None)
+    profiles.save(session, client, "sitz", "Berlin", filled_by=profiles.BY_HAND)
+    before = profiles.stored(session, client.id)["sitz"]
+    was = (before.value, before.filled_by)
+
+    profile_refresh.refresh(session, client, now=_NOW, generate=_answer(sitz="Paris"))
+    profile_refresh.adopt_all(session)
+
+    after = profiles.stored(session, client.id)["sitz"]
+    assert (after.value, after.filled_by) == was
+    # Contradicted in the open, never overwritten: the machine may argue, and
+    # the consultant decides.
+    assert [p.value for p in profile_refresh.outstanding(session, client.id)] == ["Paris"]

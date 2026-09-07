@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Neuer Mandant") }} · RauteOS{% endblock %}
+{% block pagetitle %}{{ translator(request)("Neuer Mandant") }}{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+{# The mask asks for what the tool cannot find out, and says what it will do
+   with it. The old form lived in Settings behind a collapsed <details> and
+   asked for six things — industry, search terms, alert topics among them —
+   which is asking the consultant to do the work onboarding now does itself:
+   it settles the field, proposes the themes, reads the profile, fetches the
+   archive and drafts the first impulse. Three fields, and a sentence saying
+   what happens next, is the honest version of that form. #}
+<div class="newc">
+  {% if error %}<p class="notice notice--error">{{ error }}</p>{% endif %}
+
+  <form method="post" action="/mandant/neu" class="newc__form">
+    <div class="newc__field">
+      <label for="n-name">{{ t("Name des Unternehmens") }}*</label>
+      <input type="text" id="n-name" name="name" required autofocus
+             autocomplete="off" placeholder="{{ t('Wie die Presse es nennt') }}"
+             value="{{ prefill_name }}">
+      <p class="newc__hint">{{ t("So, wie er in einer Schlagzeile stünde. Danach wird gesucht.") }}</p>
+    </div>
+
+    <div class="newc__field">
+      <label for="n-website">{{ t("Website") }}</label>
+      <input type="text" id="n-website" name="website" autocomplete="off"
+             placeholder="beispiel.de" value="{{ prefill_website }}">
+      <p class="newc__hint">{{ t("Woraus das Profil gelesen wird: Geschäftsfeld, Führung, Zahlen. Ohne sie bleibt das Profil leer, bis jemand es tippt.") }}</p>
+    </div>
+
+    <div class="newc__field newc__field--short">
+      <label for="n-country">{{ t("Land") }}</label>
+      <input type="text" id="n-country" name="country" maxlength="2"
+             autocomplete="off" placeholder="DE" value="{{ prefill_country }}">
+      <p class="newc__hint">{{ t("Entscheidet, welche Presse durchsucht wird.") }}</p>
+    </div>
+
+    <div class="newc__act">
+      <button type="submit" class="btn btn--big">{{ t("Anlegen und einrichten") }}</button>
+      <a class="linkbtn" href="/">{{ t("Abbrechen") }}</a>
+    </div>
+  </form>
+
+  <aside class="newc__next">
+    <div class="eyebrow">{{ t("Was danach von selbst passiert") }}</div>
+    <ol class="newc__steps">
+      <li>{{ t("Die Branche wird bestimmt und an der echten Suche geprüft.") }}</li>
+      <li>{{ t("Themen für den Radar werden vorgeschlagen und gemessen.") }}</li>
+      <li>{{ t("Die Berichterstattung der letzten Wochen wird geholt und analysiert.") }}</li>
+      <li>{{ t("Das Profil wird von der Website gelesen und eingetragen.") }}</li>
+      <li>{{ t("Ein erster Impuls und ein Anschreiben dazu entstehen.") }}</li>
+    </ol>
+    <p class="newc__note">
+      {{ t("Das dauert ein paar Minuten. Alles davon lässt sich danach von Hand ändern, und was Sie ändern, fasst die Recherche nie wieder an.") }}
+    </p>
+  </aside>
+</div>
+{% endblock %}

@@ -86,6 +86,11 @@
         {% endfor %}
       </tbody>
     </table>
+    {# The action that starts everything, on the page that lists what it started.
+       It lived only in Settings behind a collapsed <details>. #}
+    <p class="clients__add">
+      <a class="btn btn--ghost" href="/mandant/neu">+ {{ t("Mandant hinzufügen") }}</a>
+    </p>
   {% endif %}
 {% else %}
   <div class="empty-state">
