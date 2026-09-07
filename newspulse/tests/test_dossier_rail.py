@@ -340,9 +340,104 @@ def test_texts_nobody_has_read_are_nothing_run_and_not_a_clean_check(
 
     assert tiles[TileKey.QUALITY].signal is Signal.NICHTS
     assert tiles[TileKey.QUALITY].figures.objected == 0
-    # The Asset tile did run — three texts exist — and it objects, because the
-    # set is not through the check yet.
-    assert tiles[TileKey.ASSET].signal is Signal.EINWAND
+    # The Asset tile did run — three texts exist — and nobody objected to them.
+    # "Unfertig" is the Quality tile's sentence above, not an objection here:
+    # ``EINWAND`` reads out as "Gelaufen, mit Einwand" and would be a claim
+    # about a checker who never looked.
+    assert tiles[TileKey.ASSET].signal is Signal.OHNE_EINWAND
+    assert tiles[TileKey.ASSET].figures.objected == 0
+
+
+def test_a_tick_never_stands_over_a_text_nobody_read(session, mandate, now):
+    """One text checked and two nobody opened is the common closing morning, and
+    it used to be enough for the green tick — printed directly above this tile's
+    own result line, "Mit Einwand: 0 · ungeprüft: 2", which the CSS paints in the
+    colour of the mark. A set that is not through has not passed."""
+    row = _opportunity(session, mandate)
+    angle = _occasion(session, row)
+    _asset(session, angle, kind="pressemitteilung", state=CheckState.GEPRUEFT)
+    _asset(session, angle, kind="statement", state=CheckState.UNGEPRUEFT)
+    _asset(session, angle, kind="qa", state=CheckState.UNGEPRUEFT)
+
+    tile = _rail(session, mandate, row, now=now)[TileKey.QUALITY]
+
+    assert (tile.figures.objected, tile.figures.unchecked) == (0, 2)
+    assert tile.signal is Signal.EINWAND
+
+
+def test_the_asset_tile_claims_no_objection_that_nobody_raised(session, mandate, now):
+    """``EINWAND`` renders as "Gelaufen, mit Einwand" in a tooltip and in an
+    ``aria-label``. An unfinished set reached it, so the tile asserted an
+    objection to a screen reader while the Quality tile beside it printed
+    "Mit Einwand: 0" about the same text."""
+    row = _opportunity(session, mandate)
+    angle = _occasion(session, row)
+    _asset(session, angle, kind="pressemitteilung", state=CheckState.UNGEPRUEFT)
+
+    tile = _rail(session, mandate, row, now=now)[TileKey.ASSET]
+
+    assert tile.figures.objected == 0
+    assert tile.signal is not Signal.EINWAND
+
+
+def test_a_measurement_from_years_ago_is_not_a_clean_bill(session, mandate, now):
+    """``visibility.latest_run`` and ``reputation.history`` hand back the newest
+    row whatever its day, so without a bound a sweep switched off in 2023 keeps
+    its green tick forever — the same untrue mark as a tick over a run that
+    never happened, wearing a date."""
+    row = _opportunity(session, mandate)
+    _measurement(session, mandate, named=(True,), position=1)
+    session.query(VisibilityRun).update({"ran_at": dt.datetime(2023, 1, 4, tzinfo=dt.UTC)})
+    _reading(session, mandate, day=dt.date(2023, 1, 4))
+    session.commit()
+
+    tiles = _rail(session, mandate, row, now=now)
+
+    assert tiles[TileKey.VISIBILITY].signal is Signal.EINWAND
+    assert tiles[TileKey.INTELLIGENCE].signal is Signal.EINWAND
+    # And the tile says how old, rather than only that something is wrong.
+    assert tiles[TileKey.VISIBILITY].stale_days == 1247
+    assert tiles[TileKey.INTELLIGENCE].stale_days == 1247
+
+
+def test_one_reachable_byline_out_of_many_is_not_a_clean_media_list(
+    session, mandate, now
+):
+    """The tick asks for the whole list. One address out of seventeen was passing
+    it, and the tile then printed "1 von 17" in green beside a check mark."""
+    row = _opportunity(session, mandate)
+    _occasion(session, row)
+    session.add(
+        Contact(name="Michael Bröcker", outlet="Handelsblatt", email="m.b@example.de")
+    )
+    session.commit()
+    _article(
+        session,
+        title="Netzentgelte: Länder fordern Nachbesserung",
+        source="DVZ",
+        at=row.article.published_at + dt.timedelta(hours=1),
+        author="Jana Wolf",
+        on_radar_for=mandate,
+    )
+    people = opportunity.recipients(session, mandate, None, set(), now=now)
+
+    tile = _rail(session, mandate, row, now=now, people=people)[TileKey.MEDIA]
+
+    assert tile.figures.reach.with_contact == 1
+    assert tile.figures.reach.named > 1
+    assert tile.signal is Signal.EINWAND
+
+
+def test_every_tile_key_renders_a_sentence_of_its_own(web, session, mandate):
+    """The partial dispatches on ``tile.key`` through an if/elif chain with no
+    ``else``, so a seventh key would draw a frame, a mark and a link with no
+    sentence between them. Counted against the enum, so that fails here."""
+    row = _opportunity(session, mandate)
+
+    page = web.get(_url(row)).text
+
+    rail = page.split("Was RauteOS zum Mandat weiß")[1].split("Entscheidungsspur")[0]
+    assert rail.count('class="know__res"') == len(TileKey)
 
 
 def test_a_check_that_objected_is_marked_apart_from_one_that_did_not(
@@ -605,6 +700,11 @@ def test_every_tile_carries_a_link_and_all_six_resolve_to_a_route(
     for tile in tiles:
         assert tile.href, tile.key
         assert web.get(tile.href, follow_redirects=False).status_code != 404, tile.href
+    # Resolving is half of it. ``/today`` builds its band over the roster it is
+    # showing, so the unfiltered page answers with the portfolio's standing —
+    # a different measurement from the one this tile just printed.
+    by_key = {tile.key: tile for tile in tiles}
+    assert by_key[TileKey.INTELLIGENCE].href == f"/today?client={mandate.id}"
 
 
 def test_an_empty_tile_links_to_the_page_its_row_would_come_from(
