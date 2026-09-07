@@ -128,6 +128,7 @@ def page_context(
     score = dossier.urgency(row, now=now)
     state = dossier.status(row, occasion, now=now)
     bylines = {source.author.casefold() for source in story if source.author}
+    people = dossier.recipients(session, client, occasion, bylines, now=now)
     return {
         "client": client,
         "opp": row,
@@ -152,8 +153,13 @@ def page_context(
         # recipient's address one attribute away on a page whose rule is that a
         # derived address is never shown.
         "steps": dossier.steps(occasion, stored_texts, stored_letters),
-        "recipients": dossier.recipients(
-            session, client, occasion, bylines, now=now
+        "recipients": people,
+        # The rail beside the tiles (DEC-1 A). It is handed the media list and
+        # the texts that are already on the page rather than fetching either
+        # again, so a figure in the rail and the same figure in a tile come off
+        # one read and cannot drift apart.
+        "intel": dossier.intelligence(
+            session, client, people, stored_texts, now=now
         ),
         "trail": dossier.trail(
             session, row, story, occasion, stored_texts, stored_letters

@@ -133,6 +133,13 @@
   {% endfor %}
 </nav>
 
+{# DEC-1 A's two columns: the six tiles left, the rail right. The rail is not a
+   sidebar of links — every line in it is a stored row from another page of this
+   tool, and they are the five things a consultant otherwise answers from memory
+   before deciding whether a closing window is worth the morning. #}
+<div class="rail">
+<div>
+
 <div class="grid3">
   {# --- Column one: the situation, and who is carrying it -------------------- #}
   <div>
@@ -346,6 +353,99 @@
       <p class="p empty">{{ t("Zu dieser Gelegenheit ist noch kein Anlass angelegt. Ein Text entsteht über den Knopf oben.") }}</p>
     {% endif %}
   </div>
+</div>
+
+</div>
+
+{# --- The rail: what the tool already knows about this mandate --------------- #}
+<aside>
+  <div class="card">
+    <div class="card__h">{{ t("Was RauteOS zum Mandat weiß") }}</div>
+    <div class="know">
+
+      <div class="know__i">
+        <div class="know__h">{{ t("Positionierung") }}</div>
+        {% if intel.positioning.value %}
+          {# The stored line verbatim: data, so it stays in the language it was
+             written in, and the freshness stamp beside it comes off the same
+             partial the profile page uses — one threshold, not two. #}
+          <div class="know__v">„{{ intel.positioning.value }}“ ·
+            {% with checked = intel.positioning.checked %}{% include "partials/profile_checked.html" %}{% endwith %}</div>
+        {% else %}
+          <div class="know__v dempty">{{ t("Im Profil steht keine Positionierung. Ein Text zu dieser Gelegenheit hat dann nichts, wogegen er sich abgrenzt.") }}</div>
+        {% endif %}
+        <a class="know__l" href="/client/{{ client.id }}/profil">{{ t("Profil ansehen") }} →</a>
+      </div>
+
+      <div class="know__i">
+        <div class="know__h">{{ t("Medien") }}</div>
+        {% if intel.media.named %}
+          {# Two numbers and not a share: the gap between them is what decides
+             whether this list is an address book or a wish. #}
+          <div class="know__v"><b>{{ intel.media.with_contact }} {{ t("von") }} {{ intel.media.named }}</b>
+            {{ t("vorgeschlagenen Bylines haben einen hinterlegten Kontakt.") }}</div>
+        {% else %}
+          <div class="know__v dempty">{{ t("Zu dieser Gelegenheit schlägt das Werkzeug niemanden vor: im Feld ist kein Autor gespeichert.") }}</div>
+        {% endif %}
+        <a class="know__l" href="/contacts">{{ t("Kontaktbuch") }} →</a>
+      </div>
+
+      <div class="know__i">
+        <div class="know__h">{{ t("Qualität") }}</div>
+        {% if intel.quality.texts %}
+          <div class="know__v"><b>{{ intel.quality.checked }} {{ t("von") }} {{ intel.quality.texts }}</b>
+            {{ t("Texten sind ohne Einwand geprüft.") }}
+            {% if intel.quality.objected %}
+              {{ intel.quality.objected }} {{ t("mit Einwand.") }}
+            {% endif %}
+            {% if intel.quality.unchecked %}
+              {{ intel.quality.unchecked }} {{ t("hat noch niemand gelesen.") }}
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="know__v dempty">{{ t("An dieser Gelegenheit hängt noch kein Text, also auch keine Prüfung.") }}</div>
+        {% endif %}
+        <a class="know__l" href="/client/{{ client.id }}/guide">{{ t("Guide-Prüfung") }} →</a>
+      </div>
+
+      <div class="know__i">
+        <div class="know__h">{{ t("KI-Sichtbarkeit") }}</div>
+        {% if intel.visibility.measured_at and intel.visibility.answers %}
+          <div class="know__v"><b>{{ intel.visibility.named_in }} {{ t("von") }} {{ intel.visibility.answers }}</b>
+            {{ t("Antworten nennen das Mandat, gemessen am") }} {{ intel.visibility.measured_at | de_date }}.
+            {% if intel.visibility.best_position %}
+              {{ t("Beste Position") }} {{ intel.visibility.best_position }}.
+            {% endif %}
+          </div>
+        {% elif intel.visibility.measured_at %}
+          {# A run that cost the providers and produced nothing readable is not
+             the same statement as "das Mandat wurde nicht genannt". #}
+          <div class="know__v dempty">{{ t("Die letzte Messung am") }} {{ intel.visibility.measured_at | de_date }}
+            {{ t("hat keine lesbare Antwort zurückgebracht.") }}</div>
+        {% else %}
+          <div class="know__v dempty">{{ t("Dieses Mandat wurde noch nie gemessen.") }}</div>
+        {% endif %}
+        <a class="know__l" href="/client/{{ client.id }}/ki">{{ t("Sichtbarkeit") }} →</a>
+      </div>
+
+      <div class="know__i">
+        <div class="know__h">{{ t("Reputation") }}</div>
+        {% if intel.reputation.state %}
+          {# ``| capitalize`` the way the band's own tile does it, so the word
+             reads the same in both places. #}
+          <div class="know__v">{{ t("Band") }} <b>{{ t(intel.reputation.state.value) | capitalize }}</b>,
+            {{ t(intel.reputation.direction.value) }} ·
+            {{ intel.reputation.articles }} {{ t("Beiträge, davon") }}
+            {{ intel.reputation.negative }} {{ t("negativ, gelesen am") }} {{ intel.reputation.day.strftime("%d.%m.%Y") }}</div>
+        {% else %}
+          <div class="know__v dempty">{{ t("Für dieses Mandat liegt noch keine Reputationsmessung vor. „Ruhig“ wäre eine Messung, und diese gibt es nicht.") }}</div>
+        {% endif %}
+        <a class="know__l" href="/today">{{ t("Reputationsband") }} →</a>
+      </div>
+
+    </div>
+  </div>
+</aside>
 </div>
 
 {# --- The trail: the market's pieces and our own steps, in one row ----------- #}

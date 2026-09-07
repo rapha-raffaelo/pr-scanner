@@ -166,7 +166,11 @@
              question afterwards is always what was known at the time. #}
           <div class="njarch__hl"><a href="/client/{{ client.id }}/gelegenheit/{{ opp.id }}">{{ opp.headline }}</a></div>
           <div class="njarch__meta">
-            {{ t("Zuerst bei") }} {{ opp.source }}
+            {# The headline goes to the dossier now, so the piece it was found
+               in gets its own link here. A record of what stood that cannot
+               reach what it stood on is half a record. #}
+            <a href="{{ opp.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ t("Ursprungsbeitrag") }} ↗</a>
+            <span class="dot">·</span> {{ t("Zuerst bei") }} {{ opp.source }}
             <span class="dot">·</span> {{ opp.published_at.strftime('%d.%m.%Y %H:%M') }}
             <span class="dot">·</span> {{ opp.pickup_count }}× {{ t("aufgegriffen") }}
           </div>

@@ -58,7 +58,15 @@ from enum import StrEnum
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import newsjack, pitch, stakeholders, stories
+from . import (
+    newsjack,
+    pitch,
+    profile,
+    reputation,
+    stakeholders,
+    stories,
+    visibility,
+)
 from .models import (
     Angle,
     Article,
@@ -68,6 +76,7 @@ from .models import (
     NewsjackOpportunity,
     Outreach,
     OutreachReply,
+    ReputationState,
     Standing,
 )
 
@@ -825,6 +834,193 @@ def audiences(session: Session, client: Client) -> list[Audience]:
     ]
 
 
+# --- The rail: what RauteOS already knows about the mandate (DEC-1 A) -------------
+#
+# The mock's right-hand column, and the reason it is on this page at all: the
+# five questions a consultant answers from memory before deciding whether a
+# story is worth the morning — is the positioning still current, can we reach
+# anybody, do our texts hold up, are we visible on this cluster, and is the
+# mandate quiet enough to go looking for coverage. Every one of them is already
+# a stored row somewhere else in this tool, on five different pages.
+#
+# Each item carries figures rather than a sentence. The sentence is chrome and
+# belongs in the template where :func:`newspulse.i18n.translate` reaches it; the
+# figures are the stored rows, and putting them in a dataclass is what lets a
+# test pin the number without parsing German. A named absence is a value here
+# too — ``None`` and ``0`` mean different things, and every one of these has an
+# empty state that is a statement rather than a gap.
+
+
+@dataclass(frozen=True, slots=True)
+class Positioning:
+    """The mandate's own positioning line, and how fresh the check on it is."""
+
+    #: Verbatim from the profile — data, so it stays in the language it was
+    #: written in. Empty when the field has never been filled.
+    value: str
+    #: When the profile was last looked at, in the shape the page prints it.
+    checked: profile.Checked
+
+
+@dataclass(frozen=True, slots=True)
+class MediaReach:
+    """How much of the media list can actually be acted on this morning."""
+
+    #: Bylines the list offers for this opportunity.
+    named: int
+    #: How many of them have a contact on file. The gap between the two is the
+    #: item's whole point: a list of seventeen names and three addresses is a
+    #: different morning from seventeen and seventeen.
+    with_contact: int
+
+
+@dataclass(frozen=True, slots=True)
+class Quality:
+    """What the two checkers have said about the texts on this occasion."""
+
+    texts: int
+    checked: int
+    objected: int
+
+    @property
+    def unchecked(self) -> int:
+        return self.texts - self.checked - self.objected
+
+
+@dataclass(frozen=True, slots=True)
+class Visibility:
+    """Where the mandate stood in the last AI-visibility measurement."""
+
+    #: When that measurement ran. ``None`` when the mandate has never been
+    #: measured, which is not the same as having been measured and not named.
+    measured_at: dt.datetime | None
+    #: Readable answers in that run, and how many of them named the mandate.
+    answers: int
+    named_in: int
+    #: The best rank it reached in any of them, or ``None`` where it was named
+    #: without a position being read.
+    best_position: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class Reputation:
+    """The mandate's newest reputation reading, and which way the series moves."""
+
+    #: ``None`` when the sweep has never read this mandate — a state of its own,
+    #: and emphatically not "ruhig", which is a measurement.
+    state: ReputationState | None
+    direction: reputation.Direction
+    articles: int
+    negative: int
+    day: dt.date | None
+
+
+@dataclass(frozen=True, slots=True)
+class Intelligence:
+    """The five items of the rail, in the order the mock stacks them."""
+
+    positioning: Positioning
+    media: MediaReach
+    quality: Quality
+    visibility: Visibility
+    reputation: Reputation
+
+
+#: How many readings the rail's direction is read over. The band's own constant,
+#: so the arrow here and the arrow on Heute can never point different ways.
+_TREND_READINGS = reputation.DIRECTION_READINGS
+
+
+def _positioning(session: Session, client: Client, *, now: dt.datetime) -> Positioning:
+    """The stored positioning line, with the profile's own freshness stamp."""
+    facts = profile.stored(session, client.id)
+    row = facts.get("positionierung")
+    return Positioning(
+        value=(row.value or "").strip() if row is not None else "",
+        checked=profile.checked(client.profile_checked_at, now=now),
+    )
+
+
+def _quality(stored_texts: list[Text]) -> Quality:
+    """The check states of the texts on this occasion, counted three ways.
+
+    Three counts and not a share: "geprüft" and "nichts hat hingeschaut" are the
+    two states :attr:`newspulse.models.Asset.check_state` exists to keep apart,
+    and a percentage would fold them back together.
+    """
+    return Quality(
+        texts=len(stored_texts),
+        checked=sum(1 for row in stored_texts if row.check_state is CheckState.GEPRUEFT),
+        objected=sum(1 for row in stored_texts if row.check_state is CheckState.EINWAND),
+    )
+
+
+def _visibility(session: Session, client: Client) -> Visibility:
+    """The newest AI-visibility run, read as three counts and a best rank."""
+    run = visibility.latest_run(session, client)
+    if run is None:
+        return Visibility(measured_at=None, answers=0, named_in=0, best_position=None)
+    positions = [
+        answer.position
+        for answer in run.answers
+        if answer.named and answer.position is not None
+    ]
+    return Visibility(
+        measured_at=run.ran_at,
+        answers=len(run.answers),
+        named_in=sum(1 for answer in run.answers if answer.named),
+        best_position=min(positions) if positions else None,
+    )
+
+
+def _reputation(session: Session, client: Client) -> Reputation:
+    """The newest reputation reading and the direction of the ones behind it."""
+    readings = reputation.history(session, client, limit=_TREND_READINGS)
+    if not readings:
+        return Reputation(
+            state=None,
+            direction=reputation.Direction.STABIL,
+            articles=0,
+            negative=0,
+            day=None,
+        )
+    newest = readings[0]
+    return Reputation(
+        state=newest.state,
+        direction=reputation.direction(readings),
+        articles=newest.articles,
+        negative=newest.negative,
+        day=newest.day,
+    )
+
+
+def intelligence(
+    session: Session,
+    client: Client,
+    people: list[Recipient],
+    stored_texts: list[Text],
+    *,
+    now: dt.datetime | None = None,
+) -> Intelligence:
+    """The rail beside the tiles: five stored answers, no model call, no write.
+
+    The two that are already on the page — the media list and the texts — are
+    passed in rather than fetched again, so the rail and the tiles beside it
+    cannot disagree about the same figure. The other three are one read each.
+    """
+    reference = now or dt.datetime.now(dt.UTC)
+    return Intelligence(
+        positioning=_positioning(session, client, now=reference),
+        media=MediaReach(
+            named=len(people),
+            with_contact=sum(1 for person in people if person.has_contact),
+        ),
+        quality=_quality(stored_texts),
+        visibility=_visibility(session, client),
+        reputation=_reputation(session, client),
+    )
+
+
 # --- Where every number on the page came from -------------------------------------
 
 
@@ -881,17 +1077,24 @@ def provenance(
 __all__ = [
     "STATUS_LABELS",
     "Audience",
+    "Intelligence",
     "Event",
+    "MediaReach",
     "Outlook",
+    "Positioning",
     "Provenance",
+    "Quality",
     "Recipient",
+    "Reputation",
     "Source",
     "Status",
     "Step",
     "StepKind",
     "Text",
     "Urgency",
+    "Visibility",
     "audiences",
+    "intelligence",
     "is_concluded",
     "letters",
     "occasion",

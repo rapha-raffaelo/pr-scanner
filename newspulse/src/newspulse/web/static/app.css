@@ -2598,6 +2598,12 @@ button:disabled { opacity: .55; cursor: default; }
 .dossier .dtabs a:hover { text-decoration: none; color: var(--ink-2); }
 .dossier .dtabs .is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--tint); }
 
+/* DEC-1 A's two columns: the tiles left, the rail right. The rail is a fixed
+   column rather than a share of the width — every line in it is one short
+   sentence, and a proportional column would set them across the page at 700px
+   and wrap them to four lines at 300px. */
+.dossier .rail { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--s4); align-items: start; }
+
 /* Two rows of three. The tiles stack before they squeeze: a source list at
    200px wide is a column of wrapped outlet names. */
 .dossier .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); align-items: start; }
@@ -2704,7 +2710,28 @@ button:disabled { opacity: .55; cursor: default; }
 .dossier .ev__b { font-size: var(--t-caption); color: var(--muted); }
 .dossier .ev--us { background: var(--tint-wash); border-color: var(--tint-line); }
 
+/* The rail's items. A tinted inset rather than a card of its own: this is one
+   card's contents, and five nested white boxes on a white box is a stack of
+   borders nobody reads as a group. */
+.dossier .know { display: flex; flex-direction: column; gap: var(--s3); }
+.dossier .know__i { padding: var(--s3); border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--fill-2); }
+.dossier .know__h {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--faint); margin-bottom: 4px;
+}
+.dossier .know__v { font-size: var(--t-footnote); color: var(--ink-2); line-height: 1.45; }
+.dossier .know__v b { font-weight: 600; }
+/* Same rule as everywhere else on this page: a named absence is italic, not
+   grey-on-grey, because it is a sentence worth reading. */
+.dossier .know__v.dempty { font-size: var(--t-footnote); }
+.dossier .know__l { font-size: var(--t-caption); margin-top: 6px; display: inline-block; font-weight: 600; }
+
 .dossier .note { margin-top: var(--s5); font-size: var(--t-caption); color: var(--faint); max-width: 80ch; line-height: 1.5; }
 
-@media (max-width: 1180px) { .dossier .grid3, .dossier .dprov, .dossier .rail { grid-template-columns: minmax(0, 1fr); } }
+/* The rail drops under the tiles before the tiles start squeezing: a 300px
+   column beside two columns of tiles is the layout that breaks first. */
+@media (max-width: 1180px) {
+  .dossier .rail { grid-template-columns: minmax(0, 1fr); }
+  .dossier .grid3, .dossier .dprov { grid-template-columns: 1fr 1fr; }
+}
 @media (max-width: 860px) { .dossier .grid3, .dossier .dprov { grid-template-columns: 1fr; } }

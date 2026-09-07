@@ -10,7 +10,9 @@ behind the card, and its load-bearing tests are the negative ones:
   by never being reached;
 * a rejection, a stranger's mandate and an unknown id are all 404;
 * an ended opportunity keeps rendering and loses its buttons;
-* a tab that leads nowhere is not in the strip, and every one that is resolves.
+* a tab that leads nowhere is not in the strip, and every one that is resolves;
+* every item of the rail names its own gap rather than printing a zero, and the
+  five extra tables it reads are not written to either.
 
 The urgency number is checked against a fixture calculated by hand in the test's
 own docstring, never against a second call of the code that produced it. The
@@ -25,6 +27,7 @@ Nothing here reaches a model and nothing reaches the network.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -42,14 +45,21 @@ from newspulse.models import (
     Base,
     CheckState,
     Client,
+    ClientFact,
     Contact,
     NewsjackOpportunity,
     Outreach,
     OutreachReply,
+    ReputationReading,
+    ReputationState,
     Stakeholder,
     StakeholderLevel,
     Standing,
     TopicHit,
+    VisibilityAnswer,
+    VisibilityBand,
+    VisibilityQuestion,
+    VisibilityRun,
 )
 from newspulse.web.app import create_app, get_db
 from newspulse.web.routes import opportunity_view
@@ -993,3 +1003,283 @@ def test_the_mandates_concluded_list_links_to_the_dossier(web, session, mandate)
 
     assert _url(row) in page.text
     assert web.get(_url(row)).status_code == 200
+
+
+# --- The rail beside the tiles (DEC-1 A) -----------------------------------------------
+#
+# Five stored answers from five other pages of this tool. Each one is on the
+# dossier because it is a question a consultant otherwise answers from memory
+# while a window closes, and each one has an empty state that is a sentence
+# rather than a zero.
+
+
+def _reading(
+    session,
+    client: Client,
+    *,
+    day: dt.date,
+    state: ReputationState = ReputationState.RUHIG,
+    articles: int = 14,
+    negative: int = 2,
+    points: int = 3,
+) -> ReputationReading:
+    row = ReputationReading(
+        client_id=client.id,
+        day=day,
+        state=state,
+        outlets=1,
+        national=False,
+        articles=articles,
+        negative=negative,
+        named=False,
+        points=points,
+        computed_at=dt.datetime.now(dt.UTC),
+    )
+    session.add(row)
+    session.commit()
+    return row
+
+
+def _measurement(session, client: Client, *, named: tuple[bool, ...],
+                 position: int | None = None) -> VisibilityRun:
+    """One finished visibility run, one question and one answer per ``named``.
+
+    A question apiece rather than one asked repeatedly: the answers table is
+    unique on (run, question, provider), which is the schema saying a set is
+    measured once.
+    """
+    now = dt.datetime.now(dt.UTC)
+    run = VisibilityRun(
+        client_id=client.id, ran_at=now, providers_asked=["claude"], finished_at=now
+    )
+    session.add(run)
+    session.commit()
+    for index, was_named in enumerate(named):
+        question = VisibilityQuestion(
+            client_id=client.id,
+            text=f"Wer baut Solarparks? ({index})",
+            band=VisibilityBand.KATEGORIE,
+        )
+        session.add(question)
+        session.commit()
+        session.add(
+            VisibilityAnswer(
+                run_id=run.id,
+                question_id=question.id,
+                provider="claude",
+                answer="Eine Antwort.",
+                named=was_named,
+                position=position if was_named else None,
+            )
+        )
+    session.commit()
+    return run
+
+
+def test_the_rail_reads_the_positioning_off_the_stored_profile(web, session, mandate):
+    """Verbatim, because it is data — and with the profile's own freshness stamp,
+    off the same partial the profile page prints, so the two cannot disagree."""
+    row = _opportunity(session, mandate)
+    session.add(
+        ClientFact(
+            client_id=mandate.id,
+            key="positionierung",
+            value="Führender Anbieter regenerativer Klimaprozesse.",
+            filled_by="mensch",
+        )
+    )
+    mandate.profile_checked_at = dt.datetime.now(dt.UTC)
+    session.commit()
+
+    page = web.get(_url(row)).text
+
+    assert "Was RauteOS zum Mandat weiß" in page
+    assert "Führender Anbieter regenerativer Klimaprozesse." in page
+    assert "Heute geprüft" in page
+
+
+def test_the_rail_counts_the_contacts_against_the_names_it_offers(
+    web, session, mandate
+):
+    """Two numbers and not a share: the gap between them is what decides whether
+    the media list is an address book or a wish."""
+    row = _opportunity(session, mandate)
+    session.add(
+        Contact(
+            name="Michael Bröcker", outlet="Handelsblatt", email="m.broecker@example.de"
+        )
+    )
+    session.commit()
+    _article(
+        session,
+        title="Netzentgelte: Länder fordern Nachbesserung",
+        source="DVZ",
+        at=row.article.published_at + dt.timedelta(hours=1),
+        author="Jana Wolf",
+        on_radar_for=mandate,
+    )
+    _occasion(session, row)
+
+    page = web.get(_url(row)).text
+
+    assert "1 von 2" in page
+    assert "vorgeschlagenen Bylines haben einen hinterlegten Kontakt." in page
+
+
+def test_the_rail_keeps_an_objection_apart_from_a_missing_check(
+    session, mandate
+):
+    """``geprüft``, ``Einwand`` and ``ungeprüft`` are three states, and the rail
+    counts three — a share would fold the last two back together."""
+    row = _opportunity(session, mandate)
+    angle = _occasion(session, row)
+    _asset(session, angle, kind="pressemitteilung", state=CheckState.GEPRUEFT)
+    _asset(session, angle, kind="statement", state=CheckState.EINWAND)
+    _asset(session, angle, kind="qa", state=CheckState.UNGEPRUEFT)
+
+    quality = opportunity.intelligence(
+        session,
+        mandate,
+        [],
+        opportunity.texts(session, angle),
+        now=dt.datetime.now(dt.UTC),
+    ).quality
+
+    assert (quality.texts, quality.checked, quality.objected) == (3, 1, 1)
+    assert quality.unchecked == 1
+
+
+def test_the_rail_reads_the_newest_visibility_measurement(web, session, mandate):
+    row = _opportunity(session, mandate)
+    _measurement(session, mandate, named=(True, False, True), position=2)
+
+    page = web.get(_url(row)).text
+
+    assert "2 von 3" in page
+    assert "Antworten nennen das Mandat, gemessen am" in page
+    assert "Beste Position" in page
+
+
+def test_a_measurement_that_named_nobody_is_not_a_missing_measurement(
+    session, mandate
+):
+    """A run that was spent and named nothing says something. A mandate that was
+    never measured says something else, and the rail must not print them alike."""
+    _opportunity(session, mandate)
+    _measurement(session, mandate, named=(False, False))
+
+    measured = opportunity.intelligence(
+        session, mandate, [], [], now=dt.datetime.now(dt.UTC)
+    ).visibility
+
+    assert measured.measured_at is not None
+    assert (measured.answers, measured.named_in) == (2, 0)
+    assert measured.best_position is None
+
+
+def test_the_rail_carries_the_reputation_reading_and_its_direction(
+    web, session, mandate
+):
+    """The newest reading, with the direction read over the ones behind it — the
+    band's own constant, so the rail and Heute can never point different ways."""
+    row = _opportunity(session, mandate)
+    today = dt.datetime.now(dt.UTC).date()
+    _reading(session, mandate, day=today - dt.timedelta(days=2), points=2)
+    _reading(session, mandate, day=today - dt.timedelta(days=1), points=2)
+    _reading(
+        session,
+        mandate,
+        day=today,
+        state=ReputationState.BEOBACHTUNG,
+        articles=14,
+        negative=2,
+        points=6,
+    )
+
+    page = web.get(_url(row)).text
+
+    assert "Beobachtung" in page
+    assert "steigend" in page
+    assert "14 Beiträge, davon" in page
+
+
+def test_never_measured_is_never_rendered_as_quiet(session, mandate):
+    """``ruhig`` is a measurement. A mandate the sweep has never read has none,
+    and printing the reassuring word for the absent one is the worst sentence
+    this rail could carry."""
+    _opportunity(session, mandate)
+
+    band = opportunity.intelligence(
+        session, mandate, [], [], now=dt.datetime.now(dt.UTC)
+    ).reputation
+
+    assert band.state is None
+    assert band.day is None
+
+
+def test_every_item_of_the_rail_names_its_own_gap(web, session, mandate):
+    """A mandate with no profile, no contacts, no texts, no measurement and no
+    reading still renders five items, and every one of them is a sentence saying
+    what is missing and where it would come from."""
+    row = _opportunity(session, mandate)
+    row.article.author = None
+    session.commit()
+
+    page = web.get(_url(row)).text
+
+    assert page.count("know__i") == 5
+    assert "Im Profil steht keine Positionierung" in page
+    assert "im Feld ist kein Autor gespeichert" in page
+    assert "hängt noch kein Text, also auch keine Prüfung" in page
+    assert "Dieses Mandat wurde noch nie gemessen." in page
+    assert "liegt noch keine Reputationsmessung vor" in page
+
+
+def test_the_rail_links_land_on_routes_that_exist(web, session, mandate):
+    """Every line in the rail is a stored row on another page of this tool, and
+    the link to that page is half of what makes the line useful."""
+    row = _opportunity(session, mandate)
+
+    page = web.get(_url(row)).text
+
+    rail = page.split("Was RauteOS zum Mandat weiß")[1].split("Entscheidungsspur")[0]
+    hrefs = re.findall(r'class="know__l" href="([^"]+)"', rail)
+    assert len(hrefs) == 5
+    for href in hrefs:
+        assert web.get(href, follow_redirects=False).status_code != 404, href
+
+
+def test_opening_the_dossier_with_a_full_rail_still_writes_no_row(
+    web, session, mandate
+):
+    """The rail reads five more tables. None of them may be written to either —
+    the page's load-bearing property does not get an exception for a sidebar."""
+    row = _opportunity(session, mandate)
+    session.add(
+        ClientFact(client_id=mandate.id, key="positionierung", value="Etwas.")
+    )
+    session.commit()
+    _measurement(session, mandate, named=(True,), position=1)
+    _reading(session, mandate, day=dt.datetime.now(dt.UTC).date())
+    tables = (
+        Angle,
+        Asset,
+        NewsjackOpportunity,
+        ClientFact,
+        ReputationReading,
+        VisibilityRun,
+        VisibilityAnswer,
+    )
+
+    def counted() -> dict[str, int]:
+        return {
+            model.__name__: session.scalar(select(func.count()).select_from(model))
+            for model in tables
+        }
+
+    before = counted()
+
+    assert web.get(_url(row)).status_code == 200
+
+    session.expire_all()
+    assert counted() == before

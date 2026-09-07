@@ -2134,8 +2134,11 @@ _EN: dict[str, str] = {
     "Ursprungsbeitrag öffnen": "Open the origin piece",
     "Ursprung": "Origin",
     "kein Autor im Beitrag": "no byline stored",
-    "Vorgeschlagene Storyline": "Proposed storyline",
-    "vom Werkzeug": "from the tool",
+    # The mock heads this tile "Vorgeschlagene Storyline". This tool stores no
+    # storyline — the angle is written when the occasion is opened — so the tile
+    # is named for the row it renders instead of for the row it would like to.
+    "Worauf das Stehen beruht": "What the standing rests on",
+    "aus der Prüfung": "from the check",
     "Die Prüfung hat keinen Satz hinterlassen. Das Stehen gilt, die Begründung fehlt.":
         "The check left no sentence behind. The standing holds; the grounds are missing.",
     "Stehen belegt": "Standing supported",
@@ -2159,6 +2162,8 @@ _EN: dict[str, str] = {
     "Wie es weitergeht": "What comes next",
     "Einschätzung": "An estimate",
     "Einschätzung bei der Erkennung am": "Estimated at detection on",
+    "Einschätzung bei der Erkennung, ohne vermerkten Zeitpunkt. Keine belegte Zeile.":
+        "Estimated at detection, with no moment recorded. Not an evidenced row.",
     "Keine belegte Zeile.": "Not an evidenced row.",
     "Zu dieser Gelegenheit wurde bei der Erkennung keine Vorschau geschrieben. Was belegt ist, steht in der Spur unten.":
         "No look-ahead was written for this opportunity at detection. What is "
@@ -2190,6 +2195,41 @@ _EN: dict[str, str] = {
     "Zu dieser Gelegenheit ist noch kein Anlass angelegt. Ein Text entsteht über den Knopf oben.":
         "No occasion has been opened for this opportunity. A text starts with the "
         "button above.",
+    # The rail on the right (DEC-1 A): five stored answers from five other pages
+    # of this tool, and a named absence wherever the row behind one is missing.
+    "Was RauteOS zum Mandat weiß": "What RauteOS knows about this mandate",
+    "Im Profil steht keine Positionierung. Ein Text zu dieser Gelegenheit hat dann nichts, wogegen er sich abgrenzt.":
+        "No positioning is on file. A text on this opportunity then has nothing "
+        "to set itself apart from.",
+    "Profil ansehen": "Open the profile",
+    "vorgeschlagenen Bylines haben einen hinterlegten Kontakt.":
+        "suggested bylines have a contact on file.",
+    "Zu dieser Gelegenheit schlägt das Werkzeug niemanden vor: im Feld ist kein Autor gespeichert.":
+        "The tool suggests nobody for this opportunity: no byline is stored in "
+        "the field.",
+    "Qualität": "Quality of the texts",
+    "Texten sind ohne Einwand geprüft.": "texts are checked with no objection.",
+    "mit Einwand.": "with an objection.",
+    "hat noch niemand gelesen.": "has been read by nobody yet.",
+    "An dieser Gelegenheit hängt noch kein Text, also auch keine Prüfung.":
+        "No text hangs on this opportunity yet, so no check does either.",
+    "Antworten nennen das Mandat, gemessen am":
+        "answers name the mandate, measured on",
+    "Beste Position": "Best position",
+    "Die letzte Messung am": "The last measurement on",
+    "hat keine lesbare Antwort zurückgebracht.": "brought back no readable answer.",
+    "Dieses Mandat wurde noch nie gemessen.": "This mandate has never been measured.",
+    "Reputation": "Reputation",
+    "Band": "Band",
+    "Beiträge, davon": "pieces, of which",
+    "negativ, gelesen am": "negative, read on",
+    "Für dieses Mandat liegt noch keine Reputationsmessung vor. „Ruhig“ wäre eine Messung, und diese gibt es nicht.":
+        "No reputation reading is on file for this mandate. \u201cQuiet\u201d would "
+        "be a reading, and there is none.",
+    "Reputationsband": "Reputation band",
+    # The card and the archive line: the headline goes to the dossier now, so
+    # the piece the story was found in gets a link of its own.
+    "Ursprungsbeitrag": "Origin piece",
     "Entscheidungsspur": "Decision trail",
     "was passiert ist und was wir getan haben": "what happened and what we did",
     "Jede Zahl auf dieser Seite steht in einer gespeicherten Zeile: die Medien sind gezählte Beiträge, die Stunden sind das Fenster ab dem Ursprungsbeitrag, und die Dringlichkeit ist aus diesen beiden plus dem Stehen gerechnet und oben ausgeschrieben. Diese Seite liest nur — sie legt keinen Anlass an und ruft kein Modell.":
