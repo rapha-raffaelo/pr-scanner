@@ -37,6 +37,14 @@ _EN: dict[str, str] = {
     # --- Chrome / navigation -------------------------------------------------
     "Heute": "Today",
     "Mandanten": "Clients",
+    # --- The top bar (GEL-03, DEC-4) -----------------------------------------
+    # "Ask RAUTE" is deliberately absent: it is the assistant's name, the same
+    # in both languages, and translating a name is how a product ends up with
+    # two of them.
+    "Pfad": "Path",
+    "Archiv durchsuchen": "Search the archive",
+    "Archiv durchsuchen…": "Search the archive…",
+    "Suchen": "Search",
     "Archiv": "Archive",
     "Kontakte": "Contacts",
     "Einstellungen": "Settings",

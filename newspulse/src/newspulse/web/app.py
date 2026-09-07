@@ -279,6 +279,9 @@ templates.env.globals["LANGUAGES"] = i18n.LANGUAGES
 # the same reason ``run_active`` is: the shared layout needs it and no route
 # should have to remember to pass it.
 templates.env.globals["nav_clients"] = navigation.nav_clients
+# The top bar's breadcrumb, for the same reason: it is in the shared layout and
+# no route should have to remember to pass its own location.
+templates.env.globals["nav_crumbs"] = navigation.nav_crumbs
 # Who is signed in, for the sidebar footer. A global for the same reason as the
 # roster: the shared layout needs it and no route should have to pass it.
 templates.env.globals["signed_in_as"] = lambda request: request.scope.get("user_email")

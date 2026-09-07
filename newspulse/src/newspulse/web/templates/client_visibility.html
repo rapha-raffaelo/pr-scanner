@@ -198,8 +198,8 @@
             {% if trend.rival %}
               <polyline points="{% for mark in trend.rival %}{{ mark.x }},{{ mark.y }} {% endfor %}" fill="none" stroke="#a1a1aa" stroke-width="2" stroke-dasharray="4 4" stroke-linejoin="round"></polyline>
             {% endif %}
-            <polyline points="{% for mark in trend.mandate %}{{ mark.x }},{{ mark.y }} {% endfor %}" fill="none" stroke="#0071e3" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
-            <circle cx="{{ trend.mandate[-1].x }}" cy="{{ trend.mandate[-1].y }}" r="4" fill="#0071e3"></circle>
+            <polyline points="{% for mark in trend.mandate %}{{ mark.x }},{{ mark.y }} {% endfor %}" fill="none" style="stroke: var(--tint)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+            <circle cx="{{ trend.mandate[-1].x }}" cy="{{ trend.mandate[-1].y }}" r="4" style="fill: var(--tint)"></circle>
           </svg>
         </div>
         {% if trend.rival %}

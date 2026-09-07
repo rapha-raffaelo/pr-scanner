@@ -16,6 +16,31 @@
 <body>
   {% set t = translator(request) %}
   {% set lang = request_language(request) %}
+  {# The icon set (GEL-03, DEC-4). Drawn once here as <symbol>s and referenced
+     by <use> wherever a symbol is wanted, so eleven tabs on twelve pages cost
+     one copy of the geometry rather than a hundred and thirty-two. Stroked in
+     currentColor, so an icon is the colour of the text beside it and the accent
+     reaches it through the same token as everything else.
+
+     Inline rather than a sprite file: it is well under a kilobyte and a second
+     request for eleven outlines is a request too many. #}
+  <svg class="ico-sprite" aria-hidden="true" focusable="false">
+    <symbol id="ico-heute" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="ico-texte" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+    <symbol id="ico-krise" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17.4v.2"/></symbol>
+    <symbol id="ico-issues" viewBox="0 0 24 24"><path d="M4 5h16l1 8v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4z"/><path d="M3 13h5l1.5 3h5L16 13h5"/></symbol>
+    <symbol id="ico-plan" viewBox="0 0 24 24"><rect x="3" y="5" width="11" height="4" rx="1"/><rect x="7" y="15" width="14" height="4" rx="1"/><path d="M3 12h18"/></symbol>
+    <symbol id="ico-wettbewerb" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M6 21V12M12 21V4M18 21v-6"/></symbol>
+    <symbol id="ico-archiv" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></symbol>
+    <symbol id="ico-kickoff" viewBox="0 0 24 24"><path d="M5 21V3"/><path d="M5 4h13l-3 4 3 4H5z"/></symbol>
+    <symbol id="ico-profil" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></symbol>
+    <symbol id="ico-guide" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.6 3.2 7.8 8 9 4.8-1.2 8-4.4 8-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="ico-markt" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/></symbol>
+    <symbol id="ico-ki" viewBox="0 0 24 24"><path d="m12 3 2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></symbol>
+    <symbol id="ico-suche" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20.5 20.5-4-4"/></symbol>
+    <symbol id="ico-raute" viewBox="0 0 24 24"><path d="M9.5 3 7 21M17 3l-2.5 18M3.5 8.5h17M2.5 15.5h17"/></symbol>
+  </svg>
+
   <div class="app">
 
     {# The source list. The mandates live *in* the navigation because they are
@@ -66,6 +91,62 @@
     </aside>
 
     <div class="main">
+      {# The top bar (GEL-03, DEC-4): where you are, one field, one button.
+
+         Every one of the three goes somewhere that already exists — the crumbs
+         are pages the sidebar lists, the field is the archive's own ?q=, and
+         the button is the assistant that has been in this layout all along. The
+         Vorlage shows more controls up here; the ones with nothing behind them
+         are not in this markup, because a dead button in the chrome is worse
+         than a chrome without it. #}
+      {% set here = nav_crumbs(request) %}
+      <div class="topbar">
+        {# Two crumbs at most, and the story asks for exactly these two: the
+           workspace and the mandate. The trail therefore stops *above* the page
+           — "Portfolio / Solaris AG" over the Profil page — so no crumb carries
+           aria-current="page". The sidebar already marks the page it is on, and
+           a breadcrumb that claims to end there while linking somewhere else
+           reads out wrong. #}
+        <nav class="crumbs" aria-label="{{ t('Pfad') }}">
+          {% if here.mandate %}
+            <a href="{{ here.area_href }}">{{ t(here.area) }}</a>
+            <span class="crumbs__sep" aria-hidden="true">/</span>
+            <a class="crumbs__here" href="{{ here.mandate_href }}">{{ here.mandate }}</a>
+          {% else %}
+            <span class="crumbs__here">{{ t(here.area) }}</span>
+          {% endif %}
+        </nav>
+
+        <div class="topbar__r">
+          {# Straight onto the archive's own text filter. A GET form, so the
+             result is a URL the reader can keep. #}
+          <form class="topsearch" method="get" action="/archive" role="search">
+            <svg class="ico topsearch__ico" aria-hidden="true"><use href="#ico-suche"></use></svg>
+            <input class="topsearch__in" type="search" name="q" autocomplete="off"
+                   value="{{ request.query_params.get('q', '') if request.url.path == '/archive' else '' }}"
+                   placeholder="{{ t('Archiv durchsuchen…') }}"
+                   aria-label="{{ t('Archiv durchsuchen') }}">
+            <button class="topsearch__go" type="submit">{{ t("Suchen") }}</button>
+          </form>
+
+          {# A real link, not a button: without JavaScript it lands on this same
+             page with the drawer already open (the layout reads ?assistant
+             below), and with it the click is caught and the drawer opens in
+             place. Which also makes it a href a test can call.
+
+             include_query_params, not an append: it keeps the filters the
+             reader was looking at, and *sets* rather than adds ?assistant, so
+             pressing it on a page that already carries it does not grow the
+             URL a &assistant=1 at a time.
+
+             The label is the one string in this bar not passed through t():
+             it is the assistant's name, like RauteOS above it, and putting a
+             name through the table is an invitation to translate it. #}
+          <a class="askraute" href="{{ request.url.path }}?{{ request.url.include_query_params(assistant=1).query }}" data-drawer-open>
+            <svg class="ico askraute__ico" aria-hidden="true"><use href="#ico-raute"></use></svg>Ask RAUTE</a>
+        </div>
+      </div>
+
       {# The toolbar: what this page is, what the data is worth, and the two
          actions that belong to no page in particular. #}
       <header class="tbar">
@@ -267,7 +348,14 @@
     const openDrawer  = () => { drawer.hidden = false; fillPicker(); input.focus(); body.scrollTop = body.scrollHeight; };
     const closeDrawer = () => { drawer.hidden = true; stop(); };
 
-    document.querySelectorAll("[data-drawer-open]").forEach(el => el.onclick = openDrawer);
+    // preventDefault because the top bar's opener is an <a>: it carries a real
+    // href so the button works with JavaScript off (the layout opens the drawer
+    // on ?assistant), and without this the click would open the drawer and then
+    // navigate away from it. Harmless on the floating <button>.
+    document.querySelectorAll("[data-drawer-open]").forEach(el => el.onclick = e => {
+      e.preventDefault();
+      openDrawer();
+    });
     document.querySelectorAll("[data-drawer-close]").forEach(el => el.onclick = closeDrawer);
     document.querySelectorAll("[data-drawer-reset]").forEach(el => el.onclick = () => {
       stop();

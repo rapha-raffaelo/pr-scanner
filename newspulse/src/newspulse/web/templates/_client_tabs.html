@@ -31,43 +31,43 @@
   </div>
   {# The workspace, in the order a morning runs: what happened, what to say about
      it, who else is being written about, and then the standing material. #}
-  <a href="/client/{{ client.id }}/heute"{% if active == 'heute' %} class="active" aria-current="page"{% endif %}>{{ t("Heute") }}</a>
+  <a href="/client/{{ client.id }}/heute"{% if active == 'heute' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-heute"></use></svg>{{ t("Heute") }}</a>
   {# One tab for everything drafted here. Impulse and Berichte were two, and read
      as two products doing the same thing at different rhythms: RauteOS drafts,
      the consultant keeps or discards, what is left is handed over. The rail on
      the page is where an occasion or a period is chosen. #}
-  <a href="/client/{{ client.id }}/advice"{% if active == 'texte' %} class="active" aria-current="page"{% endif %}>{{ t("Texte") }}</a>
+  <a href="/client/{{ client.id }}/advice"{% if active == 'texte' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-texte"></use></svg>{{ t("Texte") }}</a>
   {# Not on Vorrat: the tab exists only for a mandate that ever had a declared
      crisis. An empty Krisenreiter in the daily view is a small daily unease
      with no return — and a dismissed proposal deliberately creates no tab,
      because nobody declared anything (UHR-03). While one is open the tab is
      the hot spot of the strip. #}
   {% if kstate.has_history %}
-    <a href="/client/{{ client.id }}/krise" class="{% if active == 'krise' %}active {% endif %}{% if kstate.open_id %}subtabs__hot{% endif %}"{% if active == 'krise' %} aria-current="page"{% endif %}>{{ t("Krise") }}</a>
+    <a href="/client/{{ client.id }}/krise" class="{% if active == 'krise' %}active {% endif %}{% if kstate.open_id %}subtabs__hot{% endif %}"{% if active == 'krise' %} aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-krise"></use></svg>{{ t("Krise") }}</a>
   {% endif %}
   {# The register between the daily card and the crisis: the matter that gets
      three weeks old (RIS-02). Always present, unlike the Krise tab — an empty
      register is a statement ("nothing is being carried"), not a missing page. #}
-  <a href="/client/{{ client.id }}/issues"{% if active == 'issues' %} class="active" aria-current="page"{% endif %}>{{ t("Issues") }}</a>
+  <a href="/client/{{ client.id }}/issues"{% if active == 'issues' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-issues"></use></svg>{{ t("Issues") }}</a>
   {# The long clock. Sits right after the texts because it is where the next
      occasion comes from: six months of dated hooks, each on a stored row
      (DEC-5). #}
-  <a href="/client/{{ client.id }}/plan"{% if active == 'plan' %} class="active" aria-current="page"{% endif %}>{{ t("Plan") }}</a>
-  <a href="/client/{{ client.id }}/wettbewerb"{% if active == 'rivals' %} class="active" aria-current="page"{% endif %}>{{ t("Wettbewerb") }}</a>
+  <a href="/client/{{ client.id }}/plan"{% if active == 'plan' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-plan"></use></svg>{{ t("Plan") }}</a>
+  <a href="/client/{{ client.id }}/wettbewerb"{% if active == 'rivals' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-wettbewerb"></use></svg>{{ t("Wettbewerb") }}</a>
   {# The month, read and cut down. Sits after the daily work and before the
      standing material because that is the order it is used in: the report is what
      the week's triage and the month's outreach were for. #}
-  <a href="/client/{{ client.id }}"{% if active == 'overview' %} class="active" aria-current="page"{% endif %}>{{ t("Archiv") }}</a>
+  <a href="/client/{{ client.id }}"{% if active == 'overview' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-archiv"></use></svg>{{ t("Archiv") }}</a>
   {# Kickoff sits ahead of Profil and Guide because it is upstream of both: the
      twenty questions are where a profile field and a no-go come from. #}
-  <a href="/client/{{ client.id }}/kickoff"{% if active == 'kickoff' %} class="active" aria-current="page"{% endif %}>{{ t("Kickoff") }}</a>
-  <a href="/client/{{ client.id }}/profil"{% if active == 'profile' %} class="active" aria-current="page"{% endif %}>{{ t("Profil") }}</a>
-  <a href="/client/{{ client.id }}/guide"{% if active == 'guide' %} class="active" aria-current="page"{% endif %}>{{ t("Guide") }}</a>
-  <a href="/client/{{ client.id }}/market"{% if active == 'market' %} class="active" aria-current="page"{% endif %}>{{ t("Marktumfeld") }}</a>
+  <a href="/client/{{ client.id }}/kickoff"{% if active == 'kickoff' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-kickoff"></use></svg>{{ t("Kickoff") }}</a>
+  <a href="/client/{{ client.id }}/profil"{% if active == 'profile' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-profil"></use></svg>{{ t("Profil") }}</a>
+  <a href="/client/{{ client.id }}/guide"{% if active == 'guide' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-guide"></use></svg>{{ t("Guide") }}</a>
+  <a href="/client/{{ client.id }}/market"{% if active == 'market' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-markt"></use></svg>{{ t("Marktumfeld") }}</a>
   {# The other channel, last because it is the newest and because it is measured
      weekly rather than every morning: what an assistant answers when somebody
      asks about this market (DEC-3). #}
-  <a href="/client/{{ client.id }}/ki"{% if active == 'visibility' %} class="active" aria-current="page"{% endif %}>{{ t("KI-Sichtbarkeit") }}</a>
+  <a href="/client/{{ client.id }}/ki"{% if active == 'visibility' %} class="active" aria-current="page"{% endif %}><svg class="ico subtabs__ico" aria-hidden="true"><use href="#ico-ki"></use></svg>{{ t("KI-Sichtbarkeit") }}</a>
 </nav>
 {# DEC-1's offer, on the Mandantenkarte as well as on Heute: the question and
    its two answers, and nothing else changes until one of them is pressed.
