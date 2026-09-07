@@ -37,6 +37,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from ... import dossier_rail
 from ... import opportunity as dossier
 from ...models import Client, NewsjackOpportunity, Standing
 from ..app import get_db, templates
@@ -154,13 +155,12 @@ def page_context(
         # derived address is never shown.
         "steps": dossier.steps(occasion, stored_texts, stored_letters),
         "recipients": people,
-        # The rail beside the tiles (DEC-1 A). It is handed the media list and
-        # the texts that are already on the page rather than fetching either
-        # again, so a figure in the rail and the same figure in a tile come off
-        # one read and cannot drift apart.
-        "intel": dossier.intelligence(
-            session, client, people, stored_texts, now=now
-        ),
+        # RAUTE Intelligence, the six tiles beside the case (GEL-02). Handed
+        # the media list and the texts that are already on the page rather than
+        # fetching either again, so a figure in the rail and the same figure in
+        # a tile come off one read and cannot drift apart. Reads only: the mark
+        # each tile wears is arithmetic over stored rows, never a fresh run.
+        "rail": dossier_rail.rail(session, client, people, stored_texts, now=now),
         "trail": dossier.trail(
             session, row, story, occasion, stored_texts, stored_letters
         ),

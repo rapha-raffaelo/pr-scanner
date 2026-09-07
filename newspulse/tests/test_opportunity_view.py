@@ -1219,17 +1219,22 @@ def test_never_measured_is_never_rendered_as_quiet(session, mandate):
 
 def test_every_item_of_the_rail_names_its_own_gap(web, session, mandate):
     """A mandate with no profile, no contacts, no texts, no measurement and no
-    reading still renders five items, and every one of them is a sentence saying
-    what is missing and where it would come from."""
+    reading still renders six tiles, and every one of them is a sentence saying
+    what is missing and where it would come from.
+
+    Counted on the opening ``class="know__i `` rather than on the bare word,
+    which also occurs in each tile's modifier classes and in its symbol field.
+    """
     row = _opportunity(session, mandate)
     row.article.author = None
     session.commit()
 
     page = web.get(_url(row)).text
 
-    assert page.count("know__i") == 5
+    assert page.count('class="know__i ') == 6
     assert "Im Profil steht keine Positionierung" in page
     assert "im Feld ist kein Autor gespeichert" in page
+    assert "hängt noch kein Text. Er entsteht auf der Texte-Seite." in page
     assert "hängt noch kein Text, also auch keine Prüfung" in page
     assert "Dieses Mandat wurde noch nie gemessen." in page
     assert "liegt noch keine Reputationsmessung vor" in page
@@ -1244,7 +1249,7 @@ def test_the_rail_links_land_on_routes_that_exist(web, session, mandate):
 
     rail = page.split("Was RauteOS zum Mandat weiß")[1].split("Entscheidungsspur")[0]
     hrefs = re.findall(r'class="know__l" href="([^"]+)"', rail)
-    assert len(hrefs) == 5
+    assert len(hrefs) == 6
     for href in hrefs:
         assert web.get(href, follow_redirects=False).status_code != 404, href
 

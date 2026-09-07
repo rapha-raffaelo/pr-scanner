@@ -126,7 +126,14 @@ def de_date(value: dt.datetime) -> str:
     relationship timeline reads as a sequence of days, and "12.08.2026 09:41" on
     a line about last month invites the reader to weigh a minute that means
     nothing. The letter card keeps :func:`de_datetime`: there the hour is part of
-    the release record.
+    the release record. The report's dates need the year for the same reason from
+    the other side: a document is read months after it was sent, which is exactly
+    when :func:`de_short_date`'s ``22.07.`` stops being enough.
+
+    Takes a timestamp and not a date: it converts before it formats, and a stored
+    ``dt.date`` has no zone to convert. A bare calendar day — a reputation
+    reading, the day Today is showing — is already the reader's day and is
+    formatted where it is printed.
     """
     return _local(value).strftime("%d.%m.%Y")
 
@@ -162,15 +169,6 @@ def run_age_days(value: dt.datetime) -> int:
 def de_short_date(value: dt.datetime) -> str:
     """Day and month in the reader's zone, as coverage lists cite it: ``22.07.``"""
     return _local(value).strftime("%d.%m.")
-
-
-def de_date(value: dt.datetime) -> str:
-    """A calendar date in the reader's zone: ``22.07.2026``.
-
-    The report's dates need the year — a document is read months after it was
-    sent, which is exactly when ``22.07.`` stops being enough.
-    """
-    return _local(value).strftime("%d.%m.%Y")
 
 
 # Image types a stored logo may carry. Deliberately the raster set only: an SVG
@@ -253,7 +251,6 @@ templates.env.filters["de_time"] = de_time
 templates.env.filters["de_datetime"] = de_datetime
 templates.env.filters["de_date"] = de_date
 templates.env.filters["de_short_date"] = de_short_date
-templates.env.filters["de_date"] = de_date
 # The header's own reading of a timestamp: see de_when.
 templates.env.filters["de_when"] = de_when
 templates.env.filters["run_age_days"] = run_age_days
