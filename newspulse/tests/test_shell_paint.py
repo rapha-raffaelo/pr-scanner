@@ -420,8 +420,32 @@ def test_the_accent_is_one_line_and_no_module_repeats_it():
     channels = triple.group(1)
     assert css.count(channels) == 1, "a rule spells the accent out beside the token"
 
-    as_hex = "#%02x%02x%02x" % tuple(int(c) for c in channels.split())
+    as_hex = "#" + "".join(f"{int(channel):02x}" for channel in channels.split())
     assert as_hex not in css.lower(), f"{as_hex} is written out somewhere as well"
+
+
+#: What the accent was before DEC-4, in the three spellings the stylesheet and
+#: the page-local <style> blocks used for it.
+_OLD_ACCENT: tuple[str, ...] = ("#0071e3", "rgba(0, 113, 227", "rgba(0,113,227", "#0060c0")
+
+
+def test_no_page_inside_the_shell_keeps_a_copy_of_the_old_accent():
+    """The other half of "one line": a page with its own <style> block reaching
+    for a colour instead of the token is a module that will not repaint.
+
+    Only pages inside the shell — the ones that link ``app.css`` and can see the
+    token. The three self-contained documents (the report, the Pressespiegel,
+    the Redaktionsplan) deliberately link no stylesheet, because they are
+    forwarded to a client and must not phone home; their palettes are theirs.
+    """
+    templates = Path(navigation.__file__).resolve().parent / "templates"
+    for page in sorted(templates.rglob("*.html")):
+        markup = page.read_text(encoding="utf-8")
+        standalone = "<!DOCTYPE html>" in markup and "/static/app.css" not in markup
+        if standalone:
+            continue
+        for spelling in _OLD_ACCENT:
+            assert spelling not in markup, f"{page.name} paints its own accent"
 
 
 def test_every_value_in_the_stylesheet_is_declared_in_one_block():
