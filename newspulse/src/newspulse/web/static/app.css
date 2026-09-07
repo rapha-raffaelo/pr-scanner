@@ -1937,11 +1937,25 @@ table.covmap th.covcol { min-width: 74px; vertical-align: bottom; }
   display: flex; gap: var(--s2); overflow-x: auto; padding: 0 0 var(--s2);
   margin: 0 0 var(--s5); border-bottom: 1px solid var(--line);
 }
+/* A positioned box, not a link: the card holds a link *and* a cross, and a form
+   cannot live inside an anchor. Resolving the framework merge took this file's
+   copy of .rail__e wholesale and appended only the classes it did not have —
+   which silently restored the older "the whole card is an anchor" version and
+   left the cross with nothing to position against. */
 .rail__e {
-  flex: 0 0 auto; max-width: 260px; display: flex; flex-direction: column; gap: 2px;
-  padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--radius);
-  background: var(--card); color: var(--ink-2); text-decoration: none;
+  flex: 0 0 auto; max-width: 260px; position: relative;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); color: var(--ink-2); box-shadow: var(--shadow);
 }
+/* The link fills the card, so the whole box is the click target it always was;
+   the cross sits on top of it in the corner and is the one thing that is not. */
+.rail__a {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s2) var(--s3); padding-right: 28px;
+  color: inherit; text-decoration: none; border-radius: inherit;
+}
+.rail__a:hover { text-decoration: none; color: var(--ink); }
+.rail__x { position: absolute; top: 5px; right: 5px; }
 .rail__e:hover { border-color: var(--line-strong); color: var(--ink); text-decoration: none; }
 .rail__e.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--ink); }
 /* A period is a different kind of thing from an occasion, and the rail used to
@@ -2979,17 +2993,6 @@ button:disabled { opacity: .55; cursor: default; }
    They are here and not in a page's own <style> because more than one template
    draws them — the rule test_styles.py enforces. */
 
-/* The link fills the card, so the whole box is the click target it always was;
-   the cross sits on top of it in the corner and is the one thing that is not. */
-.rail__a {
-  display: flex; flex-direction: column; gap: 2px; padding: var(--s2) var(--s3);
-  padding-right: 28px; color: inherit; text-decoration: none; border-radius: inherit;
-}
-
-.rail__a:hover { text-decoration: none; color: var(--ink); }
-
-.rail__x { position: absolute; top: 5px; right: 5px; }
-
 .rail__x > summary { list-style: none; cursor: pointer; }
 
 .rail__x > summary::-webkit-details-marker { display: none; }
@@ -3001,6 +3004,8 @@ button:disabled { opacity: .55; cursor: default; }
   opacity: 0; transition: opacity .12s ease, background .12s ease, color .12s ease;
 }
 
+.rail__e:hover .rail__xb,
+.rail__e:focus-within .rail__xb,
 .rail__x[open] > .rail__xb { opacity: 1; }
 
 .rail__xb:hover { background: var(--alert); color: #fff; }
@@ -3009,7 +3014,6 @@ button:disabled { opacity: .55; cursor: default; }
 
 .rail__xb:focus-visible { opacity: 1; outline: 2px solid var(--tint); outline-offset: 2px; }
 
-  .rail__xb { opacity: 1; }
 
 .rail__x[open] { position: static; }
 

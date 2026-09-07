@@ -117,3 +117,88 @@ def test_no_class_used_by_several_pages_is_styled_by_only_one_of_them():
             for cls, (pages, owners) in sorted(stranded.items())
         )
     )
+
+
+# --- The rail's close button, as a cascade rather than as four separate rules ----
+#
+# It has been broken twice by merges, both times silently and both times in a
+# way no test noticed: the rules were all present and the *relationships*
+# between them were not. Once because a stylesheet was taken wholesale and only
+# the classes it lacked were appended — which restored an older .rail__e with no
+# `position: relative`, leaving the cross nothing to position against. Once
+# because the reveal was written as one rule with three selectors and the
+# extraction that carried it matched on the leading one, so the two beginning
+# `.rail__e` were dropped and only `opacity: 0` survived.
+
+
+def _app_css() -> str:
+    from newspulse.web import app as web_app
+
+    return (web_app._STATIC_DIR / "app.css").read_text("utf-8")
+
+
+def _rule(css: str, selector: str) -> str:
+    import re
+
+    match = re.search(r"(?m)^" + re.escape(selector) + r"\s*\{([^}]*)\}", css)
+    assert match, f"{selector} is not declared at all"
+    return match.group(1)
+
+
+def test_the_card_can_position_the_cross_it_contains():
+    """The cross is absolutely positioned, so the card has to be its containing
+    block. Without this the <details> falls into the card's normal flow and the
+    button lands under the label instead of in the corner."""
+    css = _app_css()
+
+    assert "position: relative" in _rule(css, ".rail__e")
+    assert "position: absolute" in _rule(css, ".rail__x")
+
+
+def test_the_link_and_not_the_card_carries_the_padding():
+    """The card holds a link *and* a form, so it cannot be the anchor. The link
+    fills it and keeps the whole box clickable."""
+    css = _app_css()
+
+    assert "padding" in _rule(css, ".rail__a")
+
+
+def test_the_button_starts_hidden_and_something_later_reveals_it():
+    """Both halves, and the order between them. `opacity: 0` alone is a button
+    nobody can ever see — which is exactly what shipped."""
+    css = _app_css()
+
+    assert "opacity: 0" in _rule(css, ".rail__xb")
+    hidden = css.index(".rail__xb {")
+    revealed = css.index(".rail__e:hover .rail__xb")
+    assert revealed > hidden, "the reveal must win the cascade, so it comes after"
+
+
+def test_the_keyboard_reaches_it_too():
+    """Hidden with opacity rather than display:none so it stays focusable, which
+    only helps if focus also reveals it."""
+    assert ".rail__e:focus-within .rail__xb" in _app_css()
+
+
+def test_touch_gets_it_permanently_and_only_inside_a_media_query():
+    """A touch screen has no pointer to reveal it. The rule that says so must
+    stay inside its query: loose, it sets opacity unconditionally and undoes the
+    hiding for everyone — which is how it was shipped once."""
+    import re
+
+    css = _app_css()
+
+    assert re.search(r"@media \(hover: none\) \{\s*\.rail__xb \{ opacity: 1; \}\s*\}", css)
+    assert not re.findall(r"(?m)^\.rail__xb \{[^}]*opacity: 1", css)
+
+
+def test_each_of_the_rail_rules_is_declared_exactly_once():
+    """Two definitions of one rule is one place to forget: the later copy wins,
+    and it has twice been the copy still naming a token a repaint removed."""
+    import re
+
+    css = _app_css()
+
+    for selector in (".rail__e", ".rail__a", ".rail__x", ".rail__xb"):
+        found = re.findall(r"(?m)^" + re.escape(selector) + r"\s*\{", css)
+        assert len(found) == 1, f"{selector} is declared {len(found)} times"
