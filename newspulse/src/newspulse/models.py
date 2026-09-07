@@ -1704,6 +1704,27 @@ class Outreach(Base):
         default=OutreachState.ENTWURF,
         server_default=OutreachState.ENTWURF.value,
     )
+    #: When the mandate signed the letter off, and NULL until it did.
+    #:
+    #: "bevor die nachrichten an die journalisten können müssen sie erst mit dem
+    #: Kunden abgestimmt werden." A letter is written about a client, in that
+    #: client's name, quoting his position — so the consultant's release is the
+    #: second signature, not the first. Every send path refuses while this is
+    #: NULL, the hand release included: a rule one of two buttons enforces is
+    #: not a rule.
+    #:
+    #: Distinct from :attr:`released_at` and deliberately not folded into it.
+    #: They are two people answering two questions — "may we say this in your
+    #: name" and "does this go out now" — and a ledger storing one timestamp
+    #: could not answer the first one afterwards.
+    client_ok_at: Mapped[dt.datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
+    #: Who at the mandate agreed, as the consultant recorded it. Empty exactly
+    #: while :attr:`client_ok_at` is NULL. A name rather than a boolean, because
+    #: "der Kunde hat zugestimmt" is not a fact anybody can check later and
+    #: "Frau Berg am 7.9." is.
+    client_ok_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     #: When a person released it. Null while it is a draft, and the one field that
     #: answers "did this leave the house": the state can be moved on by an
     #: outcome, this cannot go backwards.

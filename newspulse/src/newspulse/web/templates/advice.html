@@ -793,7 +793,8 @@
              permission on Google's consent screen — can read and nothing else,
              and an enabled button on it 403s after the confirmation. #}
           {% set may_send = mailbox and mailbox.may_send %}
-          {% set can_send = may_send and not msg.released_at and not msg.sent_through_gmail %}
+          {% set client_ok = msg.client_ok_at is not none %}
+          {% set can_send = may_send and client_ok and not msg.released_at and not msg.sent_through_gmail %}
           <article class="letter">
             <div class="letter__head">
               <span class="letter__to">
@@ -1000,7 +1001,32 @@
                  the thread, for the same reason — a composed draft is not a sent
                  letter, and one whose mailbox was disconnected afterwards has to
                  fall through to the release form rather than to a dead end. #}
-              {% if can_send and rec and rec.is_reachable %}
+{# The mandate signs first. A letter goes out in his name and quotes his
+                 position, so the consultant's release is the second signature. Until
+                 it is recorded neither release control is drawn at all, rather than
+                 drawn and then refused by the route behind it. #}
+              {% if client_ok %}
+                {# Said where the send is decided, not only in the trail below,
+                   which appears once the letter has already gone. #}
+                <span class="state__ok">
+                  {% if msg.client_ok_by == "mensch" %}
+                    {{ t("Vom Mandanten freigegeben") }}
+                  {% else %}
+                    {{ t("Vom Mandanten freigegeben: %(who)s") | format(who=msg.client_ok_by) }}
+                  {% endif %}
+                  <span class="dot">·</span> {{ msg.client_ok_at | de_short_date }}
+                </span>
+              {% endif %}
+              {% if not client_ok and not msg.released_at %}
+                <form class="signoff" method="post"
+                      action="/client/{{ client.id }}/outreach/{{ msg.id }}/kundenfreigabe">
+                  <span class="signoff__l">{{ t("Mit dem Mandanten abgestimmt?") }}</span>
+                  <input class="signoff__in" type="text" name="agreed_by"
+                         placeholder="{{ t('Wer hat zugestimmt') }}"
+                         aria-label="{{ t('Wer hat zugestimmt') }}" autocomplete="off">
+                  <button type="submit" class="btn btn--sm">{{ t("Freigabe eintragen") }}</button>
+                </form>
+              {% elif can_send and rec and rec.is_reachable %}
                 {# The locked mock's two clicks, as a details/summary rather than
                    a script: the second click is an irreversible send, and it must
                    not depend on JavaScript having loaded. #}

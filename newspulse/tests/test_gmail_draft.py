@@ -322,8 +322,15 @@ def _letter(
     email: str = _ADDRESS,
     in_book: bool = True,
     journalist: str = _JOURNALIST,
+    client_ok: bool = True,
 ) -> Outreach:
-    """One mandate, one impulse, one written letter, and the contact behind it."""
+    """One mandate, one impulse, one written letter, and the contact behind it.
+
+    Signed off by the mandate by default, because that is the state a letter is
+    in by the time any of these tests is about it: nothing leaves the house
+    before the client has agreed. ``client_ok=False`` is for the tests that are
+    about that gate itself.
+    """
     client = Client(name="Nordlicht Energie", industry="Energie", keywords=["Netz"])
     session.add(client)
     session.flush()
@@ -346,6 +353,8 @@ def _letter(
         subject=_SUBJECT,
         message=_BODY,
         generated_at=dt.datetime.now(dt.UTC),
+        client_ok_at=dt.datetime.now(dt.UTC) if client_ok else None,
+        client_ok_by="Frau Berg" if client_ok else "",
     )
     session.add(row)
     session.commit()
@@ -932,3 +941,122 @@ def test_the_migration_adds_the_three_gmail_columns(tmp_path, monkeypatch):
             assert columns[name]["nullable"] is False
     finally:
         engine.dispose()
+
+
+# --- The mandate signs first ------------------------------------------------------
+#
+# "bevor die nachrichten an die journalisten können müssen sie erst mit dem
+# Kunden abgestimmt werden. das sollten wir berücksichtigen."
+#
+# A letter goes out in the mandate's name, quoting his position. The
+# consultant's release was the only signature on the row, so the tool could put
+# a claim in a journalist's inbox that the client had never read.
+
+
+def test_a_letter_the_client_has_not_seen_is_not_sent(mailbox, gmail, web, session):
+    row = _letter(session, client_ok=False)
+
+    answer = _push(web, row)
+
+    assert answer.status_code == 400
+    assert "Noch nicht mit dem Mandanten abgestimmt" in answer.text
+    assert gmail.calls == [], "nothing reached Google at all"
+
+
+def test_the_hand_release_obeys_the_same_gate(mailbox, gmail, web, session):
+    """A rule one of two buttons enforces is not a rule. This one records that a
+    letter went out by hand, and a letter the mandate never saw must not be
+    recordable either."""
+    row = _letter(session, client_ok=False)
+
+    answer = web.post(
+        f"/client/{row.client_id}/outreach/{row.id}/release", follow_redirects=False
+    )
+
+    assert answer.status_code == 400
+    session.refresh(row)
+    assert row.released_at is None
+
+
+def test_the_card_asks_for_the_sign_off_instead_of_offering_the_send(
+    mailbox, gmail, web, session
+):
+    """Neither release control is drawn while the client has not agreed — the
+    question that comes first is drawn in their place, rather than a button that
+    is refused after it is pressed."""
+    row = _letter(session, client_ok=False)
+
+    body = _card(web, row)
+
+    assert f"/client/{row.client_id}/outreach/{row.id}/kundenfreigabe" in body
+    assert "Mit dem Mandanten abgestimmt?" in body
+    assert f"/client/{row.client_id}/outreach/{row.id}/gmail-draft" not in body
+    assert f"/client/{row.client_id}/outreach/{row.id}/release" not in body
+
+
+def test_recording_the_sign_off_opens_the_send_and_names_who_agreed(
+    mailbox, gmail, web, session
+):
+    row = _letter(session, client_ok=False)
+
+    web.post(
+        f"/client/{row.client_id}/outreach/{row.id}/kundenfreigabe",
+        data={"agreed_by": "Frau Berg"},
+        follow_redirects=False,
+    )
+
+    session.refresh(row)
+    assert row.client_ok_at is not None
+    assert row.client_ok_by == "Frau Berg"
+    body = _card(web, row)
+    assert f"/client/{row.client_id}/outreach/{row.id}/gmail-draft" in body
+    # The trail says who agreed, above the release it precedes.
+    assert "Vom Mandanten freigegeben: Frau Berg" in body
+
+
+def test_a_sign_off_without_a_name_still_records_a_human(mailbox, gmail, web, session):
+    """The same fallback the release uses: "mensch" is a stored token saying a
+    person decided, not a claim about which person."""
+    row = _letter(session, client_ok=False)
+
+    web.post(
+        f"/client/{row.client_id}/outreach/{row.id}/kundenfreigabe",
+        follow_redirects=False,
+    )
+
+    session.refresh(row)
+    assert row.client_ok_at is not None and row.client_ok_by == "mensch"
+
+
+def test_signing_off_twice_keeps_the_first_answer(mailbox, gmail, web, session):
+    """A double submit or a reloaded page must not rewrite when the client
+    agreed, or who did."""
+    row = _letter(session, client_ok=False)
+    web.post(
+        f"/client/{row.client_id}/outreach/{row.id}/kundenfreigabe",
+        data={"agreed_by": "Frau Berg"}, follow_redirects=False,
+    )
+    session.refresh(row)
+    first = row.client_ok_at
+
+    web.post(
+        f"/client/{row.client_id}/outreach/{row.id}/kundenfreigabe",
+        data={"agreed_by": "Herr Anders"}, follow_redirects=False,
+    )
+
+    session.refresh(row)
+    assert row.client_ok_at == first and row.client_ok_by == "Frau Berg"
+
+
+def test_the_note_under_an_unsigned_letter_does_not_promise_a_send(
+    mailbox, gmail, web, session
+):
+    """The card's closing sentence follows the same condition as the button it
+    explains. Without it the line "Zwei Klicks statt einem" stands under a
+    letter that has no send control at all — the one mutation the branch order
+    alone did not catch."""
+    row = _letter(session, client_ok=False)
+
+    body = _card(web, row)
+
+    assert "Zwei Klicks statt einem" not in body

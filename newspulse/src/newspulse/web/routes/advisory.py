@@ -103,6 +103,9 @@ NO_ADDRESS = "Im Kontaktbuch, aber ohne E-Mail-Adresse."
 #: DEC-4's send path is in this state, because Google fixes the granted scopes at
 #: consent time and no request widens them afterwards.
 NO_SEND_PERMISSION = "Dieses Postfach ist nur zum Lesen verbunden."
+#: The gate this product's own sentence implies and did not enforce: a letter
+#: goes out in the mandate's name, so the mandate signs it off first.
+NO_CLIENT_OK = "Noch nicht mit dem Mandanten abgestimmt."
 
 
 @dataclass(frozen=True, slots=True)
@@ -700,6 +703,44 @@ def remember_address_route(
     )
 
 
+@router.post("/client/{client_id}/outreach/{outreach_id}/kundenfreigabe")
+def record_client_signoff(
+    request: Request,
+    client_id: int,
+    outreach_id: int,
+    agreed_by: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Record that the mandate agreed to this letter going out.
+
+    The step the product's founding sentence implied and nothing enforced: a
+    letter is written about a client, in his name, quoting his position, and
+    until now the consultant's release was the only signature on the row.
+
+    A note the consultant makes, not a mail to the client: this build sends
+    nothing to mandates, and the alternative — a draft mailed out for approval —
+    would break that on the first click. What the note buys is the order. The
+    send paths refuse while it is missing, the hand release included, so the
+    rule holds wherever a letter can leave.
+
+    The name is what makes it checkable. "Der Kunde hat zugestimmt" is not a
+    fact anybody can verify three months later; "Frau Berg" is, and an empty
+    field falls back to the same "mensch" token the release uses rather than
+    pretending to a name nobody gave.
+    """
+    _refuse_foreign_origin(request)
+    mandate_or_404(session, client_id)
+    row = _letter(session, client_id, outreach_id)
+    if row.client_ok_at is None:
+        row.client_ok_at = dt.datetime.now(dt.UTC)
+        row.client_ok_by = (agreed_by or "").strip() or "mensch"
+        session.commit()
+        _log.info("outreach %d signed off by the mandate (%r)", row.id, row.client_ok_by)
+    return RedirectResponse(
+        f"/client/{client_id}/advice#impulse-{row.angle_id}", status_code=_SEE_OTHER
+    )
+
+
 @router.post("/client/{client_id}/outreach/{outreach_id}/release")
 def release_letter(
     request: Request,
@@ -721,6 +762,11 @@ def release_letter(
     """
     _refuse_foreign_origin(request)
     row = _letter(session, client_id, outreach_id)
+    # The same gate the Gmail path passes through. A rule one of two buttons
+    # enforces is not a rule: this one records that a letter went out by hand,
+    # and a letter the mandate never saw must not be recordable either.
+    if row.client_ok_at is None:
+        raise HTTPException(status_code=400, detail=NO_CLIENT_OK)
     outreach.release(session, row, released_by=released_by)
     _log.info("outreach %d released by %r", row.id, row.released_by)
     return RedirectResponse(
@@ -767,6 +813,8 @@ def _refuse_unsendable(session: Session, row: Outreach) -> Recipient:
             status_code=400,
             detail="Dieses Anschreiben wurde bereits freigegeben und verschickt.",
         )
+    if row.client_ok_at is None:
+        raise HTTPException(status_code=400, detail=NO_CLIENT_OK)
     recipient = _recipient(session, row)
     if not recipient.is_reachable:
         raise HTTPException(status_code=400, detail=recipient.reason)

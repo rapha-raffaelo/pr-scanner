@@ -2589,6 +2589,31 @@ button:disabled { opacity: .55; cursor: default; }
 
 
 
+
+/* --- The mandate's sign-off ------------------------------------------------ */
+/* The step before either release control, and drawn instead of them: a letter
+   the client has not seen has no "send" to offer, only the question that comes
+   first. Full width of the state row, because it is a question and a question
+   squeezed beside two badges reads as a footnote. */
+.signoff {
+  flex: 1 1 100%; display: flex; align-items: center; gap: var(--s2);
+  margin-top: var(--s2); padding: var(--s3);
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--fill-2);
+}
+/* The client's agreement, stated beside the badges: green because it is a
+   condition that has been met, and quiet because it is a precondition and not
+   the outcome. */
+.state__ok {
+  font-size: var(--t-caption); font-weight: 600; color: var(--cat-finanzen-ink);
+}
+.signoff__l { font-size: var(--t-footnote); font-weight: 600; color: var(--ink-2); }
+.signoff__in {
+  flex: 1 1 auto; min-width: 0; padding: 6px 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-s);
+  background: var(--card); color: var(--ink); font: inherit; font-size: var(--t-footnote);
+}
+.signoff__in:focus { outline: 2px solid var(--tint); outline-offset: 1px; }
+
 /* --- The two-click question ----------------------------------------------- */
 /* One box, wherever something is about to be removed or sent: the send
    confirmation on a letter, and the cross on a rail card. It was declared

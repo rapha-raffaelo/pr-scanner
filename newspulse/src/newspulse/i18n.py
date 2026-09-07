@@ -1066,6 +1066,13 @@ _EN: dict[str, str] = {
     "Er verschwindet aus dieser Liste und von der Seite. Texte, die daraus entstanden sind, bleiben erhalten.":
         "It leaves this list and the page. Texts written from it are kept.",
     "Ja, verwerfen": "Yes, decline",
+    #: The mandate signs a letter off before the journalist sees it.
+    "Mit dem Mandanten abgestimmt?": "Agreed with the client?",
+    "Wer hat zugestimmt": "Who agreed",
+    "Freigabe eintragen": "Record approval",
+    "Vom Mandanten freigegeben": "Approved by the client",
+    "Vom Mandanten freigegeben: %(who)s": "Approved by the client: %(who)s",
+    "Noch nicht mit dem Mandanten abgestimmt.": "Not yet agreed with the client.",
     "Anderer Zeitraum": "Another period",
     "Der Fragensatz wird vorgeschlagen — die Seite aktualisiert sich, sobald er steht.":
         "The question set is being proposed — the page refreshes as soon as it "
