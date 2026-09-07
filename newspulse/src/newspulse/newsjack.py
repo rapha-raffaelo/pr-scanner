@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from importlib import resources
 from string import Template
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -131,7 +131,12 @@ class StandingVerdict(BaseModel):
 
     standing: str
     reason: str = ""
-    outlook: list[dict] = []
+    #: ``[{"when": ..., "what": ...}]``, which is the shape ``_outlook`` reduces
+    #: it to and the shape the tile renders. A ``default_factory`` rather than a
+    #: bare ``[]``: Pydantic deep-copies literal defaults so there is no shared
+    #: list here, but the reader has to know that to know it is safe, and the
+    #: factory says it without being known.
+    outlook: list[dict[str, str]] = Field(default_factory=list)
 
 
 #: The spellings a model plausibly answers with, folded onto the closed set.
@@ -360,6 +365,59 @@ def window(*, hours: int | None = None) -> dt.timedelta:
     return dt.timedelta(hours=config.newsjack_window_hours() if hours is None else hours)
 
 
+def _row_for(
+    client: Client,
+    story: stories.Story,
+    origin: _Radar,
+    *,
+    ends: dt.datetime,
+    reference: dt.datetime,
+    standing: Standing,
+    reason: str,
+    outlook: list[dict[str, str]],
+    written_under: int | None,
+) -> NewsjackOpportunity:
+    """The verdict, as the row that records it. Constructed, never stored here."""
+    return NewsjackOpportunity(
+        client_id=client.id,
+        article_id=origin.article.id,
+        standing=standing,
+        reason=reason,
+        pickup_count=story.pickup_count,
+        window_ends_at=ends,
+        created_at=reference,
+        brain_version=brain.stamp(written_under, what="a newsjack verdict"),
+        outlook=outlook,
+        # Stamped only when there is something to stamp, so an empty look reads
+        # as "none was made" rather than as one made and forgotten.
+        outlook_at=reference if outlook else None,
+    )
+
+
+def _store(
+    session: Session, row: NewsjackOpportunity, origin: _Radar, client: Client
+) -> bool:
+    """Commit one verdict; ``False`` when a concurrent scan got there first.
+
+    ``uq_newsjack_client_article`` is the arbiter. Two scans weighing the same
+    story is not an error state — it is two runs doing their job — and the one
+    that lost simply keeps the other's verdict rather than raising into the
+    caller's loop.
+    """
+    session.add(row)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        _log.info(
+            "a concurrent scan weighed %r for %r first; keeping its verdict",
+            origin.headline,
+            client.name,
+        )
+        return False
+    return True
+
+
 def scan(
     session: Session,
     client: Client,
@@ -411,32 +469,18 @@ def scan(
         if verdict is None:
             continue
         standing, reason, outlook = verdict
-        row = NewsjackOpportunity(
-            client_id=client.id,
-            article_id=origin.article.id,
+        row = _row_for(
+            client,
+            story,
+            origin,
+            ends=ends,
+            reference=reference,
             standing=standing,
             reason=reason,
-            pickup_count=story.pickup_count,
-            window_ends_at=ends,
-            created_at=reference,
-            brain_version=brain.stamp(written_under, what="a newsjack verdict"),
             outlook=outlook,
-            # Stamped only when there is something to stamp, so an empty look
-            # reads as "none was made" rather than as one made and forgotten.
-            outlook_at=reference if outlook else None,
+            written_under=written_under,
         )
-        session.add(row)
-        try:
-            session.commit()
-        except IntegrityError:
-            # ``uq_newsjack_client_article`` fired: a concurrent scan weighed
-            # the same story first. Its verdict is the verdict.
-            session.rollback()
-            _log.info(
-                "a concurrent scan weighed %r for %r first; keeping its verdict",
-                origin.headline,
-                client.name,
-            )
+        if not _store(session, row, origin, client):
             continue
         created.append(row)
         _log.info(

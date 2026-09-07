@@ -41,7 +41,13 @@ def upgrade() -> None:
                 server_default=sa.text("'[]'"),
             )
         )
-        batch.add_column(sa.Column("outlook_at", sa.DateTime(), nullable=True))
+        # ``timezone=True``, matching the model's ``UTCDateTime`` and every
+        # sibling revision back to 0040. SQLite ignores it either way, so the
+        # difference is invisible here and shows up as a schema an autogenerate
+        # diff calls drifted the first time this runs anywhere else.
+        batch.add_column(
+            sa.Column("outlook_at", sa.DateTime(timezone=True), nullable=True)
+        )
 
 
 def downgrade() -> None:
