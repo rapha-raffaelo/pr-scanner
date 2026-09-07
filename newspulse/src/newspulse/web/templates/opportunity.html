@@ -34,15 +34,6 @@
     <h1 class="dhd__t">{{ opp.article.title }}</h1>
     <div class="chips">
       <span class="chip">{{ client.name }}</span>
-      {# The state the picker shows follows from the rows that exist — it is not
-         a stored column, and "Aktivieren" is the same act as "Text schreiben"
-         on the card, not a second one beside it. #}
-      <span class="chip chip--state" data-status="{{ status.value }}">
-        {% if status.value == 'offen' %}{{ t("Offen") }}
-        {% elif status.value == 'aktiv' %}{{ t("Aktiv") }}
-        {% elif status.value == 'ausgelaufen' %}{{ t("Ausgelaufen") }}
-        {% else %}{{ t("Verworfen") }}{% endif %}
-      </span>
       {% if not concluded %}
         <span class="chip chip--warn">
           {% if score.hours_left > 0 %}{{ t("Noch") }} {{ score.hours_left }} {{ t("Std im Fenster") }}
@@ -53,6 +44,21 @@
     </div>
   </div>
   <div class="dhd__r">
+    {# The status control. It reads the four states off the rows that exist —
+       there is no column behind any of them, and "aktiv" is simply what having
+       opened the occasion *means*. So only the one transition a person can
+       actually make is a control; the rest are marks. A picker offering
+       "ausgelaufen" would be offering to move a clock. #}
+    <div class="dstate" role="group" aria-label="{{ t('Zustand') }}">
+      {% for name, label in [('offen', t("Offen")), ('aktiv', t("Aktiv")),
+                             ('ausgelaufen', t("Ausgelaufen")), ('verworfen', t("Verworfen"))] %}
+        {% if status.value == name %}
+          <span class="dstate__s is-on" data-status="{{ name }}" aria-current="true">{{ label }}</span>
+        {% else %}
+          <span class="dstate__s" data-status="{{ name }}">{{ label }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
     {# The badge shows the number alone, as the mock does; the three addends
        stand under it and again in the provenance bar, so it can be re-derived
        by hand. #}
@@ -76,11 +82,14 @@
         {% endif %}
       </p>
     {% else %}
-      {# "Aktivieren" is the existing act, posted at the existing endpoint: it
-         opens the occasion, exactly as the card on Heute does. #}
+      {# "Aktivieren" is not a second way to make an opportunity active — it is
+         the existing act at the existing endpoint, the same one "Text schreiben"
+         on the card posts to. Opening the occasion is what makes it active, so
+         the button that does it is the status control. #}
       <form method="post" action="/client/{{ client.id }}/gelegenheit/{{ opp.id }}/text">
-        <button type="submit" class="btn">
-          {% if occasion %}{{ t("Texte ansehen") }}{% else %}{{ t("Text schreiben") }}{% endif %}
+        <button type="submit" class="btn"
+                title="{{ t('Legt den Anlass an — derselbe Vorgang wie „Text schreiben“ auf dem Kärtchen') }}">
+          {% if occasion %}{{ t("Texte ansehen") }}{% else %}{{ t("Aktivieren") }}{% endif %}
         </button>
       </form>
       <form method="post" action="/gelegenheit/{{ opp.id }}/verwerfen">

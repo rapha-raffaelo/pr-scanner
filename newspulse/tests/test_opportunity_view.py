@@ -464,7 +464,27 @@ def test_activating_posts_at_the_same_endpoint_as_the_card(web, session, mandate
 
     page = web.get(_url(row)).text
 
+    assert "Aktivieren" in page
     assert f'action="/client/{mandate.id}/gelegenheit/{row.id}/text"' in page
+
+
+def test_the_status_control_shows_all_four_states_with_the_derived_one_marked(
+    web, session, mandate
+):
+    """It reads the state off the rows; no column stores any of the four, and
+    the only segment a person can act on is the one that opens the occasion."""
+    row = _opportunity(session, mandate)
+
+    page = web.get(_url(row)).text
+
+    for state in ("Offen", "Aktiv", "Ausgelaufen", "Verworfen"):
+        assert state in page
+    assert 'class="dstate__s is-on" data-status="offen"' in page
+    # The four states are marks, not controls: they are rendered as spans, so
+    # nothing on the strip offers to move a clock or undo a dismissal. The one
+    # transition a person can make is the Aktivieren button beside it.
+    control = page.split('class="dstate"')[1].split("</div>")[0]
+    assert "<button" not in control and "<form" not in control and "<a " not in control
 
 
 # --- An opportunity that has ended --------------------------------------------------
@@ -498,8 +518,6 @@ def test_a_dismissed_opportunity_names_when_and_on_what_it_ended(web, session, m
 
 
 def test_without_an_occasion_the_next_step_is_to_write(session, mandate):
-    row = _opportunity(session, mandate)
-
     steps = opportunity.steps(None, [], [])
 
     assert steps[0].kind is opportunity.StepKind.TEXT

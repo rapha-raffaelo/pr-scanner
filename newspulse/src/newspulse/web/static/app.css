@@ -2530,12 +2530,26 @@ button:disabled { opacity: .55; cursor: default; }
   border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 3px 10px;
 }
 .chip--warn { color: var(--warn); border-color: rgba(178, 80, 0, 0.25); background: var(--warn-wash); }
-/* The derived state, not a stored column — coloured only where it means the
-   opportunity has ended, so an open one reads as the quiet default. */
-.chip--state[data-status="aktiv"] { color: var(--good); border-color: rgba(36, 138, 61, 0.25); background: var(--good-wash); }
-.chip--state[data-status="ausgelaufen"],
-.chip--state[data-status="verworfen"] { color: var(--faint); border-style: dashed; }
 .dchips { margin-top: var(--s3); }
+
+/* The status control: four states read off the rows, the current one marked.
+   Drawn as a segmented control because that is what it is — but only the one
+   transition a person can make is a button, and it sits beside this rather than
+   inside it. A segment offering "ausgelaufen" would be offering to move a clock. */
+.dstate {
+  display: flex; align-items: stretch; align-self: flex-start;
+  border: 1px solid var(--line); border-radius: var(--radius-s);
+  background: var(--fill-2); overflow: hidden;
+}
+.dstate__s {
+  font-size: var(--t-caption); color: var(--faint); padding: 5px 9px; white-space: nowrap;
+  border-right: 1px solid var(--line);
+}
+.dstate__s:last-child { border-right: 0; }
+.dstate__s.is-on { color: var(--ink); font-weight: 600; background: var(--card); }
+.dstate__s.is-on[data-status="aktiv"] { color: var(--good); }
+.dstate__s.is-on[data-status="ausgelaufen"],
+.dstate__s.is-on[data-status="verworfen"] { color: var(--warn); }
 
 /* The provenance bar: three sentences naming where the page's figures came
    from. Above the tiles because it qualifies all of them. */

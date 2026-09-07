@@ -2113,6 +2113,10 @@ _EN: dict[str, str] = {
     "das Fenster ab dem Ursprungsbeitrag ist zugelaufen":
         "the window running from the origin piece has closed",
     "Texte ansehen": "View the texts",
+    "Zustand": "State",
+    "Aktivieren": "Activate",
+    "Legt den Anlass an — derselbe Vorgang wie „Text schreiben“ auf dem Kärtchen":
+        "Opens the occasion — the same act as \u201cText schreiben\u201d on the card",
     # The provenance bar: where every figure on the page came from.
     "Erkannt durch": "Detected by",
     "Dringlichkeit gerechnet aus": "Urgency calculated from",
