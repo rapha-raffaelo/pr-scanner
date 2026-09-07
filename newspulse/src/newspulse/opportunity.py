@@ -31,14 +31,26 @@ What is computed here, and what is refused:
   the kind of number nobody checks and everybody believes.
 
 The story's other pieces — every article carrying it, not only the origin the
-row anchors — are re-derived by clustering the mandate's stored radar the way
-:func:`newspulse.newsjack.scan` did when the row was written. That is a read
-over stored rows, and it is what lets the sources list name all four outlets
-when the row itself knows one.
+row anchors — are re-derived by clustering the mandate's stored radar with the
+same clusterer :func:`newspulse.newsjack.scan` used when the row was written.
+That is a read over stored rows, and it is what lets the sources list name all
+four outlets when the row itself knows one. Re-derived, not reproduced: see
+:func:`_story_members` for the one way the two reads differ and why the badge
+never counts this list.
+
+This module calls a handful of private helpers in :mod:`newspulse.newsjack` and
+:mod:`newspulse.pitch` — ``_reference``, ``_radar_rows``, ``_radar_articles``,
+``_spellings`` — and that is deliberate rather than sloppy. Each of them *is* a
+definition: what "the mandate's radar" holds, what "the mandate's field" holds,
+how one byline is spelled twice. Re-implementing any of them here would give the
+dossier a second definition, silently different from the one the scan and the
+pitch list already use, and the page's whole claim is that its figures resolve
+to the same rows those pages resolve to.
 """
 
 from __future__ import annotations
 
+import collections
 import datetime as dt
 from dataclasses import dataclass
 from enum import StrEnum
@@ -503,12 +515,55 @@ class Recipient:
     reason: str
     fit: int
     wrote_the_story: bool
+    #: Pieces of *this mandate's* field this byline wrote in the last 90 days —
+    #: uncapped here, capped only where it turns into points. See
+    #: :func:`_field_presence` for why the count is the mandate's radar and not
+    #: the byline's whole output.
     field_pieces: int
     #: Whether the contact book holds an entry. The address itself is never
     #: carried here — see the ``pitch`` module docstring on derived addresses.
     has_contact: bool
     #: When a released letter for this occasion last reached them, if one did.
     already_pitched_at: dt.datetime | None
+
+
+def _field_presence(
+    session: Session, client: Client, *, now: dt.datetime
+) -> collections.Counter[str]:
+    """How many pieces of *this mandate's field* each stored byline wrote, over
+    :data:`pitch.LOOKBACK_DAYS`, keyed by the folded name.
+
+    DEC-5's second quantity is presence "im Feld" — this mandate's field, not
+    the byline's whole output. ``pitch.recent_headlines`` folds the two feed
+    spellings of a name but filters on the author alone, so a journalist busy on
+    an unrelated mandate's beat would score the field term here without ever
+    having written about this one.
+
+    So the count walks the same rows :func:`pitch.targets_for` builds the list
+    from — ``TopicHit`` for this mandate, run through its own theme matcher —
+    and the two private helpers are called rather than re-implemented for the
+    reason the module docstring gives about ``newsjack``: a second definition of
+    "the mandate's field" is a second answer nobody reconciles.
+
+    One pass for the whole page rather than a query per recipient: the list runs
+    to seventeen names and the field is one bounded read.
+    """
+    counts: collections.Counter[str] = collections.Counter()
+    since = now - dt.timedelta(days=pitch.LOOKBACK_DAYS)
+    for article in pitch._radar_articles(session, client, since):
+        author = (article.author or "").strip()
+        if author:
+            counts[author.casefold()] += 1
+    return counts
+
+
+def _pieces_in_field(counts: collections.Counter[str], journalist: str) -> int:
+    """This byline's pieces in the field, both feed spellings folded together.
+
+    A set, because a single-word byline spells the same way twice and would
+    otherwise be counted twice.
+    """
+    return sum(counts[spelling] for spelling in set(pitch._spellings(journalist)))
 
 
 def _fit(target: pitch.PitchTarget, *, wrote: bool, field_pieces: int) -> int:
@@ -538,20 +593,13 @@ def recipients(
     which the page renders as the named gap it is.
     """
     reference = now or dt.datetime.now(dt.UTC)
+    in_field = _field_presence(session, client, now=reference)
     out: list[Recipient] = []
     for target in pitch.targets_for(session, client, occasion_row, now=reference):
         if not target.journalist:
             continue
         wrote = target.journalist.strip().casefold() in story_authors
-        field_pieces = len(
-            pitch.recent_headlines(
-                session,
-                target.journalist,
-                target.outlet,
-                now=reference,
-                limit=_FIT_FIELD_CAP,
-            )
-        )
+        field_pieces = _pieces_in_field(in_field, target.journalist)
         out.append(
             Recipient(
                 name=target.journalist,
