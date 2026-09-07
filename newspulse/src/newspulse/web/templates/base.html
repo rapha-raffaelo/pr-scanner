@@ -137,9 +137,13 @@
              include_query_params, not an append: it keeps the filters the
              reader was looking at, and *sets* rather than adds ?assistant, so
              pressing it on a page that already carries it does not grow the
-             URL a &assistant=1 at a time. #}
+             URL a &assistant=1 at a time.
+
+             The label is the one string in this bar not passed through t():
+             it is the assistant's name, like RauteOS above it, and putting a
+             name through the table is an invitation to translate it. #}
           <a class="askraute" href="{{ request.url.path }}?{{ request.url.include_query_params(assistant=1).query }}" data-drawer-open>
-            <svg class="ico askraute__ico" aria-hidden="true"><use href="#ico-raute"></use></svg>{{ t("Ask RAUTE") }}</a>
+            <svg class="ico askraute__ico" aria-hidden="true"><use href="#ico-raute"></use></svg>Ask RAUTE</a>
         </div>
       </div>
 
