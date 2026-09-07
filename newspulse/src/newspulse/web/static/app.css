@@ -2997,6 +2997,29 @@ button:disabled { opacity: .55; cursor: default; }
 
 .rail__x > summary::-webkit-details-marker { display: none; }
 
+/* The question the cross opens. It grows the card in flow rather than floating
+   over it: the rail scrolls sideways, and a scrolling box clips anything
+   positioned past its edge — the first build put the sentence half under the
+   next card. Lost once to a merge, which is why the styles test now pins it. */
+.rail__x[open] { position: static; }
+.rail__e:has(.rail__x[open]) { max-width: 340px; }
+.rail__confirm {
+  margin: 0 var(--s3) var(--s3); padding: var(--s3);
+  border: 1px solid rgba(220, 38, 38, .3); border-radius: var(--radius);
+  background: var(--alert-wash);
+}
+.rail__confirm p { margin: 0 0 var(--s2); font-size: var(--t-footnote); color: var(--ink-2); max-width: none; }
+.rail__confirm p strong { color: var(--ink); }
+.rail__confirm .confirm__row { margin-top: var(--s2); }
+
+/* The objection repeated at the point of no return. Used since the send
+   confirmation was built and never styled, so the one line that says the
+   second model disagrees read exactly like the sentence above it. */
+.confirm__hold {
+  padding: var(--s2) var(--s3); border-radius: var(--radius-s);
+  background: var(--alert-wash); color: var(--alert);
+}
+
 .rail__xb {
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; border-radius: 50%;
@@ -3019,7 +3042,7 @@ button:disabled { opacity: .55; cursor: default; }
 
 .rail__x[open] > .rail__xb { position: absolute; top: 6px; right: 6px; }
 
-.rail__e:has(.rail__x[open]) { max-width: 340px; border-color: var(--alert); box-shadow: var(--shadow-raised); }
+.rail__e:has(.rail__x[open]) { max-width: 340px; border-color: var(--alert); box-shadow: 0 4px 12px rgba(28, 31, 55, .10), 0 1px 3px rgba(28, 31, 55, .06); }
 
 .signoff {
   flex: 1 1 100%; display: flex; align-items: center; gap: var(--s2);
@@ -3028,7 +3051,7 @@ button:disabled { opacity: .55; cursor: default; }
 }
 
 .state__ok {
-  font-size: var(--t-caption); font-weight: 600; color: var(--cat-finanzen-ink);
+  font-size: var(--t-caption); font-weight: 600; color: var(--good);
 }
 
 .signoff__l { font-size: var(--t-footnote); font-weight: 600; color: var(--ink-2); }
@@ -3046,7 +3069,7 @@ button:disabled { opacity: .55; cursor: default; }
   border: 1px solid rgba(220, 38, 38, .3); background: var(--alert-wash);
 }
 
-.confirm p { font-size: var(--t-footnote); color: var(--cat-krise-ink); margin-bottom: 10px; max-width: 64ch; }
+.confirm p { font-size: var(--t-footnote); color: var(--alert); margin-bottom: 10px; max-width: 64ch; }
 
 .confirm__row { display: flex; gap: 10px; align-items: center; }
 

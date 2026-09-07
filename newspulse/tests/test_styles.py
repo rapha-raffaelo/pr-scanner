@@ -202,3 +202,64 @@ def test_each_of_the_rail_rules_is_declared_exactly_once():
     for selector in (".rail__e", ".rail__a", ".rail__x", ".rail__xb"):
         found = re.findall(r"(?m)^" + re.escape(selector) + r"\s*\{", css)
         assert len(found) == 1, f"{selector} is declared {len(found)} times"
+
+
+# --- Tokens that no longer exist ---------------------------------------------------
+#
+# An undefined custom property does not fall back to anything: `color:
+# var(--gone)` makes the whole declaration invalid and the element keeps
+# whatever it inherited. Nothing errors, nothing logs, and the page looks almost
+# right — which is how three rules shipped painting nothing at all after a
+# repaint removed the tokens they named. The three were the client sign-off
+# line, the send confirmation's text, and the shadow under an opened rail card.
+
+
+def _token_use(css: str) -> set[str]:
+    """Every ``var(--x)`` with no fallback. ``var(--x, something)`` is safe by
+    construction and is not this test's business."""
+    import re
+
+    return {
+        m.group(1)
+        for m in re.finditer(r"var\(\s*(--[a-z0-9-]+)\s*\)", css)
+    }
+
+
+def test_every_custom_property_a_rule_reads_is_defined_somewhere():
+    import re
+
+    css = _app_css()
+    defined = set(re.findall(r"(--[a-z0-9-]+)\s*:", css))
+
+    missing = sorted(_token_use(css) - defined)
+
+    assert not missing, (
+        f"these tokens are read but never defined, so every declaration naming "
+        f"one is silently void: {missing}"
+    )
+
+
+def test_a_page_style_block_only_reads_tokens_that_exist():
+    """The same rule for the stylesheets that live inside a template: a page
+    defining its own token is fine, a page reading one nobody defines is not."""
+    import re
+    from pathlib import Path
+
+    from newspulse.web import app as web_app
+
+    css = _app_css()
+    shared = set(re.findall(r"(--[a-z0-9-]+)\s*:", css))
+    templates = Path(web_app.__file__).parent / "templates"
+
+    broken: dict[str, list[str]] = {}
+    for path in sorted(templates.rglob("*.html")):
+        blocks = re.findall(r"<style>(.*?)</style>", path.read_text("utf-8"), re.S)
+        if not blocks:
+            continue
+        local = {m for b in blocks for m in re.findall(r"(--[a-z0-9-]+)\s*:", b)}
+        used = {m for b in blocks for m in _token_use(b)}
+        gap = sorted(used - shared - local)
+        if gap:
+            broken[path.name] = gap
+
+    assert not broken, f"page styles reading tokens nobody defines: {broken}"
