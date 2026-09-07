@@ -729,6 +729,33 @@ def refresh(
 # --- The pass over the portfolio ------------------------------------------------
 
 
+def adopt_all(session: Session) -> int:
+    """Write in every proposal nobody has to be asked about, across the portfolio.
+
+    What the daily sweep does now, and all it does: it costs no model call and
+    no search, because the rows are already on file and only need moving into
+    the fields they were read for.
+
+    Reading the web again is :func:`run`'s job and happens when somebody asks
+    for it. "der gesamte Content bereits beim Onboarding gescraped wird und dann
+    nurnoch durch einen Button 'aktualisieren' neu gescraped werden kann" — a
+    profile is read when the mandate is created and thereafter when a person
+    decides it is worth re-reading, not on a sixty-day clock nobody set.
+
+    Fault-isolated per mandate: one unusable row must not cost the other six
+    their adoption.
+    """
+    written = 0
+    for client in list_clients(session):
+        try:
+            written += len(adopt(session, client, proposed_by=config.review_model()))
+        except Exception:  # noqa: BLE001 — one bad row must not cost the pass
+            session.rollback()
+            _log.exception("adopting proposals for %r failed; the pass continues", client.name)
+    _log.info("profile adoption: %d field(s) written across the portfolio", written)
+    return written
+
+
 def run(
     session: Session,
     *,
@@ -811,6 +838,7 @@ __all__ = [
     "DUE_AFTER",
     "Generate",
     "adopt",
+    "adopt_all",
     "clear",
     "contradicts",
     "discard",

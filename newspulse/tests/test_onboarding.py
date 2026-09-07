@@ -845,3 +845,80 @@ def test_a_settling_failure_leaves_the_session_usable(monkeypatch, no_theme_sett
 
         # The session survived: the sweep could still read and write after it.
         assert session.scalars(select(Client)).all()
+
+
+def test_onboarding_reads_the_profile_and_writes_in_what_it_found(monkeypatch):
+    """"der gesamte Content bereits beim Onboarding gescraped."
+
+    The profile used to wait for the nightly pass's own clock, so a mandate
+    created on a Tuesday had a blank profile until it came round — and every
+    text written in between was written off nothing. The consultant creating it
+    is standing there; that is the moment to spend the call.
+
+    Written in, not merely proposed: adoption runs under the same rule the
+    portfolio pass uses, so a field nobody has to be asked about is filled.
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import profile as profiles
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.web.routes import settings as settings_routes
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with factory() as session:
+        client = Client(
+            name="Neu AG", aliases=[], industry="Modehandel",
+            keywords=["Retouren"], alert_topics=[], country="DE",
+        )
+        session.add(client)
+        session.commit()
+
+        monkeypatch.setattr(
+            profiles,
+            "research",
+            lambda c, *, generate=None: [
+                profiles.Proposal(
+                    key="sitz", value="Hamburg",
+                    source_url="https://neu-ag.example/impressum",
+                    source_title="Neu AG",
+                )
+            ],
+        )
+
+        settings_routes._research_profile(session, client)
+
+        stored = profiles.stored(session, client.id)
+        assert stored["sitz"].value == "Hamburg"
+        assert stored["sitz"].source_url == "https://neu-ag.example/impressum"
+
+
+def test_a_failed_profile_read_does_not_take_the_creation_down(monkeypatch):
+    """An empty profile is a smaller problem than a half-created mandate."""
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import profile as profiles
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.web.routes import settings as settings_routes
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with factory() as session:
+        client = Client(name="Neu AG", aliases=[], keywords=[], alert_topics=[])
+        session.add(client)
+        session.commit()
+
+        def _boom(c, *, generate=None):
+            raise RuntimeError("die Recherche ist nicht erreichbar")
+
+        monkeypatch.setattr(profiles, "research", _boom)
+
+        settings_routes._research_profile(session, client)  # must not raise
+
+        assert profiles.stored(session, client.id) == {}

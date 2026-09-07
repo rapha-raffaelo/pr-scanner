@@ -54,6 +54,7 @@ from ... import (
     job,
     outreach,
     pitch,
+    profile_refresh,
     radar_cleanup,
     rivals,
     themes,
@@ -244,6 +245,8 @@ def _onboard(client_id: int, name: str) -> None:
                 themes.settle(session, client)
                 stored = job.backfill_client(session, client)
                 _log.info("onboarding fetch for %r stored %d article(s)", name, stored)
+                _onboarding[client_id] = "profil"
+                _research_profile(session, client)
                 _onboarding[client_id] = "entwürfe"
                 _first_drafts(session, client)
                 _onboarding[client_id] = f"fertig:{stored}"
@@ -251,6 +254,35 @@ def _onboard(client_id: int, name: str) -> None:
         # A failed setup must not read as "this mandate simply has no press".
         _onboarding[client_id] = f"fehler:{exc}"
         _log.exception("onboarding fetch for %r failed", name)
+
+
+def _research_profile(session: Session, client: Client) -> None:
+    """Read the mandate's profile once, here, and write in what it found.
+
+    "der gesamte Content bereits beim Onboarding gescraped." It used to wait for
+    the nightly pass's own clock: a mandate created on a Tuesday had a blank
+    profile until it came round, and every text written in between was written
+    off nothing. The consultant creating it is standing there — that is the
+    moment to spend the call.
+
+    Written in, not merely proposed, under the same rule the portfolio pass
+    uses: only sourced values, and never over something a person typed.
+
+    Guarded and swallowed like the two steps above it. A mandate must still be
+    onboarded when the research is unavailable, and an empty profile is a
+    smaller problem than a half-created client.
+    """
+    try:
+        profile_refresh.refresh(session, client, now=dt.datetime.now(dt.UTC))
+        written = profile_refresh.adopt(
+            session, client, proposed_by=config.review_model()
+        )
+        _log.info(
+            "onboarding profile for %r: %d field(s) filled", client.name, len(written)
+        )
+    except Exception as exc:  # noqa: BLE001 — onboarding must not depend on it
+        session.rollback()
+        _log.warning("onboarding profile research for %r failed: %s", client.name, exc)
 
 
 def _settle_industry(session: Session, client: Client) -> None:
