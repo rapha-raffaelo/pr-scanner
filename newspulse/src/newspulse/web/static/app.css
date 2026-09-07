@@ -2540,6 +2540,13 @@ button:disabled { opacity: .55; cursor: default; }
   display: flex; flex-direction: column; gap: 2px;
   padding: var(--s2) var(--s3); background: var(--card);
   border: 1px solid var(--line); border-radius: var(--radius); min-width: 190px;
+  /* The four resets are the price of keeping the mock's class name: the feed's
+     own .score is a 30x30 circle with centred 700-weight tinted text, and a
+     badge that inherited its box would be a two-line calculation squeezed into
+     thirty pixels of height. Scoping stops this rule leaking out; these stop
+     that one leaking in. */
+  width: auto; height: auto; align-items: stretch; justify-content: flex-start;
+  color: var(--ink); font-weight: 400; font-size: var(--t-body);
 }
 .dossier .score__n { font-size: var(--t-title2); font-weight: 700; letter-spacing: -0.02em; }
 .dossier .score__n small { font-size: var(--t-footnote); font-weight: 600; color: var(--faint); }
@@ -2608,7 +2615,15 @@ button:disabled { opacity: .55; cursor: default; }
    200px wide is a column of wrapped outlet names. */
 .dossier .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); align-items: start; }
 .dossier .grid3--second { margin-top: var(--s4); }
-.dossier .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s4); }
+/* Same story as .score: the app-wide .card, .panel, .sect rule sets padding 0,
+   a 20px bottom margin and overflow hidden, and all three are wrong for a tile
+   in this grid — the margin would stack with the 16px below to make an uneven
+   36px, and the hidden overflow clips nothing here but hides a mistake later. */
+.dossier .card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--s4);
+  margin-bottom: 0; overflow: visible;
+}
 .dossier .card + .card { margin-top: var(--s4); }
 .dossier .card__h { font-size: var(--t-subhead); font-weight: 700; margin-bottom: var(--s3); display: flex; align-items: baseline; gap: var(--s2); }
 .dossier .card__h span { font-weight: 400; font-size: var(--t-caption); color: var(--faint); }
