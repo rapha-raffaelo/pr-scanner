@@ -89,6 +89,16 @@
   --alert-wash: var(--alertbg);
   --good-wash: rgba(36, 138, 61, .10);
   --warn-wash: rgba(178, 80, 0, .10);
+  /* The hairlines and the fainter ground that go with the two washes above. A
+     wash needs a border of its own or the tinted box floats: --line is a grey
+     and reads as a seam on a coloured plane. Three tint alphas in the mock
+     (.18, .20, .25) collapse to two here — the eye cannot separate .18 from
+     .20, and a palette with a third near-identical entry is a palette nobody
+     keeps consistent. */
+  --tint-line: rgba(0, 113, 227, .18);
+  --tint-line-strong: rgba(0, 113, 227, .25);
+  --tint-wash-soft: rgba(0, 113, 227, .05);
+  --warn-line: rgba(178, 80, 0, .25);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2493,3 +2503,250 @@ button:disabled { opacity: .55; cursor: default; }
    maintained — the crisis page selects from the card and never edits it. */
 .ssel__missing { font-size: var(--t-caption); color: var(--muted); }
 .ssel__missing a { font-weight: 600; }
+
+/* --- Das Dossier zur Gelegenheit (GEL-01, DEC-1 A) ------------------------- */
+/* Built against features/mocks/gelegenheit-kommandozentrale.html. Every value
+   below resolves to a variable declared at the top of this file — the mock and
+   this stylesheet were drawn from the same scale, so the dossier needs no
+   palette of its own, and GEL-03's repaint reaches it by changing one token
+   rather than this block. The mock's tinted borders and its two soft washes
+   were the exception and are now --tint-line, --tint-line-strong,
+   --tint-wash-soft and --warn-line, beside the washes that were already there.
+
+   Every selector is scoped to .dossier, the wrapper the page puts around its
+   own content, and that is not tidiness. The mock names its boxes .card,
+   .score, .note, .pill, .rows, .tl, .chip, .p — words this stylesheet and half
+   the other templates already use for something else. Unscoped, the .card rule
+   down here would win on source order over the .card, .panel, .sect rule at the
+   top and repad every panel in the tool, and .note would restyle the four pages
+   that already carry the class and were never drawn for it. The prefix is what
+   lets the dossier keep the mock's own names without taking them app-wide. */
+
+.dossier .back { font-size: var(--t-footnote); color: var(--muted); display: inline-block; margin-bottom: var(--s4); }
+.dossier .back:hover { color: var(--tint); }
+
+/* The head: headline left, the badge and the two acts right. */
+.dossier .dhd { display: flex; align-items: flex-start; gap: var(--s4); margin-bottom: var(--s3); flex-wrap: wrap; }
+.dossier .dhd__l { min-width: 0; flex: 1 1 24ch; }
+.dossier .dhd__t { font-size: var(--t-title1); font-weight: 700; letter-spacing: -0.025em; max-width: 32ch; }
+.dossier .dhd__r { margin-left: auto; display: flex; gap: var(--s2); align-items: flex-start; flex-wrap: wrap; }
+/* Replaces the buttons once the opportunity has ended. Deliberately a sentence
+   and not a badge: the question afterwards is when and on what it ended. */
+.dossier .dhd__end { font-size: var(--t-caption); color: var(--muted); max-width: 34ch; line-height: 1.4; }
+
+/* The badge shows the number; the three addends sit under it, so the score can
+   be re-derived without leaving the page. */
+.dossier .score {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s2) var(--s3); background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--radius); min-width: 190px;
+  /* The four resets are the price of keeping the mock's class name: the feed's
+     own .score is a 30x30 circle with centred 700-weight tinted text, and a
+     badge that inherited its box would be a two-line calculation squeezed into
+     thirty pixels of height. Scoping stops this rule leaking out; these stop
+     that one leaking in. */
+  width: auto; height: auto; align-items: stretch; justify-content: flex-start;
+  color: var(--ink); font-weight: 400; font-size: var(--t-body);
+}
+.dossier .score__n { font-size: var(--t-title2); font-weight: 700; letter-spacing: -0.02em; }
+.dossier .score__n small { font-size: var(--t-footnote); font-weight: 600; color: var(--faint); }
+.dossier .score__w { font-size: var(--t-caption); color: var(--muted); line-height: 1.35; }
+
+.dossier .chips { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+.dossier .chip {
+  font-size: var(--t-caption); color: var(--muted); background: var(--fill-2);
+  border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 3px 10px;
+}
+.dossier .chip--warn { color: var(--warn); border-color: var(--warn-line); background: var(--warn-wash); }
+.dossier .dchips { margin-top: var(--s3); }
+
+/* The status control: four states read off the rows, the current one marked.
+   Drawn as a segmented control because that is what it is — but only the one
+   transition a person can make is a button, and it sits beside this rather than
+   inside it. A segment offering "ausgelaufen" would be offering to move a clock. */
+.dossier .dstate {
+  display: flex; align-items: stretch; align-self: flex-start;
+  border: 1px solid var(--line); border-radius: var(--radius-s);
+  background: var(--fill-2); overflow: hidden;
+}
+.dossier .dstate__s {
+  font-size: var(--t-caption); color: var(--faint); padding: 5px 9px; white-space: nowrap;
+  border-right: 1px solid var(--line);
+}
+.dossier .dstate__s:last-child { border-right: 0; }
+.dossier .dstate__s.is-on { color: var(--ink); font-weight: 600; background: var(--card); }
+.dossier .dstate__s.is-on[data-status="aktiv"] { color: var(--good); }
+.dstate__s.is-on[data-status="ausgelaufen"],
+.dossier .dstate__s.is-on[data-status="verworfen"] { color: var(--warn); }
+
+/* The provenance bar: three sentences naming where the page's figures came
+   from. Above the tiles because it qualifies all of them. */
+.dossier .dprov {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3);
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--s3); margin-bottom: var(--s4);
+}
+.dossier .dprov__h {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--faint); margin-bottom: 4px;
+}
+.dossier .dprov__v { font-size: var(--t-footnote); color: var(--ink-2); line-height: 1.45; }
+
+/* The strip on the page. Every entry here leads somewhere — a tab that does not
+   is left out of the markup, not greyed out. */
+.dossier .dtabs {
+  display: flex; gap: var(--s4); border-bottom: 1px solid var(--line);
+  margin-bottom: var(--s4); overflow-x: auto;
+}
+.dossier .dtabs a, .dossier .dtabs span {
+  font-size: var(--t-subhead); color: var(--muted); padding: 0 0 10px;
+  border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.dossier .dtabs a:hover { text-decoration: none; color: var(--ink-2); }
+.dossier .dtabs .is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--tint); }
+
+/* DEC-1 A's two columns: the tiles left, the rail right. The rail is a fixed
+   column rather than a share of the width — every line in it is one short
+   sentence, and a proportional column would set them across the page at 700px
+   and wrap them to four lines at 300px. */
+.dossier .rail { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--s4); align-items: start; }
+
+/* Two rows of three. The tiles stack before they squeeze: a source list at
+   200px wide is a column of wrapped outlet names. */
+.dossier .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); align-items: start; }
+.dossier .grid3--second { margin-top: var(--s4); }
+/* Same story as .score: the app-wide .card, .panel, .sect rule sets padding 0,
+   a 20px bottom margin and overflow hidden, and all three are wrong for a tile
+   in this grid — the margin would stack with the 16px below to make an uneven
+   36px, and the hidden overflow clips nothing here but hides a mistake later. */
+.dossier .card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--s4);
+  margin-bottom: 0; overflow: visible;
+}
+.dossier .card + .card { margin-top: var(--s4); }
+.dossier .card__h { font-size: var(--t-subhead); font-weight: 700; margin-bottom: var(--s3); display: flex; align-items: baseline; gap: var(--s2); }
+.dossier .card__h span { font-weight: 400; font-size: var(--t-caption); color: var(--faint); }
+.dossier .card__h a { margin-left: auto; font-size: var(--t-caption); font-weight: 600; }
+.dossier .p { font-size: var(--t-subhead); color: var(--ink-2); line-height: 1.5; }
+.dossier .dcard__link { margin-top: var(--s2); font-size: var(--t-caption); }
+/* A named absence. Italic rather than grey-on-grey, because it is a sentence
+   worth reading, not a disabled state. */
+.dossier .p.empty, .dossier .dempty { font-style: italic; color: var(--muted); font-size: var(--t-caption); }
+.dossier .dempty a, .dossier .p.empty a { font-style: normal; font-weight: 600; }
+
+.dossier .quell { list-style: none; display: flex; flex-direction: column; }
+.dossier .quell li {
+  display: flex; align-items: baseline; gap: var(--s2); padding: 7px 0;
+  border-top: 1px solid var(--line); font-size: var(--t-footnote); flex-wrap: wrap;
+}
+.dossier .quell li:first-child { border-top: 0; }
+.dossier .quell__n { font-weight: 600; color: var(--ink-2); }
+.dossier .quell__a { color: var(--muted); min-width: 0; }
+.dossier .quell__a i { color: var(--faint); }
+.dossier .quell__t { margin-left: auto; color: var(--faint); white-space: nowrap; }
+
+.dossier .tagline {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--good); margin-top: var(--s3);
+}
+/* The standing's tagline heads its own tile, so it has nothing above it to be
+   spaced from — and the sentence it announces sits below it instead. */
+.dossier .tagline--first { margin-top: 0; margin-bottom: var(--s2); }
+.dossier .pull {
+  background: var(--tint-wash); border: 1px solid var(--tint-line);
+  border-radius: var(--radius-s); padding: var(--s3);
+  font-size: var(--t-subhead); color: var(--ink); line-height: 1.5;
+}
+.dossier .pull.empty { background: var(--fill-2); border-color: var(--line); }
+
+.dossier .facts { list-style: none; margin-top: var(--s3); display: flex; flex-direction: column; gap: 6px; }
+.dossier .facts li { font-size: var(--t-footnote); color: var(--ink-2); padding-left: 14px; position: relative; }
+.dossier .facts li:before {
+  content: ""; position: absolute; left: 0; top: 7px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--faint);
+}
+
+/* The forward look. Marked as an estimate in words, not only in colour: the
+   evidenced tiles beside it look the same, and colour alone is not a claim. */
+.dossier .dest { font-size: var(--t-caption); color: var(--warn); margin-bottom: var(--s3); line-height: 1.4; }
+.dossier .tl { list-style: none; position: relative; padding-left: var(--s4); }
+.dossier .tl:before { content: ""; position: absolute; left: 4px; top: 6px; bottom: 6px; width: 1px; background: var(--line-strong); }
+.dossier .tl li { position: relative; padding: 0 0 var(--s3); }
+.dossier .tl li:last-child { padding-bottom: 0; }
+.dossier .tl li:before {
+  content: ""; position: absolute; left: calc(-1 * var(--s4) + 1px); top: 5px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--card); border: 2px solid var(--line-strong);
+}
+.dossier .tl__t { font-size: var(--t-caption); color: var(--faint); }
+.dossier .tl__b { font-size: var(--t-footnote); color: var(--ink-2); }
+
+/* The next step. One box, because there is exactly one next move — the rest of
+   the chain is the quiet list under it. */
+.dossier .step {
+  display: flex; gap: var(--s3); align-items: flex-start; padding: var(--s3);
+  border: 1px solid var(--tint-line-strong); background: var(--tint-wash-soft);
+  border-radius: var(--radius-s);
+}
+.dossier .step__n { font-size: var(--t-subhead); font-weight: 700; color: var(--tint); display: flex; align-items: center; gap: var(--s2); }
+.dossier .step__b { font-size: var(--t-footnote); color: var(--ink-2); margin-top: 2px; }
+.dossier .later { list-style: none; margin-top: var(--s3); display: flex; flex-direction: column; gap: 6px; }
+.dossier .later li { font-size: var(--t-footnote); color: var(--muted); display: flex; gap: var(--s2); align-items: center; }
+.dossier .later li b { color: var(--faint); font-weight: 600; }
+
+.dossier .rows { list-style: none; }
+.dossier .rows li { display: flex; align-items: flex-start; gap: var(--s3); padding: 9px 0; border-top: 1px solid var(--line); }
+.dossier .rows li:first-child { border-top: 0; }
+.dossier .rows__m { min-width: 0; }
+.dossier .rows__n { font-size: var(--t-footnote); font-weight: 600; }
+.dossier .rows__s { font-size: var(--t-caption); color: var(--muted); margin-top: 1px; }
+.dossier .rows__warn { color: var(--warn); }
+.dossier .rows__r { margin-left: auto; text-align: right; white-space: nowrap; display: flex; align-items: center; gap: var(--s2); }
+/* DEC-5's fit. A number, because seventeen names need an order a person does
+   not hold in their head — and it is arithmetic over stored rows, never a
+   model's opinion about a person. */
+.dossier .rows__fit { font-size: var(--t-footnote); font-weight: 700; color: var(--ink-2); }
+
+.dossier .pill { font-size: var(--t-caption2); font-weight: 700; padding: 2px 7px; border-radius: var(--radius-pill); background: var(--fill); color: var(--muted); }
+.dossier .pill--good { background: var(--good-wash); color: var(--good); }
+.dossier .pill--warn { background: var(--warn-wash); color: var(--warn); }
+/* Dashed and uncoloured: a missing contact is a gap, not a failure, and it must
+   not read like the green beside it. */
+.dossier .pill--none { background: transparent; color: var(--faint); border: 1px dashed var(--line-strong); }
+
+/* The trail. Horizontal, so the market's pieces and our own steps read as one
+   sequence rather than two lists that have to be interleaved by eye. */
+.dossier .stream { margin-top: var(--s4); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s4); }
+.dossier .stream__row { display: flex; gap: var(--s2); overflow-x: auto; padding-bottom: var(--s1); }
+.dossier .ev { flex: none; min-width: 160px; border: 1px solid var(--line); border-radius: var(--radius-s); padding: var(--s2) var(--s3); background: var(--fill-2); }
+.dossier .ev__t { font-size: var(--t-caption2); color: var(--faint); }
+.dossier .ev__w { font-size: var(--t-caption); font-weight: 600; margin-top: 2px; }
+.dossier .ev__b { font-size: var(--t-caption); color: var(--muted); }
+.dossier .ev--us { background: var(--tint-wash); border-color: var(--tint-line); }
+
+/* The rail's items. A tinted inset rather than a card of its own: this is one
+   card's contents, and five nested white boxes on a white box is a stack of
+   borders nobody reads as a group. */
+.dossier .know { display: flex; flex-direction: column; gap: var(--s3); }
+.dossier .know__i { padding: var(--s3); border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--fill-2); }
+.dossier .know__h {
+  font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--faint); margin-bottom: 4px;
+}
+.dossier .know__v { font-size: var(--t-footnote); color: var(--ink-2); line-height: 1.45; }
+.dossier .know__v b { font-weight: 600; }
+/* Same rule as everywhere else on this page: a named absence is italic, not
+   grey-on-grey, because it is a sentence worth reading. */
+.dossier .know__v.dempty { font-size: var(--t-footnote); }
+.dossier .know__l { font-size: var(--t-caption); margin-top: 6px; display: inline-block; font-weight: 600; }
+
+.dossier .note { margin-top: var(--s5); font-size: var(--t-caption); color: var(--faint); max-width: 80ch; line-height: 1.5; }
+
+/* The rail drops under the tiles before the tiles start squeezing: a 300px
+   column beside two columns of tiles is the layout that breaks first. */
+@media (max-width: 1180px) {
+  .dossier .rail { grid-template-columns: minmax(0, 1fr); }
+  .dossier .grid3, .dossier .dprov { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 860px) { .dossier .grid3, .dossier .dprov { grid-template-columns: 1fr; } }

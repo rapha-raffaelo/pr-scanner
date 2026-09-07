@@ -18,9 +18,17 @@
     </span>
     <span class="clichip">{{ opp.client_name }}</span>
   </div>
-  <div class="hl"><a href="{{ opp.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ opp.headline }}</a></div>
+  {# The headline goes to the dossier, not to the feed: the card is the
+     ten-second decision and the dossier is everything behind it, which is the
+     click a consultant actually wants from here. The origin piece itself is one
+     line down on that page. #}
+  <div class="hl"><a href="/client/{{ opp.client_id }}/gelegenheit/{{ opp.id }}">{{ opp.headline }}</a></div>
   <div class="meta">
-    {{ t("Zuerst bei") }} {{ opp.source }}
+    {# The origin piece itself. It left the headline when that became the link
+       to the dossier, and it belongs back here rather than nowhere: the first
+       thing a consultant does with a story they have not seen is read it. #}
+    <a href="{{ opp.url | safe_url }}" target="_blank" rel="noopener noreferrer">{{ t("Ursprungsbeitrag") }} ↗</a>
+    <span class="dot">·</span> {{ t("Zuerst bei") }} {{ opp.source }}
     <span class="dot">·</span> {{ opp.published_at.strftime('%d.%m. %H:%M') }}
     <span class="dot">·</span> {{ opp.pickup_count }}× {{ t("aufgegriffen") }}
   </div>

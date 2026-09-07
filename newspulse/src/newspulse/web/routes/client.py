@@ -551,6 +551,9 @@ class ConcludedOpportunity:
     it off; otherwise the window simply ran out.
     """
 
+    #: The row's own id, so the archive line can link to its dossier — the page
+    #: that stays readable after the window closed (GEL-01).
+    id: int
     headline: str
     url: str
     source: str
@@ -614,6 +617,7 @@ def _concluded_opportunities(
         angle_id = angle_by_opp.get(row.id)
         views.append(
             ConcludedOpportunity(
+                id=row.id,
                 headline=row.article.title,
                 url=row.article.url,
                 source=row.article.source,
