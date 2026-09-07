@@ -192,7 +192,7 @@ def test_the_bar_holds_no_control_without_a_destination(web, mandate):
 
 def test_the_bar_names_the_workspace_and_the_mandate(web, mandate):
     bar = _topbar(web.get(f"/client/{mandate.id}/profil").text)
-    assert "Mandanten" in bar
+    assert "Portfolio" in bar
     assert "Solaris AG" in bar
     assert f'href="/client/{mandate.id}"' in bar
 
@@ -244,7 +244,7 @@ def test_a_portfolio_path_crumbs_to_its_own_workspace(path, area):
 
 def test_a_mandate_path_crumbs_to_the_workspace_and_the_name(session, mandate):
     crumbs = navigation.nav_crumbs(_request(f"/client/{mandate.id}/guide", db=session))
-    assert crumbs.area == "Mandanten"
+    assert crumbs.area == "Portfolio"
     assert crumbs.area_href == "/"
     assert crumbs.mandate == "Solaris AG"
     assert crumbs.mandate_href == f"/client/{mandate.id}"
@@ -268,17 +268,43 @@ def test_a_client_filter_that_is_not_a_number_is_no_mandate(session):
     assert crumbs.mandate is None
 
 
+@pytest.mark.parametrize("stray", ["99999999999999999999", "\u00b2", "\u2460", "-1", "0"])
+def test_a_client_filter_no_row_could_carry_is_no_mandate(session, stray):
+    """``?client=`` reaches the bar raw, and ``/today`` answers 200 for any
+    integer — it matches the id against the roster in Python. So the crumb has
+    to survive the same values: a number past what the id column holds used to
+    raise OverflowError inside the template, turning a working page into a 500,
+    and '\u00b2' passes ``str.isdigit()`` but not ``int()``."""
+    crumbs = navigation.nav_crumbs(_request("/today", db=session, client=stray))
+    assert crumbs.area == "Heute"
+    assert crumbs.mandate is None
+
+
+def test_the_workspace_crumb_is_the_word_the_sidebar_uses_for_that_page(web, mandate):
+    """The crumb links somewhere; the sidebar names that somewhere. If the two
+    disagree, clicking the crumb lands on a page highlighting another word."""
+    page = web.get(f"/client/{mandate.id}/profil").text
+    nav = re.search(r'<nav class="crumbs".*?</nav>', page, re.S)
+    assert nav is not None
+    crumb = re.search(r'<a[^>]*href="([^"]*)"[^>]*>([^<]*)</a>', nav.group(0))
+    assert crumb is not None, "a mandate page carries a workspace crumb above it"
+    assert crumb.group(1) == "/"
+    row = re.search(r'<a href="/" class="side__row[^"]*"[^>]*>([^<]*)</a>', page)
+    assert row is not None
+    assert crumb.group(2).strip() == row.group(1).strip()
+
+
 def test_an_unknown_mandate_crumbs_to_the_workspace_alone(session):
     """The 404 under it says the rest; the bar does not invent a name."""
     crumbs = navigation.nav_crumbs(_request("/client/9999/guide", db=session))
-    assert crumbs.area == "Mandanten"
+    assert crumbs.area == "Portfolio"
     assert crumbs.mandate is None
 
 
 def test_no_session_on_the_request_is_a_workspace_not_a_500():
     """Same rule the sidebar follows: a thinner bar beats a broken page."""
     crumbs = navigation.nav_crumbs(_request("/client/1/heute"))
-    assert crumbs.area == "Mandanten"
+    assert crumbs.area == "Portfolio"
     assert crumbs.mandate is None
 
 

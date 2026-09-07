@@ -121,9 +121,35 @@ _AREAS: tuple[tuple[str, str], ...] = (
     ("/contacts", "Kontakte"),
     ("/settings", "Einstellungen"),
 )
-#: Everything else, and the workspace a mandate's pages hang under.
+#: Everything else, and the workspace a mandate's own pages hang under. The
+#: sidebar calls "/" Portfolio; "Mandanten" is the section header above the
+#: roster, which is not a link and not this destination. A crumb takes the word
+#: for the page it opens, not the word above the row it came from — otherwise
+#: clicking it lands the reader on a page whose sidebar highlights a
+#: differently-named row.
 _PORTFOLIO = "Portfolio"
-_MANDATES = "Mandanten"
+
+#: SQLite holds a row id in a signed 64-bit integer and raises rather than
+#: answering "no such row" when asked about a larger one. A reader can put any
+#: number in ``?client=``, so an id is bounded here, before it reaches a query.
+_MAX_ROW_ID = 2**63 - 1
+
+
+def _as_id(raw: str | None) -> int | None:
+    """``raw`` as a row id the database can actually be asked about, or None.
+
+    Neither the parse nor the range is taken on trust. ``str.isdigit()`` is
+    true for characters ``int()`` refuses ('²', '①'), and a number can be
+    longer than the column can hold; either way a stray value has to leave the
+    crumb standing rather than raise, which is the rule the whole bar follows.
+    """
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if 0 < value <= _MAX_ROW_ID else None
 
 
 def _mandate_id(request) -> int | None:
@@ -136,16 +162,19 @@ def _mandate_id(request) -> int | None:
     saying "Heute" over a page whose tab strip names a mandate.
     """
     parts = request.url.path.split("/")
-    if len(parts) > 2 and parts[1] == "client" and parts[2].isdigit():
-        return int(parts[2])
-    chosen = request.query_params.get("client") if request.url.path == "/today" else None
-    return int(chosen) if chosen and chosen.isdigit() else None
+    if len(parts) > 2 and parts[1] == "client":
+        return _as_id(parts[2])
+    if request.url.path != "/today":
+        return None
+    return _as_id(request.query_params.get("client"))
 
 
 def _area(path: str) -> tuple[str, str]:
-    """The workspace a path belongs to: its label and the page it opens on."""
-    if path.startswith("/client/"):
-        return _MANDATES, "/"
+    """The workspace a path belongs to: its label and the page it opens on.
+
+    A mandate's own pages fall through to the portfolio, which is both where
+    the mandate is listed and where the crumb above it leads.
+    """
     for prefix, label in _AREAS:
         if path.startswith(prefix):
             return label, prefix
@@ -171,6 +200,12 @@ def nav_crumbs(request) -> NavPath:
     # the roster on this render and this needs exactly one name. A missing row
     # leaves the workspace crumb standing alone — the 404 under it says the
     # rest, and the bar invents no name.
+    #
+    # Deliberately unfiltered, where ``clients_for_nav`` drops benchmarks: this
+    # is the same lookup ``client_detail`` makes, so it names whatever company
+    # the page under it is already about. The roster excludes a competitor
+    # because a work list should not invite reading its coverage as work — not
+    # because its name is a secret from the page showing it.
     session = getattr(request.state, "db", None)
     client = session.get(Client, mandate_id) if session is not None else None
     if client is None:
