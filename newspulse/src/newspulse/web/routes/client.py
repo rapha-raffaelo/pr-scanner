@@ -635,6 +635,29 @@ def _concluded_opportunities(
     return views
 
 
+def _radar_count(session: Session, client_id: int, *, days: int = 30) -> int:
+    """How many pieces the topic radar filed for this mandate lately.
+
+    The archive lists coverage — analyses of stories that name the mandate — and
+    that is right. What it never said is that the *other* half exists: the radar
+    files what the mandate's themes turn up, and after the matcher stopped
+    counting a topic hit as coverage the archive got much shorter without
+    anything explaining where the rest went.
+
+    Measured the day this was added: Arrakis had 341 radar pieces in thirty days
+    and an archive of nothing, and the tool read as broken. A count and a link
+    are enough — the material has its own page, and a second list here would be
+    two archives to keep in step.
+    """
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(days=days)
+    return session.scalar(
+        select(func.count())
+        .select_from(Article)
+        .join(TopicHit, TopicHit.article_id == Article.id)
+        .where(TopicHit.client_id == client_id, Article.published_at >= since)
+    ) or 0
+
+
 def _render_detail(
     request: Request,
     session: Session,
@@ -689,6 +712,10 @@ def _render_detail(
                 client_id, filters, current_page, total_pages, total
             ),
             "voice": share_of_voice(session, client, days=30),
+            # The other half of what the sweep collects, named where its absence
+            # was being read as a broken tool.
+            "radar_count": _radar_count(session, client_id),
+            "radar_days": 30,
             # Companies marked as competitors, and only those. Offering the other
             # mandates here invited exactly the nonsense it produced: a beauty-tech
             # startup proposed as Zalando's benchmark. A mandate is work to be done;

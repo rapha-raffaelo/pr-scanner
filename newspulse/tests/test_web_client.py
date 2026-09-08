@@ -19,7 +19,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from newspulse.models import Analysis, Article, Base, Category, Client
+from newspulse.models import Analysis, Article, Base, Category, Client, TopicHit
 from newspulse.web.app import create_app, get_db
 from newspulse.web.routes.client import _PAGE_SIZE
 
@@ -833,3 +833,83 @@ def test_the_generate_buttons_refuse_a_benchmark_too(factory, client):
         f"/client/{rival_id}/berichte/erzeugen",
     ):
         assert client.post(path).status_code == 404, path
+
+
+# --- The other half of what the sweep collects ------------------------------------
+#
+# "oke jetzt läuft die suche nach neuen artikeln irgendwie nicht mehr
+# automatisch für alle mandanten."
+#
+# It was running. What changed is that a topic hit stopped counting as coverage,
+# and the archive — which lists coverage — got much shorter with nothing saying
+# where the rest had gone. Measured that day: Arrakis had 341 radar pieces in
+# thirty days and an archive of nothing, and the tool read as broken.
+
+
+def _seed_radar(session, *, client_obj: Client, title: str, url: str, days_ago: float) -> None:
+    """One piece the radar filed: an article linked by the mandate's themes, with
+    no analysis, because it does not name the mandate."""
+    at = dt.datetime.now(dt.UTC) - dt.timedelta(days=days_ago)
+    article = Article(
+        title=title, url=url, source="Handelsblatt", published_at=at, fetched_at=at,
+        summary_text="Feed-Snippet.", language="de", title_hash=url[-16:],
+    )
+    session.add(article)
+    session.flush()
+    session.add(TopicHit(article_id=article.id, client_id=client_obj.id, found_at=at))
+
+
+def test_the_archive_names_the_radar_material_it_does_not_list(factory, client):
+    with factory() as session:
+        mandate = _seed_client(session)
+        _seed_article(
+            session, client_obj=mandate, title="Alpha AG hebt die Prognose",
+            url="https://ex.de/a", published_at=dt.datetime.now(dt.UTC),
+        )
+        for n in range(3):
+            _seed_radar(
+                session, client_obj=mandate,
+                title=f"Etwas über das Themenfeld {n}",
+                url=f"https://ex.de/r{n}", days_ago=n + 1,
+            )
+        session.commit()
+        cid = mandate.id
+
+    body = client.get(f"/client/{cid}").text
+
+    assert "3 Beiträge aus dem Themen-Radar" in body
+    assert f"/client/{cid}/market" in body
+    # And it stays an archive of coverage: the radar pieces are not listed here.
+    assert "Etwas über das Themenfeld 0" not in body
+
+
+def test_a_mandate_with_no_radar_material_says_nothing_about_it(factory, client):
+    """A count of nothing is noise. The line appears when there is something to
+    point at and stays away otherwise."""
+    with factory() as session:
+        mandate = _seed_client(session)
+        _seed_article(
+            session, client_obj=mandate, title="Alpha AG hebt die Prognose",
+            url="https://ex.de/a", published_at=dt.datetime.now(dt.UTC),
+        )
+        session.commit()
+        cid = mandate.id
+
+    body = client.get(f"/client/{cid}").text
+
+    assert "Themen-Radar" not in body
+
+
+def test_the_count_is_bounded_by_its_own_window(factory, client):
+    """Thirty days, and the sentence says so — a number with no window is not a
+    measurement anybody can check."""
+    with factory() as session:
+        mandate = _seed_client(session)
+        _seed_radar(session, client_obj=mandate, title="Frisch", url="https://ex.de/n", days_ago=2)
+        _seed_radar(session, client_obj=mandate, title="Alt", url="https://ex.de/o", days_ago=40)
+        session.commit()
+        cid = mandate.id
+
+    body = client.get(f"/client/{cid}").text
+
+    assert "1 Beiträge aus dem Themen-Radar der letzten 30 Tage" in body

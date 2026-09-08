@@ -251,6 +251,13 @@ body {
 .newc__note { margin-top: var(--s4); font-size: var(--t-caption); color: var(--muted); }
 @media (max-width: 900px) { .newc { grid-template-columns: 1fr; } }
 
+/* The line under the archive count that says where the rest of the sweep went.
+   Quiet: it is context for a list, not an item in it. */
+.archive-radar {
+  margin: calc(var(--s2) * -1) 0 var(--s4);
+  font-size: var(--t-footnote); color: var(--muted); max-width: 78ch;
+}
+.archive-radar a { color: var(--accent); font-weight: 600; }
 .clients__add { margin-top: var(--s4); }
 /* The one row in the roster that adds to it rather than opening one: a door,
    not a destination, so it reads quieter than a mandate and the plus does the

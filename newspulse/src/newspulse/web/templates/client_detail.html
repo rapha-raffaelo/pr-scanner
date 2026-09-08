@@ -253,6 +253,20 @@
   <noscript><button type="submit">{{ t("Filtern") }}</button></noscript>
 </form>
 
+{# The other half of what the sweep collects, named above the list rather than
+   inside it: an archive with no coverage at all is exactly when a reader needs
+   to be told the sweep did find something. Since the matcher stopped counting a
+   topic hit as coverage, that empty archive is the common case, and nothing
+   said where the rest had gone. A count and a link, not a second list — the
+   material has its own page, and two archives would be two things to keep in
+   step. #}
+{% if radar_count %}
+  <p class="archive-radar">
+    {{ t("Dazu %(n)s Beiträge aus dem Themen-Radar der letzten %(d)s Tage") | format(n=radar_count, d=radar_days) }} —
+    {{ t("Marktmaterial, das den Mandanten nicht nennt und deshalb keine Berichterstattung ist.") }}
+    <a href="/client/{{ client.id }}/market">{{ t("Im Marktumfeld ansehen") }} →</a>
+  </p>
+{% endif %}
 <div id="archive-list">
   {% if rows %}
     <p class="archive-count">{{ pagination.total_count }} {{ t("Artikel") }} · {{ t("Seite") }} {{ pagination.page }}/{{ pagination.total_pages }}</p>
