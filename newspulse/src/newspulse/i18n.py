@@ -1085,6 +1085,14 @@ _EN: dict[str, str] = {
     "Neuer Mandant": "New client",
     #: The portfolio page's own version, without the plus the markup draws.
     "Mandant hinzufügen": "Add client",
+    #: The archive names the other half of what the sweep collects, because its
+    #: absence read as a broken tool once the matcher stopped counting a topic
+    #: hit as coverage.
+    "Dazu %(n)s Beiträge aus dem Themen-Radar der letzten %(d)s Tage":
+        "Plus %(n)s pieces from the topic radar of the last %(d)s days",
+    "Marktmaterial, das den Mandanten nicht nennt und deshalb keine Berichterstattung ist.":
+        "Market material that does not name the mandate and is therefore not coverage.",
+    "Im Marktumfeld ansehen": "See it in the market view",
     #: The creation mask. Three fields and a list of what onboarding does with
     #: them — the settings form asked for six and explained none.
     "Name des Unternehmens": "Company name",
