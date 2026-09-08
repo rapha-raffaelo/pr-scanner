@@ -109,7 +109,10 @@
     {% else %}
       <span>{{ t("Kein Fragebogen beantwortet — für dieses Mandat gibt es noch kein Fundament.") }}</span>
     {% endif %}
-    <a href="/client/{{ client.id }}/kickoff">{{ t("Zum Fragebogen") }} →</a>
+    {# Opens the window below rather than leading to a page. The questionnaire
+       was its own tab, so twenty questions that only a client can answer sat
+       one click off the page that shows what is missing. #}
+    <a class="btn btn--ghost foundation__open" href="?fragebogen=1#fragebogen">{{ t("Fragebogen öffnen") }}</a>
   </p>
 </div>
 
@@ -348,5 +351,42 @@
           action="/client/{{ client.id }}/profil/{{ field.key }}/forget"></form>
   {% endif %}
 {% endfor %}
+
+{# --- The communications guide ------------------------------------------------
+   "der kundenspezifische kommunikationsguide sollte auch in das Profil wandern."
+   Its own tab put the standing rules for how this mandate speaks one click away
+   from the record of what it is. #}
+<div id="guide">
+  {% include "partials/guide_body.html" %}
 </div>
+</div>
+
+{# --- The kick-off, as a window over the page ---------------------------------
+   "Kannst du das So machen dass so ein Fenster für einen Fragebogen im
+   Vordergrund auftaucht, welches man dann aktiv schliessen muss."
+
+   Rendered only when it was asked for, and closed only by pressing the button:
+   the sheet is not dismissed by a click beside it, and there is nothing behind
+   it to click. No script — the close control is a link back to this page
+   without the flag, so the window survives a reload and a bookmark, and htmx
+   swaps inside it leave the address alone. #}
+{% if kickoff_open %}
+  <div class="sheet" id="fragebogen">
+    <div class="sheet__win" role="dialog" aria-modal="true" aria-labelledby="sheet-t">
+      <div class="sheet__bar">
+        <a class="sheet__x" href="/client/{{ client.id }}/profil"
+           aria-label="{{ t('Fragebogen schließen') }}" title="{{ t('Fragebogen schließen') }}">
+          <svg class="ico" aria-hidden="true" viewBox="0 0 12 12">
+            <path d="M3.5 3.5l5 5M8.5 3.5l-5 5"/>
+          </svg>
+        </a>
+        <span class="sheet__t" id="sheet-t">{{ t("Kickoff-Fragebogen") }}</span>
+        <span class="sheet__n">{{ progress.settled }}/{{ progress.total }}</span>
+      </div>
+      <div class="sheet__b">
+        {% include "partials/kickoff_body.html" %}
+      </div>
+    </div>
+  </div>
+{% endif %}
 {% endblock %}

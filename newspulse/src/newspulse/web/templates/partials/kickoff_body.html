@@ -1,13 +1,15 @@
-{% extends "base.html" %}
-{% block title %}{{ translator(request)("Kickoff") }} · {{ client.name }} · RauteOS{% endblock %}
+{# The kick-off questionnaire, as the window that opens over the profile.
 
-{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
+   "Kannst du das So machen dass so ein Fenster für einen Fragebogen im
+   Vordergrund auftaucht, welches man dann aktiv schliessen muss."
 
-{% block content %}
-{% set t = translator(request) %}
-{% set active = 'kickoff' %}
-{% include '_client_tabs.html' %}
+   Twenty questions nobody answers in one sitting, and a tab for them meant the
+   consultant had to remember they existed. It opens over the profile now — the
+   page that shows what is known about a mandate, with a control that says how
+   much of it is still unasked.
 
+   Included by ``client_profile.html`` and rendered nowhere else. Its forms still
+   post to /kickoff/*, and those routes swap this partial's rows back. #}
 <style>
   /* The locked mock for DEC-1: sectioned questions on the left, a progress rail
      on the right that stays put while the form scrolls past it. Page-local rather
@@ -134,4 +136,3 @@
 
   {% include "partials/kickoff_rail.html" %}
 </div>
-{% endblock %}

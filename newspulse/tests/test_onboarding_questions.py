@@ -509,7 +509,12 @@ def test_an_answer_is_stored_and_survives_a_reload(web, session):
     )
 
     assert saved.status_code == 303
-    assert saved.headers["location"] == f"/client/{client.id}/kickoff#q-satz"
+    # Back into the open window, not to the tab the questionnaire used to be:
+    # without the flag the answer would land on the profile behind a window that
+    # is not there, and read as lost.
+    assert (
+        saved.headers["location"] == f"/client/{client.id}/profil?fragebogen=1#q-satz"
+    )
     assert "Roboterarme, die den Chirurgen führen." in web.get(
         f"/client/{client.id}/kickoff"
     ).text
@@ -625,12 +630,17 @@ def test_a_list_question_shows_its_entries_as_chips(web, session):
     assert "Milan Roth, CTO" in body
 
 
-def test_the_kickoff_tab_is_reachable_from_the_other_client_pages(web, session):
+def test_the_questionnaire_is_reachable_from_the_page_that_shows_what_it_answers(
+    web, session
+):
+    """It was a tab and is a window now, so what has to hold is the control that
+    opens it — on the profile page, which is where the twenty unanswered
+    questions are felt."""
     client = _client(session)
 
     body = web.get(f"/client/{client.id}/profil").text
 
-    assert f'href="/client/{client.id}/kickoff"' in body
+    assert 'href="?fragebogen=1#fragebogen"' in body
     assert "Kickoff" in body
 
 
@@ -1515,7 +1525,10 @@ def test_converting_a_questionnaire_adopts_none_of_it(web, session):
 #: that stops matching the template the next time somebody edits one.
 _CONVERSION_PAGES = (
     "client_profile.html",
-    "client_guide.html",
+    # The guide is a section of the profile page now, and the questionnaire the
+    # window over it; both are scanned through their partials.
+    "partials/guide_body.html",
+    "partials/kickoff_body.html",
     "client_rivals.html",
     "clients.html",
 )
@@ -1609,3 +1622,112 @@ def test_a_sourceless_research_proposal_is_not_called_the_clients_statement(fact
     # is nothing left to mislabel.
     assert "Zulieferer für OP-Technik." not in body
     assert "Angabe des Mandanten" not in body
+
+
+# --- One file for the mandate ----------------------------------------------------
+#
+# "kannst du kickoff, profil und guide unter 'profil' vereinen." — asked three
+# times, and the third time with the shape: "Kannst du das So machen dass so ein
+# Fenster für einen Fragebogen im Vordergrund auftaucht, welches man dann aktiv
+# schliessen muss."
+#
+# Three tabs said one thing between them: what this company is, how it speaks,
+# and the twenty questions only a client can answer. The guide is a section of
+# the profile page now and the questionnaire a window over it.
+
+
+def test_the_profile_page_carries_the_guide(web, session):
+    """The guide is on the page, not behind a link to a page of its own."""
+    client = _client(session)
+    guide.save(session, client, "Nie ohne Zahl. Nie im Konjunktiv.")
+
+    body = web.get(f"/client/{client.id}/profil").text
+
+    assert "Nie ohne Zahl. Nie im Konjunktiv." in body
+    assert f'action="/client/{client.id}/guide"' in body, "the guide is editable here"
+
+
+def test_the_questionnaire_opens_as_a_window_over_the_profile(web, session):
+    """Closed until it is asked for, and then the whole set is in it."""
+    client = _client(session)
+
+    closed = web.get(f"/client/{client.id}/profil").text
+    opened = web.get(f"/client/{client.id}/profil?fragebogen=1").text
+
+    assert 'class="sheet"' not in closed
+    assert 'class="sheet"' in opened
+    assert opened.count('class="q"') == len(onboarding.QUESTIONS)
+
+
+def test_the_window_is_closed_by_pressing_it_shut(web, session):
+    """"welches man dann aktiv schliessen muss." The only way out is the control
+    on the bar: no click beside it, no key. Twenty half-typed answers are not
+    something to lose by brushing the wrong pixel."""
+    client = _client(session)
+
+    opened = web.get(f"/client/{client.id}/profil?fragebogen=1").text
+
+    assert f'href="/client/{client.id}/profil"' in opened
+    assert "aria-modal=\"true\"" in opened
+
+
+def test_the_old_addresses_still_lead_to_what_they_named(web, session):
+    """Both tabs are gone and every link that pointed at them is not: the crisis
+    page sends a reader to the questionnaire, a thin impulse to the guide, and
+    bookmarks exist."""
+    client = _client(session)
+
+    kickoff = web.get(f"/client/{client.id}/kickoff", follow_redirects=False)
+    guide_page = web.get(f"/client/{client.id}/guide", follow_redirects=False)
+
+    assert kickoff.headers["location"] == (
+        f"/client/{client.id}/profil?fragebogen=1#fragebogen"
+    )
+    assert guide_page.headers["location"] == f"/client/{client.id}/profil#guide"
+
+
+def test_the_strip_carries_one_tab_for_the_three(web, session):
+    """Eleven tabs are a list somebody has to read, not a navigation."""
+    client = _client(session)
+
+    strip = web.get(f"/client/{client.id}/profil").text
+
+    assert f'href="/client/{client.id}/profil"' in strip
+    assert f'href="/client/{client.id}/kickoff"' not in strip
+    assert f'href="/client/{client.id}/guide"' not in strip
+
+
+def test_an_answer_saved_without_htmx_comes_back_into_the_open_window(web, session):
+    """The redirect after a plain form post. Landing on the profile with the
+    window shut is indistinguishable from having lost the answer."""
+    client = _client(session)
+
+    saved = web.post(
+        f"/client/{client.id}/kickoff/satz",
+        data={"value": "Roboterarme, die den Chirurgen führen."},
+        follow_redirects=True,
+    )
+
+    assert 'class="sheet"' in saved.text
+    assert "Roboterarme, die den Chirurgen führen." in saved.text
+
+
+def test_a_guide_error_is_still_shown_after_the_move(web, session, monkeypatch):
+    """The reason the guide's routes pass their answers through rather than
+    redirecting: a distillation that failed has something to say, and a redirect
+    would drop it. Every key the guide page used to build has a default on the
+    profile page, so a missing one renders as empty rather than raising."""
+    from newspulse.web.routes import guide_routes
+
+    client = _client(session)
+
+    def _boom(*args, **kwargs):
+        raise guide_routes.AnalyzerError("das Modell ist nicht erreichbar")
+
+    monkeypatch.setattr(guide_routes.guide, "distill", _boom)
+
+    body = web.post(
+        f"/client/{client.id}/guide/distill", data={}, follow_redirects=False
+    ).text
+
+    assert "das Modell ist nicht erreichbar" in body

@@ -1,14 +1,12 @@
-{% extends "base.html" %}
-{% block title %}{{ translator(request)("Kommunikations-Guide") }} · {{ client.name }} · RauteOS{% endblock %}
+{# The communications guide, as a section of the mandate's file.
 
+   "der kundenspezifische kommunikationsguide sollte auch in das Profil wandern."
+   It was its own tab, which put the standing rules for how this mandate speaks
+   one click away from the record of what it is — two pages nobody had a reason
+   to keep separate, and a strip of eleven tabs to carry them.
 
-{% block pagetitle %}{% include "partials/client_title.html" %}{% endblock %}
-
-{% block content %}
-{% set t = translator(request) %}
-{% set active = 'guide' %}
-{% include '_client_tabs.html' %}
-
+   Included by ``client_profile.html`` and rendered nowhere else. Its forms still
+   post to /guide/*, and those routes come back to the profile. #}
 <style>
   .guide__lead { font-size: var(--t-body); color: var(--muted); max-width: 64ch; margin-bottom: 1.2rem; }
   .guide__cols { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 26px; align-items: start; }
@@ -161,7 +159,8 @@
       {% else %}
         <p class="drop__hint">
           {{ t("Der Kickoff-Fragebogen ist noch unbeantwortet — daraus lässt sich kein Entwurf machen.") }}
-          <a href="/client/{{ client.id }}/kickoff">{{ t("Zum Fragebogen") }} →</a>
+          {# The window over this very page, not a page to travel to. #}
+          <a href="?fragebogen=1#fragebogen">{{ t("Fragebogen öffnen") }}</a>
         </p>
       {% endif %}
     </div>
@@ -276,4 +275,3 @@
   {% endif %}
   <p class="coach__foot">{{ t("Beratend, nicht ausführend: der Coach ändert nichts am Guide.") }}</p>
 </section>
-{% endblock %}
