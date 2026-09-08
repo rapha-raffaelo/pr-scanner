@@ -1057,8 +1057,10 @@ a:hover { text-decoration: underline; }
 }
 .pitchlist__why { color: var(--muted); }
 .pitchlist__mail { font-size: var(--t-caption); color: var(--accent); margin-right: 6px; }
-.pitchlist__add { font-size: var(--t-caption2); color: var(--muted); margin-right: 6px; text-decoration: underline; }
-.pitchlist__add:hover { color: var(--accent); }
+/* Taking a proposed name into the book. A form rather than the link that used
+   to sit here, and inline for the same reason .pitchlist__write is: it belongs
+   to the row it names, not to a block under it. */
+.pitchlist__take { display: inline; margin-right: 6px; }
 .pitchlist__ev { display: block; color: var(--muted); font-style: italic; margin-top: 2px; }
 /* Recommendations carry their recipients as tags rather than a list: they are
    read after the text, at a glance, not worked through. */

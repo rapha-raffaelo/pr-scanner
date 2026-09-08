@@ -194,9 +194,10 @@ def _entry_for(
 ) -> Contact:
     """The book's entry for this byline, created and added if there is none.
 
-    Shared by :func:`save` and :func:`remember_address` so the two ways into the
-    book cannot drift on the question of who counts as the same person — a
-    disagreement there is how one journalist becomes two half-filled rows.
+    Shared by :func:`save`, :func:`remember_address` and
+    :func:`remember_person` so the three ways into the book cannot drift on the
+    question of who counts as the same person — a disagreement there is how one
+    journalist becomes two half-filled rows.
 
     Not committed here: the caller decides what it writes before flushing, and a
     row added and then abandoned is the caller's rollback to make.
@@ -265,6 +266,45 @@ def save(
     # corrected outlet can bring a letter into range that was out of it.
     _link_released_letters(session, contact)
     return contact
+
+
+def remember_person(
+    session: Session,
+    *,
+    name: str,
+    outlet: str = "",
+) -> Contact:
+    """Put a proposed name in the book, filling in nothing else.
+
+    The pitch list proposes journalists the press actually bylined, and the only
+    thing it knows about them is the name and the house. This records exactly
+    that.
+
+    Not :func:`save`, for the reason :func:`remember_address` is not either:
+    ``save`` writes every column, so a second click on a row whose contact had
+    since been given an address, a beat and a note would blank all three. Here
+    an entry that already exists is returned untouched — the button is a
+    proposal, and accepting a proposal twice must cost nothing.
+
+    Raises ``ValueError`` on an empty name.
+    """
+    person = (name or "").strip()
+    if not person:
+        raise ValueError("Ohne Namen lässt sich kein Kontakt anlegen.")
+    house = (outlet or "").strip()
+    existing = _entry_for(session, person, house, None)
+    if existing.id is not None:
+        return existing
+    first, last = split_name(person)
+    existing.name = person
+    existing.first_name = first
+    existing.last_name = last
+    existing.outlet = house or existing.outlet
+    session.commit()
+    # Letters released to this person before the book knew them belong in their
+    # file, exactly as on a hand-made entry.
+    _link_released_letters(session, existing)
+    return existing
 
 
 def remember_address(

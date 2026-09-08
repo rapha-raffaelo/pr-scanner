@@ -263,3 +263,53 @@ def test_a_page_style_block_only_reads_tokens_that_exist():
             broken[path.name] = gap
 
     assert not broken, f"page styles reading tokens nobody defines: {broken}"
+
+
+# --- The send stage in two columns ------------------------------------------------
+#
+# "ich denke diese ansicht sollten wir überarbeiten. am Besten die Kontakte nach
+# Rechts und mit einem Vorschlag button (in das Kontaktbuch eintragen)."
+#
+# The recipient list ran on below the letters. On a stage with three released
+# letters that put it a screen and a half down, read only by someone who already
+# knew it was there — while it is exactly what the letters are chosen against.
+
+
+ADVICE = WEB / "templates" / "advice.html"
+
+
+def _advice() -> str:
+    return ADVICE.read_text()
+
+
+def test_the_recipient_list_is_the_second_column_not_a_footer():
+    """The grid must contain both: the letters in a column of their own and the
+    list as its sibling. A ``.pitchlist`` left inside ``.send__main`` would look
+    identical in the markup diff and render exactly as it did before."""
+    body = _advice()
+    grid = body[body.index('<div class="send__cols">') : body.index("{# /send__cols #}")]
+    main = grid[grid.index('<div class="send__main">') : grid.index("{# /send__main #}")]
+
+    assert '<div class="pitchlist">' in grid
+    assert '<div class="pitchlist">' not in main
+
+
+def test_the_second_column_has_a_width_of_its_own():
+    """A grid whose second track is ``auto`` gives the list whatever the longest
+    headline in it asks for, which on a row with a long evidence quote is most of
+    the stage."""
+    css = _inline_styles(ADVICE)
+    rule = css[css.index(".send__cols {") :].split("}")[0]
+
+    assert "grid-template-columns" in rule
+    # minmax(0, 1fr) on the left, or an unbreakable subject line in a letter card
+    # sets the column's min-content width and pushes the list off the page.
+    assert "minmax(0, 1fr)" in rule
+
+
+def test_the_columns_stack_on_a_narrow_screen():
+    """Two columns in 360 points is one unreadable column and one sliver."""
+    css = _inline_styles(ADVICE)
+    narrow = css[css.index("@media (max-width: 900px)") :]
+
+    assert ".send__cols { grid-template-columns: minmax(0, 1fr); }" in narrow
