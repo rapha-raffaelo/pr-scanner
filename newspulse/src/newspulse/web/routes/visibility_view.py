@@ -903,6 +903,18 @@ def _context(
             and not _measuring.locked()
             and visibility.due(session, client)
         ),
+        # "die KI-Sichtbarkeit bei jedem Setup automatisch zeigen mit einem
+        # 'Aktualisieren'-Knopf." The control above hid itself between windows:
+        # measured on Monday, the page offered nothing at all until Thursday, and
+        # a reader who wanted a fresh reading after a launch had no way to ask
+        # for one. The clock governs the sweep; a person who can see the date of
+        # the last run governs their own request.
+        "can_refresh": (
+            bool(questions)
+            and attempt.running is None
+            and not _measuring.locked()
+            and visibility.measurable(session, client)
+        ),
         "next_due": _next_due(standing),
     }
 
@@ -1091,9 +1103,15 @@ def measure_now(client_id: int, session: Session = Depends(get_db)) -> Response:
     click starts the same call the sweep makes and redirects; the page then reports
     the run as running, because the row is committed before the first provider is
     asked.
+
+    :func:`newspulse.visibility.measurable` and not ``due``: this is the
+    "Aktualisieren" button, and refusing it because the sweep measured three days
+    ago would make it a control that quietly does nothing on most days. The
+    reader can see when the last run was. What still governs is the lock — two
+    measurements of one mandate at once is a waste, not a refresh.
     """
     client = _client_or_404(session, client_id)
-    if visibility.due(session, client) and _measuring.acquire(blocking=False):
+    if visibility.measurable(session, client) and _measuring.acquire(blocking=False):
         spawn.start_or_release(
             _run_measurement,
             args=(client_id,),

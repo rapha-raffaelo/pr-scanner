@@ -10,6 +10,7 @@ every article stored here goes through the analyzer.
 from __future__ import annotations
 
 import datetime as dt
+import inspect
 
 import pytest
 from sqlalchemy import func, select
@@ -922,3 +923,96 @@ def test_a_failed_profile_read_does_not_take_the_creation_down(monkeypatch):
         settings_routes._research_profile(session, client)  # must not raise
 
         assert profiles.stored(session, client.id) == {}
+
+
+# --- The KI-Sichtbarkeit at setup ------------------------------------------------
+#
+# "die KI-Sichtbarkeit bei jedem Setup automatisch zeigen mit einem
+# 'Aktualisieren'-Knopf."
+#
+# Without an accepted question ``visibility.due`` answers False, so the sweep
+# passes the mandate over every morning and the page stands empty. Measured: five
+# of seven mandates had zero questions and zero runs. The sweep seeds too — here
+# it happens while the consultant is still standing there.
+
+
+def test_onboarding_gives_the_new_mandate_a_question_set(monkeypatch, no_visibility_seeding):
+    """The page has something to measure from the first day, not from the first
+    sweep that happens to come round."""
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import visibility
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client, VisibilityBand
+    from newspulse.web.routes import settings as settings_routes
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with factory() as session:
+        client = Client(name="Neu AG", aliases=[], keywords=[], alert_topics=[])
+        session.add(client)
+        session.commit()
+
+        # The autouse fixture stubs the seeding out for every other test in the
+        # run, because it is a model call; this one is about it, so the real
+        # function goes back in and only the proposer is stubbed.
+        monkeypatch.setattr(visibility, "seed", no_visibility_seeding)
+        monkeypatch.setattr(
+            visibility,
+            "propose",
+            lambda s, c, *, invoke=None: [
+                visibility.Proposal(
+                    text="Welche Modehändler nehmen Retouren kostenlos zurück?",
+                    band=VisibilityBand.AUSWAHL,
+                )
+            ],
+        )
+
+        settings_routes._seed_visibility(session, client)
+
+        assert [q.text for q in visibility.accepted(session, client)] == [
+            "Welche Modehändler nehmen Retouren kostenlos zurück?"
+        ]
+
+
+def test_the_questions_are_seeded_after_the_profile_they_are_built_from(monkeypatch):
+    """Order, not merely presence. ``visibility.propose`` builds its questions out
+    of the profile and the settled industry; seeded first, the set would be built
+    off a blank record and would have to be thrown away by hand."""
+    from newspulse.web.routes import settings as settings_routes
+
+    source = inspect.getsource(settings_routes._onboard)
+
+    assert source.index("_research_profile(") < source.index("_seed_visibility(")
+
+
+def test_a_failing_proposer_does_not_take_the_creation_down(monkeypatch, no_visibility_seeding):
+    """A mandate with no question set is a smaller problem than a half-created
+    one, and the next sweep seeds it anyway."""
+    from sqlalchemy.orm import sessionmaker
+
+    from newspulse import visibility
+    from newspulse.db import make_engine
+    from newspulse.models import Base, Client
+    from newspulse.web.routes import settings as settings_routes
+
+    engine = make_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with factory() as session:
+        client = Client(name="Neu AG", aliases=[], keywords=[], alert_topics=[])
+        session.add(client)
+        session.commit()
+
+        def _boom(s, c, *, invoke=None):
+            raise RuntimeError("der Vorschlag ist nicht erreichbar")
+
+        monkeypatch.setattr(visibility, "seed", no_visibility_seeding)
+        monkeypatch.setattr(visibility, "propose", _boom)
+
+        settings_routes._seed_visibility(session, client)  # must not raise
+
+        assert visibility.accepted(session, client) == []
