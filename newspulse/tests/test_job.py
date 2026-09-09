@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
 from newspulse import cli, issues, job, notify
+from newspulse import newsapis
 from newspulse.db import make_engine
 from newspulse.feeds import Feed
 from newspulse.ingest import FeedItem
@@ -1219,3 +1220,89 @@ def test_a_failing_issue_link_does_not_cost_the_other_mandates(
     monkeypatch.setattr(issues, "link_signals", _partly)
 
     assert no_issue_linking(session, [first, second], now=_NOW) == 1
+
+
+# --- The paid news APIs in the sweep ---------------------------------------------
+#
+# "zudem habe ich dir API keys auf Railway gegeben … integriere sie doch."
+#
+# They join the registry's items before matching, because they are the same kind
+# of thing: coverage nobody has sorted yet. What these tests hold is that the
+# sweep does not start depending on them.
+
+
+def test_a_paid_api_article_travels_the_ordinary_pipeline(session, monkeypatch):
+    """Perigon and Event Registry read the article body, which no feed carries —
+    so a story that names the mandate nowhere in its headline still arrives. It
+    is then matched, judged and stored exactly like a feed item."""
+    _add_client(session, "Remexian Pharma")
+    found = newsapis.Harvest(
+        items=[
+            _item(
+                "High Tide setzt Expansion fort",
+                "https://finanznachrichten.de/ht",
+                source="finanznachrichten.de",
+                summary="Der Großhändler Remexian Pharma beliefert Europa.",
+            )
+        ],
+        by_provider={"Perigon": 1},
+        errors=[],
+    )
+    monkeypatch.setattr(job.newsapis, "harvest", lambda *a, **k: found)
+
+    report = job.run(
+        session, analyzer=_FakeAnalyzer(), feeds=[], fetch=_fetch_from({}), now=lambda: _NOW
+    )
+
+    assert report.new_articles == 1
+    stored = session.scalars(select(Article)).one()
+    assert stored.source == "finanznachrichten.de"
+
+
+def test_a_failing_provider_does_not_fail_the_morning(session, monkeypatch):
+    """A metered subscription that ran out mid-month must cost the sweep nothing
+    but a line in the run's errors."""
+    _add_client(session, "Alpha AG")
+    feeds = [Feed(name="Handelsblatt", url="https://hb.de/rss")]
+    items = {"https://hb.de/rss": [_item("Alpha AG eroeffnet Werk", "https://hb.de/a1")]}
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("Quota exceeded")
+
+    monkeypatch.setattr(job.newsapis, "harvest", _boom)
+
+    report = job.run(
+        session,
+        analyzer=_FakeAnalyzer(),
+        feeds=feeds,
+        fetch=_fetch_from(items),
+        now=lambda: _NOW,
+    )
+
+    # ``partial``, not ``ok``: the same verdict a dead RSS feed earns, and the
+    # right one. A month whose allowance ran out is a month with a source down,
+    # and a run that called that "ok" would hide it in the one place anybody
+    # looks. What must not happen is the sweep stopping — and it did not.
+    assert report.status is RunStatus.PARTIAL
+    assert report.new_articles == 1, "the registry's own coverage still landed"
+    run_row = session.scalars(select(Run)).one()
+    assert any("Quota exceeded" in e for e in run_row.errors)
+
+
+def test_a_provider_refusal_is_recorded_rather_than_swallowed(session, monkeypatch):
+    """``harvest`` returns rather than raises for a provider that refuses, so its
+    reasons have to be carried into the run row by hand. Without this the wrong
+    key of the morning is invisible in the only place anyone looks."""
+    _add_client(session, "Alpha AG")
+    monkeypatch.setattr(
+        job.newsapis,
+        "harvest",
+        lambda *a, **k: newsapis.Harvest(
+            items=[], by_provider={}, errors=["Perigon: HTTP 401: Invalid API key."]
+        ),
+    )
+
+    job.run(session, analyzer=_FakeAnalyzer(), feeds=[], fetch=_fetch_from({}), now=lambda: _NOW)
+
+    run_row = session.scalars(select(Run)).one()
+    assert any("Invalid API key" in e for e in run_row.errors)
