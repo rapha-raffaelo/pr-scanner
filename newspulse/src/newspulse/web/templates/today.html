@@ -148,8 +148,14 @@
 
 {# Which mandate's day to look at. Cards while the portfolio is small enough to
    scan — an agency knows its clients by sight — and a dropdown once that stops
-   being true. #}
-{% if clients %}
+   being true.
+
+   Only on the portfolio-wide day. "heute auf dem Arrakis (mandanten) ribbon
+   sollte nicht mehr alle kunden anzeigen. das stört nur seit wir die mandanten
+   auf der linken seite haben." Inside one mandate's workspace the roster is
+   two things at once — a sidebar and a strip across the page — and the strip
+   is the one that repeats what the reader just used to get here. #}
+{% if clients and not workspace_client %}
   <div class="clientfilter">
     {% if clients | length <= card_limit %}
       <a class="cfcard{% if not selected_client %} cfcard--on{% endif %}"

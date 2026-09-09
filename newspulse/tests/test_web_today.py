@@ -1130,3 +1130,46 @@ def test_picking_a_mandate_puts_its_name_in_the_heading(factory, client):
     # The portfolio's own day belongs to nobody, and must not borrow a name.
     plain = client.get("/today", params={"date": _TEST_DAY.isoformat()}).text
     assert "Arrakis" not in plain.split("tbar__title", 1)[1].split("</h1>", 1)[0]
+
+
+def _two_mandates(session):
+    """Two mandates, so "the roster" is more than the one being looked at."""
+    from newspulse.models import Client as _C
+
+    rows = [
+        _C(name="Arrakis.finance", aliases=[], keywords=[], alert_topics=[]),
+        _C(name="Qonto", aliases=[], keywords=[], alert_topics=[]),
+    ]
+    session.add_all(rows)
+    session.commit()
+    return rows
+
+
+# --- The mandate strip, once the sidebar carries the roster ------------------------
+#
+# "heute auf dem Arrakis (mandanten) ribbon sollte nicht mehr alle kunden
+# anzeigen. das stört nur seit wir die mandanten auf der linken seite haben."
+
+
+def test_the_mandate_strip_is_gone_inside_one_mandates_day(client, factory):
+    """Inside a workspace the roster is on the page twice — a sidebar and a strip
+    — and the strip is the copy that repeats what the reader just used to get
+    here."""
+    with factory() as session:
+        first, second = _two_mandates(session)
+        first_id = first.id
+        other_name = second.name
+
+    body = client.get(f"/today?client={first_id}").text
+
+    assert "clientfilter" not in body
+    assert other_name not in body.split('<aside class="side">', 1)[1].split("</aside>", 1)[1]
+
+
+def test_the_strip_still_stands_on_the_portfolio_wide_day(client, factory):
+    """Unfiltered, it is not a repetition — it is the filter. Removing it there
+    would leave no way to narrow the day to one mandate from the page itself."""
+    with factory() as session:
+        _two_mandates(session)
+
+    assert "clientfilter" in client.get("/today").text

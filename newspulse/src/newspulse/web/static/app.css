@@ -3166,3 +3166,53 @@ button:disabled { opacity: .55; cursor: default; }
   .sheet { padding: var(--s3); }
   .sheet__b { padding: var(--s4); }
 }
+
+/* --- The sidebar's mandate groups -------------------------------------------
+   "kannst du die menus wo sinnvoll für rauteOS auch so anlegen?"
+
+   A mandate has nine pages, and until now they lived only in a strip across the
+   top of them — which a reader has to arrive somewhere before seeing. As a
+   group they are visible from anywhere, and the open one is the one being
+   worked in.
+
+   Only the mandates. The five rows above are flat on purpose: folding five
+   items into two groups adds a click to each and hides nothing worth hiding. */
+.side__grp > summary {
+  list-style: none;
+  display: flex; align-items: center; gap: 2px;
+  cursor: pointer;
+}
+.side__grp > summary::-webkit-details-marker { display: none; }
+/* The name is an anchor inside the summary, so it must take the width and the
+   chevron must not be squeezed out by a long mandate name. */
+.side__grp > summary > .side__row { flex: 1; min-width: 0; }
+
+/* The chevron is drawn rather than typed: a glyph inherits whatever the font
+   stack resolves to, and the two arrows most stacks have differ in weight
+   between platforms. */
+.side__chev {
+  width: 16px; height: 16px; flex: none; position: relative;
+  opacity: 0.45; transition: transform .15s ease, opacity .15s ease;
+}
+.side__chev::before {
+  content: ""; position: absolute; left: 4px; top: 5px;
+  width: 6px; height: 6px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+}
+.side__grp[open] > summary .side__chev { transform: rotate(90deg); opacity: 0.8; }
+.side__grp > summary:hover .side__chev { opacity: 0.8; }
+
+/* Indented under the mandate they belong to, and quieter than it: the group
+   head is the subject, the rows under it are its parts. */
+.side__subs { display: flex; flex-direction: column; padding: 2px 0 6px 26px; }
+.side__sub {
+  padding: 4px var(--s3); border-radius: var(--radius-s);
+  font-size: var(--t-caption); color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.side__sub:hover { color: var(--ink); background: var(--fill-2); }
+.side__sub.is-on { color: var(--ink); background: var(--fill-2); font-weight: 600; }
+/* A declared crisis is the one sub-row that shouts, and it shouts the same way
+   the tab strip's does. */
+.side__sub--hot { color: var(--alert); font-weight: 600; }
