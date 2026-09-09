@@ -1418,6 +1418,33 @@ class ClientFact(Base):
         UTCDateTime(), nullable=True
     )
 
+    # --- Herkunft, aus RAUTE_OS_INPUT-Master.xlsx / 99_Listen ---------------
+    #
+    # Sieben Achsen je Aussage, mit dem Vokabular der Tabelle, weil Lucas den
+    # Bogen von Hand ausfüllt und ein Import, der "Client Statement" nicht
+    # kennt, schweigend Zeilen verliert.
+    #
+    # Warum das das Fundament ist und keine Verzierung: "400 % THG-Minderung
+    # bei BeyondZero" ist ein Unternehmensclaim. Steht es hier wie ein Fakt,
+    # zitiert Ask RAUTE es als Tatsache, begründet eine Opportunity ihre
+    # Relevanz damit, und ein Pitch behauptet es gegenüber einer Journalistin,
+    # die es prüft.
+    #
+    # Alle nullable: eine Zeile aus der Zeit davor hat diese Angaben nicht, und
+    # sie zu erfinden wäre genau der Fehler, den die Spalten verhindern sollen.
+    # Was fehlt, gilt als kennzeichnungspflichtig (evidence.needs_attribution).
+    evidence_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    confidentiality: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    external_use: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    fact_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    input_owner: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Wann die Aussage zuletzt gestimmt hat — nicht, wann die Zeile geschrieben
+    # wurde. Eine Mitarbeiterzahl von 2023, heute eingetragen, ist zwei Jahre
+    # alt und nicht frisch; ``updated_at`` allein kann das nicht sagen.
+    as_of: Mapped[dt.datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
     @property
     def is_disputed(self) -> bool:
         """Whether an older value is still standing beside this one.
