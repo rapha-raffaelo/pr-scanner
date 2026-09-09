@@ -74,6 +74,13 @@ _EN: dict[str, str] = {
         "each of these is marked in the text as a client statement",
     "Eine Aussage je Zeile": "One claim per line",
     "Belegbarkeit": "Substantiation",
+    "Ausgefüllten Fragebogen einlesen": "Import a completed questionnaire",
+    "Einlesen": "Import",
+    "RAUTE_OS_INPUT-Master.xlsx. Jede Antwort kommt mit ihrer Herkunft — Fakt, Kundenaussage oder Hypothese.":
+        "RAUTE_OS_INPUT-Master.xlsx. Every answer arrives with its provenance \u2014 "
+        "fact, client statement or hypothesis.",
+    "Antworten übernommen": "answers imported",
+    "Fragen noch offen.": "questions still open.",
     "Was ist das größte Problem Ihrer Zielgruppe, in deren eigenen Worten?":
         "What is your audience\u2019s biggest problem, in their own words?",
     "Woran das Werkzeug erkennt, ob eine Nachricht Ihren Kunden betrifft — und mit welchen Wörtern eine Journalistin danach sucht.":

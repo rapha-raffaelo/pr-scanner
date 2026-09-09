@@ -277,6 +277,42 @@ def _forget(row: ClientFact) -> None:
     row.superseded_at = None
 
 
+def record(
+    session: Session,
+    client: Client,
+    key: str,
+    value: str,
+    *,
+    source_url: str = "",
+    source_title: str = "",
+    filled_by: str = BY_HAND,
+    supersede: bool = False,
+) -> ClientFact | None:
+    """Eine Twin-Aussage unter beliebigem Schlüssel schreiben.
+
+    :func:`save` ist die Tür für die siebzehn benannten Profilfelder und weist
+    alles andere ab — ein Schutz gegen einen Tippfehler, der sonst ein
+    Phantomfeld anlegt. Der Bogen aus ``RAUTE_OS_INPUT-Master.xlsx`` hat aber
+    256 Fragen, jede mit ihrer eigenen ID (``A08.06``), und der Twin ist
+    grösser als das Profil: das Profil ist die Zusammenfassung, die auf einen
+    Bildschirm passt, der Twin ist alles, was über das Mandat bekannt ist.
+
+    Dieselbe Tür, andere Schlüsselprüfung. Verdrängen, Vergessen und das
+    Leeren-heisst-löschen verhalten sich identisch, damit eine Aussage aus dem
+    Bogen sich nicht anders benimmt als eine aus dem Kickoff.
+    """
+    return _write(
+        session,
+        client,
+        key,
+        value,
+        source_url=source_url,
+        source_title=source_title,
+        filled_by=filled_by,
+        supersede=supersede,
+    )
+
+
 def save(
     session: Session,
     client: Client,
@@ -306,6 +342,30 @@ def save(
     """
     if key not in FIELDS_BY_KEY:
         return None
+    return _write(
+        session,
+        client,
+        key,
+        value,
+        source_url=source_url,
+        source_title=source_title,
+        filled_by=filled_by,
+        supersede=supersede,
+    )
+
+
+def _write(
+    session: Session,
+    client: Client,
+    key: str,
+    value: str,
+    *,
+    source_url: str = "",
+    source_title: str = "",
+    filled_by: str = BY_HAND,
+    supersede: bool = False,
+) -> ClientFact | None:
+    """Der gemeinsame Schreibweg von :func:`save` und :func:`record`."""
     existing = session.scalars(
         select(ClientFact).where(
             ClientFact.client_id == client.id, ClientFact.key == key

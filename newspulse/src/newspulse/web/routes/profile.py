@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ... import coach, config, guide
 from ... import onboarding
 from ... import profile as profiles
-from ... import profile_refresh, stakeholders
+from ... import profile_refresh, stakeholders, twin_import
 from ...clients import list_clients
 from ...db import get_session
 from ...models import Client, ClientFact, OnboardingAnswer, ProfileProposal
@@ -407,6 +407,42 @@ async def save_profile(
         session, client_id, [o.row_id for o in accepted if o.row_id is not None]
     )
     return RedirectResponse(f"/client/{client_id}/profil", status_code=_SEE_OTHER)
+
+
+@router.post("/client/{client_id}/twin/fragebogen")
+async def import_questionnaire(
+    request: Request, client_id: int, session: Session = Depends(get_db)
+) -> Response:
+    """Den ausgefüllten RAUTE-Bogen einlesen und in den Twin schreiben.
+
+    Lesen und Schreiben in einem Aufruf, anders als beim Mandanten-Import: dort
+    entscheidet eine Vorschau über eine Zuordnung von Spalten auf Felder, hier
+    gibt es nichts zu entscheiden — die Spalten des Bogens *sind* die Felder,
+    und wer die Datei hochlädt, hat sie gerade selbst ausgefüllt.
+
+    Was der Bogen nicht sagt, wird nicht ergänzt. Eine Zeile ohne Herkunft
+    bekommt keine, und leer gilt in der Qualitätsprüfung als
+    kennzeichnungspflichtig — das ist die sichere Richtung.
+    """
+    client = mandate_or_404(session, client_id)
+    form = await request.form()
+    upload = form.get("datei")
+    if upload is None or not getattr(upload, "filename", ""):
+        return _back(client_id, acted=False)
+    try:
+        reading = twin_import.read(io.BytesIO(await upload.read()))
+    except twin_import.SheetError as exc:
+        _errors[client_id] = str(exc)
+        return RedirectResponse(
+            f"/client/{client_id}/profil", status_code=_SEE_OTHER
+        )
+    written = twin_import.apply(session, client, reading)
+    # Die Zahlen in die Adresse, nicht in eine Sitzung: sie beschreiben genau
+    # diese Weiterleitung und dürfen das nächste Neuladen nicht überleben.
+    query = f"?uebernommen={written}&offen={reading.unanswered}"
+    return RedirectResponse(
+        f"/client/{client_id}/profil{query}", status_code=_SEE_OTHER
+    )
 
 
 @router.post("/client/{client_id}/profil/fill")

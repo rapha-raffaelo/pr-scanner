@@ -114,6 +114,23 @@
        one click off the page that shows what is missing. #}
     <a class="btn btn--ghost foundation__open" href="?fragebogen=1#fragebogen">{{ t("Fragebogen öffnen") }}</a>
   </p>
+  {# Der ausgefüllte RAUTE-Bogen. 256 Fragen in einer Tabelle, über Wochen mit
+     dem Kunden gefüllt — der Weg herein muss ein Upload sein und kein Abtippen.
+     Jede Zeile bringt ihre eigene Herkunft mit; was der Bogen nicht sagt, wird
+     nicht ergänzt. #}
+  <form class="sheetup" method="post" enctype="multipart/form-data"
+        action="/client/{{ client.id }}/twin/fragebogen">
+    <label class="sheetup__l" for="bogen-{{ client.id }}">{{ t("Ausgefüllten Fragebogen einlesen") }}</label>
+    <input class="sheetup__f" id="bogen-{{ client.id }}" type="file" name="datei" accept=".xlsx" required>
+    <button type="submit" class="btn btn--ghost">{{ t("Einlesen") }}</button>
+    <p class="fieldhint">{{ t("RAUTE_OS_INPUT-Master.xlsx. Jede Antwort kommt mit ihrer Herkunft — Fakt, Kundenaussage oder Hypothese.") }}</p>
+  </form>
+  {% if request.query_params.get('uebernommen') %}
+    <p class="notice notice--ok">
+      {{ request.query_params.get('uebernommen') }} {{ t("Antworten übernommen") }},
+      {{ request.query_params.get('offen', '0') }} {{ t("Fragen noch offen.") }}
+    </p>
+  {% endif %}
 </div>
 
 {# --- The AI fill -------------------------------------------------------- #}

@@ -3166,3 +3166,12 @@ button:disabled { opacity: .55; cursor: default; }
   .sheet { padding: var(--s3); }
   .sheet__b { padding: var(--s4); }
 }
+
+/* --- Der Fragebogen-Upload im Twin -------------------------------------------
+   256 Fragen in einer Tabelle, über Wochen mit dem Kunden gefüllt. Der Weg
+   herein ist ein Upload und kein Abtippen — und er steht direkt unter der
+   Zeile, die sagt, wie viel des Fundaments fehlt. */
+.sheetup { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s3); }
+.sheetup__l { font-size: var(--t-caption); color: var(--muted); font-weight: 600; }
+.sheetup__f { font: inherit; font-size: var(--t-caption); max-width: 100%; }
+.sheetup .fieldhint { flex-basis: 100%; margin: 2px 0 0; }
