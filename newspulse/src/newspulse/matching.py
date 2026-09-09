@@ -116,8 +116,17 @@ def match_candidates(
     filter, not the final relevance decision.
     """
     # One compiled matcher per client, built once, then searched against every
-    # item — the cheap part of "cheap pre-filter".
-    matchers = [(client, _compile_client_matcher(client)) for client in clients]
+    # item — the cheap part of "cheap pre-filter". The two narrowings compile
+    # here too, for the same reason: they are per client and never per item.
+    matchers = [
+        (
+            client,
+            _compile_client_matcher(client),
+            _compile_terms(getattr(client, "excluded_terms", None)),
+            _compile_terms(getattr(client, "required_terms", None)),
+        )
+        for client in clients
+    ]
     candidates: list[Candidate] = []
     for item in items:
         # Case-fold once per item, not per client: this is the ß→ss fold, so a
@@ -126,9 +135,18 @@ def match_candidates(
         haystack = _haystack(item).casefold()
         if not haystack.strip():
             continue
-        for client, matcher in matchers:
-            if matcher is not None and matcher.search(haystack):
-                candidates.append(Candidate(item=item, client=client))
+        for client, matcher, excluded, required in matchers:
+            if matcher is None or not matcher.search(haystack):
+                continue
+            # Both narrowings run only *after* the name matched, and only for a
+            # client that carries them. They cannot widen the filter, they can
+            # only take back a pairing the name made — which is why an empty
+            # field is not a filter that rejects everything.
+            if excluded is not None and excluded.search(haystack):
+                continue
+            if required is not None and not required.search(haystack):
+                continue
+            candidates.append(Candidate(item=item, client=client))
     return candidates
 
 
@@ -158,6 +176,27 @@ def _compile_client_matcher(client: Client) -> re.Pattern[str] | None:
     — a recall gap that ``re.IGNORECASE`` alone would leave open. Returns ``None``
     for a client with no usable terms so the caller can skip it."""
     terms = _client_terms(client)
+    if not terms:
+        return None
+    alternation = "|".join(_term_pattern(term) for term in terms)
+    return re.compile(rf"(?<!\w)(?:{alternation})(?!\w)")
+
+
+def _compile_terms(values: Sequence[str] | None) -> re.Pattern[str] | None:
+    """One matcher for a list of narrowing terms, or ``None`` for an empty list.
+
+    ``None`` and the empty list mean the same thing and it is important which:
+    *no narrowing*. A pattern compiled from nothing would be an empty
+    alternation that matches everywhere — as an exclusion it would reject the
+    whole portfolio's coverage, and as a requirement it would accept it. Both
+    silently, and both on eleven companies that never asked for either.
+
+    Built exactly like the identity matcher — the same word-boundary
+    lookarounds, the same case fold, the same flexible gap for a multi-word term
+    — so "Gipfel" cannot hit "Gipfeltreffen"'s neighbours by accident and
+    "Liquidity" matches however the feed spaced it.
+    """
+    terms = [term.strip() for term in (values or []) if (term or "").strip()]
     if not terms:
         return None
     alternation = "|".join(_term_pattern(term) for term in terms)

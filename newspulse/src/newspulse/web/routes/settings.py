@@ -804,6 +804,23 @@ def _clean_country(raw: str) -> str:
     return code
 
 
+def _optional_count(raw: str) -> int | None:
+    """A whole number from a form field, or ``None`` for blank or nonsense.
+
+    Nonsense becomes ``None`` rather than an error: this is one field on a form
+    with eight, and refusing the whole edit because somebody typed "zehn" into
+    the quota would lose the seven fields they got right.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        value = int(text)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
 def _parse_client_form(
     *,
     name: str,
@@ -812,6 +829,9 @@ def _parse_client_form(
     country: str,
     keywords: str,
     alert_topics: str,
+    excluded_terms: str = "",
+    required_terms: str = "",
+    actions_per_quarter: str = "",
 ) -> dict[str, object]:
     """Validate and shape a client CRUD form into service kwargs.
 
@@ -828,6 +848,15 @@ def _parse_client_form(
         "country": _clean_country(country),
         "keywords": _split_list(keywords),
         "alert_topics": _split_list(alert_topics),
+        # Both default to "" and therefore to [], which is what "no narrowing"
+        # is: a form that does not carry these fields — the competitor row, the
+        # sheet importer — must leave the match exactly as wide as it was.
+        "excluded_terms": _split_list(excluded_terms),
+        "required_terms": _split_list(required_terms),
+        # None, not zero, for a field left blank: the Desk draws "owes nothing"
+        # and "nobody entered a figure" differently, and reading a blank as zero
+        # would put every unconfigured mandate permanently on target.
+        "actions_per_quarter": _optional_count(actions_per_quarter),
     }
 
 
@@ -1699,6 +1728,9 @@ def edit_client_route(
     country: str = Form(""),
     keywords: str = Form(""),
     alert_topics: str = Form(""),
+    excluded_terms: str = Form(""),
+    required_terms: str = Form(""),
+    actions_per_quarter: str = Form(""),
     muted_categories: list[str] = Form(default=[]),
     session: Session = Depends(get_db),
 ) -> Response:
@@ -1711,6 +1743,9 @@ def edit_client_route(
             country=country,
             keywords=keywords,
             alert_topics=alert_topics,
+            excluded_terms=excluded_terms,
+            required_terms=required_terms,
+            actions_per_quarter=actions_per_quarter,
         )
         # Checkboxes: an unchecked box sends nothing, so the empty list is a real
         # answer ("mute nothing") and must be written rather than skipped.

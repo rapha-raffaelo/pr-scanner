@@ -350,6 +350,42 @@ class Client(Base):
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
     )
+    # --- Two narrowings of the name match, for companies whose name is a word --
+    #
+    # The matcher pairs an article with a company when the name occurs. For most
+    # of the portfolio that is enough. For a company named after something else
+    # it is not: the yardstick "G-20" collected 25 articles a month about the
+    # summit — NATO, China, heads of government — and every one of them was a
+    # paid analyzer call spent to conclude "no".
+    #
+    # Two fields because they answer two different questions, and a mandate may
+    # need either:
+    #
+    # ``excluded_terms`` — if one of these occurs, this is not the company.
+    #   Narrow and surgical: "Gipfel" cuts the summit and leaves the firm.
+    # ``required_terms`` — none of these occurring means this is not the company.
+    #   The blunt instrument, for a name that is a common word: G-20's own field
+    #   is "Liquidity", and an article that does not say it is not about them.
+    #
+    # Empty is the normal case and means "no narrowing", so nothing changes for
+    # the eleven companies whose name is their own.
+    excluded_terms: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+    required_terms: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+    # What the contract promises per quarter, if anything does. NULL rather than
+    # zero, and the difference matters on the Desk: zero is a mandate that owes
+    # nothing, NULL is a mandate nobody has entered a figure for, and the second
+    # must not be drawn as though it were behind on a commitment of none.
+    actions_per_quarter: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Categories this mandate never wants in its daily feed. Per client, because
     # "finanzen" is three near-identical ticker items a day for a listed retailer
     # and the entire mandate for a bank. Hiding, not discarding: the articles stay
@@ -2046,6 +2082,44 @@ class Standing(StrEnum):
     BELEGT = "belegt"
     DUENN = "duenn"
     KEINS = "keins"
+
+
+class ClientAction(Base):
+    """One piece of work delivered for a mandate that RauteOS did not produce.
+
+    The Desk counts what the contract promised against what was delivered, and
+    most of what an agency delivers never touches this tool: a background call
+    with a correspondent, a briefing before an interview, a visit to an editorial
+    office. Counting only the artefacts RauteOS released would show the agency
+    doing consistently less than it does, and against a contractual figure that
+    is not a neutral error — it is the wrong number in the one place a client
+    conversation starts.
+
+    So the Desk's count is two things added: every :class:`Outreach`,
+    :class:`Asset` and :class:`Report` with a ``released_at``, plus these rows.
+    Nothing here duplicates those — this table is *only* for work done elsewhere,
+    which is why it has no link to any of them.
+
+    ``happened_at`` rather than a created stamp, because an action is logged
+    after the fact and belongs in the quarter it happened in, not the quarter
+    somebody remembered it.
+    """
+
+    __tablename__ = "client_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # What it was, in the consultant's own words. No enum: the day somebody has
+    # to choose between "Hintergrundgespräch" and "Redaktionsbesuch" for
+    # something that was both, the entry does not get made.
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    happened_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    logged_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+
+    client: Mapped["Client"] = relationship()
 
 
 class NewsjackOpportunity(Base):
@@ -4167,6 +4241,7 @@ class DecisionGap(Base):
 
 
 __all__ = [
+    "ClientAction",
     "DECISION_NAME_MAX",
     "EVIDENCE_LABEL_MAX",
     "DecisionContradiction",
