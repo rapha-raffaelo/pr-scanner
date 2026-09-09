@@ -114,6 +114,19 @@
                           <input id="e-keywords-{{ client.id }}" type="text" name="keywords" value="{{ client.keywords | join(', ') }}" placeholder="Komma/Semikolon">
                           <p class="fieldhint">{{ t("entscheiden, was gefunden wird") }}</p>
                         </div>
+                        {# Two narrowings of the name match, for a company named
+                           after something else. Both empty is the normal case
+                           and means the match stands as wide as the name. #}
+                        <div>
+                          <label for="e-excluded-{{ client.id }}">{{ t("Ausschlussbegriffe") }}</label>
+                          <input id="e-excluded-{{ client.id }}" type="text" name="excluded_terms" value="{{ client.excluded_terms | join(', ') }}" placeholder="Komma/Semikolon">
+                          <p class="fieldhint">{{ t("kommt einer davon vor, ist es nicht diese Firma") }}</p>
+                        </div>
+                        <div>
+                          <label for="e-required-{{ client.id }}">{{ t("Pflicht-Begleitwörter") }}</label>
+                          <input id="e-required-{{ client.id }}" type="text" name="required_terms" value="{{ client.required_terms | join(', ') }}" placeholder="Komma/Semikolon">
+                          <p class="fieldhint">{{ t("kommt keines davon vor, ist es nicht diese Firma") }}</p>
+                        </div>
                         <div>
                           <label for="e-topics-{{ client.id }}">Alarm-Themen</label>
                           <input id="e-topics-{{ client.id }}" type="text" name="alert_topics" value="{{ client.alert_topics | join(', ') }}" placeholder="Komma/Semikolon">

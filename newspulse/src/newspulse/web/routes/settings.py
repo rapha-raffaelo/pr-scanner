@@ -812,6 +812,8 @@ def _parse_client_form(
     country: str,
     keywords: str,
     alert_topics: str,
+    excluded_terms: str = "",
+    required_terms: str = "",
 ) -> dict[str, object]:
     """Validate and shape a client CRUD form into service kwargs.
 
@@ -828,6 +830,11 @@ def _parse_client_form(
         "country": _clean_country(country),
         "keywords": _split_list(keywords),
         "alert_topics": _split_list(alert_topics),
+        # Both default to "" and therefore to [], which is what "no narrowing"
+        # is: a form that does not carry these fields — the competitor row, the
+        # sheet importer — must leave the match exactly as wide as it was.
+        "excluded_terms": _split_list(excluded_terms),
+        "required_terms": _split_list(required_terms),
     }
 
 
@@ -1699,6 +1706,8 @@ def edit_client_route(
     country: str = Form(""),
     keywords: str = Form(""),
     alert_topics: str = Form(""),
+    excluded_terms: str = Form(""),
+    required_terms: str = Form(""),
     muted_categories: list[str] = Form(default=[]),
     session: Session = Depends(get_db),
 ) -> Response:
@@ -1711,6 +1720,8 @@ def edit_client_route(
             country=country,
             keywords=keywords,
             alert_topics=alert_topics,
+            excluded_terms=excluded_terms,
+            required_terms=required_terms,
         )
         # Checkboxes: an unchecked box sends nothing, so the empty list is a real
         # answer ("mute nothing") and must be written rather than skipped.

@@ -34,10 +34,14 @@ class FakeClient:
         *,
         aliases: list[str] | None = None,
         keywords: list[str] | None = None,
+        excluded_terms: list[str] | None = None,
+        required_terms: list[str] | None = None,
     ) -> None:
         self.name = name
         self.aliases = aliases or []
         self.keywords = keywords or []
+        self.excluded_terms = excluded_terms or []
+        self.required_terms = required_terms or []
 
 
 def _item(
@@ -561,3 +565,100 @@ def test_deduplicate_matches_stored_url_against_tracking_variant():
         known_urls={"https://www.x.de/h"},
     )
     assert kept == []
+
+
+# --- Two narrowings, for a company named after something else ---------------------
+#
+# "lass uns sowohl ausschlussbegriffe als auch pflicht begleitwort (hier
+# Liquidity zb) einfügen."
+#
+# Measured on the live portfolio: the yardstick "G-20" collected 25 articles a
+# month about the summit — NATO, China, heads of government — and every one was
+# a paid analyzer call spent to conclude "no". The headlines below are that
+# month's, verbatim.
+
+def _g20_item(title: str, summary: str | None = None) -> FeedItem:
+    return _item(title, f"https://test.example/{abs(hash(title))}", summary=summary)
+
+
+_SUMMIT = "19 zu 1: Die G-20 zeigt eine klare Haltung gegen Chinas Handelspolitik"
+_NATO = "Die Nato bleibt überlebenswichtig für Europa"
+_FIRM = "G-20 beteiligt sich an Liquidity-Anbieter"
+
+
+def _narrowed(*, excluded=(), required=()) -> FakeClient:
+    return FakeClient(
+        "G-20", excluded_terms=list(excluded), required_terms=list(required)
+    )
+
+
+def test_an_excluded_term_takes_back_a_pairing_the_name_made():
+    """Surgical: "Gipfel" cuts the summit and leaves the firm standing."""
+    client = _narrowed(excluded=["Gipfel"])
+    items = [
+        _g20_item(_SUMMIT, "Der Gipfel in Rio."),
+        _g20_item(_FIRM, "Die Beteiligungsgesellschaft G-20 investiert."),
+    ]
+
+    kept = [c.item.title for c in matching.match_candidates(items, [client])]
+
+    assert kept == [_FIRM]
+
+
+def test_a_required_word_is_the_blunt_instrument_for_a_name_that_is_a_word():
+    """"Liquidity" is G-20's own. An article that does not say it is not about
+    them — including the NATO piece, which no exclusion list would have
+    anticipated."""
+    client = _narrowed(required=["Liquidity"])
+    items = [
+        _g20_item(_SUMMIT, "Der Gipfel in Rio."),
+        _g20_item(_NATO, "Am Rande der G-20."),
+        _g20_item(_FIRM, "Die Beteiligungsgesellschaft G-20 investiert."),
+    ]
+
+    kept = [c.item.title for c in matching.match_candidates(items, [client])]
+
+    assert kept == [_FIRM]
+
+
+def test_an_empty_field_is_no_narrowing_and_not_a_filter_that_rejects_everything():
+    """The bug that would silence the portfolio. A pattern compiled from an empty
+    list is an empty alternation, which matches everywhere: as a requirement it
+    accepts everything, as an exclusion it rejects everything — and eleven of the
+    twelve companies carry empty lists."""
+    client = _narrowed()
+
+    kept = [c.item.title for c in matching.match_candidates([_g20_item(_SUMMIT)], [client])]
+
+    assert kept == [_SUMMIT]
+
+
+def test_the_narrowings_only_ever_take_away_never_add():
+    """They run after the name matched, so a required word occurring in an
+    article that never names the company cannot pull it in."""
+    client = _narrowed(required=["Liquidity"])
+    elsewhere = _g20_item("Ein Liquidity-Anbieter aus Zürich expandiert")
+
+    assert matching.match_candidates([elsewhere], [client]) == []
+
+
+def test_a_narrowing_term_respects_word_boundaries_like_every_other_term():
+    """Compiled exactly like the identity matcher: "Gipfel" must not be found
+    inside a longer word that happens to contain it, or an exclusion silently
+    grows teeth nobody gave it."""
+    client = _narrowed(excluded=["Gipfel"])
+    item = _g20_item("G-20 kauft Anteile an der Gipfelstürmer AG")
+
+    assert [c.item.title for c in matching.match_candidates([item], [client])] == [item.title]
+
+
+def test_the_two_narrowings_apply_to_the_client_that_carries_them_only():
+    """One client's exclusion must not narrow another's coverage — they are
+    compiled per client, and the loop is the one place that could leak."""
+    narrow = _narrowed(excluded=["Gipfel"])
+    wide = FakeClient("Zalando")
+    item = _g20_item("Zalando und G-20 auf dem Gipfel in Rio")
+
+    matched = {c.client.name for c in matching.match_candidates([item], [narrow, wide])}
+
+    assert matched == {"Zalando"}

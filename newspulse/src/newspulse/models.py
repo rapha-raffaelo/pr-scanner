@@ -350,6 +350,37 @@ class Client(Base):
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
     )
+    # --- Two narrowings of the name match, for companies whose name is a word --
+    #
+    # The matcher pairs an article with a company when the name occurs. For most
+    # of the portfolio that is enough. For a company named after something else
+    # it is not: the yardstick "G-20" collected 25 articles a month about the
+    # summit — NATO, China, heads of government — and every one of them was a
+    # paid analyzer call spent to conclude "no".
+    #
+    # Two fields because they answer two different questions, and a mandate may
+    # need either:
+    #
+    # ``excluded_terms`` — if one of these occurs, this is not the company.
+    #   Narrow and surgical: "Gipfel" cuts the summit and leaves the firm.
+    # ``required_terms`` — none of these occurring means this is not the company.
+    #   The blunt instrument, for a name that is a common word: G-20's own field
+    #   is "Liquidity", and an article that does not say it is not about them.
+    #
+    # Empty is the normal case and means "no narrowing", so nothing changes for
+    # the eleven companies whose name is their own.
+    excluded_terms: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
+    required_terms: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        default=list,
+        nullable=False,
+        server_default=_EMPTY_JSON_ARRAY,
+    )
     # Categories this mandate never wants in its daily feed. Per client, because
     # "finanzen" is three near-identical ticker items a day for a listed retailer
     # and the entire mandate for a bank. Hiding, not discarding: the articles stay
