@@ -1,0 +1,628 @@
+<title>RauteOS Umbauplan</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+<style>
+  :root {
+    --ground: #F4F4F8;
+    --surface: #FFFFFF;
+    --raised: #FAFAFD;
+    --ink: #16151F;
+    --ink-2: #3A3849;
+    --muted: #6E6B82;
+    --line: #E2E1EB;
+    --line-soft: #EDECF3;
+    --accent: #5B4BD6;
+    --accent-wash: #EEEBFC;
+    --ok: #3F6B52;
+    --ok-wash: #EDF2EF;
+    --warn: #A85E00;
+    --warn-wash: #FBF0DE;
+    --stop: #B32D45;
+    --stop-wash: #FBEAED;
+
+    --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --body: "Newsreader", Georgia, "Times New Roman", serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #131219;
+      --surface: #1B1A24;
+      --raised: #201F2B;
+      --ink: #EEEDF4;
+      --ink-2: #C7C5D6;
+      --muted: #918EA5;
+      --line: #302E3D;
+      --line-soft: #272534;
+      --accent: #A99BFF;
+      --accent-wash: #262143;
+      --ok: #86AE97;
+      --ok-wash: #1E2A23;
+      --warn: #E0A458;
+      --warn-wash: #33260F;
+      --stop: #F08398;
+      --stop-wash: #351A20;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #131219;
+    --surface: #1B1A24;
+    --raised: #201F2B;
+    --ink: #EEEDF4;
+    --ink-2: #C7C5D6;
+    --muted: #918EA5;
+    --line: #302E3D;
+    --line-soft: #272534;
+    --accent: #A99BFF;
+    --accent-wash: #262143;
+    --ok: #86AE97;
+    --ok-wash: #1E2A23;
+    --warn: #E0A458;
+    --warn-wash: #33260F;
+    --stop: #F08398;
+    --stop-wash: #351A20;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 1120px; margin: 0 auto; padding: 56px 28px 96px; }
+  .col { max-width: 68ch; }
+
+  /* --- Kopf ------------------------------------------------------------- */
+  .mast { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+  .eyebrow {
+    font-family: var(--display); font-size: 12px; font-weight: 700;
+    letter-spacing: 0.13em; text-transform: uppercase; color: var(--accent);
+  }
+  h1 {
+    font-family: var(--display); font-weight: 700; font-size: clamp(34px, 5vw, 52px);
+    line-height: 1.04; letter-spacing: -0.025em; margin: 0; text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 20px; color: var(--ink-2); max-width: 60ch; margin: 0;
+  }
+  .mast-meta {
+    display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 16px;
+    font-family: var(--display); font-size: 13px; color: var(--muted);
+  }
+  .mast-meta b { color: var(--ink-2); font-weight: 600; }
+
+  hr.rule { border: 0; border-top: 1px solid var(--line); margin: 40px 0; }
+
+  /* --- Fliesstext -------------------------------------------------------- */
+  h2 {
+    font-family: var(--display); font-weight: 700; font-size: 27px;
+    letter-spacing: -0.018em; line-height: 1.2; margin: 0 0 6px; text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--display); font-weight: 600; font-size: 18px;
+    letter-spacing: -0.008em; margin: 0 0 6px;
+  }
+  section { margin-top: 52px; }
+  section > p, section > ul, section > ol { margin: 0 0 16px; }
+  .col p:last-child { margin-bottom: 0; }
+  p { margin: 0 0 16px; }
+  a { color: var(--accent); }
+  strong { font-weight: 600; }
+  em { font-style: italic; }
+  code, .mono {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.86em; background: var(--raised);
+    padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line-soft);
+  }
+
+  .sec-n {
+    font-family: var(--display); font-size: 12px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+    display: block; margin-bottom: 10px;
+  }
+
+  ul, ol { padding-left: 1.15em; }
+  li { margin-bottom: 7px; }
+  li::marker { color: var(--muted); }
+
+  /* --- Der Kernsatz ------------------------------------------------------ */
+  .thesis {
+    border-left: 3px solid var(--accent);
+    padding: 4px 0 4px 22px; margin: 28px 0;
+    font-size: 21px; line-height: 1.48; color: var(--ink);
+    max-width: 62ch;
+  }
+  .thesis strong { font-weight: 600; }
+
+  /* --- Tabellen ---------------------------------------------------------- */
+  .scroll { overflow-x: auto; margin: 22px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th {
+    font-family: var(--display); font-size: 11.5px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+    text-align: left; padding: 0 14px 9px 0; border-bottom: 1px solid var(--line);
+    white-space: nowrap; vertical-align: bottom;
+  }
+  td {
+    padding: 11px 14px 11px 0; border-bottom: 1px solid var(--line-soft);
+    vertical-align: top; line-height: 1.45;
+  }
+  tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; padding-right: 0; }
+  .spec-id {
+    font-family: var(--display); font-weight: 700; font-size: 13px;
+    color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  td b { font-family: var(--display); font-weight: 600; font-size: 15px; }
+
+  .tag {
+    display: inline-block; font-family: var(--display); font-size: 11px;
+    font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 3px; white-space: nowrap;
+  }
+  .tag--have { color: var(--ok); background: var(--ok-wash); }
+  .tag--part { color: var(--warn); background: var(--warn-wash); }
+  .tag--new  { color: var(--stop); background: var(--stop-wash); }
+
+  /* --- Zahlenleiste ------------------------------------------------------ */
+  .figures {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px; background: var(--line); border: 1px solid var(--line);
+    border-radius: 6px; overflow: hidden; margin: 26px 0;
+  }
+  .fig { background: var(--surface); padding: 16px 18px; }
+  .fig__v {
+    font-family: var(--display); font-weight: 700; font-size: 27px;
+    letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .fig__l { font-family: var(--display); font-size: 12.5px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+
+  /* --- Phasen ------------------------------------------------------------ */
+  .phase {
+    display: grid; grid-template-columns: 78px minmax(0, 1fr);
+    gap: 0 26px; padding: 26px 0; border-top: 1px solid var(--line);
+  }
+  .phase:last-of-type { border-bottom: 1px solid var(--line); }
+  .phase__n {
+    font-family: var(--display); font-weight: 700; font-size: 13px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
+    padding-top: 4px;
+  }
+  .phase__n small { display: block; color: var(--muted); font-weight: 500; letter-spacing: 0.04em; margin-top: 3px; }
+  .phase h3 { margin-bottom: 8px; }
+  .phase p { margin-bottom: 12px; }
+  .ships {
+    font-family: var(--display); font-size: 13.5px; color: var(--ink-2);
+    background: var(--raised); border: 1px solid var(--line-soft);
+    border-radius: 5px; padding: 11px 14px; line-height: 1.5;
+  }
+  .ships b { color: var(--ink); font-weight: 600; }
+
+  /* --- Herkunftsklassen -------------------------------------------------- */
+  .prov {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px; margin: 24px 0;
+  }
+  .prov__c {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 15px 16px;
+  }
+  .prov__t {
+    font-family: var(--display); font-weight: 700; font-size: 14px;
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+  }
+  .prov__dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .prov__d { font-size: 14.5px; color: var(--muted); line-height: 1.5; }
+
+  /* --- Beispiel ---------------------------------------------------------- */
+  .example {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 20px 22px; margin: 24px 0;
+  }
+  .example__h {
+    font-family: var(--display); font-size: 11.5px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .example__claim { font-size: 19px; margin-bottom: 12px; }
+  .example__rows { display: flex; flex-direction: column; gap: 7px; font-size: 15px; }
+  .example__row { display: flex; gap: 12px; align-items: baseline; }
+  .example__k {
+    font-family: var(--display); font-size: 12px; font-weight: 600;
+    color: var(--muted); min-width: 128px; flex: none;
+    letter-spacing: 0.03em; text-transform: uppercase;
+  }
+
+  /* --- Navigation vorher/nachher ----------------------------------------- */
+  .nav2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin: 24px 0; }
+  .nav2__c { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; }
+  .nav2__t { font-family: var(--display); font-weight: 700; font-size: 14px; margin-bottom: 12px; }
+  .nav2 ul { list-style: none; padding: 0; margin: 0; font-family: var(--display); font-size: 14.5px; }
+  .nav2 li { padding: 5px 0; border-bottom: 1px solid var(--line-soft); margin: 0; }
+  .nav2 li:last-child { border-bottom: 0; }
+  .gone { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+  .kept { color: var(--ink); font-weight: 600; }
+  .fresh { color: var(--accent); font-weight: 600; }
+
+  /* --- Risiko ------------------------------------------------------------ */
+  .risk { padding: 18px 0; border-top: 1px solid var(--line-soft); }
+  .risk:first-of-type { border-top: 1px solid var(--line); }
+  .risk h3 { margin-bottom: 5px; }
+  .risk p { margin-bottom: 0; font-size: 16px; }
+  .risk__a {
+    font-family: var(--display); font-size: 14px; color: var(--ink-2);
+    margin-top: 9px; padding-left: 15px; border-left: 2px solid var(--accent);
+  }
+
+  footer {
+    margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--line);
+    font-family: var(--display); font-size: 13px; color: var(--muted);
+  }
+
+  @media (max-width: 620px) {
+    .page { padding: 36px 18px 64px; }
+    .phase { grid-template-columns: 1fr; gap: 10px; }
+    .example__row { flex-direction: column; gap: 1px; }
+    .example__k { min-width: 0; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="mast">
+    <span class="eyebrow">Umbauplan · 9. September 2026</span>
+    <h1>RauteOS auf React</h1>
+    <p class="standfirst">Acht Spezifikationen, ein Frontend-Wechsel und ein Werkzeug, das währenddessen jeden Morgen laufen muss. Was zuerst, was zuletzt, und warum.</p>
+    <div class="mast-meta">
+      <span>Für <b>Raphael</b>, <b>Lucas</b>, <b>Remy</b></span>
+      <span>Entschieden: <b>React-Oberfläche, FastAPI als JSON-API</b></span>
+      <span>Umstellung: <b>Seite für Seite</b></span>
+    </div>
+  </header>
+
+  <hr class="rule">
+
+  <section style="margin-top:0">
+    <span class="sec-n">Die Frage</span>
+    <h2>„Bekommen wir das so hin?“</h2>
+    <div class="col">
+      <p><strong>Ja.</strong> Und zwar näher dran, als es aussieht: von den vierzehn Schritten deiner Kette laufen heute schon acht, sechs teilweise oder gar nicht. Was fehlt, ist nicht die Maschine — es sind drei Bausteine und eine Oberfläche, die sie zu einem Weg verbindet.</p>
+      <p>Die Kette, mit dem heutigen Stand daneben:</p>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:34px"></th><th style="min-width:230px">Schritt</th><th style="min-width:300px">Heute</th><th>Stand</th></tr></thead>
+        <tbody>
+          <tr><td class="spec-id">1</td><td><b>Client anlegen</b></td><td>Geführte Maske, scrapt Website, Branche, Wettbewerber, Profil und erste Entwürfe beim Anlegen</td><td><span class="tag tag--have">läuft</span></td></tr>
+          <tr><td class="spec-id">2</td><td><b>Digital Twin aufbauen</b></td><td>17 Felder mit Quelle, Kickoff mit 20 Fragen, Guide — aber ohne Herkunftsklassen und ohne Fragebogen-Import</td><td><span class="tag tag--part">teilweise</span></td></tr>
+          <tr><td class="spec-id">3</td><td><b>Positionierung kennen</b></td><td>Profilfeld Positionierung, Kommunikationsguide, No-Gos aus dem Kickoff</td><td><span class="tag tag--have">läuft</span></td></tr>
+          <tr><td class="spec-id">4</td><td><b>Außenwelt überwachen</b></td><td>44 Feeds, Google-News je Mandant, Themenradar, drei bezahlte APIs mit Volltextsuche — täglich 06:10</td><td><span class="tag tag--have">läuft</span></td></tr>
+          <tr><td class="spec-id">5</td><td><b>Opportunity erkennen</b></td><td>Erkennung mit Begründung, Zeitfenster, Aufgriffszähler</td><td><span class="tag tag--have">läuft</span></td></tr>
+          <tr><td class="spec-id">5b</td><td><b>… oder entwickeln lassen</b></td><td>Gibt es nicht. Ohne Nachrichtenanlass passiert nichts.</td><td><span class="tag tag--new">fehlt</span></td></tr>
+          <tr><td class="spec-id">6</td><td><b>Relevanz erklären</b></td><td>Begründung je Chance, gegen Profil und Themen des Mandanten</td><td><span class="tag tag--have">läuft</span></td></tr>
+          <tr><td class="spec-id">7</td><td><b>Medium auswählen</b></td><td>Empfängerliste aus dem Archiv, mit Belegartikeln je Vorschlag</td><td><span class="tag tag--have">läuft</span></td></tr>
+          <tr><td class="spec-id">8</td><td><b>Journalisten recherchieren</b></td><td>Bylines aus dem Archiv. Keine frische Recherche je Chance.</td><td><span class="tag tag--new">fehlt</span></td></tr>
+          <tr><td class="spec-id">9</td><td><b>Passung erklären</b></td><td>Ein Grund je Vorschlag mit Belegschlagzeilen — aber ohne Themenprofil und Beziehungsverlauf</td><td><span class="tag tag--part">teilweise</span></td></tr>
+          <tr><td class="spec-id">10</td><td><b>Maßnahme auswählen</b></td><td>Acht Formate erzeugbar. Kundenmail, LinkedIn, Interviewangebot, eigene Aktion fehlen.</td><td><span class="tag tag--part">teilweise</span></td></tr>
+          <tr><td class="spec-id">11</td><td><b>Asset erstellen</b></td><td>Läuft, mit Twin und Guide im Kontext — ohne Journalistenprofil</td><td><span class="tag tag--part">teilweise</span></td></tr>
+          <tr><td class="spec-id">12</td><td><b>Facts und Claims prüfen</b></td><td>Zweitmodell-Review je Anschreiben, Guide-Prüfung, Overclaim-Feld. Keine Klassifikation Aussage für Aussage.</td><td><span class="tag tag--part">teilweise</span></td></tr>
+          <tr><td class="spec-id">13</td><td><b>Als Action speichern</b></td><td>Nachtragsbuch und alle Auslieferungen werden gezählt — aber flach am Mandanten, nicht unter der Chance</td><td><span class="tag tag--part">teilweise</span></td></tr>
+          <tr><td class="spec-id">14</td><td><b>Action durchführen</b></td><td>Freigabekette mit Kundenabstimmung, Versand über Gmail, Antworten laufen zurück ein</td><td><span class="tag tag--have">läuft</span></td></tr>
+          <tr><td class="spec-id">15</td><td><b>Wissen zurückführen</b></td><td>Antworten landen am Kontakt. Nichts fließt in den Twin zurück.</td><td><span class="tag tag--new">fehlt</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col">
+      <p>Drei Lücken, und sie hängen zusammen: <strong>Chancen entwickeln</strong> (5b), <strong>Journalisten je Chance recherchieren</strong> (8) und <strong>Wissen zurückführen</strong> (15). Alles andere ist Verbinden und Umziehen.</p>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <span class="sec-n">Der Bestand, gemessen</span>
+    <h2>Wovon wir reden</h2>
+    <div class="col">
+      <p>Alle Zahlen aus dem heutigen Stand von <code>main</code>, nicht geschätzt.</p>
+    </div>
+
+    <div class="figures">
+      <div class="fig"><div class="fig__v">42.075</div><div class="fig__l">Zeilen Domänenlogik<br>Python</div></div>
+      <div class="fig"><div class="fig__v">16.369</div><div class="fig__l">Zeilen Web-Schicht<br>Routen und Views</div></div>
+      <div class="fig"><div class="fig__v">25</div><div class="fig__l">Seiten<br>9.607 Zeilen Templates</div></div>
+      <div class="fig"><div class="fig__v">2.458</div><div class="fig__l">Tests<br>48 lesen HTML</div></div>
+      <div class="fig"><div class="fig__v">42</div><div class="fig__l">Tabellen<br>53 Migrationen</div></div>
+      <div class="fig"><div class="fig__v">1</div><div class="fig__l">JS-Datei<br>htmx, mitgeliefert</div></div>
+    </div>
+
+    <div class="col">
+      <p>Die Trennung zwischen den ersten beiden Zahlen ist die gute Nachricht: <strong>72 % des Codes sind Domänenlogik</strong> — der tägliche Lauf, der Analyzer, das Raute Brain mit seinen Golden Files, der Matcher, Gmail, die drei Nachrichten-APIs, die Sichtbarkeitsmessung. Nichts davon wird angefasst. Umgebaut wird die Web-Schicht, und die ist ein knappes Viertel.</p>
+      <p>Die schlechte Nachricht steht in Spalte vier. 48 Testdateien prüfen ausgeliefertes HTML. Diese Suite hat allein in der letzten Sitzung viermal durch <code>git reset</code> verlorene Änderungen gefunden, drei tote CSS-Tokens, die stumm drei Regeln annullierten, und ein leeres Regex-Alternationsmuster, das das ganze Portfolio hätte verstummen lassen. Sie ist das wertvollste Stück im Repo, und der Umbau muss sie mitnehmen statt sie abzuräumen.</p>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-n">Die Entscheidung, die alles ordnet</span>
+    <h2>Nichts wird zweimal gebaut</h2>
+    <div class="col">
+      <p>Der Umbau und die acht neuen Spezifikationen laufen sonst gegeneinander: jede neue Ansicht entstünde erst in Jinja und ein halbes Jahr später nochmal in React. Deshalb die Regel für alles, was folgt:</p>
+    </div>
+
+    <p class="thesis"><strong>Neue Ansichten entstehen von Anfang an in React. Die alten Seiten kommen zuletzt — und die meisten davon werden nicht migriert, sondern abgeschaltet.</strong></p>
+
+    <div class="col">
+      <p>Deine Navigation für Version 1 macht daraus eine andere Rechnung als „25 Seiten portieren“. Von neun Mandantenreitern bleiben vier.</p>
+    </div>
+
+    <div class="nav2">
+      <div class="nav2__c">
+        <div class="nav2__t">Mandant heute — 9 Reiter</div>
+        <ul>
+          <li class="kept">Heute</li>
+          <li class="kept">Impulse</li>
+          <li class="gone">Issues</li>
+          <li class="gone">Plan</li>
+          <li class="gone">Wettbewerb</li>
+          <li class="gone">Archiv</li>
+          <li class="kept">Profil</li>
+          <li class="gone">Marktumfeld</li>
+          <li class="gone">KI-Sichtbarkeit</li>
+        </ul>
+      </div>
+      <div class="nav2__c">
+        <div class="nav2__t">Mandant, Version 1 — 4 Reiter</div>
+        <ul>
+          <li class="kept">Overview <span style="font-weight:400;color:var(--muted)">← Heute</span></li>
+          <li class="fresh">Opportunities <span style="font-weight:400;color:var(--muted)">← Impulse, neu gefasst</span></li>
+          <li class="kept">Twin <span style="font-weight:400;color:var(--muted)">← Profil + Kickoff + Guide</span></li>
+          <li class="fresh">Actions <span style="font-weight:400;color:var(--muted)">neu</span></li>
+          <li class="fresh">Ask RAUTE <span style="font-weight:400;color:var(--muted)">überall</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="col">
+      <p><strong>Weiß, nicht grün.</strong> Das Grün im Carbon-Farming-Mockup ist die Farbe des Beispielmandanten, nicht die des Werkzeugs — RauteOS bleibt weiß mit dem violetten Akzent, und die Mandantenfarbe erscheint nur dort, wo sie einen Mandanten kennzeichnet.</p>
+      <p>Fünf Seiten verschwinden aus der täglichen Navigation. Sie werden nicht gelöscht — Archiv, Marktumfeld, KI-Sichtbarkeit und Wettbewerb bleiben als Python-Seiten erreichbar und laufen weiter, sie sind nur nicht mehr Teil des Arbeitswegs. Das spart im Umbau mehr als jede technische Entscheidung.</p>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-n">Bestandsaufnahme der acht Spezifikationen</span>
+    <h2>Was es schon gibt</h2>
+    <div class="col">
+      <p>Deutlich mehr, als es sich anfühlt. Sechs der acht Punkte haben ein Fundament im Code; drei brauchen wirklich Neues.</p>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:38px"></th>
+            <th style="min-width:180px">Spezifikation</th>
+            <th style="min-width:280px">Was heute schon steht</th>
+            <th style="min-width:240px">Was fehlt</th>
+            <th>Stand</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="spec-id">01</td>
+            <td><b>Client Twin</b></td>
+            <td>17 Profilfelder, Quelle und Quelltitel je Wert, <code>filled_by</code>, eine Historienstufe, Handbearbeitung geschützt vor KI-Überschreiben, Vollständigkeit auf dem Desk</td>
+            <td>Die vier Herkunftsklassen, Confidence, Vertraulichkeit, Stand-Datum, Fragebogen-Import</td>
+            <td><span class="tag tag--part">Fundament</span></td>
+          </tr>
+          <tr>
+            <td class="spec-id">02</td>
+            <td><b>Desk</b></td>
+            <td>Vollständig gebaut: fünf Kennzahlen, Mandantenüberblick, Vertrag gegen Lieferung, Braucht Entscheidung, In Arbeit, Twins mit Lücken</td>
+            <td>Nur die Spalte RAUTE Intelligence</td>
+            <td><span class="tag tag--have">Fertig</span></td>
+          </tr>
+          <tr>
+            <td class="spec-id">03</td>
+            <td><b>Ask RAUTE</b></td>
+            <td>325 Zeilen, Antwortstrom über SSE, kennt Mandant, Tag und sichtbare Berichterstattung</td>
+            <td>Kontext für Opportunity und Asset, Präsenz auf jeder Seite</td>
+            <td><span class="tag tag--part">Fundament</span></td>
+          </tr>
+          <tr>
+            <td class="spec-id">04</td>
+            <td><b>Opportunity Intelligence</b></td>
+            <td>Modus A weitgehend: 448 Zeilen Erkennung, Begründung, Zeitfenster, Aufgriffszähler, Verwerfen</td>
+            <td>Modus B — auf Zuruf eine Chance <em>entwickeln</em>, ohne Nachrichtenanlass</td>
+            <td><span class="tag tag--part">Fundament</span></td>
+          </tr>
+          <tr>
+            <td class="spec-id">05</td>
+            <td><b>Opportunity Workspace</b></td>
+            <td>Die Teile liegen verstreut auf der Impulse-Seite</td>
+            <td>Die strukturierten Felder, Storylines, Sprecherwahl, der ACTIVATE-Knopf</td>
+            <td><span class="tag tag--new">Neu</span></td>
+          </tr>
+          <tr>
+            <td class="spec-id">06</td>
+            <td><b>Activation / Assets</b></td>
+            <td>Acht Formate erzeugbar, Journalistenvorschlag mit Belegen, Freigabekette bis zum Versand, Kundenfreigabe</td>
+            <td><strong>Kundenmail</strong>, eigene Aktion, die volle Kontextkette in den Pitch</td>
+            <td><span class="tag tag--part">Fundament</span></td>
+          </tr>
+          <tr>
+            <td class="spec-id">07</td>
+            <td><b>Media &amp; Journalist Intelligence</b></td>
+            <td>Kontaktbuch: Name, Medium, Position, Ressort, Adresse, jeder je verschickte Brief mit Ausgang</td>
+            <td>Themenprofil, Artikelhistorie, Beziehungsstatus — und die frische Recherche <em>je Opportunity</em></td>
+            <td><span class="tag tag--new">Neu</span></td>
+          </tr>
+          <tr>
+            <td class="spec-id">08</td>
+            <td><b>Quality / Evidence Light</b></td>
+            <td>Zweitmodell-Review je Anschreiben, Guide-Prüfung, Overclaim-Feld am Impuls, Nachtragsbuch für Aktionen</td>
+            <td>Aussage-für-Aussage-Klassifikation, Twin-Abgleich, No-Go-Prüfung, Action-Historie an der Opportunity</td>
+            <td><span class="tag tag--part">Fundament</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-n">Das Fundament</span>
+    <h2>Herkunft ist keine Ansicht, sondern das Datenmodell</h2>
+    <div class="col">
+      <p>Dein Beispiel entscheidet die Reihenfolge des ganzen Plans. „400 % THG-Minderung bei BeyondZero“ ist ein Unternehmensclaim, kein bestätigter Fakt — und ob das System diesen Unterschied kennt, bestimmt drei andere Spezifikationen auf einmal:</p>
+      <ul>
+        <li><strong>Ask RAUTE</strong> darf einen Claim nicht als Tatsache wiedergeben, wenn jemand fragt „welche Proof Points haben wir für BeyondZero?“</li>
+        <li><strong>Die Opportunity</strong> begründet ihre Relevanz aus Twin-Aussagen — und eine Begründung, die auf einem unbelegten Claim steht, ist keine.</li>
+        <li><strong>Die Qualitätsprüfung</strong> aus 08 <em>ist</em> nichts anderes als das Auslesen dieser Klassifikation über einem fertigen Text.</li>
+      </ul>
+      <p>Deshalb steht 01 vor allem anderen, und deshalb ist es kein Bildschirm, sondern eine Migration.</p>
+    </div>
+
+    <div class="prov">
+      <div class="prov__c">
+        <div class="prov__t"><span class="prov__dot" style="background:var(--ok)"></span>Bestätigter Fakt</div>
+        <div class="prov__d">Unabhängig belegt. Mit Quelle, die nicht das Unternehmen selbst ist.</div>
+      </div>
+      <div class="prov__c">
+        <div class="prov__t"><span class="prov__dot" style="background:var(--warn)"></span>Kundenaussage</div>
+        <div class="prov__d">Das Unternehmen sagt es über sich. Darf zitiert, nicht behauptet werden.</div>
+      </div>
+      <div class="prov__c">
+        <div class="prov__t"><span class="prov__dot" style="background:var(--accent)"></span>External Observation</div>
+        <div class="prov__d">Presse, Register, Studie. Belegt, aber nicht unbedingt geprüft.</div>
+      </div>
+      <div class="prov__c">
+        <div class="prov__t"><span class="prov__dot" style="background:var(--muted)"></span>Unsere Hypothese</div>
+        <div class="prov__d">Einschätzung von raute+kopf. Nie Grundlage einer Aussage nach außen.</div>
+      </div>
+    </div>
+
+    <div class="example">
+      <div class="example__h">So sieht eine Twin-Zeile danach aus</div>
+      <div class="example__claim">„400 % THG-Minderung gegenüber fossilem LNG“</div>
+      <div class="example__rows">
+        <div class="example__row"><span class="example__k">Herkunft</span><span><span class="tag tag--part">Kundenaussage</span></span></div>
+        <div class="example__row"><span class="example__k">Quelle</span><span>Fragebogen Carbon Farming, Abschnitt Proof Points</span></div>
+        <div class="example__row"><span class="example__k">Stand</span><span>08.09.2026</span></div>
+        <div class="example__row"><span class="example__k">Confidence</span><span>Mittel — Berechnungsgrundlage nicht hinterlegt</span></div>
+        <div class="example__row"><span class="example__k">Vertraulichkeit</span><span>Extern verwendbar, mit Kennzeichnung</span></div>
+        <div class="example__row"><span class="example__k">Im Asset</span><span style="color:var(--stop)">Warnung: unabhängige Verifikation nicht verfügbar</span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <p>Technisch: <code>ClientFact</code> bekommt vier Spalten und wird von „ein Wert je Feld“ zu „mehrere Aussagen je Feld, jede mit eigener Herkunft“. Das ist die einzige wirklich unangenehme Migration im ganzen Plan — 53 bestehende Revisionen und Daten in Produktion. Die 17 vorhandenen Felder werden dabei als <em>External Observation</em> eingestuft, wo eine Quelle hinterlegt ist, und als <em>Bestätigter Fakt</em>, wo ein Mensch sie getippt hat.</p>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-n">Reihenfolge</span>
+    <h2>Sechs Phasen</h2>
+    <div class="col">
+      <p>Jede Phase liefert etwas Benutzbares, und das Werkzeug läuft durchgehend. Die Angaben in Klammern sind Größenordnungen, keine Zusagen — sie stehen da, damit du siehst, wo das Gewicht liegt.</p>
+    </div>
+
+    <div class="phase">
+      <div class="phase__n">Phase 0<small>Fundament</small></div>
+      <div>
+        <h3>Herkunft im Datenmodell, JSON-API, React-Gerüst</h3>
+        <p>Die vier Klassen samt Confidence, Stand und Vertraulichkeit an <code>ClientFact</code>. Parallel: die erste API-Route liefert JSON statt HTML, und daneben entsteht das React-Gerüst mit Vite. Als Beweisstück wandert <strong>eine</strong> Seite herüber — der Desk, weil er die jüngste ist, die wenigsten Abhängigkeiten hat und ich seine Zahlen gerade erst gemessen habe.</p>
+        <div class="ships"><b>Danach benutzbar:</b> derselbe Desk wie heute, nur in React — und jede Twin-Aussage weiß, woher sie kommt.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase__n">Phase 1<small>Spec 01</small></div>
+      <div>
+        <h3>Der Twin</h3>
+        <p>Die Twin-Ansicht in React: jede Aussage mit ihrer Herkunft, jederzeit bearbeitbar, bestätigbar, verwerfbar. Dazu der Fragebogen-Import — als Tabellen-Upload, mit Zuordnung der Spalten auf Felder, so wie der bestehende Mandanten-Import es schon macht. Pflicht- und Optionalfelder trennen, damit die Vollständigkeit etwas Ehrliches misst.</p>
+        <div class="ships"><b>Danach benutzbar:</b> Lucas füllt Carbon Farming und Calibre einmal aus und lädt hoch, statt 17 Felder abzutippen. Die Twin-Prozente auf dem Desk werden zum ersten Mal aussagekräftig.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase__n">Phase 2<small>Spec 07</small></div>
+      <div>
+        <h3>Journalisten</h3>
+        <p>Vorgezogen, obwohl es Nummer 07 ist — der Opportunity Workspace ist ohne die Journalistenschicht eine halbe Seite. Das Kontaktbuch wächst zur Datenbank: Themenprofil, Artikelhistorie, Beziehungsstatus, Notizen. Die Artikel kommen aus dem Archiv, das schon 3.665 Stück hält, plus den drei bezahlten Nachrichten-APIs. Zweite Ebene: die frische Recherche <em>je Opportunity</em> — hat diese Person in sechs Wochen zu genau diesem Thema geschrieben.</p>
+        <div class="ships"><b>Danach benutzbar:</b> „Sehr guter Fit, weil …“ mit belegten Artikeln statt einer Prozentzahl ohne Begründung.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase__n">Phase 3<small>Spec 04 + 05</small></div>
+      <div>
+        <h3>Opportunities: erkennen, entwickeln, öffnen</h3>
+        <p>Modus B — auf Zuruf eine Chance entwickeln, ohne Nachrichtenanlass. Der Weg, den du beschrieben hast, ist eine Kette von Recherchen über dem Twin und ist der aufwendigste einzelne Baustein im Plan. Darauf der Workspace mit den sechs Feldern, den Storylines und der Sprecherwahl.</p>
+        <div class="ships"><b>Danach benutzbar:</b> „Entwickle mir eine Kommunikationschance für Carbon Farming“ — auch an einem Tag, an dem nichts passiert ist.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase__n">Phase 4<small>Spec 06 + 08</small></div>
+      <div>
+        <h3>Aktivieren, prüfen, festhalten</h3>
+        <p>Der ACTIVATE-Knopf und die zehn Formate. Die <strong>Kundenmail</strong> zuerst, weil sie die Kette eröffnet: Chance sehen, dem Kunden erklären, Vorschlag machen, Freigabe holen. Der Pitch bekommt die volle Kontextkette. Dazu die Qualitätsprüfung aus 08, die nichts anderes tut, als die Herkunft aus Phase 0 über dem fertigen Text auszulesen — und die Action-Historie, die festhält, was wir wann für wen gemacht haben.</p>
+        <div class="ships"><b>Danach benutzbar:</b> der ganze Weg von der erkannten Chance bis zum verschickten Pitch, mit Warnung an jedem unbelegten Satz und einer Historie, die verhindert, dass derselbe Journalist zweimal dieselbe Geschichte bekommt.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase__n">Phase 5<small>Aufräumen</small></div>
+      <div>
+        <h3>Der Rest zieht nach</h3>
+        <p>Ask RAUTE überall mit den vier Kontexten. Die RAUTE-Intelligence-Spalte auf dem Desk. Und dann die verbliebenen Jinja-Seiten: Overview und Actions kommen herüber, Archiv, Marktumfeld, KI-Sichtbarkeit und Wettbewerb bleiben, wo sie sind, bis jemand sie vermisst.</p>
+        <div class="ships"><b>Danach benutzbar:</b> die Navigation aus deiner letzten Nachricht, vollständig.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-n">Was schiefgehen kann</span>
+    <h2>Drei Risiken, und was dagegen steht</h2>
+
+    <div class="risk">
+      <h3>Die Testsuite verliert ihre Zähne</h3>
+      <p>48 Dateien prüfen HTML, das es nach dem Umbau nicht mehr gibt. Ohne Gegenmaßnahme verliert das Projekt seinen einzigen automatischen Wächter genau in dem halben Jahr, in dem am meisten umgebaut wird.</p>
+      <div class="risk__a">Jede Seite, die nach React wandert, nimmt ihre Tests mit — von „prüft Markup“ zu „prüft den JSON-Vertrag“. Das ist besser als vorher, weil es die Zusage prüft statt der Darstellung. Aber es ist Arbeit, und sie gehört in dieselbe Phase wie die Seite, nicht in eine spätere.</div>
+    </div>
+
+    <div class="risk">
+      <h3>Lucas arbeitet auf einer Baustelle</h3>
+      <p>Jeder Push auf <code>main</code> geht sofort live. Ein halbfertiger React-Bereich neben laufenden Jinja-Seiten heißt: zwei Navigationen, zwei Anmeldezustände, zwei Arten, wie ein Fehler aussieht.</p>
+      <div class="risk__a">Die React-App übernimmt ganze Seiten, nie halbe. Die Seitenleiste bleibt bis zum Schluss serverseitig und ist beiden gemeinsam — sie ist das Scharnier, an dem der Übergang unsichtbar bleibt.</div>
+    </div>
+
+    <div class="risk">
+      <h3>Zwei Agenten auf denselben Dateien</h3>
+      <p>Remy baut Bildschirme, ich die Schicht darunter. In Jinja war die Trennung „er die Templates, ich die Tokens“. In React verschwimmt sie: eine Komponente ist beides.</p>
+      <div class="risk__a">Neue Trennlinie, ab Phase 0: Remy besitzt <code>components/</code> und das Aussehen, ich besitze die API-Verträge, die Domänenlogik und die Datenmodelle. Wer eine Zusage ändert, ändert sie im Vertrag zuerst.</div>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-n">Vor Phase 0</span>
+    <h2>Was ich als Nächstes brauche</h2>
+    <div class="col">
+      <ul>
+        <li><strong>Den Fragebogen.</strong> Der Drive-Link ist geschützt, ich komme nicht heran. Ohne die Feldliste kann ich weder die Pflicht-/Optional-Trennung noch den Import bauen. Eine Ausleitung als <code>.xlsx</code> oder <code>.csv</code> genügt.</li>
+        <li><strong>Fünf offene Pull Requests.</strong> #20, #22, #23, #24, #25 — der Desk und die Nachrichten-APIs stecken darin. Die sollten gemerged sein, bevor der Umbau beginnt, sonst rebase ich sie ein halbes Jahr lang über eine wandernde Basis.</li>
+        <li><strong>Eine Entscheidung zu den fünf stillgelegten Reitern.</strong> Bleiben Archiv, Marktumfeld, KI-Sichtbarkeit und Wettbewerb erreichbar, oder sollen sie ganz weg? Erreichbar lassen kostet nichts; Abschalten spart Pflege.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    Gemessen am Stand von <span class="mono">main</span>, 9. September 2026 · Alle Zahlen aus dem Repo, keine Schätzungen · Grundlage: Spezifikationen 01–08 und die Navigationsskizze für Version 1
+  </footer>
+
+</div>
