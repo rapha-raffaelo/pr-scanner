@@ -68,6 +68,10 @@ _ENV_ANALYZER_TIMEOUT = "NEWSPULSE_ANALYZER_TIMEOUT"
 _ENV_ANALYZER_BACKEND = "NEWSPULSE_ANALYZER_BACKEND"
 _ENV_PROFILE_REFRESH_PER_RUN = "NEWSPULSE_PROFILE_REFRESH_PER_RUN"
 _ENV_GOOGLE_NEWS = "NEWSPULSE_GOOGLE_NEWS"
+_ENV_PERIGON_API_KEY = "NEWSPULSE_PERIGON_API_KEY"
+_ENV_EVENT_REGISTRY_API_KEY = "NEWSPULSE_EVENT_REGISTRY_API_KEY"
+_ENV_MEDIASTACK_API_KEY = "NEWSPULSE_MEDIASTACK_API_KEY"
+_ENV_NEWS_API_QUERIES_PER_RUN = "NEWSPULSE_NEWS_API_QUERIES_PER_RUN"
 _ENV_CLAUDE_CONFIG_DIR = "NEWSPULSE_CLAUDE_CONFIG_DIR"
 _ENV_AUTH_USER = "NEWSPULSE_AUTH_USER"
 _ENV_AUTH_PASSWORD = "NEWSPULSE_AUTH_PASSWORD"
@@ -158,6 +162,8 @@ _DEFAULT_CLAUDE_CONFIG_DIR = ""
 # the curated registry only — one extra HTTP request per client per run, against
 # an endpoint Google publishes but does not contract to keep stable.
 _DEFAULT_GOOGLE_NEWS = True
+# Twelve is the portfolio as it stands; the cap is a brake, not a budget.
+_DEFAULT_NEWS_API_QUERIES_PER_RUN = 12
 
 # Whether a mandate is measured against what an assistant answers about its
 # market at all. On by default, like the Google News search above and for the
@@ -328,6 +334,32 @@ WEB_HOST: str = os.environ.get(_ENV_WEB_HOST, _DEFAULT_WEB_HOST)
 # precedence so a local override is never silently ignored.
 WEB_PORT: int = _env_int(_ENV_WEB_PORT, _env_int("PORT", _DEFAULT_WEB_PORT))
 GOOGLE_NEWS_ENABLED: bool = _env_bool(_ENV_GOOGLE_NEWS, _DEFAULT_GOOGLE_NEWS)
+# --- The paid news APIs ---------------------------------------------------------
+#
+# Three keys, read under two names each: the NEWSPULSE_-prefixed one this module
+# documents everywhere else, and the bare name the key actually arrived under.
+# The bare names are what is set on the deployment and renaming a live secret to
+# satisfy a convention is a way to take the sweep down for an afternoon.
+#
+# Empty means the provider is simply not asked. That is the whole switch — there
+# is no separate enable flag, because a provider with no key cannot be enabled
+# and one with a key has no reason not to be.
+PERIGON_API_KEY: str = (
+    os.environ.get(_ENV_PERIGON_API_KEY) or os.environ.get("PERIGON") or ""
+).strip()
+EVENT_REGISTRY_API_KEY: str = (
+    os.environ.get(_ENV_EVENT_REGISTRY_API_KEY) or os.environ.get("NEWSAPI") or ""
+).strip()
+MEDIASTACK_API_KEY: str = (
+    os.environ.get(_ENV_MEDIASTACK_API_KEY) or os.environ.get("MEDIASTACK_API_KEY") or ""
+).strip()
+# How many per-client queries one sweep may spend on any single provider. These
+# APIs are metered and the portfolio grows; a cap means adding the thirteenth
+# mandate cannot silently double a bill or exhaust a daily allowance before the
+# sweep reaches the last client on the list.
+NEWS_API_QUERIES_PER_RUN: int = _env_int(
+    _ENV_NEWS_API_QUERIES_PER_RUN, _DEFAULT_NEWS_API_QUERIES_PER_RUN
+)
 VISIBILITY_ENABLED: bool = _env_bool(_ENV_VISIBILITY, _DEFAULT_VISIBILITY)
 # Zero or less means "no window": every request measures. A legitimate setting
 # for an operator working a single mandate by hand, and a bad default for a

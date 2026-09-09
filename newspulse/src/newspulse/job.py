@@ -55,6 +55,7 @@ from . import (
     config,
     crisis,
     gnews,
+    newsapis,
     industry,
     issues,
     mailsync,
@@ -366,6 +367,33 @@ def _match(
         _log.warning("matching failed: %s; skipping match for this run", exc)
         errors.append(f"match: {exc}")
         return []
+
+
+def _fetch_paid(
+    clients: Sequence[Client],
+    since: dt.datetime,
+    fetched_at: dt.datetime,
+    errors: list[str],
+) -> list[FeedItem]:
+    """The metered news APIs, isolated from the sweep the way one feed is.
+
+    :func:`newspulse.newsapis.harvest` already returns rather than raises for a
+    provider that refuses; this boundary is for everything else — an import-time
+    surprise, a shape no provider documented. A morning's coverage must not
+    depend on a paid subscription being reachable.
+
+    A provider with no key configured returns nothing and says nothing: on a
+    deployment that has never been given one, that is the correct silence, not a
+    daily error.
+    """
+    try:
+        found = newsapis.harvest(clients, since, fetched_at=fetched_at)
+    except Exception as exc:  # noqa: BLE001 — paid-source fault-isolation boundary
+        _log.warning("the paid news APIs failed: %s; skipping them", exc)
+        errors.append(f"news APIs: {exc}")
+        return []
+    errors.extend(found.errors)
+    return found.items
 
 
 def _fetch_topics(
@@ -2125,6 +2153,13 @@ def _run_real(
     status = RunStatus.OK
     try:
         items, feeds_ok = _fetch_all(feeds, since, fetch, started, errors)
+        # The paid APIs join the registry's items *before* matching, because they
+        # are the same kind of thing: coverage nobody has sorted yet. Perigon and
+        # Event Registry see the article body, which no feed carries; mediastack
+        # carries the regional press the 44-feed registry does not. Nothing here
+        # is trusted to be relevant because an API charged for it — the matcher
+        # pre-filters and the analyzer judges, exactly as for a Google News hit.
+        items.extend(_fetch_paid(clients, since, started, errors))
         topic_pairs, topics_ok = _fetch_topics(radar, clients, since, fetch, started, errors)
         feeds_ok += topics_ok
         items_count = len(items) + len(topic_pairs)
