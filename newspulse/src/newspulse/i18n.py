@@ -50,6 +50,35 @@ _EN: dict[str, str] = {
     "Einstellungen": "Settings",
     "↻ Aktualisieren": "↻ Refresh",
     "Aktualisieren": "Refresh",
+    # Die vier Kickoff-Fragen aus RAUTE_OS_INPUT-Master.xlsx.
+    "Welche starke fachliche These würden Sie öffentlich vertreten?":
+        "What strong professional thesis would you defend in public?",
+    "Woraus eine Chance entsteht, wenn gerade nichts passiert ist. Je unbequemer die These, desto brauchbarer — eine, der alle zustimmen, trägt keinen Gastbeitrag.":
+        "Where an opportunity comes from on a day when nothing has happened. The "
+        "more uncomfortable the thesis, the more useful: one everybody agrees "
+        "with carries no opinion piece.",
+    "speist die entwickelten Chancen": "feeds the opportunities it develops",
+    "Wie mutig darf die Positionierung sein, und wie politisch?":
+        "How bold may the positioning be, and how political?",
+    "Der Ton jedes erzeugten Textes hängt daran. „Zurückhaltend, nie parteipolitisch“ und „wir dürfen anecken“ ergeben zwei verschiedene Gastbeiträge zur selben Nachricht.":
+        "The tone of every text written here depends on it. \u201cReserved, never "
+        "party-political\u201d and \u201cwe may ruffle feathers\u201d produce two "
+        "different opinion pieces about the same news.",
+    "Welche Aussage über sich möchten Sie führen, können sie heute aber nicht belegen?":
+        "Which claim about yourselves would you like to make but cannot yet substantiate?",
+    "Die wichtigste Frage des ganzen Bogens für die Qualitätsprüfung: was hier steht, wird in jedem Text als Behauptung gekennzeichnet statt als Tatsache behauptet. Lucas' Beispiel: „400 % THG-Minderung“.":
+        "The most important question on the form for the quality check: whatever "
+        "stands here is marked in every text as a claim rather than asserted as "
+        "fact.",
+    "jede Aussage daraus wird im Text als Kundenaussage markiert":
+        "each of these is marked in the text as a client statement",
+    "Eine Aussage je Zeile": "One claim per line",
+    "Belegbarkeit": "Substantiation",
+    "Was ist das größte Problem Ihrer Zielgruppe, in deren eigenen Worten?":
+        "What is your audience\u2019s biggest problem, in their own words?",
+    "Woran das Werkzeug erkennt, ob eine Nachricht Ihren Kunden betrifft — und mit welchen Wörtern eine Journalistin danach sucht.":
+        "How the tool recognises whether a story concerns your customers \u2014 and "
+        "the words a reporter searches for.",
     "Ausschlussbegriffe": "Excluded terms",
     "Pflicht-Begleitwörter": "Required companion words",
     "kommt einer davon vor, ist es nicht diese Firma": "if one of these occurs, it is not this company",
@@ -1550,9 +1579,9 @@ _EN: dict[str, str] = {
         "the rule.",
     # The five sections, and the short form each gets in the progress rail.
     "Was das Unternehmen ist": "What the company is",
-    "Vier Fragen, die jeder Text braucht. Antworten hier ersetzen, was die "
+    "Fünf Fragen, die jeder Text braucht. Antworten hier ersetzen, was die "
     "Recherche geraten hat.":
-        "Four questions every text needs. Answers here replace what the research "
+        "Five questions every text needs. Answers here replace what the research "
         "guessed.",
     "Was gesagt werden darf, und was nie": "What may be said, and what never",
     "Sagen und schweigen": "Saying and staying silent",

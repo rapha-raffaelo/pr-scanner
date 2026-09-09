@@ -164,7 +164,7 @@ SECTIONS: tuple[Section, ...] = (
         "unternehmen",
         "Was das Unternehmen ist",
         "Was das Unternehmen ist",
-        "Vier Fragen, die jeder Text braucht. Antworten hier ersetzen, was die "
+        "Fünf Fragen, die jeder Text braucht. Antworten hier ersetzen, was die "
         "Recherche geraten hat.",
     ),
     Section(
@@ -288,25 +288,34 @@ QUESTIONS: tuple[Question, ...] = (
         (Feed(Target.GUIDE, "Zielbild"),),
     ),
     Question(
-        "anlaesse", "ziele",
-        "Was steht in den nächsten Monaten an, worüber man berichten könnte?",
-        "Produkt, Zahlen, Personalie, Standort, Studie — mit ungefährem Datum.",
+        "these", "ziele",
+        "Welche starke fachliche These würden Sie öffentlich vertreten?",
+        "Woraus eine Chance entsteht, wenn gerade nichts passiert ist. Je "
+        "unbequemer die These, desto brauchbarer — eine, der alle zustimmen, "
+        "trägt keinen Gastbeitrag.",
         InputKind.ABSATZ,
-        (Feed(Target.THEMENFELDER),),
+        (Feed(Target.GUIDE, "These"), Feed(Target.THEMENFELDER)),
+        note="speist die entwickelten Chancen",
     ),
     Question(
-        "wirkung", "ziele",
-        "Welche Entscheidung soll die Berichterstattung bei Ihren Kunden auslösen?",
-        "PR ohne beabsichtigte Wirkung ist Dekoration.",
+        "mut", "ziele",
+        "Wie mutig darf die Positionierung sein, und wie politisch?",
+        "Der Ton jedes erzeugten Textes hängt daran. „Zurückhaltend, nie "
+        "parteipolitisch“ und „wir dürfen anecken“ ergeben zwei verschiedene "
+        "Gastbeiträge zur selben Nachricht.",
         InputKind.ABSATZ,
-        (Feed(Target.GUIDE, "Kernbotschaft"),),
+        (Feed(Target.GUIDE, "Tonalität"),),
     ),
     Question(
-        "messgroesse", "ziele",
-        "Woran würden Sie in einem Jahr sehen, dass sich das gelohnt hat?",
-        "Eine Zahl oder ein konkretes Ereignis, kein Gefühl.",
-        InputKind.ZEILE,
-        (Feed(Target.GUIDE, "Zielbild"),),
+        "unbelegt", "sagen",
+        "Welche Aussage über sich möchten Sie führen, können sie heute aber nicht belegen?",
+        "Die wichtigste Frage des ganzen Bogens für die Qualitätsprüfung: was hier "
+        "steht, wird in jedem Text als Behauptung gekennzeichnet statt als Tatsache "
+        "behauptet. Lucas' Beispiel: „400 % THG-Minderung“.",
+        InputKind.LISTE,
+        (Feed(Target.NOGO), Feed(Target.GUIDE, "Belegbarkeit")),
+        note="jede Aussage daraus wird im Text als Kundenaussage markiert",
+        placeholder="Eine Aussage je Zeile",
     ),
     # --- Medien und Beziehungen ------------------------------------------------
     Question(
@@ -326,12 +335,12 @@ QUESTIONS: tuple[Question, ...] = (
         placeholder="Weiterer Name, Titel",
     ),
     Question(
-        "schieflage", "medien",
-        "Gab es eine Berichterstattung, die schiefging?",
-        "Was passiert ist, und was daraus gilt. Das erklärt eine Empfindlichkeit "
-        "besser als jede Regel.",
+        "kundenproblem", "unternehmen",
+        "Was ist das größte Problem Ihrer Zielgruppe, in deren eigenen Worten?",
+        "Woran das Werkzeug erkennt, ob eine Nachricht Ihren Kunden betrifft — "
+        "und mit welchen Wörtern eine Journalistin danach sucht.",
         InputKind.ABSATZ,
-        (Feed(Target.NOGO),),
+        (Feed(Target.THEMENFELDER), Feed(Target.PROFIL, "Zielgruppe")),
     ),
     Question(
         "interview", "medien",

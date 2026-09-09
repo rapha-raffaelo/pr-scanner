@@ -137,11 +137,14 @@ def test_a_question_in_an_unknown_section_is_refused(monkeypatch):
 
 
 def test_there_are_twenty_questions_in_five_sections():
+    """Zwanzig bleibt zwanzig. "Limitiere dich hier auf die 20 wichtigsten
+    Fragen für jetzt" — vier davon kommen inzwischen aus dem Master-Sheet und
+    haben vier ersetzt, die nichts speisten, was Version 1 noch benutzt."""
     assert len(onboarding.QUESTIONS) == 20
     assert onboarding.TOTAL == 20
     assert len(onboarding.SECTIONS) == 5
     grouped = onboarding.by_section()
-    assert [len(qs) for _, qs in grouped] == [4, 6, 4, 4, 2]
+    assert [len(qs) for _, qs in grouped] == [5, 7, 3, 3, 2]
     assert sum(len(qs) for _, qs in grouped) == onboarding.TOTAL
 
 
@@ -432,7 +435,9 @@ def test_an_untouched_questionnaire_is_all_remainder(session):
 
 def test_completeness_reports_each_section_separately(session):
     client = _client(session)
-    for key in ("satz", "sprecher", "wettbewerber", "zielgruppe"):
+    # Fünf, seit "kundenproblem" aus dem Master-Sheet dazukam — der Abschnitt
+    # gilt erst als fertig, wenn jede seiner Fragen erledigt ist.
+    for key in ("satz", "sprecher", "wettbewerber", "zielgruppe", "kundenproblem"):
         onboarding.save_answer(session, client, key, "Antwort.")
     onboarding.skip(session, client, "nie_satz")
 
@@ -441,7 +446,7 @@ def test_completeness_reports_each_section_separately(session):
         for line in onboarding.completeness(session, client.id).sections
     }
 
-    assert by_key["unternehmen"].settled == 4
+    assert by_key["unternehmen"].settled == 5
     assert by_key["unternehmen"].state is onboarding.Progress.FERTIG
     assert by_key["sagen"].settled == 1
     assert by_key["sagen"].state is onboarding.Progress.TEILWEISE
