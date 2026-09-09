@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
-from ... import config
+from ... import coach, config, guide
 from ... import onboarding
 from ... import profile as profiles
 from ... import profile_refresh, stakeholders
@@ -36,6 +36,11 @@ _SEE_OTHER = 303
 # clicking it again. A flag in the query string rather than a session: it
 # describes the redirect it rode in on and must not survive the next reload.
 _STALE_FLAG = "veraltet"
+
+#: Opens the kick-off window. In the address rather than in a session, so the
+#: window survives a reload, can be linked to, and cannot be closed by an htmx
+#: swap inside it.
+_SHEET_FLAG = "fragebogen"
 
 
 def _back(client_id: int, *, acted: bool) -> RedirectResponse:
@@ -206,7 +211,30 @@ def _pending(
 def profile_view(
     request: Request, client_id: int, session: Session = Depends(get_db)
 ) -> HTMLResponse:
-    client = mandate_or_404(session, client_id)
+    return render(request, session, mandate_or_404(session, client_id))
+
+
+def render(
+    request: Request,
+    session: Session,
+    client: Client,
+    **extra,
+) -> HTMLResponse:
+    """The mandate's file: profile, guide and kick-off on one page.
+
+    "kannst du kickoff, profil und guide unter 'profil' vereinen."
+
+    Three tabs for one subject — what this company is, how it speaks, and the
+    twenty questions only the client can answer — on a strip that had eleven.
+    They are one page now, and this is the only place that renders it, so the
+    guide's own routes and the questionnaire's come back through here with their
+    answers in ``extra`` rather than each keeping a page of its own.
+
+    Every key the two brought with them has a default below. A missing one does
+    not raise in Jinja, it renders as empty: a guide page reached after a failed
+    distillation would have quietly dropped the error it was there to show.
+    """
+    client_id = client.id
     # Both tables read once and handed on. The proposals need the facts to know
     # what they would displace and the answers to know what to offer; the
     # completeness line needs the same answers again.
@@ -234,6 +262,7 @@ def profile_view(
         if p.source_url and profile_refresh.contradicts(facts, p)
     ]
     stored = onboarding.answers(session, client_id)
+    kickoff = onboarding.completeness(session, client_id, stored=stored)
     pending = _pending(session, client_id, facts=facts, stored=stored)
     return templates.TemplateResponse(
         request,
@@ -249,7 +278,7 @@ def profile_view(
             # because this is the page that reads as the mandate's file: a thin
             # profile beside a full questionnaire is a different problem from a
             # thin profile beside twenty unasked questions.
-            "kickoff": onboarding.completeness(session, client_id, stored=stored),
+            "kickoff": kickoff,
             # Held back from the list above, and still on file. Handed over as
             # rows rather than a count so the page can name them in its own
             # discard form: a row nobody can see and nobody can clear sits there
@@ -282,7 +311,32 @@ def profile_view(
             "by_hand": profiles.BY_HAND,
             "last_run": _fetch_last_run(session),
             "header_date": dt.datetime.now(_local_tz()).date(),
-        },
+            # --- The guide, since it moved onto this page ---------------------
+            "guide_text": client.comms_guide or "",
+            "sources": guide.sources(session, client_id),
+            "max_chars": guide.GUIDE_MAX_CHARS,
+            "max_mb": guide.MAX_UPLOAD_BYTES // (1024 * 1024),
+            "coach_days": coach.DEFAULT_DAYS,
+            # Set only by the guide's own routes, and each of them is an answer
+            # to a click: a proposal to compare, an error to state, a saved
+            # confirmation, a coach's findings and the stories they cite.
+            "proposal": None,
+            "guide_error": None,
+            "saved": False,
+            "findings": None,
+            "coverage": {},
+            "coach_error": None,
+            "draft": None,
+            # --- The questionnaire, as the window over it ---------------------
+            "groups": onboarding.by_section(),
+            "answers": stored,
+            "progress": kickoff,
+            # Opened by a control on this page or by a link that used to point
+            # at the kick-off tab; closed by the button on its bar, which is a
+            # link back here without the flag.
+            "kickoff_open": bool(request.query_params.get(_SHEET_FLAG)),
+        }
+        | extra,
     )
 
 

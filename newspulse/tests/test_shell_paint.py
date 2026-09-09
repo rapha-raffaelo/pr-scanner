@@ -57,9 +57,10 @@ _TABS: tuple[tuple[str, str, str], ...] = (
     ("Plan", "/plan", "ico-plan"),
     ("Wettbewerb", "/wettbewerb", "ico-wettbewerb"),
     ("Archiv", "", "ico-archiv"),
-    ("Kickoff", "/kickoff", "ico-kickoff"),
+    # One tab where there were three. "kannst du kickoff, profil und guide unter
+    # 'profil' vereinen" — the guide is a section of the profile page and the
+    # questionnaire a window over it.
     ("Profil", "/profil", "ico-profil"),
-    ("Guide", "/guide", "ico-guide"),
     ("Marktumfeld", "/market", "ico-markt"),
     ("KI-Sichtbarkeit", "/ki", "ico-ki"),
 )

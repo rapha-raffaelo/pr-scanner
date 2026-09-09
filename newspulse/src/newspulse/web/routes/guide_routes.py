@@ -19,8 +19,8 @@ from ... import coach, guide, onboarding
 from ...analyzer import AnalyzerError
 from ...models import Client
 from ..mandates import mandate_or_404
-from ..app import get_db, templates
-from .today import _fetch_last_run, _local_tz
+from ..app import get_db
+from . import profile
 
 router = APIRouter()
 
@@ -40,34 +40,31 @@ def _render(
     coach_error: str | None = None,
     draft: onboarding.GuideDraft | None = None,
 ) -> HTMLResponse:
-    return templates.TemplateResponse(
+    """The guide's answer, on the page the guide now lives on.
+
+    "der kundenspezifische kommunikationsguide sollte auch in das Profil
+    wandern." The routes below are unchanged and still post to /guide/*; what
+    changed is where their answers are rendered. Everything this function used
+    to assemble that the profile page also needs — the sources, the budget, the
+    kick-off count — is built there once; only what is particular to *this*
+    click is passed on.
+    """
+    return profile.render(
         request,
-        "client_guide.html",
-        {
-            "client": client,
-            "guide_text": client.comms_guide or "",
-            "sources": guide.sources(session, client.id),
-            # What the kick-off has to offer, so the button can say whether there
-            # is anything behind it before it is clicked.
-            "kickoff": onboarding.completeness(session, client.id),
-            # Only set when the draft came from the questionnaire: the page then
-            # names the sections nobody answered, rather than leaving a reader to
-            # wonder why a guide is thin.
-            "draft": draft,
-            "max_chars": guide.GUIDE_MAX_CHARS,
-            "max_mb": guide.MAX_UPLOAD_BYTES // (1024 * 1024),
-            "proposal": proposal,
-            "guide_error": error,
-            "saved": saved,
-            "findings": findings,
-            # Resolved here so a finding citing a story can show it; the template
-            # never has to reach back into the database.
-            "coverage": {ref.index: ref for ref in (coverage or [])},
-            "coach_error": coach_error,
-            "coach_days": coach.DEFAULT_DAYS,
-            "last_run": _fetch_last_run(session),
-            "header_date": dt.datetime.now(_local_tz()).date(),
-        },
+        session,
+        client,
+        # Only set when the draft came from the questionnaire: the page then
+        # names the sections nobody answered, rather than leaving a reader to
+        # wonder why a guide is thin.
+        draft=draft,
+        proposal=proposal,
+        guide_error=error,
+        saved=saved,
+        findings=findings,
+        # Resolved here so a finding citing a story can show it; the template
+        # never has to reach back into the database.
+        coverage={ref.index: ref for ref in (coverage or [])},
+        coach_error=coach_error,
     )
 
 
@@ -75,12 +72,16 @@ def _client_or_404(session: Session, client_id: int) -> Client:
     return mandate_or_404(session, client_id)
 
 
-@router.get("/client/{client_id}/guide", response_class=HTMLResponse)
-def guide_view(
-    request: Request, client_id: int, session: Session = Depends(get_db)
-) -> HTMLResponse:
-    """The guide as it stands, its sources, and the way to change either."""
-    return _render(request, session, _client_or_404(session, client_id))
+@router.get("/client/{client_id}/guide")
+def guide_view(client_id: int, session: Session = Depends(get_db)) -> Response:
+    """The guide's old address, kept as a way in to where it lives now.
+
+    A page of its own until the profile absorbed it. Every link in the tool that
+    pointed here — from a thin impulse, from the crisis page, from a bookmark —
+    still arrives at the guide, one anchor down the mandate's file.
+    """
+    _client_or_404(session, client_id)
+    return RedirectResponse(f"/client/{client_id}/profil#guide", status_code=_SEE_OTHER)
 
 
 @router.post("/client/{client_id}/guide")
@@ -95,7 +96,9 @@ def save_guide(
     counter, not a lost edit."""
     client = _client_or_404(session, client_id)
     guide.save(session, client, comms_guide)
-    return RedirectResponse(f"/client/{client_id}/guide?saved=1", status_code=_SEE_OTHER)
+    return RedirectResponse(
+        f"/client/{client_id}/profil?saved=1#guide", status_code=_SEE_OTHER
+    )
 
 
 @router.post("/client/{client_id}/guide/upload")
@@ -119,7 +122,9 @@ async def upload_source(
     except guide.ExtractionError as exc:
         return _render(request, session, client, error=str(exc))
     guide.store_source(session, client, filename, text)
-    return RedirectResponse(f"/client/{client_id}/guide", status_code=_SEE_OTHER)
+    return RedirectResponse(
+        f"/client/{client_id}/profil#guide", status_code=_SEE_OTHER
+    )
 
 
 @router.post("/client/{client_id}/guide/distill")
@@ -192,7 +197,9 @@ def remove_source(
     """Drop a source document. The guide itself stays — by then it is edited text."""
     _client_or_404(session, client_id)
     guide.delete_source(session, client_id, source_id)
-    return RedirectResponse(f"/client/{client_id}/guide", status_code=_SEE_OTHER)
+    return RedirectResponse(
+        f"/client/{client_id}/profil#guide", status_code=_SEE_OTHER
+    )
 
 
 @router.post("/client/{client_id}/guide/coach")

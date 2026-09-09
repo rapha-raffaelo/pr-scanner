@@ -58,6 +58,7 @@ from ... import (
     radar_cleanup,
     rivals,
     themes,
+    visibility,
 )
 from ...analyzer import get_analyzer
 from ...db import get_session
@@ -247,6 +248,7 @@ def _onboard(client_id: int, name: str) -> None:
                 _log.info("onboarding fetch for %r stored %d article(s)", name, stored)
                 _onboarding[client_id] = "profil"
                 _research_profile(session, client)
+                _seed_visibility(session, client)
                 _onboarding[client_id] = "entwürfe"
                 _first_drafts(session, client)
                 _onboarding[client_id] = f"fertig:{stored}"
@@ -283,6 +285,35 @@ def _research_profile(session: Session, client: Client) -> None:
     except Exception as exc:  # noqa: BLE001 — onboarding must not depend on it
         session.rollback()
         _log.warning("onboarding profile research for %r failed: %s", client.name, exc)
+
+
+def _seed_visibility(session: Session, client: Client) -> None:
+    """Give the new mandate a question set, so the KI-Sichtbarkeit page measures.
+
+    "die KI-Sichtbarkeit bei jedem Setup automatisch zeigen." Without an accepted
+    question :func:`newspulse.visibility.due` answers False, so the sweep passes
+    the mandate over every morning and the page stands empty — measured, five of
+    seven mandates had zero questions and zero runs. The nightly sweep seeds too;
+    here it happens while the consultant is still standing there, rather than
+    waiting for the clock to come round.
+
+    After the profile, because the questions are built from it: seeded before,
+    they would be built from an empty record and would have to be thrown away.
+
+    Guarded and swallowed like every other step in this thread. A mandate must
+    still be onboarded when the proposer is unavailable, and the sweep will seed
+    it the next morning.
+    """
+    try:
+        seeded = visibility.seed(session, client)
+        _log.info(
+            "onboarding visibility for %r: %d question(s) seeded",
+            client.name,
+            len(seeded),
+        )
+    except Exception as exc:  # noqa: BLE001 — onboarding must not depend on it
+        session.rollback()
+        _log.warning("onboarding visibility seed for %r failed: %s", client.name, exc)
 
 
 def _settle_industry(session: Session, client: Client) -> None:

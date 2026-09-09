@@ -68,6 +68,32 @@
   .send__rub { font-size: var(--t-caption); text-transform: uppercase; letter-spacing: 0.06em;
                font-weight: 600; color: var(--muted); margin-bottom: var(--s2); }
   .send__rub--led { margin-top: var(--s5); padding-top: var(--s3); border-top: 1px solid var(--line); }
+  /* The send stage in two columns: what was written, and whom it can go to.
+     minmax(0, 1fr) rather than 1fr on the left — a long unbroken subject line
+     in a letter card would otherwise set the column's min-content width and
+     push the recipients off the page instead of wrapping. */
+  .send__cols {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+    gap: var(--s4); align-items: start;
+  }
+  .send__main { min-width: 0; }
+  /* In the column the list is a panel of its own, not a footnote ruled off from
+     the letter above it — there is no letter above it any more. */
+  .send__cols > .pitchlist {
+    margin-top: 0; padding: var(--s3) var(--s3) var(--s3);
+    border: 1px solid var(--line); border-top: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--surface);
+    position: sticky; top: var(--s3);
+  }
+  /* Below the breakpoint the two columns stack, and the list goes back to
+     reading as the section it was: full width, ruled off, not sticky. */
+  @media (max-width: 900px) {
+    .send__cols { grid-template-columns: minmax(0, 1fr); }
+    .send__cols > .pitchlist {
+      position: static; border: 0; border-top: 1px solid var(--line);
+      border-radius: 0; padding: var(--s3) 0 0; background: none;
+    }
+  }
 
   /* The package (DEC-1). Page-local because no other template renders it: a
      class two pages share belongs in app.css, and one page's own layout does
@@ -780,6 +806,13 @@
           <p class="sect__empty sect__refusal"><strong>{{ t("Keine Nachricht erzeugt.") }}</strong> {{ message_error }}</p>
         {% endif %}
 
+        {# Two columns from here: the letters on the left, the people they can go
+           to on the right. The recipient list used to run on below the last
+           letter, which on a stage with three released letters put it a screen
+           and a half down — read only by someone who already knew it was there.
+           They are chosen together, so they stand together. #}
+        <div class="send__cols">
+        <div class="send__main">
         {% if written %}
           <div class="send__rub send__rub--led">{{ t("Geschriebene Nachrichten") }}</div>
         {% endif %}
@@ -1252,6 +1285,7 @@
            — measured, 22 of 291 articles had an author at all — and a plausible
            "vorname.nachname@medium.de" is worse than an empty field, because it
            gets used and reaches the wrong person. #}
+        </div>{# /send__main #}
         {% set targets = pitch_targets.get(angle.id) %}
         {% if targets %}
           <div class="pitchlist">
@@ -1272,7 +1306,19 @@
                   {% if target.contact_email %}
                     <a class="pitchlist__mail" href="mailto:{{ target.contact_email }}">{{ target.contact_email }}</a>
                   {% elif target.journalist %}
-                    <a class="pitchlist__add" href="/contacts?name={{ target.journalist | urlencode }}&outlet={{ target.outlet | urlencode }}">{{ t("Kontakt hinterlegen") }}</a>
+                    {# Recorded here, not on another page. The link this replaces
+                       pointed at the contact form and expected the reader to
+                       fill it in and find the way back; nobody did, and the book
+                       stayed empty while the list proposed the same names every
+                       morning. The byline is the whole entry — no address is
+                       invented, and the address is asked for where it is needed,
+                       on the letter. #}
+                    <form method="post" action="/contacts/vorschlag" class="pitchlist__take">
+                      <input type="hidden" name="name" value="{{ target.journalist }}">
+                      <input type="hidden" name="outlet" value="{{ target.outlet }}">
+                      <input type="hidden" name="redirect_to" value="/client/{{ client.id }}/advice#impulse-{{ angle.id }}">
+                      <button type="submit" class="linkbtn">{{ t("Ins Kontaktbuch") }}</button>
+                    </form>
                   {% endif %}
                   {% if target.is_new_contact %}<span class="pitchlist__new" title="{{ t('Schreibt über das Themenfeld, aber noch nie über diesen Mandanten.') }}">{{ t("schreibt nie über den Mandanten") }}</span>{% endif %}
                   {# The list stops proposing someone who was already written to
@@ -1310,6 +1356,7 @@
             </p>
           </div>
         {% endif %}
+        </div>{# /send__cols #}
         </div>{# /outreach #}
       </article>
     {% else %}

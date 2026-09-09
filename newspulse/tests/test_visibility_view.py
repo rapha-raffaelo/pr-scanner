@@ -865,7 +865,7 @@ def test_a_claim_left_behind_by_a_crash_is_not_a_running_measurement(
     body = _text(web.get(f"/client/{mandate.id}/ki").text)
 
     assert "Eine Messung läuft gerade." not in body
-    assert "Jetzt messen" in body
+    assert "Aktualisieren" in body
 
 
 def test_a_barren_first_attempt_claims_no_standing_before_it(web, session, mandate):
@@ -1125,3 +1125,100 @@ def test_a_half_formed_pair_is_skipped_rather_than_filed_under_a_default(
     assert answer.status_code == 303
     stored = {q.text for q in visibility.accepted(session, mandate)}
     assert stored == {"Frage B?"}
+
+
+# --- The refresh button ----------------------------------------------------------
+#
+# "die KI-Sichtbarkeit bei jedem Setup automatisch zeigen mit einem
+# 'Aktualisieren'-Knopf."
+#
+# It was there only inside the due window. Measured on Monday with a seven-day
+# interval, the page offered no control at all until the following Monday — and
+# after a launch, which is exactly when a fresh reading is worth having, the
+# reader could do nothing but wait for the sweep.
+
+
+def test_the_refresh_button_stands_outside_the_due_window(web, session, mandate):
+    """Measured yesterday, due in six days: the button is still there."""
+    question = _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    _run(
+        session,
+        mandate,
+        at=_FRESH - dt.timedelta(days=1),
+        cells=[(question, _CLAUDE, 1, ["Enpal"])],
+        asked=[_CLAUDE],
+    )
+
+    assert visibility.due(session, mandate) is False, "the clock says no, and should"
+    body = web.get(f"/client/{mandate.id}/ki").text
+
+    assert f'action="/client/{mandate.id}/ki/messen"' in body
+    assert "Aktualisieren" in _text(body)
+
+
+def test_the_refresh_button_measures_although_nothing_is_due(
+    web, session, mandate, monkeypatch
+):
+    """The button must do what it says. Refusing the post because the sweep ran
+    yesterday would make it a control that redirects to an unchanged page."""
+    question = _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    _run(
+        session,
+        mandate,
+        at=_FRESH - dt.timedelta(days=1),
+        cells=[(question, _CLAUDE, 1, ["Enpal"])],
+        asked=[_CLAUDE],
+    )
+    assert visibility.due(session, mandate) is False
+
+    started: list[str] = []
+    monkeypatch.setattr(
+        visibility_view.spawn,
+        "start_or_release",
+        lambda target, *, args, name, release: started.append(name),
+    )
+    try:
+        web.post(f"/client/{mandate.id}/ki/messen", follow_redirects=False)
+    finally:
+        visibility_view._measuring.release()
+
+    assert started == [f"newspulse-visibility-{mandate.id}"]
+
+
+def test_no_button_and_no_measurement_without_a_question_set(
+    web, session, mandate, monkeypatch
+):
+    """The one thing the clock was not the reason for. With nothing accepted there
+    is nothing to put to a provider, and the page offers the proposal flow
+    instead."""
+    body = web.get(f"/client/{mandate.id}/ki").text
+    assert f'action="/client/{mandate.id}/ki/messen"' not in body
+    assert "Fragen vorschlagen" in _text(body)
+
+    monkeypatch.setattr(
+        visibility_view.spawn,
+        "start_or_release",
+        lambda *a, **k: pytest.fail("a measurement was started with nothing to measure"),
+    )
+    assert web.post(f"/client/{mandate.id}/ki/messen", follow_redirects=False).status_code == 303
+
+
+def test_a_running_measurement_takes_the_button_away(web, session, mandate):
+    """Two runs of one mandate at once is a waste, not a refresh."""
+    _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    _unfinished(session, mandate, at=_FRESH, cells=[])
+
+    body = web.get(f"/client/{mandate.id}/ki").text
+
+    assert f'action="/client/{mandate.id}/ki/messen"' not in body
+
+
+def test_the_switch_still_governs_the_button(web, session, mandate, monkeypatch):
+    """``measurable`` carries the feature flag, so turning the feature off must
+    take the manual control with it and not only the sweep's."""
+    _question(session, mandate, _AUSWAHL, VisibilityBand.AUSWAHL)
+    monkeypatch.setattr(config, "VISIBILITY_ENABLED", False)
+
+    assert f'action="/client/{mandate.id}/ki/messen"' not in web.get(
+        f"/client/{mandate.id}/ki"
+    ).text

@@ -50,6 +50,9 @@ _EN: dict[str, str] = {
     "Einstellungen": "Settings",
     "↻ Aktualisieren": "↻ Refresh",
     "Aktualisieren": "Refresh",
+    "Fragebogen öffnen": "Open questionnaire",
+    "Fragebogen schließen": "Close questionnaire",
+    "Ins Kontaktbuch": "Add to contacts",
     "Heute noch nichts, und in den letzten Tagen auch nicht.": "Nothing today, and nothing in the last few days either.",
     "Heute noch nichts. Zuletzt Berichterstattung am": "Nothing today. Last coverage on",
     "der letzte Tag mit Meldungen": "the last day with stories",
@@ -2040,9 +2043,9 @@ _EN: dict[str, str] = {
     "Der Vorschlag hat nichts ergeben. Meist fehlt dem Profil noch der Text zum Geschäftsfeld, aus dem eine Kaufentscheidungsfrage gebaut wird.":
         "The proposal produced nothing. Usually the profile is still missing the text "
         "about the business field a purchase question is built from.",
-    "Der Fragensatz steht, gemessen wurde noch nicht. Die erste Messung läuft mit dem nächsten täglichen Lauf.":
+    "Der Fragensatz steht, gemessen wurde noch nicht. Die erste Messung läuft mit dem nächsten täglichen Lauf, oder jetzt über „Aktualisieren“.":
         "The question set is in place and nothing has been measured yet. The first "
-        "measurement runs with the next daily sweep.",
+        "measurement runs with the next daily sweep, or now, via \u201cRefresh\u201d.",
     "Gemessen wird, was die angebundenen Assistenten auf denselben Fragensatz antworten, nicht was \u201edie KI\u201c denkt. RauteOS misst und berichtet, es optimiert nichts und verschickt nichts.":
         "What is measured is what the connected assistants answer to the same set of "
         "questions, not what \"AI\" thinks. RauteOS measures and reports; it optimises "

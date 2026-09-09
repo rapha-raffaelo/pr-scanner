@@ -177,6 +177,43 @@ def contact_book(
     )
 
 
+@router.post("/contacts/vorschlag")
+def record_proposed_contact(
+    request: Request,
+    name: str = Form(...),
+    outlet: str = Form(""),
+    redirect_to: str = Form(""),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Put a proposed journalist into the book without leaving the page.
+
+    "am Besten die Kontakte nach Rechts und mit einem Vorschlag button (in das
+    Kontaktbuch eintragen)." The pitch list named people the press had actually
+    bylined and then offered a link *away* — to the contact form, to be filled in
+    and navigated back from. Nobody did it: the book stood empty for weeks while
+    the list proposed the same names every morning.
+
+    The byline is the whole record. No address is invented here and none is
+    asked for: the entry exists so the name has a file to hang letters on, and
+    the address is recorded where it is needed, on the letter itself
+    (:func:`newspulse.contacts.remember_address`). A book entry without an
+    address is not a half-finished contact — it is the journalist, known.
+
+    Idempotent through :func:`newspulse.contacts.remember_person`: a second
+    click finds the entry the first one made and leaves it exactly as it stands,
+    rather than splitting the person in two or blanking the address, beat and
+    notes that were filled in between the two clicks.
+    """
+    back = redirects.local_target(redirect_to, "/contacts")
+    try:
+        contacts.remember_person(session, name=name, outlet=outlet)
+    except ValueError:
+        # A nameless proposal cannot become an entry, and there is nothing to
+        # say about it that the list does not already show.
+        return RedirectResponse(back, status_code=_SEE_OTHER)
+    return RedirectResponse(back, status_code=_SEE_OTHER)
+
+
 @router.post("/contacts")
 def save_contact(
     request: Request,

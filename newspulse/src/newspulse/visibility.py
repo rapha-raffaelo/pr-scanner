@@ -1093,14 +1093,27 @@ def seed(
     return taken
 
 
+def measurable(session: Session, client: Client) -> bool:
+    """Whether a measurement of this mandate is possible at all.
+
+    The half of :func:`due` that has nothing to do with the clock: the feature is
+    switched on and there is a question set to put to the providers. Separated
+    because the two callers want different halves. The sweep asks ``due`` — it
+    comes round every morning and must not remeasure a mandate it measured
+    yesterday. A person pressing "Aktualisieren" asks this: they can see when the
+    last run was, and asking for a fresh one is the whole point of the button.
+    """
+    return bool(config.VISIBILITY_ENABLED and accepted(session, client))
+
+
 def due(session: Session, client: Client, *, now: dt.datetime | None = None) -> bool:
-    """Whether this mandate may be measured again yet.
+    """Whether this mandate is owed a measurement by the clock.
 
     False for a mandate with no accepted question, because there is nothing to
     measure and a due mandate the sweep cannot serve would be picked up every
     morning forever.
     """
-    if not config.VISIBILITY_ENABLED or not accepted(session, client):
+    if not measurable(session, client):
         return False
     standing = _standing(session, client)
     return standing is None or _is_due(standing, now=now)

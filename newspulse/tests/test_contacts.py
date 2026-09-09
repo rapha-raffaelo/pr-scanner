@@ -216,8 +216,8 @@ def test_an_offsite_redirect_is_refused(factory, client):
 
 def test_no_address_is_ever_produced_without_someone_typing_it(factory, client):
     """The whole reason the book exists. A byline with no recorded contact must
-    offer the empty form, never a plausible address derived from the name and the
-    masthead — that would be used, and would reach the wrong person."""
+    offer a way to record one, never a plausible address derived from the name
+    and the masthead — that would be used, and would reach the wrong person."""
     with factory() as session:
         subject, angle = _seed_pitch(session)
         targets = pitch.targets_for(session, subject, angle, now=_NOW)
@@ -228,7 +228,10 @@ def test_no_address_is_ever_produced_without_someone_typing_it(factory, client):
 
     body = client.get(f"/client/{client_id}/advice").text
     assert "mailto:" not in body
-    assert "Kontakt hinterlegen" in body
+    # The offer is the proposal button now, which records the byline and asks
+    # for no address at all; the address is asked for on the letter, where it is
+    # needed. What must not appear is a composed one.
+    assert "/contacts/vorschlag" in body
 
 
 # --- The position at the masthead ------------------------------------------------
@@ -437,3 +440,110 @@ def test_editing_an_unsplit_entry_offers_the_suggestion(client, factory):
 
     assert 'value="Andreas"' in body
     assert 'value="Kröner"' in body
+
+
+# --- The proposal button on the pitch list ---------------------------------------
+#
+# "am Besten die Kontakte nach Rechts und mit einem Vorschlag button (in das
+# Kontaktbuch eintragen)."
+#
+# The list proposes journalists every morning; before this, accepting one meant
+# following a link to the contact form, filling it in and finding the way back.
+# Measured: the book held nothing while the list had been proposing names for
+# weeks. The button records the byline where it is read.
+
+
+def test_a_proposed_name_enters_the_book_from_the_list(client, factory):
+    """The whole point: one click, no detour, and the book has the entry."""
+    response = client.post(
+        "/contacts/vorschlag",
+        data={"name": "Maria Berg", "outlet": "Handelsblatt", "redirect_to": "/client/1/advice"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/client/1/advice"
+    with factory() as session:
+        entry = contacts.find(session, "Maria Berg", "Handelsblatt")
+        assert entry is not None
+        assert entry.outlet == "Handelsblatt"
+        # The name arrives split, because every other way into the book splits it
+        # and a contact whose surname is empty sorts and searches differently.
+        assert (entry.first_name, entry.last_name) == ("Maria", "Berg")
+
+
+def test_a_second_click_does_not_blank_what_was_filled_in_since(client, factory):
+    """The failure this route was written to avoid.
+
+    ``contacts.save`` writes every column, so routing the button through it
+    would mean: accept the proposal, add the address and the beat by hand, click
+    the same row again a week later — and lose both. The list is read daily and
+    the same names come back, so the second click is not hypothetical.
+    """
+    with factory() as session:
+        contacts.save(
+            session,
+            name="Maria Berg",
+            outlet="Handelsblatt",
+            email="berg@handelsblatt.de",
+            beat="Energie",
+            notes="Ruft lieber an.",
+        )
+
+    client.post(
+        "/contacts/vorschlag",
+        data={"name": "Maria Berg", "outlet": "Handelsblatt"},
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        entry = contacts.find(session, "Maria Berg", "Handelsblatt")
+        assert entry.email == "berg@handelsblatt.de"
+        assert entry.beat == "Energie"
+        assert entry.notes == "Ruft lieber an."
+        assert session.scalar(select(func.count()).select_from(Contact)) == 1
+
+
+def test_the_proposal_records_no_address_it_was_not_given(client, factory):
+    """The rule the rest of this file protects, on the newest way in.
+
+    A byline is a name and a house. An address that looks right — the
+    "vorname.nachname@medium.de" this tool could trivially compose — gets used,
+    and reaches the wrong person or nobody.
+    """
+    client.post(
+        "/contacts/vorschlag",
+        data={"name": "Jan Roth", "outlet": "Zeit Online"},
+        follow_redirects=False,
+    )
+
+    with factory() as session:
+        entry = contacts.find(session, "Jan Roth", "Zeit Online")
+        assert entry.email == ""
+
+
+def test_a_nameless_proposal_creates_nothing(client, factory):
+    """Rows without a byline exist in the list — the outlet is known, the author
+    is not. Such a row shows no button, but the route must not depend on the
+    template for that."""
+    response = client.post(
+        "/contacts/vorschlag",
+        data={"name": "  ", "outlet": "Handelsblatt", "redirect_to": "/client/1/advice"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(Contact)) == 0
+
+
+def test_the_button_cannot_be_used_to_leave_the_site(client):
+    """``redirect_to`` comes from the page, but the page is not the only thing
+    that can post here."""
+    response = client.post(
+        "/contacts/vorschlag",
+        data={"name": "Maria Berg", "redirect_to": "https://example.com/"},
+        follow_redirects=False,
+    )
+
+    assert response.headers["location"] == "/contacts"

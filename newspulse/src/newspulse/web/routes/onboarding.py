@@ -32,6 +32,11 @@ from .today import _fetch_last_run, _local_tz
 
 router = APIRouter()
 
+#: Where the questionnaire lives now: the profile page, with its window open.
+#: The anchor is the window itself, so a browser that restores a scroll position
+#: does not leave the reader looking at the profile behind it.
+_SHEET = "/client/{client_id}/profil?fragebogen=1#fragebogen"
+
 _SEE_OTHER = 303
 
 
@@ -79,8 +84,12 @@ def _saved(
     page look like it had not saved.
     """
     if not request.headers.get("hx-request"):
+        # Back to the open window and to the question that was answered. The
+        # flag has to ride along: without it the page renders behind a window
+        # that is not there, and the answer looks lost.
         return RedirectResponse(
-            f"/client/{client.id}/kickoff#q-{question.key}", status_code=_SEE_OTHER
+            f"/client/{client.id}/profil?fragebogen=1#q-{question.key}",
+            status_code=_SEE_OTHER,
         )
     stored = onboarding.answers(session, client.id)
     return templates.TemplateResponse(
@@ -94,26 +103,17 @@ def _saved(
     )
 
 
-@router.get("/client/{client_id}/kickoff", response_class=HTMLResponse)
-def kickoff_view(
-    request: Request, client_id: int, session: Session = Depends(get_db)
-) -> HTMLResponse:
-    """The questionnaire as it stands: what is answered, skipped and still open."""
-    client = _client_or_404(session, client_id)
-    stored = onboarding.answers(session, client.id)
-    return templates.TemplateResponse(
-        request,
-        "onboarding.html",
-        {
-            **_shared(session, client, stored),
-            # Only the full page extends ``base.html``, so only the full page
-            # needs what the shared header renders.
-            "last_run": _fetch_last_run(session),
-            "header_date": dt.datetime.now(_local_tz()).date(),
-            "groups": onboarding.by_section(),
-            "answers": stored,
-        },
-    )
+@router.get("/client/{client_id}/kickoff")
+def kickoff_view(client_id: int, session: Session = Depends(get_db)) -> Response:
+    """The questionnaire's old address, kept as the way to open its window.
+
+    "kannst du kickoff, profil und guide unter 'profil' vereinen." It was a tab
+    of its own, which meant twenty questions only a client can answer sat one
+    click away from the page that shows what is missing without them. It opens
+    over that page now, and every link that pointed here still opens it.
+    """
+    _client_or_404(session, client_id)
+    return RedirectResponse(_SHEET.format(client_id=client_id), status_code=_SEE_OTHER)
 
 
 @router.post("/client/{client_id}/kickoff/{key}")

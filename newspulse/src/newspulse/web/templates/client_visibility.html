@@ -39,9 +39,14 @@
       {# The measurement itself never runs inside this response: the post hands it to
          a worker thread behind the sweep's own guard, and the page then reports the
          run as running. A full set is two model calls per question per provider. #}
-      {% if can_measure %}
+      {# Always there while a set stands, not only inside the due window. The
+         button used to hide itself between windows: measured on Monday, the page
+         offered nothing until Thursday, and a reader who wanted a fresh reading
+         after a launch had no way to ask for one. The date of the last run is on
+         the page; the request is theirs to make. #}
+      {% if can_refresh %}
         <form method="post" action="/client/{{ client.id }}/ki/messen" class="vis-head__f">
-          <button type="submit" class="btn">{{ t("Jetzt messen") }}</button>
+          <button type="submit" class="btn">{{ t("Aktualisieren") }}</button>
         </form>
       {% endif %}
     </div>
@@ -148,7 +153,7 @@
 
 {% if not standing %}
   {# The set stands and nothing has been measured against it yet. #}
-  <div class="notice">{{ t("Der Fragensatz steht, gemessen wurde noch nicht. Die erste Messung läuft mit dem nächsten täglichen Lauf.") }}</div>
+  <div class="notice">{{ t("Der Fragensatz steht, gemessen wurde noch nicht. Die erste Messung läuft mit dem nächsten täglichen Lauf, oder jetzt über „Aktualisieren“.") }}</div>
 {% else %}
 <div class="vis-split">
   <div>

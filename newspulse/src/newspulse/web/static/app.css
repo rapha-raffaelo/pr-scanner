@@ -1057,8 +1057,10 @@ a:hover { text-decoration: underline; }
 }
 .pitchlist__why { color: var(--muted); }
 .pitchlist__mail { font-size: var(--t-caption); color: var(--accent); margin-right: 6px; }
-.pitchlist__add { font-size: var(--t-caption2); color: var(--muted); margin-right: 6px; text-decoration: underline; }
-.pitchlist__add:hover { color: var(--accent); }
+/* Taking a proposed name into the book. A form rather than the link that used
+   to sit here, and inline for the same reason .pitchlist__write is: it belongs
+   to the row it names, not to a block under it. */
+.pitchlist__take { display: inline; margin-right: 6px; }
 .pitchlist__ev { display: block; color: var(--muted); font-style: italic; margin-top: 2px; }
 /* Recommendations carry their recipients as tags rather than a list: they are
    read after the text, at a glance, not worked through. */
@@ -3102,3 +3104,65 @@ button:disabled { opacity: .55; cursor: default; }
 .addr__note { margin-top: 6px; font-size: var(--t-caption); color: var(--muted); }
 .addr__bad { margin-top: 6px; font-size: var(--t-caption); color: var(--alert);
              font-weight: 600; }
+
+/* --- The kick-off window over the profile ------------------------------------
+   "Kannst du das So machen dass so ein Fenster für einen Fragebogen im
+   Vordergrund auftaucht, welches man dann aktiv schliessen muss."
+
+   A window, not a dropdown: it covers the page it opened from, and the only way
+   out is the button on its bar. No backdrop click and no Escape, because both
+   are ways to lose twenty half-typed answers by accident — and the answers are
+   saved as they are typed, so leaving is never urgent.
+
+   Rendered by the server behind a flag rather than shown by script: it survives
+   a reload, it can be linked to, and the questionnaire's own htmx swaps cannot
+   close it. */
+.sheet {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: var(--s6) var(--s4);
+  background: rgba(15, 23, 42, 0.44);
+  overflow-y: auto;
+}
+.sheet__win {
+  width: min(1080px, 100%); max-height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  overflow: hidden;
+}
+/* The title bar, read left to right: the way out, what this is, how far it has
+   got. The close control sits first because that is where a window's close
+   control sits on the machine this is used on. */
+.sheet__bar {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line); background: var(--fill-2);
+}
+.sheet__t { font-size: var(--t-subhead); font-weight: 600; }
+.sheet__n {
+  margin-left: auto; font-size: var(--t-caption2); font-weight: 700;
+  letter-spacing: 0.03em; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+/* Grey until pointed at, then red with its cross showing: the traffic-light
+   button, which is what this window is modelled on. The cross is always in the
+   markup and only its ink changes, so the control never moves under the
+   pointer. */
+.sheet__x {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%; flex: none;
+  background: var(--fill-strong); color: transparent;
+  transition: background .12s ease, color .12s ease;
+}
+.sheet__x .ico { width: 12px; height: 12px; }
+.sheet__bar:hover .sheet__x { color: rgba(15, 23, 42, 0.55); }
+.sheet__x:hover { background: var(--alert); color: #fff; }
+.sheet__x:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; color: #fff; background: var(--alert); }
+.sheet__b { padding: var(--s5); overflow-y: auto; }
+/* The questionnaire's own two columns collapse inside the window on a narrow
+   screen exactly as they did on the page. */
+@media (max-width: 900px) {
+  .sheet { padding: var(--s3); }
+  .sheet__b { padding: var(--s4); }
+}
