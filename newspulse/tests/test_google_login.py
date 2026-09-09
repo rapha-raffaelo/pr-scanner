@@ -320,3 +320,52 @@ def test_an_empty_secret_file_is_taken_over_rather_than_crashing(configured):
 
     assert first.strip()
     assert google_auth.session_secret() == first, "and it stays put afterwards"
+
+
+# --- Who the shipped list names -------------------------------------------------
+#
+# "kannst du bitte l.neurauter@raute-kopf.com und r.mankopf@raute-kopf.com als
+# Gmail nutzer bei der authentifizierung hinzufügen?"
+#
+# Production sets no ``NEWSPULSE_ALLOWED_EMAILS``, so the default in ``config``
+# *is* the list in force. These two tests are the reason it can be read as one:
+# what it admits, and what it still does not.
+
+
+@pytest.mark.parametrize(
+    "person",
+    [
+        "raphaelmankopf@gmail.com",
+        "lucas.neurauter@gmail.com",
+        "r.mankopf@raute-kopf.com",
+        "l.neurauter@raute-kopf.com",
+        "L.Neurauter@Raute-Kopf.com",  # Google returns the registered spelling
+    ],
+)
+def test_the_shipped_list_admits_both_mailboxes_of_both_people(monkeypatch, person):
+    """Two accounts per person, the private one and the one at the agency. They
+    are separate Google accounts, so each has to be named — ``canonical`` folds
+    the spellings of one Gmail mailbox, never two mailboxes into one person."""
+    monkeypatch.delenv("NEWSPULSE_ALLOWED_EMAILS", raising=False)
+    monkeypatch.setattr(config, "ALLOWED_EMAILS", config._DEFAULT_ALLOWED_EMAILS)
+
+    assert google_auth.is_allowed(person)
+
+
+@pytest.mark.parametrize(
+    "stranger",
+    [
+        "info@raute-kopf.com",       # the agency is not a domain wildcard
+        "neurauter@raute-kopf.com",  # nor is a surname on its own
+        "l.neurauter@raute-kopf.com.evil.test",
+        "l.neurauter@gmail.com",     # same local part, different mailbox
+    ],
+)
+def test_naming_the_agency_did_not_open_its_domain(monkeypatch, stranger):
+    """A list of four addresses, not a rule about a domain. Everyone at
+    raute-kopf.com shares a mailserver with these two, and the tool holds a
+    client's crisis material."""
+    monkeypatch.delenv("NEWSPULSE_ALLOWED_EMAILS", raising=False)
+    monkeypatch.setattr(config, "ALLOWED_EMAILS", config._DEFAULT_ALLOWED_EMAILS)
+
+    assert not google_auth.is_allowed(stranger)

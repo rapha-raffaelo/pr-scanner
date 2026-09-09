@@ -349,9 +349,20 @@ GOOGLE_CLIENT_ID: str = os.environ.get(_ENV_GOOGLE_CLIENT_ID, "")
 GOOGLE_CLIENT_SECRET: str = os.environ.get(_ENV_GOOGLE_CLIENT_SECRET, "")
 # The same credential can serve sign-in and the mailbox, so one Google Cloud
 # client is enough; whichever pair is set is the one that is used.
-# Who may sign in. A list rather than a table: two addresses do not need a user
-# model, and the third one is an env var away.
-_DEFAULT_ALLOWED_EMAILS = "raphaelmankopf@gmail.com,lucas.neurauter@gmail.com"
+# Who may sign in. A list rather than a table: four addresses do not need a user
+# model, and the fifth one is an env var away.
+#
+# Two mailboxes per person, the private one and the one at the agency, because
+# both are real: the tool was set up under the Gmail addresses and is worked in
+# from raute-kopf.com. They are separate Google accounts and each has to be named
+# — ``google_auth.canonical`` folds the spellings of *one* Gmail mailbox, never
+# two mailboxes into one person.
+_DEFAULT_ALLOWED_EMAILS = (
+    "raphaelmankopf@gmail.com,"
+    "lucas.neurauter@gmail.com,"
+    "r.mankopf@raute-kopf.com,"
+    "l.neurauter@raute-kopf.com"
+)
 ALLOWED_EMAILS: str = os.environ.get(_ENV_ALLOWED_EMAILS, _DEFAULT_ALLOWED_EMAILS)
 # Optional. Left empty, web.google_auth generates one and keeps it beside the
 # database, so sessions survive a restart without anyone inventing a secret.
