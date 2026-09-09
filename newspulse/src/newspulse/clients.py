@@ -367,6 +367,7 @@ def create_client(
     alert_topics: list[str] | None = None,
     excluded_terms: list[str] | None = None,
     required_terms: list[str] | None = None,
+    actions_per_quarter: int | None = None,
 ) -> Client:
     """Create and persist a client. List defaults use ``None`` sentinels rather
     than mutable ``[]`` defaults to avoid a shared-list footgun.
@@ -390,6 +391,7 @@ def create_client(
         # from its homonym; that is learned from a month of false positives.
         excluded_terms=excluded_terms or [],
         required_terms=required_terms or [],
+        actions_per_quarter=actions_per_quarter,
     )
     session.add(client)
     session.commit()
@@ -426,6 +428,7 @@ def update_client(session: Session, client_id: int, **fields) -> Client:
     unknown = set(fields) - _IMPORTABLE_FIELDS - {
         "active", "is_competitor", "website", "logo_url", "muted_categories",
         "excluded_terms", "required_terms",
+        "actions_per_quarter",
     }
     if unknown:
         raise ValueError(f"Unknown client field(s): {sorted(unknown)}")

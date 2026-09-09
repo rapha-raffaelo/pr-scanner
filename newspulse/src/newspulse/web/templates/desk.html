@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}{{ translator(request)("Desk") }} · RauteOS{% endblock %}
+
+{% block content %}
+{% set t = translator(request) %}
+
+<style>
+  /* The Desk is the only page in the tool that is about the agency rather than
+     about a mandate, and it is read standing up with a coffee: five figures, a
+     table, three lists. Page-local because none of it is reused. */
+  .desk__h { margin-bottom: var(--s5); }
+  .desk__hi { font-size: var(--t-footnote); color: var(--muted); }
+  .desk__t { font-size: var(--t-large); font-weight: 700; letter-spacing: -0.02em; margin: 2px 0; }
+  .desk__sub { font-size: var(--t-subhead); color: var(--muted); }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: var(--s3); margin-bottom: var(--s5); }
+  .kpi { background: var(--surface); border: 1px solid var(--line);
+         border-radius: var(--radius); padding: var(--s4); }
+  .kpi__l { font-size: var(--t-caption2); text-transform: uppercase; letter-spacing: 0.04em;
+            color: var(--muted); font-weight: 700; }
+  .kpi__v { font-size: var(--t-large); font-weight: 700; letter-spacing: -0.02em;
+            font-variant-numeric: tabular-nums; margin-top: 4px; }
+  .kpi__n { font-size: var(--t-caption2); color: var(--muted); }
+
+  .board { background: var(--surface); border: 1px solid var(--line);
+           border-radius: var(--radius); margin-bottom: var(--s5); overflow: hidden; }
+  .board__h { display: flex; align-items: baseline; gap: var(--s3);
+              padding: var(--s4); border-bottom: 1px solid var(--line); }
+  .board__t { font-size: var(--t-title3); font-weight: 700; }
+  .board__d { font-size: var(--t-footnote); color: var(--muted); }
+  .board__wrap { overflow-x: auto; }
+  .board table { width: 100%; border-collapse: collapse; font-size: var(--t-footnote); }
+  .board th { text-align: left; font-size: var(--t-caption2); text-transform: uppercase;
+              letter-spacing: 0.04em; color: var(--muted); font-weight: 700;
+              padding: var(--s2) var(--s4); border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .board td { padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .board tr:last-child td { border-bottom: 0; }
+  .board__nm { font-weight: 600; }
+  .board__sec { font-size: var(--t-caption2); color: var(--muted); }
+  .num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+  /* The Twin bar. A number and a bar, because the number is the fact and the bar
+     is what makes twelve of them comparable at a glance. */
+  .twin { display: flex; align-items: center; gap: var(--s2); }
+  .twin__n { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 3.2em; }
+  .twin__bar { flex: 1; min-width: 60px; height: 5px; border-radius: 999px; background: var(--fill-2); }
+  .twin__fill { height: 100%; border-radius: 999px; background: var(--tint); }
+
+  /* Contract against delivery. Three states and they must be distinguishable
+     without colour alone: ahead, behind, and no figure entered at all. */
+  .deal { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .deal--none { color: var(--muted); font-style: italic; }
+  .deal--behind { color: var(--warn); font-weight: 600; }
+  .deal--met { color: var(--ok, var(--ink)); font-weight: 600; }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  .st { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-caption); white-space: nowrap; }
+  .st--aktiv .dot { background: var(--ok, #16a34a); }
+  .st--ruhig .dot { background: var(--fill-strong); }
+  .st--krise .dot { background: var(--alert); }
+
+  .panes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--s4); }
+  .pane { background: var(--surface); border: 1px solid var(--line);
+          border-radius: var(--radius); overflow: hidden; }
+  .pane__h { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4);
+             border-bottom: 1px solid var(--line); }
+  .pane__t { font-weight: 700; font-size: var(--t-subhead); }
+  .pane__n { font-size: var(--t-caption2); font-weight: 700; color: var(--muted);
+             font-variant-numeric: tabular-nums; }
+  .pane__b { padding: var(--s2) 0; }
+  .row { display: block; padding: var(--s3) var(--s4); border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  .row__t { font-weight: 600; font-size: var(--t-footnote); }
+  .row__c { font-size: var(--t-caption2); color: var(--muted); }
+  .row__d { font-size: var(--t-caption); color: var(--muted); margin-top: 2px; }
+  .row__age { font-size: var(--t-caption2); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pane__empty { padding: var(--s4); font-size: var(--t-footnote); color: var(--muted); }
+
+  .tag { font-size: var(--t-caption2); font-weight: 700; text-transform: uppercase;
+         letter-spacing: 0.03em; border-radius: var(--radius-s); padding: 1px 7px; }
+  .tag--kunde { color: var(--warn); background: rgba(178, 80, 0, 0.10); }
+  .tag--agentur { color: var(--tint); background: var(--fill-2); }
+  .tag--impuls { color: var(--muted); background: var(--fill-2); }
+  .tag--profil { color: var(--muted); background: var(--fill-2); }
+  .tag--raus { color: var(--tint); background: var(--fill-2); }
+  .tag--entwurf { color: var(--muted); background: var(--fill-2); }
+
+  .log { padding: var(--s3) var(--s4); border-top: 1px solid var(--line); }
+  .log summary { cursor: pointer; font-size: var(--t-caption); color: var(--muted); }
+  .log__f { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
+  .log__f input, .log__f select { font: inherit; font-size: var(--t-caption);
+    padding: 5px 8px; border: 1px solid var(--line); border-radius: var(--radius-s);
+    background: var(--card); }
+  .log__f input[name="title"] { flex: 1; min-width: 160px; }
+</style>
+
+<div class="desk__h">
+  <div class="desk__hi">{{ t("Guten Morgen.") }}</div>
+  <h1 class="desk__t">{{ t("Der Desk") }}</h1>
+  <p class="desk__sub">{{ t("Was zugesagt ist, was geliefert wurde, und was heute eine Entscheidung braucht.") }}</p>
+</div>
+
+{# Five figures, in the order the questions get asked. #}
+<div class="kpis">
+  <div class="kpi">
+    <div class="kpi__l">{{ t("Aktive Mandanten") }}</div>
+    <div class="kpi__v">{{ board.clients_active }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi__l">{{ t("Actions diesen Monat") }}</div>
+    <div class="kpi__v">{{ board.actions_month }}</div>
+    <div class="kpi__n">{{ t("abgeliefert und nachgetragen") }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi__l">{{ t("Offene Opportunities") }}</div>
+    <div class="kpi__v">{{ board.opportunities }}</div>
+    <div class="kpi__n">{{ t("Fenster noch offen") }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi__l">{{ t("Entscheidungen offen") }}</div>
+    <div class="kpi__v">{{ board.decisions_open }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi__l">{{ t("Twins mit Lücken") }}</div>
+    <div class="kpi__v">{{ board.twins_with_gaps }}</div>
+    <div class="kpi__n">{{ t("Schnitt") }} {{ board.twin_average }} %</div>
+  </div>
+</div>
+
+<div class="board">
+  <div class="board__h">
+    <span class="board__t">{{ t("Mandantenüberblick") }}</span>
+    <span class="board__d">{{ t("Alle aktiven Mandanten auf einen Blick.") }}</span>
+  </div>
+  {% if board.rows %}
+    <div class="board__wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>{{ t("Mandant") }}</th>
+          <th>{{ t("Twin") }}</th>
+          <th class="num">{{ t("Actions (Monat)") }}</th>
+          <th class="num">{{ t("Vertrag / geliefert") }}</th>
+          <th class="num">{{ t("Opportunities") }}</th>
+          <th>{{ t("Status") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in board.rows %}
+          <tr>
+            <td>
+              <a class="board__nm" href="/client/{{ row.client.id }}/heute">{{ row.client.name }}</a>
+              {% if row.client.industry %}<div class="board__sec">{{ row.client.industry[:44] }}</div>{% endif %}
+            </td>
+            <td>
+              <div class="twin" title="{{ t('Profil') }} {{ row.twin.profile_filled }}/{{ row.twin.profile_total }} · {{ t('Kickoff') }} {{ row.twin.kickoff_settled }}/{{ row.twin.kickoff_total }}">
+                <span class="twin__n">{{ row.twin.percent }} %</span>
+                <span class="twin__bar"><span class="twin__fill" style="width: {{ row.twin.percent }}%"></span></span>
+              </div>
+            </td>
+            {# The split is in the tooltip, not the cell: the total is what is
+               read across twelve rows, and the provenance is what is asked once. #}
+            <td class="num" title="{{ row.actions_month.released }} {{ t('aus RauteOS') }} · {{ row.actions_month.logged }} {{ t('nachgetragen') }}">
+              {{ row.actions_month.total }}
+            </td>
+            <td class="num">
+              {% if row.promised_quarter is none %}
+                <span class="deal deal--none">{{ t("nicht hinterlegt") }}</span>
+              {% else %}
+                <span class="deal {% if row.on_track %}deal--met{% else %}deal--behind{% endif %}">
+                  {{ row.promised_quarter }} / {{ row.actions_quarter.total }}
+                </span>
+              {% endif %}
+            </td>
+            <td class="num">{{ row.opportunities or '—' }}</td>
+            <td>
+              <span class="st st--{{ row.status }}">
+                <span class="dot"></span>
+                {% if row.status == 'krise' %}{{ t("Krise offen") }}
+                {% elif row.status == 'aktiv' %}{{ t("Etwas passiert gerade") }}
+                {% else %}{{ t("Aktuell nichts Relevantes") }}{% endif %}
+              </span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {# Logging what happened elsewhere, on the page that counts it. Folded away,
+       because it is used once a week and the table is used every morning. #}
+    <details class="log">
+      <summary>{{ t("Action nachtragen — Gespräch, Briefing, Redaktionsbesuch") }}</summary>
+      <form class="log__f" method="post" action="/desk/action">
+        <select name="client_id" aria-label="{{ t('Mandant') }}">
+          {% for row in board.rows %}
+            <option value="{{ row.client.id }}">{{ row.client.name }}</option>
+          {% endfor %}
+        </select>
+        <input type="text" name="title" required maxlength="200"
+               placeholder="{{ t('Was war es? z. B. Hintergrundgespräch Handelsblatt') }}">
+        <input type="date" name="happened_on" aria-label="{{ t('Wann') }}">
+        <input type="hidden" name="redirect_to" value="/desk">
+        <button type="submit" class="btn">{{ t("Eintragen") }}</button>
+      </form>
+    </details>
+  {% else %}
+    <p class="pane__empty">{{ t("Noch kein Mandant angelegt.") }}
+      <a href="/mandant/neu">{{ t("Mandant hinzufügen") }} →</a></p>
+  {% endif %}
+</div>
+
+<div class="panes">
+  <div class="pane">
+    <div class="pane__h">
+      <span class="pane__t">{{ t("Braucht Entscheidung") }}</span>
+      <span class="pane__n">{{ board.decisions | length }}</span>
+    </div>
+    <div class="pane__b">
+      {% for item in board.decisions[:8] %}
+        <a class="row" href="{{ item.href }}">
+          <div class="row__c">{{ item.client.name }}
+            <span class="tag tag--{{ 'kunde' if item.kind == 'kundenfreigabe' else ('agentur' if item.kind == 'freigabe' else item.kind) }}">
+              {% if item.kind == 'kundenfreigabe' %}{{ t("Kundenabstimmung") }}
+              {% elif item.kind == 'freigabe' %}{{ t("Freigabe") }}
+              {% elif item.kind == 'impuls' %}{{ t("Impuls") }}
+              {% else %}{{ t("Profil") }}{% endif %}
+            </span>
+          </div>
+          <div class="row__t">{{ item.title[:70] }}</div>
+          <div class="row__d">{{ item.detail }}</div>
+          {% if item.since %}<div class="row__age">{{ t("seit") }} {{ item.since | de_short_date }}</div>{% endif %}
+        </a>
+      {% else %}
+        <p class="pane__empty">{{ t("Nichts wartet auf eine Entscheidung.") }}</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="pane">
+    <div class="pane__h">
+      <span class="pane__t">{{ t("In Arbeit") }}</span>
+      <span class="pane__n">{{ board.in_flight | length }}</span>
+    </div>
+    <div class="pane__b">
+      {% for item in board.in_flight[:8] %}
+        <a class="row" href="{{ item.href }}">
+          <div class="row__c">{{ item.client.name }}
+            <span class="tag tag--{{ item.state }}">
+              {% if item.state == 'raus' %}{{ t("Raus") }}{% else %}{{ t("Entwurf") }}{% endif %}
+            </span>
+          </div>
+          <div class="row__t">{{ item.title[:70] }}</div>
+          <div class="row__age">{{ item.since | de_short_date }}</div>
+        </a>
+      {% else %}
+        <p class="pane__empty">{{ t("Nichts unterwegs.") }}</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="pane">
+    <div class="pane__h">
+      <span class="pane__t">{{ t("Twins mit Wissenslücken") }}</span>
+      <span class="pane__n">{{ board.twins_with_gaps }}</span>
+    </div>
+    <div class="pane__b">
+      {% for row in board.rows if row.twin.gaps %}
+        <a class="row" href="/client/{{ row.client.id }}/profil">
+          <div class="row__t">{{ row.client.name }}</div>
+          <div class="row__d">{{ row.twin.gaps | join(' · ') }}</div>
+          <div class="row__age">{{ t("Twin") }} {{ row.twin.percent }} %</div>
+        </a>
+      {% else %}
+        <p class="pane__empty">{{ t("Jeder Twin ist vollständig.") }}</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

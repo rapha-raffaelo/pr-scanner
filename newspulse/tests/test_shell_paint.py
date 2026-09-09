@@ -425,11 +425,15 @@ def test_a_tab_with_no_page_behind_it_is_not_in_the_strip(web, mandate):
 def test_the_sidebar_keeps_its_rows_and_only_changes_how_they_look(web, mandate):
     """DEC-4 repaints the sidebar; it does not rebuild it. The rows the tool had
     before are the rows it has now, in the same order, pointing at the same
-    pages."""
+    pages.
+
+    The Desk joined them at the top — the agency's own standing, before any
+    single mandate is opened — and everything below it kept its place.
+    """
     page = web.get("/today").text
     side = page.split('<aside class="side">', 1)[1].split("</aside>", 1)[0]
     rows = re.findall(r'<a href="([^"]+)" class="side__row', side)
-    assert rows[:4] == ["/today", "/", "/archive", "/contacts"]
+    assert rows[:5] == ["/desk", "/today", "/", "/archive", "/contacts"]
     assert f"/client/{mandate.id}/heute" in side
     assert "/settings" in side
 

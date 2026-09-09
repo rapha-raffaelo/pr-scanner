@@ -56,6 +56,9 @@
 
       <nav class="side__nav" aria-label="{{ t('Navigation') }}">
         <div class="side__sect">{{ t("Übersicht") }}</div>
+        {# First, because it is the page the morning starts on: the agency's own
+           standing, before any single mandate is opened. #}
+        <a href="/desk" class="side__row{% if request.url.path.startswith('/desk') %} is-on{% endif %}"{% if request.url.path.startswith('/desk') %} aria-current="page"{% endif %}>{{ t("Desk") }}</a>
         <a href="/today" class="side__row{% if request.url.path.startswith('/today') %} is-on{% endif %}"{% if request.url.path.startswith('/today') %} aria-current="page"{% endif %}>{{ t("Heute") }}</a>
         <a href="/" class="side__row{% if request.url.path == '/' %} is-on{% endif %}"{% if request.url.path == '/' %} aria-current="page"{% endif %}>{{ t("Portfolio") }}</a>
         <a href="/archive" class="side__row{% if request.url.path.startswith('/archive') %} is-on{% endif %}">{{ t("Archiv") }}</a>

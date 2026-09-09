@@ -359,7 +359,7 @@ def create_app() -> FastAPI:
     # modules import ``get_db``/``templates`` from this module.
     from .routes import (
         advisory, archive, assets_view, assistant, client, contacts,
-        crisis_view, guide_routes, issues_view,
+        crisis_view, desk_view, guide_routes, issues_view,
         language, login, onboarding as onboarding_routes,
         opportunity_view,
         plan_view, profile as profile_routes, report as report_routes,
@@ -376,6 +376,7 @@ def create_app() -> FastAPI:
 
     # First, so the sign-in pages exist before anything that needs a session.
     app.include_router(login.router)
+    app.include_router(desk_view.router)
     app.include_router(today.router)
     app.include_router(client.router)
     app.include_router(archive.router)
