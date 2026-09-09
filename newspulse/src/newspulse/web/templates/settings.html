@@ -126,6 +126,14 @@
                           <label for="e-required-{{ client.id }}">{{ t("Pflicht-Begleitwörter") }}</label>
                           <input id="e-required-{{ client.id }}" type="text" name="required_terms" value="{{ client.required_terms | join(', ') }}" placeholder="Komma/Semikolon">
                           <p class="fieldhint">{{ t("kommt keines davon vor, ist es nicht diese Firma") }}</p>
+                        {# The contract figure the Desk measures delivery against.
+                           Empty is not zero: zero is a mandate that owes nothing,
+                           empty is one nobody has entered a figure for, and the
+                           Desk draws those differently. #}
+                        <div>
+                          <label for="e-quota-{{ client.id }}">{{ t("Actions pro Quartal") }}</label>
+                          <input id="e-quota-{{ client.id }}" type="number" min="0" step="1" name="actions_per_quarter" value="{{ client.actions_per_quarter if client.actions_per_quarter is not none else '' }}" placeholder="{{ t('vertraglich zugesichert') }}">
+                          <p class="fieldhint">{{ t("leer = nichts hinterlegt") }}</p>
                         </div>
                         <div>
                           <label for="e-topics-{{ client.id }}">Alarm-Themen</label>

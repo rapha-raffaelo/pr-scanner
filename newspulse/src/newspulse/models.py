@@ -381,6 +381,11 @@ class Client(Base):
         nullable=False,
         server_default=_EMPTY_JSON_ARRAY,
     )
+    # What the contract promises per quarter, if anything does. NULL rather than
+    # zero, and the difference matters on the Desk: zero is a mandate that owes
+    # nothing, NULL is a mandate nobody has entered a figure for, and the second
+    # must not be drawn as though it were behind on a commitment of none.
+    actions_per_quarter: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Categories this mandate never wants in its daily feed. Per client, because
     # "finanzen" is three near-identical ticker items a day for a listed retailer
     # and the entire mandate for a bank. Hiding, not discarding: the articles stay
@@ -2077,6 +2082,44 @@ class Standing(StrEnum):
     BELEGT = "belegt"
     DUENN = "duenn"
     KEINS = "keins"
+
+
+class ClientAction(Base):
+    """One piece of work delivered for a mandate that RauteOS did not produce.
+
+    The Desk counts what the contract promised against what was delivered, and
+    most of what an agency delivers never touches this tool: a background call
+    with a correspondent, a briefing before an interview, a visit to an editorial
+    office. Counting only the artefacts RauteOS released would show the agency
+    doing consistently less than it does, and against a contractual figure that
+    is not a neutral error — it is the wrong number in the one place a client
+    conversation starts.
+
+    So the Desk's count is two things added: every :class:`Outreach`,
+    :class:`Asset` and :class:`Report` with a ``released_at``, plus these rows.
+    Nothing here duplicates those — this table is *only* for work done elsewhere,
+    which is why it has no link to any of them.
+
+    ``happened_at`` rather than a created stamp, because an action is logged
+    after the fact and belongs in the quarter it happened in, not the quarter
+    somebody remembered it.
+    """
+
+    __tablename__ = "client_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # What it was, in the consultant's own words. No enum: the day somebody has
+    # to choose between "Hintergrundgespräch" and "Redaktionsbesuch" for
+    # something that was both, the entry does not get made.
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    happened_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    logged_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+
+    client: Mapped["Client"] = relationship()
 
 
 class NewsjackOpportunity(Base):
@@ -4198,6 +4241,7 @@ class DecisionGap(Base):
 
 
 __all__ = [
+    "ClientAction",
     "DECISION_NAME_MAX",
     "EVIDENCE_LABEL_MAX",
     "DecisionContradiction",
