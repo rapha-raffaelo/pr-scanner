@@ -508,13 +508,22 @@ def test_the_competition_tab_puts_the_four_questions_in_one_place(factory, web):
 
 def test_the_day_tab_keeps_the_workspace_around_it(factory, web):
     """Entered from a mandate, the day is that mandate's day and keeps its tabs;
-    reached from the portfolio it is everyone's and the strip would be a lie."""
+    reached from the portfolio it is everyone's and the strip would be a lie.
+
+    Asked of the page body, not the whole document: the sidebar folds every
+    mandate's pages into a group of its own, so /profil is legitimately in the
+    markup of every page in the tool. What must not be on the portfolio-wide day
+    is the *strip*, which is what this looks for.
+    """
     with factory() as session:
         client = _client(session)
         client_id = client.id
 
-    scoped = web.get(f"/today?client={client_id}").text
-    everyones = web.get("/today").text
+    def _body(html: str) -> str:
+        return html.split("</aside>", 1)[1]
+
+    scoped = _body(web.get(f"/today?client={client_id}").text)
+    everyones = _body(web.get("/today").text)
 
     assert f'/client/{client_id}/profil' in scoped, "the workspace strip is present"
     assert "/profil" not in everyones

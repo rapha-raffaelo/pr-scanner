@@ -148,3 +148,113 @@ def test_an_empty_portfolio_renders_no_mandate_section(factory, client):
     side = _sidebar(client.get("/").text)
     assert "side__cl" not in side
     assert "Mandanten" not in side
+
+
+# --- A mandate is a group, not a link ---------------------------------------------
+#
+# "kannst du die menus wo sinnvoll für rauteOS auch so anlegen?" — asked against
+# a screen whose sidebar folds a building into its sections.
+#
+# A mandate has nine pages and they lived only in a strip across the top of them,
+# which a reader has to arrive somewhere before seeing. "Wo sinnvoll" is the
+# operative half: the five rows above stay flat, because folding five items into
+# two groups adds a click to each and hides nothing worth hiding.
+
+
+def _groups(body: str) -> list[str]:
+    return re.findall(r'<details class="side__grp"( open)?>', _sidebar(body))
+
+
+def _subs(body: str) -> list[tuple[str, str]]:
+    return re.findall(r'class="side__sub( is-on)?">([^<]+)<', _sidebar(body))
+
+
+def _mandate(session, name: str = "Arrakis.finance") -> Client:
+    row = Client(name=name, aliases=[], keywords=[], alert_topics=[])
+    session.add(row)
+    session.commit()
+    return row
+
+
+def test_every_mandate_carries_its_pages_as_a_group(client, factory):
+    with factory() as session:
+        _mandate(session)
+
+    body = client.get("/desk").text
+
+    assert len(_groups(body)) == 1
+    labels = [label for _, label in _subs(body)]
+    assert labels[:3] == ["Heute", "Impulse", "Issues"]
+    assert "KI-Sichtbarkeit" in labels
+
+
+def test_only_the_mandate_being_worked_in_is_unfolded(client, factory):
+    """The point of a group is that the others are shut. Two open groups in a
+    portfolio of twelve is a list of a hundred rows."""
+    with factory() as session:
+        first = _mandate(session, "Arrakis.finance")
+        _mandate(session, "Qonto")
+        first_id = first.id
+
+    closed = _groups(client.get("/desk").text)
+    opened = _groups(client.get(f"/client/{first_id}/profil").text)
+
+    assert [g for g in closed if g] == [], "nothing is open away from a mandate"
+    assert len([g for g in opened if g]) == 1
+
+
+def test_the_page_being_looked_at_is_the_marked_sub_row(client, factory):
+    with factory() as session:
+        mandate_id = _mandate(session).id
+
+    marked = [label for on, label in _subs(client.get(f"/client/{mandate_id}/profil").text) if on]
+
+    assert marked == ["Profil"]
+
+
+def test_the_day_is_marked_although_its_address_redirects(client, factory):
+    """"Heute" is the one sub-row whose link is not the page's own address: it
+    redirects to the filtered day, so an equality check against the path alone
+    would leave the mandate's most-used page permanently unmarked."""
+    with factory() as session:
+        mandate_id = _mandate(session).id
+
+    marked = [label for on, label in _subs(client.get(f"/today?client={mandate_id}").text) if on]
+
+    assert marked == ["Heute"]
+
+
+def test_the_mandate_name_is_still_a_link_to_its_day(client, factory):
+    """Clicking the name must still go somewhere. Only the chevron folds — a
+    group whose head does nothing but toggle costs a click on the commonest
+    action in the sidebar."""
+    with factory() as session:
+        mandate_id = _mandate(session).id
+
+    side = _sidebar(client.get("/desk").text)
+
+    assert f'<a href="/client/{mandate_id}/heute" class="side__row side__cl' in side
+
+
+def test_the_five_rows_above_stay_flat(client, factory):
+    """"Wo sinnvoll." Grouping them would add a click to each and hide nothing:
+    there is no sixth row under any of them."""
+    with factory() as session:
+        _mandate(session)
+
+    side = _sidebar(client.get("/desk").text)
+    head = side.split('<details class="side__grp"', 1)[0]
+
+    assert "<details" not in head
+
+
+def test_the_sidebar_costs_no_query_per_mandate(client, factory):
+    """The block renders on every page in the tool. The Krise row is conditional
+    on a mandate ever having had one, which is a query per mandate — twelve of
+    them on the archive, for a navigation decoration."""
+    with factory() as session:
+        _mandate(session)
+
+    labels = [label for _, label in _subs(client.get("/desk").text)]
+
+    assert "Krise" not in labels

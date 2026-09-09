@@ -68,14 +68,68 @@
         {% if roster %}
           <div class="side__sect">{{ t("Mandanten") }}<span class="side__n">{{ roster | length }}</span></div>
           {% for c in roster %}
-            {# Selected on any page of that mandate's workspace, so the sidebar
-               keeps saying whose desk this is while the tabs move underneath. #}
-            {% set on = request.url.path.startswith('/client/' ~ c.id) %}
-            <a href="/client/{{ c.id }}/heute" class="side__row side__cl{% if on %} is-on{% endif %}{% if not c.active %} is-off{% endif %}"{% if on %} aria-current="page"{% endif %}>
-              <span class="side__dot" style="background: {{ c.name | brand_colour }}"></span>
-              <span class="side__nm">{{ c.name }}</span>
-              {% if c.alerts %}<span class="side__badge">{{ c.alerts }}</span>{% endif %}
-            </a>
+            {# A mandate is a group, not a link — the pattern the FSMS screen
+               uses for a building, and the one place in this sidebar where
+               grouping earns its keep: a mandate has nine pages, and until now
+               they lived only in a strip across the top that the reader had to
+               arrive somewhere before seeing.
+
+               The five rows above stay flat on purpose. Folding five items into
+               two groups adds a click to every one of them and hides nothing
+               worth hiding.
+
+               ``<details>`` rather than script: it survives a reload, it needs
+               no JavaScript, and the open one is decided by the server from the
+               address. The name inside the summary stays an anchor, so clicking
+               the mandate still goes to its day and only the chevron toggles —
+               and so the markup the roster is read off does not change. #}
+            {# Two ways to be inside a mandate's workspace, and the second is
+               the one used most: its own pages live under /client/<id>/…, but
+               its *day* is the portfolio day filtered by a query parameter.
+               Checking the path alone left the most-visited page of every
+               mandate with its own group folded shut. #}
+            {% set on = request.url.path.startswith('/client/' ~ c.id ~ '/')
+                        or request.url.path == '/client/' ~ c.id
+                        or (request.url.path.startswith('/today')
+                            and request.query_params.get('client') == c.id | string) %}
+            <details class="side__grp"{% if on %} open{% endif %}>
+              <summary class="side__gs">
+                <a href="/client/{{ c.id }}/heute" class="side__row side__cl{% if on %} is-on{% endif %}{% if not c.active %} is-off{% endif %}"{% if on %} aria-current="page"{% endif %}>
+                  <span class="side__dot" style="background: {{ c.name | brand_colour }}"></span>
+                  <span class="side__nm">{{ c.name }}</span>
+                  {% if c.alerts %}<span class="side__badge">{{ c.alerts }}</span>{% endif %}
+                </a>
+                <span class="side__chev" aria-hidden="true"></span>
+              </summary>
+              {# The mandate's own pages, in the order the tab strip has them.
+
+                 The Krise tab is deliberately not among them. It is conditional
+                 on a mandate ever having had one, which costs a query per
+                 mandate — and this block renders on *every* page in the tool.
+                 A navigation decoration must not put twelve queries on the
+                 archive. The crisis stays loud where it belongs: in the tab
+                 strip on the mandate's own pages, and on the Desk. #}
+              <div class="side__subs">
+                {% for path, label in [
+                     ('/heute', 'Heute'),
+                     ('/advice', 'Impulse'),
+                     ('/issues', 'Issues'),
+                     ('/plan', 'Plan'),
+                     ('/wettbewerb', 'Wettbewerb'),
+                     ('', 'Archiv'),
+                     ('/profil', 'Profil'),
+                     ('/market', 'Marktumfeld'),
+                     ('/ki', 'KI-Sichtbarkeit'),
+                   ] %}
+                  {% set href = '/client/' ~ c.id ~ path %}
+                  {# "Heute" is the one whose address is not its own: it
+                     redirects to the filtered day, so the page that is open
+                     reports a different path than the link points at. #}
+                  {% set here = request.url.path == href or (path == '/heute' and on and request.url.path.startswith('/today')) %}
+                  <a href="{{ href }}" class="side__sub{% if here %} is-on{% endif %}">{{ t(label) }}</a>
+                {% endfor %}
+              </div>
+            </details>
           {% endfor %}
         {% endif %}
         {# Outside the roster's own condition on purpose: with an empty portfolio
